@@ -25,7 +25,9 @@ struct AnyCodable: Codable, @unchecked Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
 
-        if let string = value as? String {
+        if value is NSNull {
+            try container.encodeNil()
+        } else if let string = value as? String {
             try container.encode(string)
         } else if let number = value as? NSNumber,
                   CFGetTypeID(number) == CFBooleanGetTypeID() {
@@ -49,7 +51,9 @@ struct AnyCodable: Codable, @unchecked Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
-        if let string = try? container.decode(String.self) {
+        if container.decodeNil() {
+            value = NSNull()
+        } else if let string = try? container.decode(String.self) {
             value = string
         } else if let int = try? container.decode(Int.self) {
             value = int
@@ -69,6 +73,8 @@ struct AnyCodable: Codable, @unchecked Sendable {
     /// Recursively convert the underlying value to `[String: any Sendable]` or primitive Sendable types
     func toSendable() -> any Sendable {
         switch value {
+        case is NSNull:
+            return NSNull()
         case let string as String:
             return string
         case let int as Int:

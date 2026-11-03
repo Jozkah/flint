@@ -362,6 +362,7 @@ struct MLXHTTPServer {
             }
 
             var splitter = ReasoningSplitter(startInReasoning: startInReasoning)
+            var toolCallIndex = 0   // OpenAI clients merge tool_calls deltas by index
 
             func emitDelta(content: String?, reasoning: String?) {
                 if content == nil && reasoning == nil { return }
@@ -401,6 +402,8 @@ struct MLXHTTPServer {
                         emitDelta(content: parts.content, reasoning: parts.reasoning)
 
                     case .toolCall(let toolCallInfo):
+                        let callIndex = toolCallIndex
+                        toolCallIndex += 1
                         let chunk = ChatCompletionChunk(
                             id: responseId,
                             object: "chat.completion.chunk",
@@ -414,7 +417,7 @@ struct MLXHTTPServer {
                                         content: nil,
                                         tool_calls: [
                                             ToolCallDelta(
-                                                index: 0,
+                                                index: callIndex,
                                                 id: toolCallInfo.id,
                                                 type: toolCallInfo.type,
                                                 function: FunctionCallDelta(
@@ -632,7 +635,7 @@ struct MLXHTTPServer {
 
             var blockIndex = 1      // next available block index (0 is the text block)
             var textBlockOpen = true
-            var outputTokens = 0
+            var textBlockIndex = 0  // index of the currently open text block
 
             do {
                 for try await event in stream {
@@ -640,10 +643,24 @@ struct MLXHTTPServer {
 
                     switch event {
                     case .chunk(let token):
-                        outputTokens += 1
+                        if !textBlockOpen {
+                            // Text after a tool call needs its own block; the
+                            // earlier one is already closed.
+                            textBlockIndex = blockIndex
+                            blockIndex += 1
+                            textBlockOpen = true
+                            let reopen = AnthropicContentBlockStartEvent(
+                                type: "content_block_start",
+                                index: textBlockIndex,
+                                content_block: AnyCodable(["type": "text", "text": ""] as [String: Any])
+                            )
+                            if let data = try? anthropicEncoder.encode(reopen) {
+                                continuation.yield(buildAnthropicSSEFrame(event: "content_block_start", data: data))
+                            }
+                        }
                         let delta = AnthropicContentBlockDeltaEvent(
                             type: "content_block_delta",
-                            index: 0,
+                            index: textBlockIndex,
                             delta: AnyCodable(["type": "text_delta", "text": token] as [String: Any])
                         )
                         if let data = try? anthropicEncoder.encode(delta) {
@@ -653,7 +670,7 @@ struct MLXHTTPServer {
                     case .toolCall(let tc):
                         // Close the text block on first tool call
                         if textBlockOpen {
-                            let stop = AnthropicContentBlockStopEvent(type: "content_block_stop", index: 0)
+                            let stop = AnthropicContentBlockStopEvent(type: "content_block_stop", index: textBlockIndex)
                             if let data = try? anthropicEncoder.encode(stop) {
                                 continuation.yield(buildAnthropicSSEFrame(event: "content_block_stop", data: data))
                             }
@@ -699,7 +716,7 @@ struct MLXHTTPServer {
                     case .done(let usage, _, let hasToolCalls):
                         // Close the text block if still open
                         if textBlockOpen {
-                            let stop = AnthropicContentBlockStopEvent(type: "content_block_stop", index: 0)
+                            let stop = AnthropicContentBlockStopEvent(type: "content_block_stop", index: textBlockIndex)
                             if let data = try? anthropicEncoder.encode(stop) {
                                 continuation.yield(buildAnthropicSSEFrame(event: "content_block_stop", data: data))
                             }
