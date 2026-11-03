@@ -926,6 +926,35 @@ fn key(project_root: Option<&Path>) -> String {
 }
 
 #[cfg(test)]
+mod single_flight_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn concurrent_first_reads_of_one_key_probe_once() {
+        let runs = AtomicUsize::new(0);
+        let key = "single-flight-test-key";
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    probe_once(key, || {
+                        runs.fetch_add(1, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        EnvironmentReadiness::checking(0)
+                    });
+                });
+            }
+        });
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        invalidate_key_for_test(key);
+    }
+
+    fn invalidate_key_for_test(key: &str) {
+        cache().lock().unwrap().remove(key);
+    }
+}
+
+#[cfg(test)]
 mod key_tests {
     #[test]
     fn two_spellings_share_a_key_only_where_they_are_one_folder() {
@@ -941,14 +970,32 @@ mod key_tests {
 /// why the probe result is kept rather than recomputed.
 pub fn current(project_root: Option<&Path>) -> EnvironmentReadiness {
     let cache_key = key(project_root);
-    if let Ok(cache) = cache().lock() {
-        if let Some(hit) = cache.get(&cache_key) {
-            return hit.clone();
-        }
+    probe_once(&cache_key, || probe_backend(project_root))
+}
+
+/// The cached readiness for `cache_key`, or the result of `probe`, run by one
+/// caller only: the others for the same key wait for it and take its answer
+/// instead of each launching a probe shell (F04-009).
+fn probe_once(cache_key: &str, probe: impl FnOnce() -> EnvironmentReadiness) -> EnvironmentReadiness {
+    let cached = || cache().lock().ok().and_then(|c| c.get(cache_key).cloned());
+    if let Some(hit) = cached() {
+        return hit;
     }
-    let fresh = probe_backend(project_root);
+    static INFLIGHT: OnceLock<Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>>> = OnceLock::new();
+    let gate = {
+        let mut map = INFLIGHT
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        map.entry(cache_key.to_string()).or_default().clone()
+    };
+    let _held = gate.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(hit) = cached() {
+        return hit;
+    }
+    let fresh = probe();
     if let Ok(mut cache) = cache().lock() {
-        cache.insert(cache_key, fresh.clone());
+        cache.insert(cache_key.to_string(), fresh.clone());
     }
     fresh
 }

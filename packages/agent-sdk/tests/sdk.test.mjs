@@ -607,7 +607,8 @@ test('closing the runtime settles an open turn instead of hanging', { skip: miss
   // Closing stdin is the runtime's own shutdown signal, and a turn that was
   // running is closed on the channel before the process exits.
   assert.equal(code, 0)
-  await assert.rejects(turn.result(), (error) => error instanceof JanRuntimeError)
+  const outcome = await turn.result().then((r) => r.stopReason, (error) => error)
+  assert.ok(outcome === 'interrupted' || outcome instanceof JanRuntimeError, String(outcome))
 })
 
 test('a turn nobody drains stays bounded, and still reports its outcome', { skip: missingRuntime }, async (t) => {

@@ -343,11 +343,9 @@ class JanRuntime:
             return self._wait_or_kill()
         self._closing = True
         gone = JanRuntimeError("the runtime was closed")
-        with self._state_lock:
-            sessions = list(self._sessions.values())
-            self._sessions.clear()
-        for session in sessions:
-            session._fail(gone)
+        if force:
+            # Only the forced path fails open turns up front.
+            self._fail_sessions(gone)
         if self._process.stdin is not None and not self._process.stdin.closed:
             try:
                 self._process.stdin.close()
@@ -357,9 +355,21 @@ class JanRuntime:
             self._kill()
             self._dispatch_queue.put(None)
             return self._process.wait()
+        # Graceful: sessions stay registered while the runtime closes a running
+        # turn with `stopReason: interrupted`, so that `turn/completed` still
+        # reaches its caller. Whatever is still open once the process is gone
+        # gets the failure.
         code = self._wait_or_kill()
+        self._fail_sessions(gone)
         self._dispatch_queue.put(None)
         return code
+
+    def _fail_sessions(self, error: JanRuntimeError) -> None:
+        with self._state_lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
+            session._fail(error)
 
     # -- internals ---------------------------------------------------------
 

@@ -61,9 +61,10 @@ const CLOSE: char = '\u{203A}'; // ›
 /// Neutralize `text`. Returns the rewritten text and how many shapes were
 /// rewritten; a count of zero means the text came back byte for byte.
 pub fn neutralize(text: &str) -> (String, usize) {
-    if !text.contains(['<', '[', ':']) {
+    if !text.contains(['<', '[', ':', FULL_OPEN]) {
         return (text.to_string(), 0);
     }
+    let text = &unmask(text);
     let mut count = 0;
     let mut lines = String::with_capacity(text.len() + 16);
     for line in text.split_inclusive('\n') {
@@ -71,6 +72,67 @@ pub fn neutralize(text: &str) -> (String, usize) {
     }
     let out = inline(&lines, &mut count);
     (out, count)
+}
+
+const FULL_OPEN: char = '\u{FF1C}'; // full-width <
+const FULL_CLOSE: char = '\u{FF1E}'; // full-width >
+
+fn is_invisible(c: char) -> bool {
+    matches!(c, '\u{00AD}' | '\u{180E}' | '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
+}
+
+/// A tag written with full-width brackets or with zero-width characters inside
+/// it reads as the real tag to a model (O03-025). Such a region is replaced by
+/// its plain form, but only when the plain form is a control tag, so prose
+/// that merely contains a full-width bracket or a zero-width joiner comes back
+/// untouched.
+fn unmask(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(|c| c == FULL_OPEN || c == FULL_CLOSE || is_invisible(c)) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut changed = false;
+    let mut rest = text;
+    while let Some(at) = rest.find(['<', FULL_OPEN]) {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        let mut end = tail.len();
+        for (seen, (i, c)) in tail.char_indices().enumerate() {
+            if c == '>' || c == FULL_CLOSE || c == '\n' || seen > 200 {
+                end = i + c.len_utf8();
+                break;
+            }
+        }
+        let region = &tail[..end];
+        let plain: String = region
+            .chars()
+            .filter(|c| !is_invisible(*c))
+            .map(|c| match c {
+                FULL_OPEN => '<',
+                FULL_CLOSE => '>',
+                c => c,
+            })
+            .collect();
+        let is_tag = plain != region
+            && (special_token(plain.as_bytes(), 0).is_some() || control_tag(plain.as_bytes(), 0).is_some());
+        if is_tag {
+            out.push_str(&plain);
+            changed = true;
+            rest = &tail[end..];
+        } else {
+            // Not a disguised tag: keep the first char and go on, so a `<`
+            // later in the region is still looked at.
+            let first = tail.chars().next().map_or(1, char::len_utf8);
+            out.push_str(&tail[..first]);
+            rest = &tail[first..];
+        }
+    }
+    out.push_str(rest);
+    if changed {
+        std::borrow::Cow::Owned(out)
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
 }
 
 /// [`neutralize`], with the [`note`] appended on its own line when anything
@@ -251,6 +313,16 @@ mod tests {
         assert!(n("< system-reminder>x</ system-reminder>").1 > 0);
         assert!(n("<\tsystem>x").1 > 0);
         assert_eq!(n("if a < system then"), ("if a < system then".to_string(), 0));
+    }
+
+    #[test]
+    fn full_width_brackets_and_zero_width_characters_do_not_hide_a_tag() {
+        assert_eq!(n("\u{FF1C}system-reminder\u{FF1E}x"), ("\u{2039}system-reminder\u{203A}x".to_string(), 1));
+        assert_eq!(n("<sys\u{200B}tem-reminder>x"), ("\u{2039}system-reminder\u{203A}x".to_string(), 1));
+        assert_eq!(n("</tool\u{2060}_result>"), ("\u{2039}/tool_result\u{203A}".to_string(), 1));
+        // Prose with the same characters is left byte for byte.
+        let prose = "\u{FF1C}b\u{FF1E} \u{1F468}\u{200D}\u{1F469} a < b";
+        assert_eq!(n(prose), (prose.to_string(), 0));
     }
 
     #[test]

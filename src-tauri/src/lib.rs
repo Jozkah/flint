@@ -915,7 +915,6 @@ pub fn build_app() -> tauri::App {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_llamacpp::init())
         .plugin(tauri_plugin_vector_db::init())
         .plugin(tauri_plugin_rag::init())

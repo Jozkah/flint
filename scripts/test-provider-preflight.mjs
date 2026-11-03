@@ -1,6 +1,8 @@
 // Bounded preflight against the configured test server. Contacts nothing else.
 import { createHash, randomBytes } from 'node:crypto'
 import dns from 'node:dns/promises'
+import http from 'node:http'
+import https from 'node:https'
 
 const BASE = process.env.JAN_TEST_PROVIDER_BASE_URL ?? 'http://llm-host:8555/v1'
 
@@ -29,9 +31,8 @@ const candidates = (await dns.lookup(host, { all: true })).map((c) => ({
   kind: classify(c.address),
 }))
 const isPrivate = (c) => c.kind !== 'public'
-// Advisory only: the requests below go through `fetch(BASE)`, so the OS
-// resolver still picks the address. This reports what a pinned connection
-// would have used.
+// Every request below is pinned to `selected` through a custom `lookup`, so the
+// OS resolver can never swap in a public address the selection suppressed.
 const usable = candidates.some(isPrivate)
   ? candidates.filter(isPrivate)
   : candidates
@@ -45,9 +46,47 @@ for (const c of candidates) {
   console.log(`  ${mark} ${c.kind.padEnd(16)} v${c.family} ${c.address}`)
 }
 console.log(
-  'public (not pinned):',
+  'public (suppressed):',
   candidates.filter((c) => !isPrivate(c)).length
 )
+
+// fetch() cannot take a custom lookup without the undici package, so this is a
+// minimal http(s) client with the same shape for what the script uses.
+const pinnedFetch = (url, { method = 'GET', headers = {}, body, signal } = {}) =>
+  new Promise((resolve, reject) => {
+    const u = new URL(url)
+    const lib = u.protocol === 'https:' ? https : http
+    const req = lib.request(
+      u,
+      {
+        method,
+        headers,
+        signal,
+        lookup: (_h, opts, cb) =>
+          opts && opts.all
+            ? cb(null, [{ address: selected.address, family: selected.family }])
+            : cb(null, selected.address, selected.family),
+      },
+      (res) => {
+        const text = async () => {
+          const parts = []
+          for await (const p of res) parts.push(p)
+          return Buffer.concat(parts).toString('utf8')
+        }
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          statusText: res.statusMessage ?? '',
+          body: res,
+          text,
+          json: async () => JSON.parse(await text()),
+        })
+      }
+    )
+    req.on('error', reject)
+    if (body) req.write(body)
+    req.end()
+  })
 
 const auth = { Authorization: `Bearer ${key}` }
 const withTimeout = (ms) => AbortSignal.timeout(ms)
@@ -55,7 +94,7 @@ const withTimeout = (ms) => AbortSignal.timeout(ms)
 // --- /models --------------------------------------------------------------
 let models = []
 try {
-  const res = await fetch(`${BASE}/models`, {
+  const res = await pinnedFetch(`${BASE}/models`, {
     headers: auth,
     signal: withTimeout(15_000),
   })
@@ -79,7 +118,7 @@ if (!model) {
   process.exit(3)
 }
 try {
-  const res = await fetch(`${BASE}/chat/completions`, {
+  const res = await pinnedFetch(`${BASE}/chat/completions`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
     body: JSON.stringify({

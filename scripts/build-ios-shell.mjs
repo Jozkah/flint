@@ -28,6 +28,8 @@ if (!html.includes(CONNECT)) {
   console.error('build-ios-shell: the page CSP changed; update CONNECT in this script')
   process.exit(1)
 }
+// The wildcard port is deliberate: the proxy port is chosen by the shell at
+// runtime, so it is not known at build time to pin here.
 html = html.replace(CONNECT, `${CONNECT} http://127.0.0.1:*`)
 // Visible until React renders: a blank screen cannot tell "page did not load"
 // from "script threw", this can.

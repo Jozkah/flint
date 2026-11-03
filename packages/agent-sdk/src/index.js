@@ -486,6 +486,8 @@ export class JanRuntime {
   #stdin;
   #reading;
   #exited;
+  #forced = false;
+  #drained = false;
   #bin;
   #handshakeTimeoutMs;
   #shutdownGraceMs;
@@ -559,13 +561,16 @@ export class JanRuntime {
 
     this.#reading = createInterface({ input: child.stdout, crlfDelay: Infinity })
     this.#reading.on('line', (line) => this.#onLine(line))
+    this.#reading.once('close', () => {
+      this.#drained = true
+    })
 
     this.#exited = new Promise((resolve) => {
       child.once('error', (error) => {
         this.#fail(new JanRuntimeError(`could not start '${bin}': ${error.message}`, { stderr: this.#stderr }))
         resolve({ code: null, signal: null })
       })
-      child.once('exit', (code, signal) => {
+      const onExit = (code, signal) => {
         this.#fail(
           new JanRuntimeError(
             `the jan runtime exited with ${signal ? `signal ${signal}` : `code ${code}`}${this.#stderr ? `: ${this.#stderr.trim()}` : ''}`,
@@ -574,6 +579,24 @@ export class JanRuntime {
         )
         this.#emit('exit', { code, signal })
         resolve({ code, signal })
+      }
+      child.once('exit', (code, signal) => {
+        // After a graceful close the runtime's last frames (a running turn's
+        // `interrupted` completion) may still be in the pipe: let the reader
+        // drain them before open turns are failed.
+        if (this.#closing && !this.#forced && !this.#drained) {
+          let done = false
+          const once = () => {
+            if (done) return
+            done = true
+            onExit(code, signal)
+          }
+          this.#reading.once('close', once)
+          // A grandchild holding stdout open must not hold the close forever.
+          setTimeout(once, 1000).unref()
+          return
+        }
+        onExit(code, signal)
       })
     })
   }
@@ -710,9 +733,11 @@ export class JanRuntime {
   async close({ force = false } = {}) {
     if (this.#closing) return this.#exited
     this.#closing = true
+    this.#forced = force
     const gone = new JanRuntimeError('the runtime was closed')
-    for (const session of this.#sessions.values()) session._fail(gone)
-    this.#sessions.clear()
+    // Only the forced path fails open turns up front; a graceful close keeps
+    // them registered so the runtime's `interrupted` completion reaches them.
+    if (force) this.#failSessions(gone)
     if (!this.#stdin.destroyed) this.#stdin.end()
     if (force) {
       this.#child.kill('SIGKILL')
@@ -723,7 +748,15 @@ export class JanRuntime {
       return await this.#exited
     } finally {
       clearTimeout(timer)
+      // Whatever the runtime left open once it is gone.
+      this.#failSessions(gone)
     }
+  }
+
+  #failSessions(error) {
+    const sessions = [...this.#sessions.values()]
+    this.#sessions.clear()
+    for (const session of sessions) session._fail(error)
   }
 
   async #handshake() {

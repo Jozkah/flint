@@ -404,8 +404,11 @@ class SdkTest(unittest.TestCase):
         # Closing stdin is the runtime's own shutdown signal, and a turn that
         # was running is closed on the channel before the process exits.
         self.assertEqual(code, 0)
-        with self.assertRaises(JanRuntimeError):
-            turn.result(timeout=5)
+        try:
+            result = turn.result(timeout=5)
+        except JanRuntimeError:
+            return  # the runtime was gone before it could finish the turn
+        self.assertEqual(result.stop_reason, "interrupted")
 
     def _tmp(self) -> str:
         import tempfile
@@ -468,6 +471,42 @@ class _BlockedStdin(_Sink):
     def write(self, _data: str) -> None:
         self.entered.set()
         self.release.wait(10)
+
+
+class RuntimeCloseTest(unittest.TestCase):
+    def _runtime(self, on_wait):
+        runtime = _bare_runtime(_Sink())
+        runtime._shutdown_grace = 1
+        runtime._process = SimpleNamespace(stdin=SimpleNamespace(closed=True), wait=on_wait, kill=lambda: None)
+        session = SimpleNamespace(id="s", completed=[], failed=[])
+        session._complete = lambda params: session.completed.append(params)
+        session._fail = lambda error: session.failed.append(str(error))
+        runtime._sessions["s"] = session
+        return runtime, session
+
+    def test_a_graceful_close_still_delivers_the_interrupted_completion(self) -> None:
+        box = {}
+
+        def wait(timeout=None):
+            # The runtime closes the running turn while shutting down.
+            box["runtime"]._dispatch({"method": "turn/completed", "params": {"sessionId": "s", "stopReason": "interrupted"}})
+            return 0
+
+        runtime, session = self._runtime(wait)
+        box["runtime"] = runtime
+        self.assertEqual(runtime.close(), 0)
+        self.assertEqual([c["stopReason"] for c in session.completed], ["interrupted"])
+
+    def test_a_graceful_close_fails_whatever_is_still_open_afterwards(self) -> None:
+        runtime, session = self._runtime(lambda timeout=None: 0)
+        runtime.close()
+        self.assertEqual(session.failed, ["the runtime was closed"])
+
+    def test_a_forced_close_fails_open_turns_at_once(self) -> None:
+        seen = {}
+        runtime, session = self._runtime(lambda timeout=None: seen.setdefault("failed_before_wait", list(session.failed)) and 0)
+        runtime.close(force=True)
+        self.assertEqual(seen["failed_before_wait"], ["the runtime was closed"])
 
 
 class RuntimeLockTest(unittest.TestCase):
