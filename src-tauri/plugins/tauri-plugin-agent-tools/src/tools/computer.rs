@@ -140,16 +140,15 @@ async fn check_app(action: &Action, allowed: &[String]) -> Result<(), String> {
 /// drawn in on every platform except macOS, where input uses logical points
 /// and the picker records regions on the capture, in image pixels (O06-006).
 /// This is image pixels per input unit: 1.0 except on a scaled macOS display.
+///
+/// On macOS it is learned from the last capture the model took (it must
+/// screenshot before it can aim), 1.0 until then.
 fn input_to_image_scale() -> f64 {
-    #[cfg(target_os = "macos")]
-    {
-        macos::image_pixels_per_point()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        1.0
-    }
+    f64::from_bits(CAPTURE_SCALE.load(std::sync::atomic::Ordering::Relaxed))
 }
+
+/// Bits of the `f64` scale of the last capture (1.0 initially).
+static CAPTURE_SCALE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0x3FF0_0000_0000_0000);
 
 fn check_excluded(action: &Action, regions: &[Region]) -> Result<(), String> {
     check_excluded_scaled(action, regions, input_to_image_scale())
@@ -267,7 +266,10 @@ pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
             let width = u32::from_be_bytes(bytes.get(16..20).and_then(|s| s.try_into().ok()).unwrap_or([0;4]));
             let height = u32::from_be_bytes(bytes.get(20..24).and_then(|s| s.try_into().ok()).unwrap_or([0;4]));
             #[cfg(target_os = "macos")]
-            let note = macos::capture_note(width, height);
+            let note = {
+                CAPTURE_SCALE.store(macos::image_pixels_per_point(width).to_bits(), std::sync::atomic::Ordering::Relaxed);
+                macos::capture_note(width, height)
+            };
             #[cfg(not(target_os = "macos"))]
             let note = format!("Captured desktop at {width} × {height} pixels. Screenshot origin is screen (0,0); input uses these pixel coordinates. Windows captures the primary display; Linux captures the X11 root or portal-selected desktop. On scaled Wayland desktops use compositor logical coordinates for input. Verify the target before acting.");
             let image = ImageContentPart { name: "desktop.png".into(), data_url: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)) };
