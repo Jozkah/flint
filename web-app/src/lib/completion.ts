@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ContentType,
   ChatCompletionRole,
+  ThreadContent,
   ThreadMessage,
   MessageStatus,
 } from '@janhq/core'
@@ -49,7 +49,7 @@ export const newUserThreadContent = (
     docMetadata.length > 0 ? injectFilesIntoPrompt(content, docMetadata) : content
   const { mentions } = splitMentionBlocks(content)
 
-  const contentParts = [
+  const contentParts: ThreadContent[] = [
     {
       type: ContentType.Text,
       text: {
@@ -69,7 +69,7 @@ export const newUserThreadContent = (
           url: `data:${img.mimeType};base64,${imgData}`,
           detail: 'auto',
         },
-      } as any)
+      })
     }
   })
 
@@ -82,7 +82,7 @@ export const newUserThreadContent = (
           data: audData,
           format: aud.audioFormat,
         },
-      } as any)
+      })
     }
   })
 
@@ -95,7 +95,7 @@ export const newUserThreadContent = (
           data: vidData,
           format: vid.mimeType,
         },
-      } as any)
+      })
     }
   })
 
