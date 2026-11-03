@@ -2322,7 +2322,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             'Point the import at a file already on this machine.'
         )
       }
-      if (path.split(/[\/]/).includes('..')) {
+      if (path.split(/[\\/]/).includes('..')) {
         throw new Error(`Refusing path with '..' segment: ${path}`)
       }
       // The Hugging Face downloader returns a path relative to the data
