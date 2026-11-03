@@ -413,7 +413,7 @@ impl ToolAvailability {
 pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
     match tool {
         "bash" => vec![capability::SHELL_ANY, capability::SANDBOX_ENFORCED],
-        "write" | "edit" | "memory_write" | "memory_propose" | "skill_write"
+        "write" | "edit" | "apply_patch" | "memory_write" | "memory_propose" | "skill_write"
         // A message is written to a mailbox on disk, so it needs the same
         // thing writing a file needs.
         | "message_send"
