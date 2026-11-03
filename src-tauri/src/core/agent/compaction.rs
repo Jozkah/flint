@@ -130,6 +130,9 @@ pub(crate) struct CompactOptions {
     /// and the project's "Compact instructions" section. Appended to the
     /// summarizer's prompt as guidance; it never replaces the safety rules.
     pub focus: Option<String>,
+    /// Where the omitted span is saved when no summary could be written, so the
+    /// note can say where to read it. `None` where the model cannot read files.
+    pub offload_root: Option<std::path::PathBuf>,
     /// The most estimated tokens the verbatim tail may hold. `keep_recent` is a
     /// message count, and eight messages can be eight large tool results; past
     /// this the tail is shortened (never below [`MIN_TAIL_MESSAGES`]) so the
@@ -166,6 +169,7 @@ impl Default for CompactOptions {
             summary_max_tokens:
                 tauri_plugin_agent_tools::compaction_policy::DEFAULT_SUMMARY_MAX_TOKENS,
             focus: None,
+            offload_root: None,
             retain_tokens: None,
         }
     }
@@ -184,6 +188,7 @@ impl CompactOptions {
             trim: policy.strategy == tauri_plugin_agent_tools::compaction_policy::Strategy::Trim,
             summary_max_tokens: policy.summary_max_tokens,
             focus: None,
+            offload_root: None,
             retain_tokens: None,
         }
     }
@@ -210,6 +215,10 @@ impl CompactOptions {
                 .get(BODY_FOCUS)
                 .and_then(Value::as_str)
                 .and_then(|f| join_focus(&[Some(f)])),
+            offload_root: body
+                .get(crate::core::agent::r#loop::BODY_OFFLOAD_ROOT)
+                .and_then(Value::as_str)
+                .map(std::path::PathBuf::from),
             retain_tokens: body
                 .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
                 .and_then(Value::as_u64)
@@ -290,7 +299,7 @@ pub(crate) async fn compact_conversation_with(
         .collect();
     // `trim` asks for no model call at all: the span is dropped and the model
     // is told it was, rather than shown a summary nobody wrote.
-    let summary = if options.trim {
+    let mut summary = if options.trim {
         prior.with_note(FALLBACK_NOTE)
     } else if dropped.is_empty() && prior.brief.is_some() {
         // Only pinned text left to drop: nothing new to fold in.
@@ -312,6 +321,19 @@ pub(crate) async fn compact_conversation_with(
             written
         }
     };
+    // No summary was written: the span is gone from the context, so keep it
+    // where the model can read it back rather than lose it outright.
+    if summary.ends_with(FALLBACK_NOTE) {
+        if let Some(shown) = options
+            .offload_root
+            .as_deref()
+            .and_then(|root| save_dropped_transcript(root, &dropped))
+        {
+            summary = format!(
+                "{summary} The full text of what was omitted is saved at {shown}; read it only if you need a detail from it."
+            );
+        }
+    }
 
     let mut content = format!("{SUMMARY_HEADER}{summary}");
     // Pinned blocks of the summaries this one replaces travel on verbatim.
@@ -332,6 +354,47 @@ pub(crate) async fn compact_conversation_with(
     out.push(json!({ "role": "system", "content": content }));
     out.extend_from_slice(kept);
     Ok(out)
+}
+
+/// The most characters of the omitted span written out. Beyond it the middle
+/// goes, marked, as it does for the summarizer's own input.
+const SAVED_TRANSCRIPT_CHARS: usize = 2_000_000;
+
+/// Write the omitted span under the run's scratch space and return the path to
+/// show the model, or `None` when it cannot be written (the note stays as it was).
+fn save_dropped_transcript(root: &std::path::Path, dropped: &[Value]) -> Option<String> {
+    use std::io::Write;
+    let text = render_transcript(dropped);
+    if text.trim().is_empty() {
+        return None;
+    }
+    let text = clamp_middle(&text, SAVED_TRANSCRIPT_CHARS);
+    let dir = root.join(crate::core::agent::compaction_policy::OFFLOAD_DIR);
+    std::fs::create_dir_all(&dir).ok()?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    for n in 0..1_000u32 {
+        let name = if n == 0 {
+            format!("compacted-{stamp}.txt")
+        } else {
+            format!("compacted-{stamp}-{n}.txt")
+        };
+        let path = dir.join(name);
+        let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        };
+        if file.write_all(text.as_bytes()).and_then(|_| file.flush()).is_err() {
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return None;
+        }
+        return Some(tauri_plugin_agent_tools::tools::sandbox::scratch_display_path(Some(root), &path));
+    }
+    None
 }
 
 /// The text of the first pinned block in a summary's carried-on pins (the
@@ -697,6 +760,38 @@ mod tests {
         v
     }
 
+    #[tokio::test]
+    async fn a_failed_summary_saves_the_omitted_span_and_names_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let options = CompactOptions {
+            keep_recent: 4,
+            offload_root: Some(dir.path().to_path_buf()),
+            ..CompactOptions::default()
+        };
+        let out = compact_conversation_with(&convo(20), "m", &FailingModel, &options)
+            .await
+            .unwrap();
+        let note = content_text(&out[1]);
+        assert!(note.contains(FALLBACK_NOTE) && note.contains("saved at"), "{note}");
+        let saved: Vec<_> = std::fs::read_dir(dir.path().join(".flint-outputs"))
+            .unwrap()
+            .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+            .collect();
+        assert_eq!(saved.len(), 1);
+        assert!(saved[0].contains("msg1"), "the omitted span is what is saved");
+        // No root, no file, and the note is the one it always was.
+        let plain = compact_conversation_with(&convo(20), "m", &FailingModel, &CompactOptions { keep_recent: 4, ..CompactOptions::default() })
+            .await
+            .unwrap();
+        assert!(!content_text(&plain[1]).contains("saved at"));
+        // A summary that was written saves nothing.
+        let dir2 = tempfile::tempdir().unwrap();
+        let ok = StubModel { summary: "CONDENSED".into(), calls: StdMutex::new(0), requests: tokio::sync::Mutex::new(Vec::new()) };
+        let options = CompactOptions { keep_recent: 4, offload_root: Some(dir2.path().to_path_buf()), ..CompactOptions::default() };
+        compact_conversation_with(&convo(20), "m", &ok, &options).await.unwrap();
+        assert!(!dir2.path().join(".flint-outputs").exists());
+    }
+
     /// AH-076: `strategy = trim` compacts without a model call, and the
     /// summary cap from the policy reaches the summarizer's request.
     #[test]
@@ -787,6 +882,7 @@ mod tests {
                 trim: true,
                 summary_max_tokens: 512,
                 focus: None,
+                offload_root: None,
                 retain_tokens: None,
             },
         )
@@ -811,6 +907,7 @@ mod tests {
                 trim: false,
                 summary_max_tokens: 200,
                 focus: None,
+                offload_root: None,
                 retain_tokens: None,
             },
         )
@@ -840,6 +937,7 @@ mod tests {
                 trim: true,
                 summary_max_tokens: 300,
                 focus: None,
+                offload_root: None,
                 retain_tokens: None,
             }
         );
