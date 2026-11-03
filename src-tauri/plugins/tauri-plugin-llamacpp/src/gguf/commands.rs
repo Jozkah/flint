@@ -95,7 +95,7 @@ pub async fn find_gguf_tensors(path: String, names: Vec<String>) -> Result<Vec<S
 }
 
 pub async fn get_model_size(path: String) -> Result<u64, String> {
-    if path.starts_with("https://") {
+    if path.starts_with("https://") || path.starts_with("http://") {
         // Handle remote URL
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
@@ -129,6 +129,23 @@ pub async fn get_model_size(path: String) -> Result<u64, String> {
         }
         Ok(total)
     }
+}
+
+/// Size of the vision projector beside `model`: `mmproj.gguf`, or a download
+/// that kept its repository name (`mmproj-F16.gguf`). The largest wins, so the
+/// estimate never errs towards "fits" (ENG-045).
+fn sibling_mmproj_size(model: &std::path::Path) -> u64 {
+    let Some(dir) = model.parent() else { return 0 };
+    let Ok(entries) = fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            name.starts_with("mmproj") && name.ends_with(".gguf")
+        })
+        .filter_map(|e| e.metadata().ok().map(|m| m.len()))
+        .max()
+        .unwrap_or(0)
 }
 
 /// Every shard of a split GGUF (`name-00001-of-00005.gguf`), whichever shard
@@ -243,15 +260,10 @@ pub async fn is_model_supported(
     // loaded into the same device alongside the weights + KV cache. Only
     // inspected for local paths — remote URLs route through the importer
     // and won't hit this branch with the final on-disk layout.
-    let mmproj_size: u64 = if path.starts_with("https://") {
+    let mmproj_size: u64 = if path.starts_with("https://") || path.starts_with("http://") {
         0
     } else {
-        std::path::Path::new(&path)
-            .parent()
-            .map(|d| d.join("mmproj.gguf"))
-            .and_then(|p| fs::metadata(&p).ok())
-            .map(|m| m.len())
-            .unwrap_or(0)
+        sibling_mmproj_size(std::path::Path::new(&path))
     };
     if mmproj_size > 0 {
         log::info!("mmprojSize: {}", mmproj_size);

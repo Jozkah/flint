@@ -88,6 +88,33 @@ describe('useAssistant', () => {
     expect(threads['thread-other'].assistants[0].instructions).toBe('Be terse.')
   })
 
+  it('refreshes every bound thread in one thread-store write', async () => {
+    const { useThreads } = await import('../useThreads')
+    const mk = (id: string) => ({
+      id,
+      title: id,
+      model: { id: 'm', provider: 'p' },
+      assistants: [{ ...defaultAssistant }],
+      updated: 1,
+    })
+    act(() => {
+      useThreads.setState({
+        threads: { a: mk('a'), b: mk('b'), c: mk('c') } as any,
+      })
+    })
+    let writes = 0
+    const unsub = useThreads.subscribe(() => {
+      writes++
+    })
+    act(() => {
+      useAssistant.getState().updateAssistant({ ...defaultAssistant, instructions: 'new' })
+    })
+    unsub()
+    expect(writes).toBe(1)
+    const threads = useThreads.getState().threads as any
+    expect(['a', 'b', 'c'].every((id) => threads[id].assistants[0].instructions === 'new')).toBe(true)
+  })
+
   it('should update assistant', () => {
     const { result } = renderHook(() => useAssistant())
 

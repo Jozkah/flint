@@ -51,8 +51,6 @@ fn generate_worker_key() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Resolves the worker binary: an explicit override first (dev builds and
-/// tests), then the sidecar next to the running executable.
 /// Locates the engine worker binary.
 ///
 /// Order: the dev/CI override, then the bundle's `resources/bin` (where

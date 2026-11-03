@@ -1376,6 +1376,7 @@ async fn http_get_page(
 ) -> Result<FetchedPage, String> {
     let resp = public_get(url, provider).await?;
     let status = resp.status();
+    let final_url = resp.url().to_string();
     let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
@@ -1385,7 +1386,7 @@ async fn http_get_page(
     let title = extract_html_title(&body).unwrap_or_default();
     let (content, truncated) = bound_text(&html_to_text(&body));
     Ok(FetchedPage {
-        url: url.to_string(),
+        url: final_url,
         title,
         content,
         truncated,
@@ -1917,6 +1918,7 @@ async fn fetch_url_direct(
 ) -> Result<FetchedPage, String> {
     let resp = public_get(url, provider).await?;
     let status = resp.status();
+    let final_url = resp.url().to_string();
     let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
@@ -1929,7 +1931,7 @@ async fn fetch_url_direct(
     let title = extract_html_title(&body).unwrap_or_default();
     let (content, truncated) = bound_text(&html_to_text(&body));
     Ok(FetchedPage {
-        url: url.to_string(),
+        url: final_url,
         title,
         content,
         truncated,
@@ -1981,7 +1983,7 @@ fn extract_html_title(html: &str) -> Option<String> {
     if title.is_empty() {
         None
     } else {
-        Some(title.to_string())
+        Some(decode_html_entities(title))
     }
 }
 

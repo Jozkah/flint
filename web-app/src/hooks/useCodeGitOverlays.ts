@@ -112,7 +112,7 @@ export function useCodeGitOverlays(input: {
     const key = `${root}\u0000${path}\u0000${head?.length ?? -1}\u0000${savedCount}`
     let hit = blameCache.get(key)
     if (!hit) {
-      // One blame entry per file: a newer head or save supersedes the old one.
+      // One blame entry per file: a newer save supersedes the old one.
       const filePrefix = `${root}\u0000${path}\u0000`
       for (const k of [...blameCache.keys()]) {
         if (k.startsWith(filePrefix)) blameCache.delete(k)
