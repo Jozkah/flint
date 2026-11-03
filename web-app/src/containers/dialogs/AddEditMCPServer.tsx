@@ -236,7 +236,7 @@ export default function AddEditMCPServer({
     updateValue: handleHeaderValueChange,
     resetFrom: resetHeaders,
   } = useKeyValueListField()
-  const [timeout, setTimeout] = useState('')
+  const [timeoutText, setTimeoutText] = useState('')
   const [isToggled, setIsToggled] = useState(false)
   const [jsonContent, setJsonContent] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -247,7 +247,7 @@ export default function AddEditMCPServer({
       setServerName(editingKey)
       setCommand(initialData.command || '')
       setUrl(initialData.url || '')
-      setTimeout(initialData.timeout ? initialData.timeout.toString() : '')
+      setTimeoutText(initialData.timeout ? initialData.timeout.toString() : '')
       resetArgs(initialData.args ?? [])
       setCwd(initialData.cwd || '')
       setTransportType(initialData?.type || 'stdio')
@@ -277,7 +277,7 @@ export default function AddEditMCPServer({
     setServerName('')
     setCommand('')
     setUrl('')
-    setTimeout('')
+    setTimeoutText('')
     resetArgs()
     setCwd('')
     resetEnv()
@@ -311,7 +311,7 @@ export default function AddEditMCPServer({
       url,
       headerKeys,
       headerValues,
-      timeout,
+      timeout: timeoutText,
     },
     { existingNames, editingKey }
   )
@@ -447,7 +447,7 @@ export default function AddEditMCPServer({
       ...(transportType !== 'stdio' && {
         url: url.trim(),
         headers: Object.keys(headersObj).length > 0 ? headersObj : undefined,
-        timeout: timeout.trim() !== '' ? parseInt(timeout) : undefined,
+        timeout: timeoutText.trim() !== '' ? parseInt(timeoutText) : undefined,
       }),
     }
 
@@ -817,8 +817,8 @@ export default function AddEditMCPServer({
                   </label>
                   <Input
                     {...fieldA11y('timeout')}
-                    value={timeout}
-                    onChange={(e) => setTimeout(e.target.value)}
+                    value={timeoutText}
+                    onChange={(e) => setTimeoutText(e.target.value)}
                     placeholder={t('integrations:mcpDialog.timeoutPlaceholder')}
                     type="number"
                   />

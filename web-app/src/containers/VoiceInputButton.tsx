@@ -67,7 +67,10 @@ export function VoiceInputButton({
   useEffect(() => {
     if (status !== 'listening') return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') void cancelDictation()
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      // Escape that closes an open dialog or menu is not meant for the dictation.
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return
+      void cancelDictation()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
