@@ -225,7 +225,7 @@ fn split_system(text: &str) -> Vec<(Category, usize)> {
     }
     marks.sort_by_key(|(at, _)| *at);
     let mut out: Vec<(Category, usize)> = Vec::new();
-    let mut prompt_bytes = marks.first().map_or(text.len(), |(at, _)| *at);
+    let prompt_bytes = marks.first().map_or(text.len(), |(at, _)| *at);
     for (i, (at, category)) in marks.iter().enumerate() {
         let end = marks.get(i + 1).map_or(text.len(), |(next, _)| *next);
         let len = end.saturating_sub(*at);
@@ -233,9 +233,6 @@ fn split_system(text: &str) -> Vec<(Category, usize)> {
             Some((_, bytes)) => *bytes += len,
             None => out.push((*category, len)),
         }
-    }
-    if prompt_bytes == text.len() && marks.is_empty() {
-        prompt_bytes = text.len();
     }
     out.insert(0, (Category::SystemPrompt, prompt_bytes));
     out
