@@ -40,6 +40,9 @@ export function ProxyTimeoutInput({ isServerRunning }: { isServerRunning?: boole
       aria-label={t('settings:localApiServer.proxyTimeout')}
       onChange={handleChange}
       onBlur={handleBlur}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
       disabled={isServerRunning}
       className={cn(
         'w-24 h-8 text-sm',

@@ -189,10 +189,10 @@ export function ExtensionsSettings() {
       title={t('settings:extensions.title')}
       aside={<span className="tabular-nums">{extensions.length}</span>}
     >
-      {extensions.map((item, i) => {
+      {extensions.map((item) => {
         return (
           <CardItem
-            key={i}
+            key={item.name}
             title={
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="font-medium text-foreground">
