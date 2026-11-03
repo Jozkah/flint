@@ -103,10 +103,9 @@ const TAILSCALE_CERT_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 3600);
 
 /// The MagicDNS name of this machine, without the trailing dot.
 fn tailscale_dns_name() -> Option<String> {
-    let out = super::config::tailscale_command()
-        .args(["status", "--json"])
-        .output()
-        .ok()?;
+    let mut cmd = super::config::tailscale_command();
+    cmd.args(["status", "--json"]);
+    let out = super::config::output_within(cmd, super::config::TAILSCALE_TIMEOUT)?;
     if !out.status.success() {
         return None;
     }
@@ -136,15 +135,15 @@ pub fn tailscale_cert(dir: &Path) -> Option<(PathBuf, PathBuf, String)> {
     let same_name = std::fs::read_to_string(&name_path).ok().as_deref() == Some(name.as_str());
     if !(fresh && same_name && key.exists()) {
         std::fs::create_dir_all(dir).ok()?;
-        let status = super::config::tailscale_command()
-            .arg("cert")
+        let mut cmd = super::config::tailscale_command();
+        cmd.arg("cert")
             .arg("--cert-file")
             .arg(&cert)
             .arg("--key-file")
             .arg(&key)
-            .arg(&name)
-            .output()
-            .ok()?;
+            .arg(&name);
+        // Issuing a certificate can take a while on first use.
+        let status = super::config::output_within(cmd, std::time::Duration::from_secs(90))?;
         if !status.status.success() {
             log::info!(
                 "remote: no Tailscale certificate ({}); serving HTTP over WireGuard",
