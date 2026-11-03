@@ -1586,7 +1586,11 @@ pub fn write_handoff(data_folder: &Path, id: &str, task_id: &str, text: &str) ->
             format!("a handoff is at most {MAX_HANDOFF} bytes"),
         ));
     }
-    let dir = campaign_dir(data_folder, id)?.join("tasks").join(task_id);
+    let dir = campaign_dir(data_folder, id)?;
+    if !dir.join("campaign.json").exists() {
+        return Err(CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")));
+    }
+    let dir = dir.join("tasks").join(task_id);
     std::fs::create_dir_all(&dir).map_err(io)?;
     tauri_plugin_agent_tools::atomic_file::write_atomic(&dir.join("handoff.md"), text.as_bytes()).map_err(io)?;
     Ok(format!("tasks/{task_id}/handoff.md"))
@@ -1817,7 +1821,17 @@ pub fn context(data_folder: &Path, id: &str, task_ids: &[String]) -> Result<Camp
 /// `tasks/<id>/resolve.md`, replaced atomically.
 pub(crate) fn write_resolution(data_folder: &Path, id: &str, task_id: &str, text: &str) -> Result<(), CampaignError> {
     check_id("task", task_id)?;
-    let dir = campaign_dir(data_folder, id)?.join("tasks").join(task_id);
+    if text.len() > MAX_HANDOFF {
+        return Err(CampaignError::new(
+            CampaignErrorKind::InvalidPlan,
+            format!("a resolution is at most {MAX_HANDOFF} bytes"),
+        ));
+    }
+    let dir = campaign_dir(data_folder, id)?;
+    if !dir.join("campaign.json").exists() {
+        return Err(CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")));
+    }
+    let dir = dir.join("tasks").join(task_id);
     std::fs::create_dir_all(&dir).map_err(io)?;
     tauri_plugin_agent_tools::atomic_file::write_atomic(&dir.join("resolve.md"), text.as_bytes()).map_err(io)
 }
@@ -2830,6 +2844,18 @@ pub(crate) mod tests {
         let mut i = input(Some("c"), vec![plan("a", &[], &[])]);
         i.limits = Some(CampaignLimits { max_parallel: 40, ..Default::default() });
         assert_eq!(create(&d, i).unwrap().limits.max_parallel, MAX_PARALLEL_CAP);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn handoff_and_resolution_need_a_recorded_campaign_and_a_size_cap() {
+        let d = data_dir("no-campaign-write");
+        assert!(write_handoff(&d, "ghost", "a", "x").is_err());
+        assert!(write_resolution(&d, "ghost", "a", "x").is_err());
+        assert!(!d.join("campaigns/ghost").exists());
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        assert!(write_resolution(&d, "c", "a", &"x".repeat(MAX_HANDOFF + 1)).is_err());
+        write_resolution(&d, "c", "a", "ok").unwrap();
         std::fs::remove_dir_all(&d).ok();
     }
 
