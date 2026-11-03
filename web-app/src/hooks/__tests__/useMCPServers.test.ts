@@ -27,7 +27,7 @@ describe('useMCPServers', () => {
     vi.clearAllMocks()
     useMCPServers.setState({
       open: true, mcpServers: {}, settings: { ...DEFAULT_MCP_SETTINGS },
-      loading: false, deletedServerKeys: [],
+      loading: false,
     })
   })
 
@@ -37,7 +37,6 @@ describe('useMCPServers', () => {
     expect(result.current.mcpServers).toEqual({})
     expect(result.current.settings).toEqual(DEFAULT_MCP_SETTINGS)
     expect(result.current.loading).toBe(false)
-    expect(result.current.deletedServerKeys).toEqual([])
     const fns = ['getServerConfig', 'setLeftPanel', 'addServer', 'editServer',
       'deleteServer', 'setServers', 'setSettings', 'updateSettings', 'syncServers', 'syncServersAndRestart']
     fns.forEach((fn) => expect(typeof (result.current as any)[fn]).toBe('function'))
@@ -144,13 +143,12 @@ describe('useMCPServers', () => {
       })
 
       expect(result.current.mcpServers).toEqual({})
-      expect(result.current.deletedServerKeys).toEqual(['a', 'b'])
     })
 
-    it('should track key even if server does not exist', () => {
+    it('should not throw when the server does not exist', () => {
       const { result } = renderHook(() => useMCPServers())
       act(() => { result.current.deleteServer('ghost') })
-      expect(result.current.deletedServerKeys).toContain('ghost')
+      expect(result.current.mcpServers).toEqual({})
     })
   })
 
@@ -212,7 +210,6 @@ describe('useMCPServers', () => {
 
       act(() => { result.current.deleteServer('lifecycle') })
       expect(result.current.mcpServers['lifecycle']).toBeUndefined()
-      expect(result.current.deletedServerKeys).toContain('lifecycle')
     })
   })
 })

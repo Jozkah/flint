@@ -27,6 +27,33 @@ export type PersistedToolCall = ThreadContent & {
   error_text?: string
 }
 
+/** Map a UI file part (image/audio/video) to thread content; null if unsupported. */
+function fileUrlToContent(part: any): ThreadContent | null {
+  const mediaType = part.mediaType as string
+  if (mediaType?.startsWith('image/')) {
+    return {
+      type: ContentType.Image,
+      image_url: { url: part.url, detail: 'auto' },
+    }
+  }
+  const url = part.url as string | undefined
+  const data =
+    typeof url === 'string' && url.startsWith('data:')
+      ? url.slice(url.indexOf(',') + 1)
+      : (url ?? '')
+  if (mediaType === 'audio/wav' || mediaType === 'audio/mpeg') {
+    const format = mediaType === 'audio/wav' ? 'wav' : 'mp3'
+    return { type: ContentType.InputAudio, input_audio: { data, format } }
+  }
+  if (mediaType?.startsWith('video/')) {
+    return {
+      type: ContentType.InputVideo,
+      input_video: { data, format: mediaType },
+    }
+  }
+  return null
+}
+
 function capText(text: string): string {
   if (text.length <= PERSISTED_TOOL_OUTPUT_MAX) return text
   const more = text.length - PERSISTED_TOOL_OUTPUT_MAX
@@ -106,37 +133,8 @@ export function convertUIMessageToThreadMessage(
       // The reasoning content is in 'reasoning' or 'text' depending on SDK version
       reasoning.push(part.reasoning ?? part.text ?? '')
     } else if (part.type === 'file' && part.mediaType) {
-      const mediaType = part.mediaType as string
-      if (mediaType?.startsWith('image/')) {
-        content.push({
-          type: ContentType.Image,
-          image_url: {
-            url: part.url,
-            detail: 'auto',
-          },
-        })
-      } else if (mediaType === 'audio/wav' || mediaType === 'audio/mpeg') {
-        const format = mediaType === 'audio/wav' ? 'wav' : 'mp3'
-        const url = part.url as string | undefined
-        const data =
-          typeof url === 'string' && url.startsWith('data:')
-            ? url.slice(url.indexOf(',') + 1)
-            : (url ?? '')
-        content.push({
-          type: ContentType.InputAudio,
-          input_audio: { data, format },
-        })
-      } else if (mediaType?.startsWith('video/')) {
-        const url = part.url as string | undefined
-        const data =
-          typeof url === 'string' && url.startsWith('data:')
-            ? url.slice(url.indexOf(',') + 1)
-            : (url ?? '')
-        content.push({
-          type: ContentType.InputVideo,
-          input_video: { data, format: mediaType },
-        })
-      }
+      const fileContent = fileUrlToContent(part)
+      if (fileContent) content.push(fileContent)
     }
   }
 
@@ -578,37 +576,8 @@ export function extractContentPartsFromUIMessage(message: UIMessage): ThreadCont
         })
       }
     } else if (part.type === 'file' && part.mediaType) {
-      const mediaType = part.mediaType as string
-      if (mediaType?.startsWith('image/')) {
-        content.push({
-          type: 'image_url' as ContentType.Image,
-          image_url: {
-            url: part.url,
-            detail: 'auto',
-          },
-        })
-      } else if (mediaType === 'audio/wav' || mediaType === 'audio/mpeg') {
-        const format = mediaType === 'audio/wav' ? 'wav' : 'mp3'
-        const url = part.url as string | undefined
-        const data =
-          typeof url === 'string' && url.startsWith('data:')
-            ? url.slice(url.indexOf(',') + 1)
-            : (url ?? '')
-        content.push({
-          type: 'input_audio' as ContentType.InputAudio,
-          input_audio: { data, format },
-        })
-      } else if (mediaType?.startsWith('video/')) {
-        const url = part.url as string | undefined
-        const data =
-          typeof url === 'string' && url.startsWith('data:')
-            ? url.slice(url.indexOf(',') + 1)
-            : (url ?? '')
-        content.push({
-          type: 'input_video' as ContentType.InputVideo,
-          input_video: { data, format: mediaType },
-        })
-      }
+      const fileContent = fileUrlToContent(part)
+      if (fileContent) content.push(fileContent)
     } else if (part.type.startsWith('tool-')) {
       // Handle tool call parts - flatten structure to match parts format
       const toolName = (part.type as string).replace('tool-', '')

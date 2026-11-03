@@ -78,7 +78,6 @@ type MCPServerStoreState = {
   mcpServers: MCPServers
   settings: MCPSettings
   loading: boolean
-  deletedServerKeys: string[]
   getServerConfig: (key: string) => MCPServerConfig | undefined
   setLeftPanel: (value: boolean) => void
   addServer: (key: string, config: MCPServerConfig) => void
@@ -101,7 +100,6 @@ export const useMCPServers = create<MCPServerStoreState>()((set, get) => ({
   mcpServers: {}, // Start with empty object
   settings: { ...DEFAULT_MCP_SETTINGS },
   loading: false,
-  deletedServerKeys: [],
   setLeftPanel: (value) => set({ open: value }),
   getServerConfig: (key) => {
     const mcpServers = get().mcpServers
@@ -179,7 +177,6 @@ export const useMCPServers = create<MCPServerStoreState>()((set, get) => ({
       }
       return {
         mcpServers: updatedServers,
-        deletedServerKeys: [...state.deletedServerKeys, key],
       }
     }),
   syncServers: async () => {
