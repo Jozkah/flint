@@ -1125,6 +1125,8 @@ mod find_cap_tests;
 
 #[cfg(test)]
 mod bash_job_registry_tests;
+#[cfg(test)]
+mod bash_job_stdin_tests;
 
 #[cfg(test)]
 mod bash_split_tests;

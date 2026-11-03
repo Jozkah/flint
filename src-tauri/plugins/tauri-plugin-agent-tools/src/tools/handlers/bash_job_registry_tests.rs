@@ -17,6 +17,7 @@ fn park_with_pid(
         .insert(
             job_id.to_string(),
             BashJob {
+                stdin: None,
                 rx: Some(rx),
                 output: None,
                 command: command.to_string(),

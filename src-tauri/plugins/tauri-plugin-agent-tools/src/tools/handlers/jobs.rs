@@ -67,6 +67,80 @@ pub(super) fn exit_code_of(output: &str) -> Option<i32> {
         .find_map(|line| line.trim().strip_prefix("[exit ")?.strip_suffix(']')?.parse().ok())
 }
 
+/// A job's open stdin. Shared so a write can be awaited without holding the
+/// registry lock; `None` inside once the model closed it.
+pub(super) type JobStdin = std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>;
+
+/// The most one `write` may send, and how long it may wait for a command that
+/// is not reading (a full pipe blocks the writer).
+pub(super) const MAX_JOB_WRITE_BYTES: usize = 64 * 1024;
+const JOB_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Write `input` to a running interactive job's stdin, and close it when
+/// `close` is set (the command sees end-of-file). Confined to the owner, like
+/// every other job action.
+pub(super) async fn write_bash_job(
+    job_id: &str,
+    owner: Option<&str>,
+    input: &str,
+    close: bool,
+) -> Result<String, String> {
+    use tokio::io::AsyncWriteExt;
+    if input.len() > MAX_JOB_WRITE_BYTES {
+        return Err(format!(
+            "ERROR: input is {} bytes; one write takes at most {MAX_JOB_WRITE_BYTES}. Send it in parts.",
+            input.len()
+        ));
+    }
+    let stdin = {
+        let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
+        match jobs.get_mut(job_id) {
+            Some(job) if job.owner.as_deref() == owner => {
+                if job.poll_finished() {
+                    return Err(format!(
+                        "ERROR: job {job_id} has already finished; there is nothing to write to.                          Collect its output with {{\"job_id\": \"{job_id}\"}}."
+                    ));
+                }
+                match job.stdin.clone() {
+                    Some(stdin) => stdin,
+                    None => {
+                        return Err(format!(
+                            "ERROR: job {job_id} was not started with \"interactive\": true, so                              its stdin is closed."
+                        ))
+                    }
+                }
+            }
+            _ => return Err(format!("ERROR: unknown or already-collected job_id '{job_id}'")),
+        }
+    };
+    let mut guard = stdin.lock().await;
+    let Some(pipe) = guard.as_mut() else {
+        return Err(format!("ERROR: stdin of job {job_id} was already closed."));
+    };
+    let wrote = tokio::time::timeout(JOB_WRITE_TIMEOUT, async {
+        pipe.write_all(input.as_bytes()).await?;
+        pipe.flush().await
+    })
+    .await;
+    match wrote {
+        Err(_) => Err(format!(
+            "ERROR: job {job_id} did not read its stdin within {}s; nothing is known to have              been delivered. It may be busy or not reading input.",
+            JOB_WRITE_TIMEOUT.as_secs()
+        )),
+        Ok(Err(e)) => Err(format!("ERROR: could not write to job {job_id}: {e}. It may have exited.")),
+        Ok(Ok(())) => {
+            if close {
+                *guard = None;
+            }
+            Ok(format!(
+                "Wrote {} bytes to job {job_id}{}. Check its output with                  {{\"job_id\": \"{job_id}\", \"action\": \"status\"}}.",
+                input.len(),
+                if close { " and closed its stdin" } else { "" }
+            ))
+        }
+    }
+}
+
 /// One command still running past its `bash` call's timeout.
 ///
 /// The receiver resolves with the same formatted output a foreground call
@@ -74,6 +148,9 @@ pub(super) fn exit_code_of(output: &str) -> Option<i32> {
 /// without collecting it: the command itself, when it started, and which tool
 /// call backgrounded it.
 pub struct BashJob {
+    /// The command's stdin, for a job started with `interactive`. `None` for
+    /// every other job, whose stdin is the null device.
+    pub(super) stdin: Option<JobStdin>,
     /// Taken once the output has been received, by a peek or by collection.
     pub(super) rx: Option<oneshot::Receiver<String>>,
     /// The finished output, when a peek got there before the collector did.

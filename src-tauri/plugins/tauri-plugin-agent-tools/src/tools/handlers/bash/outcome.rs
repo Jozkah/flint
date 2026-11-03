@@ -176,6 +176,7 @@ pub(super) fn register_background_job(
     tail: std::sync::Arc<Mutex<LiveTail>>,
     job_started: std::time::Instant,
     timeout_secs: u64,
+    stdin: Option<JobStdin>,
 ) -> String {
     let owner = ctx.job_owner;
     if !make_room_for(owner) {
@@ -216,6 +217,7 @@ pub(super) fn register_background_job(
     bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).insert(
         job_id.clone(),
         BashJob {
+            stdin,
             rx: Some(rx),
             output: None,
             command: command.to_string(),

@@ -1412,6 +1412,21 @@ pub async fn spawn(
     cwd: &Path,
     scratch: Option<&Path>,
 ) -> std::io::Result<Child> {
+    spawn_with_stdin(cfg, command, cwd, scratch, false).await
+}
+
+/// [`spawn`], optionally leaving the child's stdin open as a pipe the caller
+/// writes to (`child.stdin`). Without it stdin is the null device, so a
+/// command that reads it sees end-of-file at once. A shell that takes its
+/// command on stdin (`via_stdin`) always gets a pipe, but it is closed after
+/// the command is written, so `keep_stdin` does not apply to it.
+pub async fn spawn_with_stdin(
+    cfg: &ShellConfig,
+    command: &str,
+    cwd: &Path,
+    scratch: Option<&Path>,
+    keep_stdin: bool,
+) -> std::io::Result<Child> {
     let mut cmd = Command::new(&cfg.program);
     shell_line(cmd.as_std_mut(), cfg, command, Some(cwd), !cfg.via_stdin);
     // Strip every inherited variable, then re-add only the allowlist so the
@@ -1443,7 +1458,7 @@ pub async fn spawn(
     cmd.current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .stdin(if cfg.via_stdin {
+        .stdin(if cfg.via_stdin || keep_stdin {
             Stdio::piped()
         } else {
             Stdio::null()
