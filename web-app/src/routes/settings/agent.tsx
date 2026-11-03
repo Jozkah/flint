@@ -22,7 +22,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Lock, LockOpen, Search } from 'lucide-react'
-import { Chip } from '@/components/ui/chip'
 import {
   SettingsTabStrip,
   useSettingsTab,
@@ -30,6 +29,7 @@ import {
 } from '@/containers/SettingsTabs'
 import { isPluginSkill } from '@/lib/skillStore'
 import { Icon } from '@/components/ui/icon'
+import { AgentEntryRow, entryMatches } from '@/containers/settings/AgentEntryRow'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -262,55 +262,9 @@ function AgentToolsContent() {
     }
   }
 
-  const entryRow = (
-    name: string,
-    description?: string,
-    plugin?: string
-  ) => (
-    <CardItem
-      key={`skill-${name}`}
-      title={name}
-      description={
-        description ? (
-          <span className="line-clamp-2 break-words">{description}</span>
-        ) : undefined
-      }
-      actions={
-        plugin ? (
-          <Chip>{plugin}</Chip>
-        ) : (
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground pointer-coarse:size-11"
-            title={t('common:edit')}
-            aria-label={`${t('common:edit')} ${name}`}
-            onClick={() => openEditor(name)}
-          >
-            <Icon name="x-edit" size={16} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
-            title={t('common:delete')}
-            aria-label={`${t('common:delete')} ${name}`}
-            onClick={() => remove(name)}
-          >
-            <Icon name="x-trash" size={16} />
-          </Button>
-        </div>
-        )
-      }
-    />
-  )
-
   const q = query.trim().toLowerCase()
   const matches = (name: string, description?: string) =>
-    !q ||
-    name.toLowerCase().includes(q) ||
-    (description ?? '').toLowerCase().includes(q)
+    entryMatches(q, name, description)
   const ownSkills = skills.filter(
     (k) => !isPluginSkill(k) && matches(k.name, k.description)
   )
@@ -584,17 +538,30 @@ function AgentToolsContent() {
                     {t('settings:agentTools.yourSkills', { count: ownSkills.length })}
                   </p>
                 )}
-                {ownSkills.map((skill) =>
-                  entryRow(skill.name, skill.description)
-                )}
+                {ownSkills.map((skill) => (
+                  <AgentEntryRow
+                    key={`skill-${skill.name}`}
+                    name={skill.name}
+                    description={skill.description}
+                    onEdit={() => openEditor(skill.name)}
+                    onDelete={() => remove(skill.name)}
+                  />
+                ))}
                 {pluginSkills.length > 0 && (
                   <p className="px-1 pt-3 text-xs font-medium text-muted-foreground">
                     {t('settings:agentTools.pluginSkills', { count: pluginSkills.length })}
                   </p>
                 )}
-                {pluginSkills.map((skill) =>
-                  entryRow(skill.name, skill.description, skill.plugin)
-                )}
+                {pluginSkills.map((skill) => (
+                  <AgentEntryRow
+                    key={`skill-${skill.name}`}
+                    name={skill.name}
+                    description={skill.description}
+                    plugin={skill.plugin}
+                    onEdit={() => openEditor(skill.name)}
+                    onDelete={() => remove(skill.name)}
+                  />
+                ))}
               </div>
             )}
           </Card>

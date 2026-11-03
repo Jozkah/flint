@@ -145,12 +145,15 @@ export function LogsDashboard({
   title,
   description,
   logs,
+  readError,
 }: {
   title: string
   description: string
   /** The log file's name; kept for callers, the frame is titled by the page. */
   fileName?: string
   logs: LogEntry[]
+  /** Why the log could not be read, shown above the lines; null when it can. */
+  readError?: string | null
 }) {
   const { t } = useTranslation()
   const inShell = useHeaderSlot() !== null
@@ -223,6 +226,15 @@ export function LogsDashboard({
             {t('logs:shown', { shown: shown.length, total: logs.length })}
           </span>
         </div>
+        {readError && (
+          <p
+            role="alert"
+            data-testid="log-read-error"
+            className="border-b border-dashed border-border px-3 py-2 text-xs text-destructive"
+          >
+            {t('logs:readFailed', { message: readError })}
+          </p>
+        )}
         <div
           role="log"
           // Focusable so the lines scroll from the keyboard (axe

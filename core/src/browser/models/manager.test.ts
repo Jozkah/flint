@@ -73,6 +73,22 @@ describe('ModelManager', () => {
     })
   })
 
+  describe('registerMany', () => {
+    it('registers all models and emits one update event', () => {
+      modelManager.registerMany([
+        { id: 'a', name: 'A' } as Model,
+        { id: 'b', name: 'B' } as Model,
+      ])
+      expect(modelManager.models.size).toBe(2)
+      expect(events.emit).toHaveBeenCalledTimes(1)
+    })
+
+    it('emits nothing for an empty list', () => {
+      modelManager.registerMany([])
+      expect(events.emit).not.toHaveBeenCalled()
+    })
+  })
+
   describe('get', () => {
     it('should retrieve a registered model by id', () => {
       modelManager.register(mockModel)

@@ -100,6 +100,7 @@
     "newest": "Les plus récents",
     "noMatching": "Aucun modèle correspondant",
     "noMatchingHint": "Élargissez la recherche ou retirez un des filtres.",
+    "filesFailed": "Impossible de charger les variantes de ce dépôt.",
     "noVariants": "Aucune variante GGUF téléchargeable n’a été trouvée dans ce dépôt.",
     "onThisMac": "Sur ce Mac",
     "onlyFit": "Uniquement les modèles compatibles",

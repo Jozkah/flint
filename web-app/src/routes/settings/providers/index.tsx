@@ -6,11 +6,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  Copy,
-  ExternalLink,
-  Play,
   Power,
-  Square,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { formatBytes, getDefaultProviderTitle, getProviderTitle } from '@/lib/utils'
@@ -19,9 +15,8 @@ import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
-import { MiddleText } from '@/components/ui/middle-text'
 import { ProviderStatusChip } from '@/components/ProviderStatusChip'
-import { missingKeyLabelKey, providerKeyStatus } from '@/lib/providerKeyStatus'
+import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -40,18 +35,15 @@ import {
   SettingsWithSections,
 } from '@/containers/SettingsPageHeader'
 import {
-  CapabilityChips,
   EnginePage,
   KpiRow,
   KpiTile,
   PageHead,
   SearchField,
-  TBOX_ROW,
   TBox,
 } from '@/containers/engine/EngineKit'
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { LiveChart } from '@/containers/engine/LiveChart'
-import { RowMenu } from '@/containers/engine/RowMenu'
 import {
   ProviderCardMenu,
   RemoveProviderDialog,
@@ -62,7 +54,6 @@ import { modelLogo, providerLogo } from '@/lib/brandLogos'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
   averageSpeeds,
-  effectiveContextLength,
   formatTps,
   isEngineProviderName,
   quantOf,
@@ -72,13 +63,15 @@ import { useEngineActivity } from '@/stores/engine-activity-store'
 import { cn } from '@/lib/utils'
 import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
 import { ModelDefaultsCard } from '@/containers/ModelDefaultsCard'
+import { ModelsTableRow } from '@/containers/engine/ModelsTableRow'
+import { buildModelRows, filterModelRows, type ModelFilter } from '@/lib/modelTableRows'
 
 
 export const Route = createFileRoute('/settings/providers/')({
   component: ModelProviders,
 })
 
-type Filter = 'all' | 'local' | 'remote'
+type Filter = ModelFilter
 
 type OverviewTab = 'overview' | 'providers' | 'defaults'
 
@@ -278,16 +271,7 @@ function ModelProviders() {
 
   // Every model of an enabled provider, with where it runs.
   const rows = useMemo(
-    () =>
-      visibleProviders
-        .filter((p) => p.active)
-        .flatMap((provider) =>
-          provider.models.map((model) => ({
-            provider,
-            model,
-            local: isEngineProviderName(provider.provider),
-          }))
-        ),
+    () => buildModelRows(visibleProviders),
     [visibleProviders]
   )
   const localCount = rows.filter((r) => r.local).length
@@ -315,17 +299,10 @@ function ModelProviders() {
     return quant && !name.includes(quant) ? `${name} · ${quant}` : name
   }
 
-  const shownRows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return rows.filter(
-      (r) =>
-        (filter === 'all' || (filter === 'local') === r.local) &&
-        (!q ||
-          r.model.id.toLowerCase().includes(q) ||
-          (r.model.name ?? '').toLowerCase().includes(q) ||
-          getProviderTitle(r.provider.provider).toLowerCase().includes(q))
-    )
-  }, [rows, filter, query])
+  const shownRows = useMemo(
+    () => filterModelRows(rows, filter, query),
+    [rows, filter, query]
+  )
 
   const llamacpp = visibleProviders.find((p) => p.provider === 'llamacpp')
   const refreshProviders = () =>
@@ -725,145 +702,22 @@ function ModelProviders() {
                   '',
                 ]}
               >
-                {shownRows.map(({ provider, model, local }) => {
-                  const loaded = local && activeModels.includes(model.id)
-                  const speed = speeds.get(model.id)
-                  const ctx = effectiveContextLength(model, provider)
-                  const keyStatus = providerKeyStatus(provider, { bedrockCredentials })
-                  const hasKey =
-                    keyStatus !== 'missing' && keyStatus !== 'credentials-missing'
-                  return (
-                    <div
-                      key={`${provider.provider}:${model.id}`}
-                      data-testid={`models-row-${model.id}`}
-                      className={cn(
-                        TBOX_ROW,
-                        // Phones: a two-line card (logo + name, then the
-                        // figures and status) instead of columns cut off.
-                        'max-sm:flex max-sm:flex-wrap max-sm:gap-x-3 max-sm:gap-y-1.5',
-                        'motion-safe:animate-rise-in'
-                      )}
-                    >
-                      <BrandMark
-                        logo={modelLogo(model.id, provider.provider)}
-                        name={model.name || model.id}
-                        size={30}
-                      />
-                      <div className="flex min-w-0 flex-col gap-0.5 max-sm:basis-[calc(100%-42px)]">
-                        <FadeText as="b" className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground" title={model.id}>
-                          {model.name || model.id}
-                        </FadeText>
-                        {/* Middle-truncated: two long ids that share a
-                            prefix still differ by their tail (the quant). */}
-                        <MiddleText
-                          text={model.id}
-                          tail={18}
-                          title={model.id}
-                          className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground"
-                        />
-                      </div>
-                      <span className="min-w-0">
-                        {/* The provider, never the quantization: a local id's
-                            `:Q4_K_M` tag is already in the id under the name. */}
-                        <Chip className="max-w-full" data-testid="models-provider-cell">
-                          <span className="truncate">{getProviderTitle(provider.provider)}</span>
-                        </Chip>
-                      </span>
-                      {/* Always a cell, even with no capabilities, so the
-                          columns after it stay in place. */}
-                      <span className="min-w-0 overflow-hidden" data-slot="caps-cell">
-                        <CapabilityChips
-                          iconOnly
-                          className="flex-nowrap"
-                          capabilities={model.capabilities ?? []}
-                        />
-                      </span>
-                      <span className={cn('min-w-0 truncate tabular-nums', !local && 'text-muted-foreground')}>
-                        {local
-                          ? fileSizes[model.id]
-                            ? formatBytes(fileSizes[model.id])
-                            : '—'
-                          : t('engine:table.remote')}
-                      </span>
-                      <span className="min-w-0 truncate tabular-nums">
-                        {ctx ? ctx.toLocaleString() : '—'}
-                      </span>
-                      <span className="flex min-w-0 flex-col gap-1">
-                        {speed && maxSpeed > 0 ? (
-                          <>
-                            <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
-                              <i
-                                className="block h-full rounded-full bg-grad motion-safe:animate-draw-x"
-                                style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
-                              />
-                            </span>
-                            <small className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
-                              {formatTps(speed.avg)}
-                            </small>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </span>
-                      <span className="min-w-0">
-                        {local ? (
-                          loaded ? (
-                            <Chip tone="ok" live>
-                              {t('engine:status.loaded')}
-                            </Chip>
-                          ) : (
-                            <Chip dot>{t('engine:status.ready')}</Chip>
-                          )
-                        ) : hasKey ? (
-                          <Chip tone="ok" dot>
-                            {keyStatus === 'keyless'
-                              ? t('engine:status.keyless')
-                              : t('engine:status.connected')}
-                          </Chip>
-                        ) : (
-                          <Chip tone="warn" dot>
-                            {t(missingKeyLabelKey(provider.provider))}
-                          </Chip>
-                        )}
-                      </span>
-                      <RowMenu
-                        label={t('engine:menu.modelActions', { model: model.name || model.id })}
-                        items={[
-                          ...(local
-                            ? [
-                                loaded
-                                  ? {
-                                      label: t('engine:menu.stop'),
-                                      icon: <Square />,
-                                      onSelect: () => stopModel(model.id, provider.provider),
-                                    }
-                                  : {
-                                      label: t('engine:menu.start'),
-                                      icon: <Play />,
-                                      onSelect: () => void startModel(provider, model.id),
-                                    },
-                              ]
-                            : []),
-                          {
-                            label: t('engine:menu.openProvider'),
-                            icon: <ExternalLink />,
-                            onSelect: () => openProvider(provider.provider),
-                          },
-                          {
-                            label: t('engine:menu.copyId'),
-                            icon: <Copy />,
-                            onSelect: () => {
-                              void navigator.clipboard
-                                ?.writeText(model.id)
-                                .then(() => toast.success(t('engine:menu.copied')))
-                                .catch(() => {})
-                            },
-                          },
-                        ]}
-                      />
-                    </div>
-                  )
-                })}
+                {shownRows.map(({ provider, model, local }) => (
+                  <ModelsTableRow
+                    key={`${provider.provider}:${model.id}`}
+                    provider={provider}
+                    model={model}
+                    local={local}
+                    loaded={local && activeModels.includes(model.id)}
+                    fileSize={fileSizes[model.id]}
+                    speedAvg={speeds.get(model.id)?.avg}
+                    maxSpeed={maxSpeed}
+                    keyOptions={{ bedrockCredentials }}
+                    onStart={() => void startModel(provider, model.id)}
+                    onStop={() => stopModel(model.id, provider.provider)}
+                    onOpenProvider={() => openProvider(provider.provider)}
+                  />
+                ))}
               </TBox>
             )}
           </FrameBody>

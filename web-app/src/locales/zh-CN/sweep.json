@@ -96,6 +96,7 @@
     "newest": "最新",
     "noMatching": "没有匹配的模型",
     "noMatchingHint": "请尝试更宽泛的搜索，或移除某个筛选条件。",
+    "filesFailed": "无法加载此仓库的变体。",
     "noVariants": "此仓库中未找到可下载的 GGUF 变体。",
     "onThisMac": "适用于此 Mac",
     "onlyFit": "仅显示适合的模型",

@@ -100,6 +100,7 @@
     "newest": "Mới nhất",
     "noMatching": "Không có mô hình phù hợp",
     "noMatchingHint": "Hãy thử tìm kiếm rộng hơn hoặc bỏ bớt một bộ lọc.",
+    "filesFailed": "Không thể tải các biến thể của kho lưu trữ này.",
     "noVariants": "Không tìm thấy biến thể GGUF nào có thể tải xuống trong kho lưu trữ này.",
     "onThisMac": "Trên máy Mac này",
     "onlyFit": "Chỉ mô hình phù hợp",

@@ -102,6 +102,7 @@
     "newest": "Nejnovější",
     "noMatching": "Žádné odpovídající modely",
     "noMatchingHint": "Zkuste širší hledání nebo odeberte některý z filtrů.",
+    "filesFailed": "Varianty tohoto repozitáře se nepodařilo načíst.",
     "noVariants": "V tomto repozitáři nebyly nalezeny žádné stažitelné varianty GGUF.",
     "onThisMac": "Na tomto Macu",
     "onlyFit": "Jen vhodné modely",

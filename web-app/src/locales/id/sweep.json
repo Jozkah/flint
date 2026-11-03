@@ -96,6 +96,7 @@
     "newest": "Terbaru",
     "noMatching": "Tidak ada model yang cocok",
     "noMatchingHint": "Coba pencarian yang lebih luas atau hapus salah satu filter.",
+    "filesFailed": "Varian repositori ini tidak dapat dimuat.",
     "noVariants": "Tidak ada varian GGUF yang dapat diunduh di repositori ini.",
     "onThisMac": "Di Mac ini",
     "onlyFit": "Hanya model yang cocok",

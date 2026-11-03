@@ -31,8 +31,17 @@ export const logKey = (log: LogEntry): number => {
  * capped, with the listener released even when it resolves after unmount.
  */
 export function useServerLogs(): LogEntry[] {
+  return useServerLogView().logs
+}
+
+/** `useServerLogs` plus why the file history could not be read, if it could not. */
+export function useServerLogView(): {
+  logs: LogEntry[]
+  readError: string | null
+} {
   const serviceHub = useServiceHub()
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [readError, setReadError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,6 +57,7 @@ export function useServerLogs(): LogEntry[] {
     readHistory
       .then((logData) => {
         if (cancelled) return
+        setReadError(null)
         const history = (logData ?? []).filter(
           (log) => log?.target === SERVER_LOG_TARGET
         ) as LogEntry[]
@@ -66,6 +76,9 @@ export function useServerLogs(): LogEntry[] {
       })
       .catch((error) => {
         console.error('Failed to read logs:', error)
+        if (!cancelled) {
+          setReadError(error instanceof Error ? error.message : String(error))
+        }
       })
 
     serviceHub
@@ -91,5 +104,5 @@ export function useServerLogs(): LogEntry[] {
     }
   }, [serviceHub])
 
-  return logs
+  return { logs, readError }
 }

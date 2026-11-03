@@ -1,4 +1,5 @@
 {
+  "readFailed": "Không thể đọc nhật ký: {{message}}",
   "noLogs": "Không có nhật ký nào",
   "noMatch": "Không có dòng nào khớp với bộ lọc",
   "title": "Nhật ký",

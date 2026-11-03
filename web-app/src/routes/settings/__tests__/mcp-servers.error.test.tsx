@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Route as McpServersRoute } from '../mcp-servers'
 import { useAppState } from '@/hooks/useAppState'
+import { useViewPrefs } from '@/hooks/useViewPrefs'
 
 const activateMCPServer = vi.fn()
 const deactivateMCPServer = vi.fn()
@@ -471,7 +472,7 @@ describe('server card and list row', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getConnectedServers.mockResolvedValue([])
-    localStorage.removeItem('flint-mcp-servers-view')
+    useViewPrefs.setState({ mcpServersView: null })
   })
 
   it('card expands to show the stdio transport, command and args', async () => {
@@ -494,7 +495,7 @@ describe('server card and list row', () => {
   })
 
   it('list view renders one dense row with log, JSON and delete in its menu', async () => {
-    localStorage.setItem('flint-mcp-servers-view', 'list')
+    useViewPrefs.setState({ mcpServersView: 'list' })
     const Component = McpServersRoute.component as React.ComponentType
     await act(async () => {
       render(<Component />)
@@ -516,6 +517,6 @@ describe('server card and list row', () => {
     expect(
       screen.getByRole('menuitem', { name: /mcp-servers:deleteServer.title/ })
     ).toBeInTheDocument()
-    localStorage.removeItem('flint-mcp-servers-view')
+    useViewPrefs.setState({ mcpServersView: null })
   })
 })

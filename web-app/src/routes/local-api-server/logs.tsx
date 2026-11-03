@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 
-import { useServerLogs } from '@/hooks/useServerLogs'
+import { useServerLogView } from '@/hooks/useServerLogs'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
@@ -12,7 +12,7 @@ export const Route = createFileRoute(route.localApiServerlogs)({
 
 function LogsViewer() {
   const { t } = useTranslation()
-  const logs = useServerLogs()
+  const { logs, readError } = useServerLogView()
 
   return (
     <LogsDashboard
@@ -20,6 +20,7 @@ function LogsViewer() {
       description={t('logs:serverDescription')}
       fileName="server.log"
       logs={logs}
+      readError={readError}
     />
   )
 }

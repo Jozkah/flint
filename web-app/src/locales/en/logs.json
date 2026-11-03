@@ -1,4 +1,5 @@
 {
+  "readFailed": "Could not read the log: {{message}}",
   "noLogs": "No logs available",
   "noMatch": "No lines match the filter",
   "title": "Logs",

@@ -32,7 +32,19 @@ import { Segmented } from '@/components/ui/segmented'
 import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
 import { HubVariantList } from '@/containers/HubVariantList'
 import { HubTaskChips } from '@/containers/HubTaskChips'
-import { matchesTask, type HubTaskId } from '@/lib/hubTasks'
+import { type HubTaskId } from '@/lib/hubTasks'
+import {
+  applyFilters,
+  clearedFilters,
+  defaultFilters,
+  filtersActive as hasActiveFilters,
+  type HubFilters,
+  type ParamFilter,
+  type SortMode,
+} from '@/lib/hubFilters'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useRepoFiles } from '@/hooks/useRepoFiles'
+import { HUB_RESULT_LIMITS, useViewPrefs } from '@/hooks/useViewPrefs'
 import { formatShortDate } from '@/lib/localeDate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
@@ -46,13 +58,10 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { modelIdKey } from '@/lib/modelIdPath'
-import { pinQueryMatches } from '@/lib/huggingfaceSearch'
 import {
   cleanHuggingFaceRepo,
-  pinExactRepo,
   explainQuantization,
   formatModelBytes,
-  getHuggingFaceFiles,
   groupHuggingFaceFiles,
   inferArchitecture,
   inferModalities,
@@ -60,7 +69,6 @@ import {
   mlxWeightsBytes,
   repoLooksMlx,
   searchHuggingFaceModelsByWords,
-  type HuggingFaceFile,
   type HuggingFaceFormat,
   type HuggingFaceModel,
 } from '@/lib/huggingface'
@@ -85,32 +93,6 @@ export const Route = createFileRoute(route.hub.index)({
   component: () =>
     isServedByFlint() ? <DesktopOnlyTitle /> : <ModelDiscoverRoute />,
 })
-
-type SortMode = 'downloads' | 'likes' | 'updated' | 'newest'
-type ParamFilter = 'all' | 'tiny' | 'small' | 'medium' | 'large'
-
-// How many repos one Hugging Face search returns; the Hub caps a page at 1000.
-const RESULT_LIMITS = [50, 100, 200, 500, 1000]
-const RESULT_LIMIT_KEY = 'flint-hub-result-limit'
-
-function readResultLimit(): number {
-  try {
-    const saved = Number(localStorage.getItem(RESULT_LIMIT_KEY))
-    if (RESULT_LIMITS.includes(saved)) return saved
-  } catch {
-    // Storage unavailable; use the default.
-  }
-  return RESULT_LIMITS[0]
-}
-
-function inParameterBucket(value: number | null, bucket: ParamFilter): boolean {
-  if (bucket === 'all') return true
-  if (value == null) return false
-  if (bucket === 'tiny') return value < 3
-  if (bucket === 'small') return value >= 3 && value < 8
-  if (bucket === 'medium') return value >= 8 && value < 34
-  return value >= 34
-}
 
 function formatCount(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
@@ -148,39 +130,35 @@ function ModelDiscoverRoute() {
 
   const narrow = useMediaQuery('(max-width: 639px)')
   const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const debouncedQuery = useDebouncedValue(cleanHuggingFaceRepo(query), 300)
   const [models, setModels] = useState<HuggingFaceModel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sort, setSort] = useState<SortMode>('downloads')
-  const [resultLimit, setResultLimit] = useState(readResultLimit)
-  const [params, setParams] = useState<ParamFilter>('all')
-  const [architecture, setArchitecture] = useState('all')
-  const [task, setTask] = useState<HubTaskId>('all')
+  const resultLimit = useViewPrefs((state) => state.hubResultLimit)
+  const setResultLimit = useViewPrefs((state) => state.setHubResultLimit)
+  const [filters, setFilters] = useState<HubFilters>(defaultFilters)
+  const { sort, params, architecture, task, includeGated, downloadedOnly, fitsOnly } =
+    filters
+  const setFilter = <K extends keyof HubFilters>(key: K, value: HubFilters[K]) =>
+    setFilters((current) => ({ ...current, [key]: value }))
+  const setSort = (value: SortMode) => setFilter('sort', value)
+  const setParams = (value: ParamFilter) => setFilter('params', value)
+  const setArchitecture = (value: string) => setFilter('architecture', value)
+  const setTask = (value: HubTaskId) => setFilter('task', value)
+  const setIncludeGated = (value: boolean) => setFilter('includeGated', value)
+  const setDownloadedOnly = (value: boolean) => setFilter('downloadedOnly', value)
+  const setFitsOnly = (value: boolean) => setFilter('fitsOnly', value)
   const [format, setFormat] = useState<HuggingFaceFormat>(
     IS_MACOS ? 'all' : 'gguf'
   )
   // What is being looked for: models that chat, or models that make pictures.
   const [source, setSource] = useState<'models' | 'studio'>('models')
-  const [includeGated, setIncludeGated] = useState(true)
-  const [downloadedOnly, setDownloadedOnly] = useState(false)
-  // Hide repos whose best variant is larger than this machine's memory.
-  const [fitsOnly, setFitsOnly] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [filesByRepo, setFilesByRepo] = useState<
-    Record<string, HuggingFaceFile[]>
-  >({})
-  const [loadingFiles, setLoadingFiles] = useState<Record<string, boolean>>({})
+  const { filesByRepo, loadingFiles, fileErrors, seedFiles, loadFiles } =
+    useRepoFiles(token)
   const [archByRepo, setArchByRepo] = useState<
     Record<string, KvArchitecture | null>
   >({})
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(cleanHuggingFaceRepo(query))
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [query])
 
   useEffect(() => {
     // Picture models have their own search (StudioDiscover).
@@ -188,7 +166,9 @@ function ModelDiscoverRoute() {
       setLoading(false)
       return
     }
-    let cancelled = false
+    // A newer search aborts this one: its answer is never waited for.
+    const controller = new AbortController()
+    const { signal } = controller
     setLoading(true)
     setError(null)
 
@@ -197,8 +177,8 @@ function ModelDiscoverRoute() {
         let result: HuggingFaceModel[]
         if (format === 'all' && IS_MACOS) {
           const [gguf, mlx] = await Promise.all([
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf', resultLimit),
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx', resultLimit),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf', resultLimit, signal),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx', resultLimit, signal),
           ])
           const byId = new Map<string, HuggingFaceModel>()
           for (const model of [...gguf, ...mlx]) byId.set(model.id, model)
@@ -208,39 +188,27 @@ function ModelDiscoverRoute() {
             debouncedQuery,
             token,
             format,
-            resultLimit
+            resultLimit,
+            signal
           )
         }
-        if (cancelled) return
+        if (signal.aborted) return
         setModels(result)
-        setFilesByRepo((current) => {
-          const next = { ...current }
-          for (const model of result) {
-            if (model.files?.length) next[model.id] = model.files
-          }
-          return next
-        })
+        seedFiles(result)
       } catch (err) {
-        if (!cancelled) {
+        if (!signal.aborted) {
           // Drop the previous query's results so they do not sit beside this error.
           setModels([])
           setError(err instanceof Error ? err.message : String(err))
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!signal.aborted) setLoading(false)
       }
     }
 
     void run()
-    return () => {
-      cancelled = true
-    }
-  }, [debouncedQuery, token, format, source, resultLimit])
-
-  // File lists fetched under another token (e.g. a gated repo without one) are stale.
-  useEffect(() => {
-    setFilesByRepo({})
-  }, [token])
+    return () => controller.abort()
+  }, [debouncedQuery, token, format, source, resultLimit, seedFiles])
 
   const installedIds = useMemo(() => {
     const ids = new Set<string>()
@@ -312,72 +280,36 @@ function ModelDiscoverRoute() {
     return [...stubs.values()]
   }, [downloadedOnly, installedIds, models])
 
-  const visible = useMemo(() => {
-    const filtered = [...models, ...installedStubs].filter((model) => {
-      const parameterCount = inferParameterCount(model)
-      const arch = inferArchitecture(model)
-      const files = filesByRepo[model.id] ?? model.files ?? []
-      return (
-        inParameterBucket(parameterCount, params) &&
-        (architecture === 'all' || arch === architecture) &&
-        matchesTask(model, files, task) &&
-        (includeGated || !model.gated) &&
-        (!downloadedOnly || repoInstalled(model)) &&
-        (!fitsOnly ||
+  const visible = useMemo(
+    () =>
+      applyFilters([...models, ...installedStubs], filters, {
+        query: debouncedQuery,
+        filesFor: (model) => filesByRepo[model.id] ?? model.files ?? [],
+        isInstalled: repoInstalled,
+        fitsHardware: (model, files, parameterBillions) =>
           repoFitsHardware(
             repoFit(model, files, {
               hardware,
               devices,
               architecture: archByRepo[model.id],
-              parameterBillions: parameterCount,
+              parameterBillions,
             })
-          ))
-      )
-    })
-
-    const sorted = filtered.sort((a, b) => {
-      if (sort === 'likes') return b.likes - a.likes
-      if (sort === 'updated') {
-        return Date.parse(b.lastModified ?? '') - Date.parse(a.lastModified ?? '')
-      }
-      if (sort === 'newest') {
-        return Date.parse(b.createdAt ?? '') - Date.parse(a.createdAt ?? '')
-      }
-      return b.downloads - a.downloads
-    })
-    // A pasted exact repo id comes first, whatever the sort says.
-    return pinExactRepo(pinQueryMatches(sorted, debouncedQuery), debouncedQuery)
-  }, [
-    debouncedQuery,
-    models,
-    params,
-    architecture,
-    task,
-    includeGated,
-    downloadedOnly,
-    fitsOnly,
-    hardware,
-    devices,
-    archByRepo,
-    sort,
-    filesByRepo,
-    installedIds,
-    installedStubs,
-  ])
-
-  const loadFiles = async (repo: string) => {
-    if (filesByRepo[repo]?.length || loadingFiles[repo]) {
-      return filesByRepo[repo] ?? []
-    }
-    setLoadingFiles((state) => ({ ...state, [repo]: true }))
-    try {
-      const files = await getHuggingFaceFiles(repo, token)
-      setFilesByRepo((state) => ({ ...state, [repo]: files }))
-      return files
-    } finally {
-      setLoadingFiles((state) => ({ ...state, [repo]: false }))
-    }
-  }
+          ),
+      }),
+    // repoInstalled is derived from installedIds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      debouncedQuery,
+      models,
+      filters,
+      hardware,
+      devices,
+      archByRepo,
+      filesByRepo,
+      installedIds,
+      installedStubs,
+    ]
+  )
 
   const toggleExpanded = async (repo: string) => {
     const opening = !expanded[repo]
@@ -391,7 +323,7 @@ function ModelDiscoverRoute() {
         60
       )
     }
-    const files = await loadFiles(repo).catch(() => [] as HuggingFaceFile[])
+    const files = await loadFiles(repo)
     // The model's own header gives its context memory exactly; until it
     // arrives (or if it cannot be read) the estimate stands.
     const architecture = await loadRepoArchitecture(
@@ -429,21 +361,8 @@ function ModelDiscoverRoute() {
     })
   }
 
-  const filtersActive =
-    params !== 'all' ||
-    architecture !== 'all' ||
-    task !== 'all' ||
-    downloadedOnly ||
-    fitsOnly ||
-    !includeGated
-  const clearFilters = () => {
-    setParams('all')
-    setArchitecture('all')
-    setTask('all')
-    setDownloadedOnly(false)
-    setFitsOnly(false)
-    setIncludeGated(true)
-  }
+  const filtersActive = hasActiveFilters(filters)
+  const clearFilters = () => setFilters(clearedFilters)
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -630,19 +549,11 @@ function ModelDiscoverRoute() {
               {t('sweep:hub.resultLimit')}
               <Select
                 value={String(resultLimit)}
-                onChange={(event) => {
-                  const next = Number(event.target.value)
-                  setResultLimit(next)
-                  try {
-                    localStorage.setItem(RESULT_LIMIT_KEY, String(next))
-                  } catch {
-                    // Not saved; the choice still applies until restart.
-                  }
-                }}
+                onChange={(event) => setResultLimit(Number(event.target.value))}
                 className={SELECT}
                 aria-label={t('sweep:hub.resultLimit')}
               >
-                {RESULT_LIMITS.map((n) => (
+                {HUB_RESULT_LIMITS.map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
@@ -877,6 +788,17 @@ function ModelDiscoverRoute() {
                             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                               <LoaderCircle className="size-4 animate-spin" />
                               {t('sweep:hub.loadingVariants')}
+                            </div>
+                          ) : variants.length === 0 && fileErrors[model.id] ? (
+                            <div className="flex flex-wrap items-center gap-3 py-3 text-sm text-destructive">
+                              <span>{t('sweep:hub.filesFailed')}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void loadFiles(model.id)}
+                              >
+                                {t('common:codePanel.retry')}
+                              </Button>
                             </div>
                           ) : variants.length === 0 ? (
                             <p className="py-3 text-sm text-muted-foreground">
