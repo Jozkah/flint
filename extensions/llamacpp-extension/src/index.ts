@@ -37,7 +37,6 @@ import {
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import {
-  getProxyConfig,
   buildEmbedBatches,
   mergeEmbedResponses,
   detectEmbeddingFromGgufMeta,
@@ -104,7 +103,6 @@ import {
   reloadEngineModels,
   engineDevices,
   engineAddonRestartPending,
-  generateApiKey as pluginGenerateApiKey,
   findSessionByModel as pluginFindSessionByModel,
   ensureSessionReady as pluginEnsureSessionReady,
   getLoadedModels as pluginGetLoadedModels,
@@ -511,7 +509,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   private config: LlamacppConfig
   private providerPath!: string
-  private apiSecret: string = 'JustAskNow'
   private pendingDownloads: Map<string, Promise<void>> = new Map()
   /** Keyed by modelId; two imports of one model would cancel each other. */
   private pendingImports: Map<string, Promise<void>> = new Map()
@@ -1649,11 +1646,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }, 600)
   }
 
-  private async generateApiKey(modelId: string, port: string): Promise<string> {
-    const hash = await pluginGenerateApiKey(modelId + port, this.apiSecret)
-    return hash
-  }
-
   override async get(modelId: string): Promise<modelInfo | undefined> {
     const modelPath = await joinPath([
       await this.getProviderPath(),
@@ -2549,10 +2541,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   override async pauseImport(_modelId: string): Promise<void> {
     // Nothing is ever in flight: models are read from disk, not fetched.
-  }
-
-  private async getRandomPort(): Promise<number> {
-    return 49152 + Math.floor(Math.random() * (65535 - 49152))
   }
 
   private parseEnvFromString(
