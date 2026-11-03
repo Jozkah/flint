@@ -361,7 +361,7 @@ pub fn gh_status() -> (bool, GhAuth) {
     let out = run_bounded(cmd, 64 * 1024, deadline);
     if out.ok {
         (true, GhAuth::Yes)
-    } else if out.stderr == "gh did not answer in time" {
+    } else if out.timed_out {
         (true, GhAuth::Unknown)
     } else {
         (true, GhAuth::No)
@@ -666,6 +666,9 @@ pub(crate) struct GhOutput {
     pub stderr: String,
     /// Stdout reached the cap and the rest was not read.
     pub truncated: bool,
+    /// The deadline passed and the process was killed (typed, so no caller
+    /// has to compare `stderr` against the message below).
+    pub timed_out: bool,
 }
 
 pub(crate) fn run_bounded(
@@ -761,5 +764,6 @@ pub(crate) fn run_bounded(
             String::from_utf8_lossy(&stderr).into_owned()
         },
         truncated,
+        timed_out,
     }
 }

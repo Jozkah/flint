@@ -1472,9 +1472,8 @@ pub(crate) async fn execute_mcp_tool_calls_spilling(
     // slow server cannot stall every other MCP user until it answers.
     let servers = mcp_peers(mcp_servers).await;
     // Read once per batch: per-server `toolCallTimeoutSeconds` overrides.
-    let server_configs = crate::core::mcp::stall::read_server_configs(
-        &crate::core::app::commands::resolve_jan_data_folder(),
-    );
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let server_configs = crate::core::mcp::stall::read_server_configs(&data_folder);
 
     let ctx = McpCallContext {
         tool_to_server,
@@ -1484,14 +1483,13 @@ pub(crate) async fn execute_mcp_tool_calls_spilling(
         timeout_duration,
         tool_output_cap,
         spill_dir,
+        data_folder: &data_folder,
     };
-    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
-    let saved = crate::core::mcp::stall::read_server_configs(&data_folder);
     let jobs: Vec<(bool, std::pin::Pin<Box<dyn std::future::Future<Output = (String, String)> + Send + '_>>)> =
         tool_calls
             .iter()
             .map(|tc| {
-                let parallel = tool_call_runs_in_parallel(tc, &ctx, &data_folder, &saved);
+                let parallel = tool_call_runs_in_parallel(tc, &ctx);
                 let fut: std::pin::Pin<Box<dyn std::future::Future<Output = (String, String)> + Send + '_>> =
                     Box::pin(execute_one_mcp_tool_call(tc, &ctx));
                 (parallel, fut)
@@ -1512,6 +1510,8 @@ struct McpCallContext<'a> {
     timeout_duration: std::time::Duration,
     tool_output_cap: u64,
     spill_dir: Option<&'a std::path::Path>,
+    /// Resolved once per batch (F1e-014).
+    data_folder: &'a std::path::Path,
 }
 
 /// Server name -> its tools that advertise `readOnlyHint: true`, refreshed
@@ -1547,8 +1547,6 @@ fn is_read_only_tool(server: &str, tool: &str) -> bool {
 fn tool_call_runs_in_parallel(
     tc: &Value,
     ctx: &McpCallContext<'_>,
-    data_folder: &std::path::Path,
-    saved: &serde_json::Map<String, Value>,
 ) -> bool {
     let Some(tool_name) = tc.get("function").and_then(|f| f.get("name")).and_then(Value::as_str) else {
         return false;
@@ -1560,9 +1558,9 @@ fn tool_call_runs_in_parallel(
     if !is_read_only_tool(server, call_name) {
         return false;
     }
-    saved.get(server).is_some_and(|cfg| {
+    ctx.server_configs.get(server).is_some_and(|cfg| {
         tauri_plugin_agent_tools::mcp_trust::is_trusted(
-            data_folder,
+            ctx.data_folder,
             server,
             &tauri_plugin_agent_tools::mcp_identity::fingerprint(cfg),
         )
@@ -1611,6 +1609,7 @@ async fn execute_one_mcp_tool_call(tc: &Value, ctx: &McpCallContext<'_>) -> (Str
         timeout_duration,
         tool_output_cap,
         spill_dir,
+        data_folder,
     } = *ctx;
     let tool_call_id = tc
         .get("id")
@@ -1666,10 +1665,7 @@ async fn execute_one_mcp_tool_call(tc: &Value, ctx: &McpCallContext<'_>) -> (Str
 
     // AH-144: this server's own budget, checked before its arguments are
     // sent -- a refusal after the call has already spent what it refuses.
-    let budget = crate::core::mcp::budget::ServerBudget::for_server(
-        &crate::core::app::commands::resolve_jan_data_folder(),
-        server_name,
-    );
+    let budget = crate::core::mcp::budget::ServerBudget::for_server(data_folder, server_name);
     if let Err(refusal) = crate::core::mcp::budget::check(server_name, &budget) {
         return (tool_call_id, format!("ERROR: {refusal}"));
     }

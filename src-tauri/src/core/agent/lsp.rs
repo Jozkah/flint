@@ -296,8 +296,8 @@ fn path_of_uri(uri: &str) -> Option<PathBuf> {
 type Reply = Result<Value, String>;
 
 struct Connection {
-    child: Child,
-    owned: tauri_plugin_agent_tools::tools::owned::OwnedChild,
+    child: Mutex<Child>,
+    owned: Mutex<tauri_plugin_agent_tools::tools::owned::OwnedChild>,
     stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
     pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Reply>>>>,
@@ -306,7 +306,7 @@ struct Connection {
     published: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
     healthy: AtomicBool,
-    reader: Option<std::thread::JoinHandle<()>>,
+    reader: Mutex<Option<std::thread::JoinHandle<()>>>,
     /// uri -> (version, a hash of the text last sent).
     opened: Mutex<HashMap<String, (i64, u64)>>,
     started: Instant,
@@ -376,9 +376,9 @@ impl Connection {
             let stdin = stdin.clone();
             std::thread::spawn(move || read_loop(BufReader::new(stdout), stdin, pending, diagnostics, published, alive))
         };
-        let mut connection = Connection {
-            child,
-            owned,
+        let connection = Connection {
+            child: Mutex::new(child),
+            owned: Mutex::new(owned),
             stdin,
             next_id: AtomicU64::new(1),
             pending,
@@ -386,7 +386,7 @@ impl Connection {
             published,
             alive,
             healthy: AtomicBool::new(true),
-            reader: Some(reader),
+            reader: Mutex::new(Some(reader)),
             opened: Mutex::new(HashMap::new()),
             started: Instant::now(),
             token,
@@ -433,15 +433,15 @@ impl Connection {
     }
 
     fn pid(&self) -> u32 {
-        self.owned.pid()
+        self.owned.lock().unwrap_or_else(|p| p.into_inner()).pid()
     }
 
     /// Whether the process is still there and has not been caught wedged.
-    fn is_usable(&mut self) -> bool {
+    fn is_usable(&self) -> bool {
         if !self.alive.load(Ordering::SeqCst) {
             return false;
         }
-        if let Ok(Some(_)) = self.child.try_wait() {
+        if let Ok(Some(_)) = self.child.lock().unwrap_or_else(|p| p.into_inner()).try_wait() {
             self.alive.store(false, Ordering::SeqCst);
             return false;
         }
@@ -540,27 +540,27 @@ impl Connection {
     }
 
     /// Ask the server to end, then make sure it has.
-    fn stop(&mut self) {
+    fn stop(&self) {
         let pid = self.pid();
         if self.alive.load(Ordering::SeqCst) {
             let _ = self.request("shutdown", Value::Null, SHUTDOWN_GRACE, &|| false);
             let _ = self.notify("exit", Value::Null);
             let until = Instant::now() + SHUTDOWN_GRACE;
             while Instant::now() < until {
-                if let Ok(Some(_)) = self.child.try_wait() {
+                if let Ok(Some(_)) = self.child.lock().unwrap_or_else(|p| p.into_inner()).try_wait() {
                     break;
                 }
                 std::thread::sleep(POLL);
             }
         }
-        self.owned.stop();
-        let _ = self.child.wait();
+        self.owned.lock().unwrap_or_else(|p| p.into_inner()).stop();
+        let _ = self.child.lock().unwrap_or_else(|p| p.into_inner()).wait();
         self.alive.store(false, Ordering::SeqCst);
         tauri_plugin_agent_tools::tools::proc::unregister(pid);
         if let Some(token) = &self.token {
             token.release(pid);
         }
-        if let Some(reader) = self.reader.take() {
+        if let Some(reader) = self.reader.lock().unwrap_or_else(|p| p.into_inner()).take() {
             let _ = reader.join();
         }
     }
@@ -674,7 +674,8 @@ pub struct Query {
 
 #[derive(Default)]
 struct Slot {
-    connection: Option<Connection>,
+    /// Shared, so a request in flight does not hold the pool lock.
+    connection: Option<Arc<Connection>>,
     restarts: u32,
     starts: u32,
     last_failure: Option<String>,
@@ -707,7 +708,7 @@ impl LspPool {
     /// The process id of the server for `language`, when one is running.
     pub fn running_pid(&self, language: &str) -> Option<u32> {
         let slots = self.slots.lock().unwrap_or_else(|p| p.into_inner());
-        slots.get(language).and_then(|s| s.connection.as_ref()).map(Connection::pid)
+        slots.get(language).and_then(|s| s.connection.as_ref()).map(|c| c.pid())
     }
 
     /// How many times the server for `language` was restarted this run.
@@ -748,31 +749,37 @@ impl LspPool {
         if cancel() {
             return Err(LspError::new(LspErrorKind::Cancelled, "the run was cancelled before the language server was asked"));
         }
-        let mut slots = self.slots.lock().unwrap_or_else(|p| p.into_inner());
-        let slot = slots.entry(spec.language).or_default();
-        let connection = self.usable_connection(spec, slot, token, cancel)?;
-        let answer = ask(connection, spec, &self.project, query, cancel);
+        // F1x4-002: the pool lock is held to find or start the connection and
+        // to record a failure, not across the request itself (up to a minute),
+        // so `status` and `shutdown` are never stuck behind a slow server.
+        let connection = {
+            let mut slots = self.slots.lock().unwrap_or_else(|p| p.into_inner());
+            let slot = slots.entry(spec.language).or_default();
+            self.usable_connection(spec, slot, token, cancel)?
+        };
+        let answer = ask(&connection, spec, &self.project, query, cancel);
         if let Err(e) = &answer {
             if matches!(e.kind, LspErrorKind::ServerCrashed | LspErrorKind::Timeout) {
-                slot.last_failure = Some(e.message.clone());
+                let mut slots = self.slots.lock().unwrap_or_else(|p| p.into_inner());
+                slots.entry(spec.language).or_default().last_failure = Some(e.message.clone());
             }
         }
         settle(answer, cancel())
     }
 
-    fn usable_connection<'a>(
+    fn usable_connection(
         &self,
         spec: &ServerSpec,
-        slot: &'a mut Slot,
+        slot: &mut Slot,
         token: Option<tauri_plugin_agent_tools::lifecycle::Token>,
         cancel: &dyn Fn() -> bool,
-    ) -> Result<&'a Connection, LspError> {
-        let needs_start = match slot.connection.as_mut() {
+    ) -> Result<Arc<Connection>, LspError> {
+        let needs_start = match slot.connection.as_ref() {
             Some(connection) => !connection.is_usable(),
             None => true,
         };
         if needs_start {
-            if let Some(mut dead) = slot.connection.take() {
+            if let Some(dead) = slot.connection.take() {
                 // It was started and is no longer usable: that is a restart.
                 dead.stop();
                 if slot.restarts >= MAX_RESTARTS {
@@ -803,7 +810,7 @@ impl LspPool {
             })?;
             slot.starts += 1;
             match Connection::start(spec, &program, &self.project, token, cancel) {
-                Ok(connection) => slot.connection = Some(connection),
+                Ok(connection) => slot.connection = Some(Arc::new(connection)),
                 Err(e) => {
                     // A start that fails counts against the same cap, so a
                     // server that cannot come up is not retried forever.
@@ -817,7 +824,7 @@ impl LspPool {
                 }
             }
         }
-        Ok(slot.connection.as_ref().expect("started above"))
+        Ok(slot.connection.clone().expect("started above"))
     }
 
     fn status(&self) -> String {
@@ -829,7 +836,7 @@ impl LspPool {
         for spec in self.servers {
             let slot = slots.entry(spec.language).or_default();
             let on_path = tauri_plugin_agent_tools::tools::owned::find_on_path(spec.program);
-            let state = match slot.connection.as_mut() {
+            let state = match slot.connection.as_ref() {
                 Some(c) => {
                     if c.is_usable() {
                         format!("running (pid {}, up {}s)", c.pid(), c.started.elapsed().as_secs())
@@ -852,7 +859,7 @@ impl LspPool {
     pub fn shutdown(&self) {
         let mut slots = self.slots.lock().unwrap_or_else(|p| p.into_inner());
         for slot in slots.values_mut() {
-            if let Some(mut connection) = slot.connection.take() {
+            if let Some(connection) = slot.connection.take() {
                 connection.stop();
             }
         }

@@ -193,7 +193,9 @@ pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
         ));
     }
     let mut graph = Graph::default();
-    let mut sources: Vec<(String, Language, String)> = Vec::new();
+    // Only the import lines of each file are kept, never its text: resolving
+    // an edge needs the whole file list first, but not the sources.
+    let mut sources: Vec<(String, Language, Vec<String>)> = Vec::new();
     let mut queue = VecDeque::from([(project_root.to_path_buf(), 0usize)]);
     while let Some((dir, depth)) = queue.pop_front() {
         if depth > MAX_DEPTH {
@@ -238,7 +240,7 @@ pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
             }
             let Ok(text) = std::fs::read_to_string(&path) else { continue };
             let Some(relative) = relative(project_root, &path) else { continue };
-            sources.push((relative, language, text));
+            sources.push((relative, language, imports(language, &text)));
         }
     }
 
@@ -249,19 +251,19 @@ pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
     // real app, where every import is written through the alias and the first
     // answer had no edges at all.
     let aliases = ts_aliases(project_root);
-    for (relative, language, text) in &sources {
+    for (relative, language, raw_imports) in &sources {
         if looks_like_test(relative) {
             graph.tests.insert(relative.clone());
         }
         let mut targets = BTreeSet::new();
-        for raw in imports(*language, text) {
-            match resolve(*language, relative, &raw, &known, &aliases) {
+        for raw in raw_imports {
+            match resolve(*language, relative, raw, &known, &aliases) {
                 Some(target) if &target != relative => {
                     targets.insert(target);
                 }
                 Some(_) => {}
-                None if names_this_project(*language, &raw, &aliases)
-                    && !names_a_non_source_file(project_root, relative, &raw, &aliases) =>
+                None if names_this_project(*language, raw, &aliases)
+                    && !names_a_non_source_file(project_root, relative, raw, &aliases) =>
                 {
                     graph.missed += 1
                 }

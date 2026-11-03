@@ -880,6 +880,7 @@ mod tests {
         let out = run_bounded(cmd, 1024, started + Duration::from_millis(300));
         assert!(!out.ok);
         assert_eq!(out.stderr, "gh did not answer in time");
+        assert!(out.timed_out);
         assert!(started.elapsed() < Duration::from_secs(5));
     }
 

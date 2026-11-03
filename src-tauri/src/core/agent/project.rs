@@ -285,6 +285,56 @@ pub(crate) fn load_agent_config_with_profile(
     project_root: &Path,
     profile: Option<&str>,
 ) -> Result<AgentToml, String> {
+    // F1x3-009: a run start asks for this a dozen times in a row. Within one
+    // short window, and only while the file is byte-for-byte the one already
+    // parsed (size and modification time), the parsed result is reused, so
+    // the reads of one start agree with each other and cost one parse. Test
+    // builds always re-read: tests rewrite one file within a clock tick.
+    if cfg!(test) {
+        return load_agent_config_with_profile_uncached(project_root, profile);
+    }
+    let stamp = std::fs::metadata(agent_toml_path(project_root))
+        .ok()
+        .map(|m| (m.len(), m.modified().ok()));
+    let key = (
+        project_root.to_path_buf(),
+        profile.map(str::trim).unwrap_or("").to_string(),
+        project_trusted(project_root),
+    );
+    static CACHE: std::sync::Mutex<
+        Option<std::collections::HashMap<ConfigKey, ConfigHit>>,
+    > = std::sync::Mutex::new(None);
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((at, seen, result)) = guard.as_ref().and_then(|c| c.get(&key)) {
+            if *seen == stamp && at.elapsed() < CONFIG_REUSE {
+                return result.clone();
+            }
+        }
+    }
+    let result = load_agent_config_with_profile_uncached(project_root, profile);
+    if let Ok(mut guard) = CACHE.lock() {
+        let cache = guard.get_or_insert_with(Default::default);
+        if cache.len() >= 64 {
+            cache.clear();
+        }
+        cache.insert(key, (std::time::Instant::now(), stamp, result.clone()));
+    }
+    result
+}
+
+type ConfigKey = (PathBuf, String, bool);
+type ConfigHit = (
+    std::time::Instant,
+    Option<(u64, Option<std::time::SystemTime>)>,
+    Result<AgentToml, String>,
+);
+/// How long a parsed agent.toml is reused (see the loader above).
+const CONFIG_REUSE: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn load_agent_config_with_profile_uncached(
+    project_root: &Path,
+    profile: Option<&str>,
+) -> Result<AgentToml, String> {
     let cfg = load_agent_config(project_root)?;
     match profile.map(str::trim).filter(|p| !p.is_empty()) {
         // A profile lives in the same project file: loosening keys it sets

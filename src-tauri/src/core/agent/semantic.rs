@@ -113,6 +113,19 @@ pub fn resolve(
     if !matches!(parsed.scheme(), "http" | "https") || !parsed.username().is_empty() || parsed.password().is_some() {
         return Err(refuse(ErrorKind::InvalidInput, format!("the embeddings URL {base:?} must be a plain http(s) URL")));
     }
+    // A key sent over plain http to another machine is readable on the wire.
+    let loopback = match parsed.host() {
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    if parsed.scheme() == "http" && !loopback && key.as_deref().is_some_and(|k| !k.trim().is_empty()) {
+        return Err(refuse(
+            ErrorKind::InvalidInput,
+            format!("the embeddings URL {base:?} is plain http and would send the API key in cleartext; use https (http is allowed only for localhost)"),
+        ));
+    }
     let url = if base.trim_end_matches('/').ends_with("/embeddings") {
         base.trim_end_matches('/').to_string()
     } else {
@@ -184,16 +197,26 @@ fn cause_chain(error: &dyn std::error::Error) -> String {
     out
 }
 
+/// One HTTP client for every batch, so connections are reused.
+fn shared_client() -> Result<reqwest::Client, HarnessError> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client.clone());
+    }
+    let built = crate::core::net::tls::apply12(reqwest::Client::builder())
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| refuse(ErrorKind::Transport, format!("no HTTP client: {e}")))?;
+    Ok(CLIENT.get_or_init(|| built).clone())
+}
+
 impl Embed for HttpEmbedder {
     fn embed(&self, inputs: &[String]) -> impl std::future::Future<Output = Result<Vec<Vec<f32>>, HarnessError>> + Send {
         let inputs = inputs.to_vec();
         let embedder = self.embedder.clone();
         let cancel = self.cancel.clone();
         async move {
-            let client = crate::core::net::tls::apply12(reqwest::Client::builder())
-                .timeout(REQUEST_TIMEOUT)
-                .build()
-                .map_err(|e| refuse(ErrorKind::Transport, format!("no HTTP client: {e}")))?;
+            let client = shared_client()?;
             let mut request = client
                 .post(&embedder.url)
                 .json(&serde_json::json!({ "model": embedder.model, "input": inputs }));
@@ -825,6 +848,21 @@ mod tests {
             _ => None,
         };
         assert_eq!(resolve(&bad, None, &providers).unwrap_err().kind(), ErrorKind::InvalidInput);
+        // CAGC-014: a key is never sent in cleartext to another machine.
+        let remote = |name: &str| match name {
+            MODEL_ENV => Some("x/y".to_string()),
+            URL_ENV => Some("http://embeddings.example.com/v1".to_string()),
+            KEY_ENV => Some("secret".to_string()),
+            _ => None,
+        };
+        assert_eq!(resolve(&remote, None, &providers).unwrap_err().kind(), ErrorKind::InvalidInput);
+        let remote_https = |name: &str| match name {
+            MODEL_ENV => Some("x/y".to_string()),
+            URL_ENV => Some("https://embeddings.example.com/v1".to_string()),
+            KEY_ENV => Some("secret".to_string()),
+            _ => None,
+        };
+        assert!(resolve(&remote_https, None, &providers).is_ok());
     }
 
     /// Ranges start at definitions, and a long definition is cut within itself.

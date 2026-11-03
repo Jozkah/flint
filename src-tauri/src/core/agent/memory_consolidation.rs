@@ -361,6 +361,9 @@ fn lexically_within(inner: &Path, outer: &Path) -> bool {
 
 // -- notes -----------------------------------------------------------------
 
+/// A note file larger than this is not a note worth merging and is never read.
+const MAX_NOTE_BYTES: u64 = 4 * 1024 * 1024;
+
 /// One source note: its stem name, body, and last-modified time in epoch ms.
 #[derive(Debug, Clone)]
 pub(crate) struct Note {
@@ -377,46 +380,56 @@ pub(crate) fn read_source_notes(dir: &Path, max_notes: usize, max_bytes: usize) 
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
-    let mut notes: Vec<Note> = Vec::new();
+    // Metadata first (CAGB-023): order newest first and apply the note and
+    // byte budgets from file sizes, so a store with many or large notes costs
+    // reads only for the notes that will be used.
+    struct Candidate {
+        path: PathBuf,
+        stem: String,
+        modified_ms: u64,
+        len: u64,
+    }
+    let mut found: Vec<Candidate> = Vec::new();
     for entry in rd.flatten() {
         let path = entry.path();
         if path.extension().and_then(|x| x.to_str()) != Some("md") {
             continue;
         }
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else {
             continue;
         };
         if stem == OUTPUT_NOTE {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(&path) else {
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() || meta.len() > MAX_NOTE_BYTES {
             continue;
-        };
-        let modified_ms = entry
-            .metadata()
+        }
+        let modified_ms = meta
+            .modified()
             .ok()
-            .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        notes.push(Note {
-            name: stem.to_string(),
-            content,
-            modified_ms,
-        });
+        found.push(Candidate { path, stem, modified_ms, len: meta.len() });
     }
     // Newest first, so the byte budget keeps the freshest notes and the merger
     // sees recency-ordered input.
-    notes.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms).then(a.name.cmp(&b.name)));
-    notes.truncate(max_notes);
+    found.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms).then(a.stem.cmp(&b.stem)));
     let mut kept = Vec::new();
     let mut total = 0usize;
-    for n in notes {
-        total = total.saturating_add(n.content.len());
-        if total > max_bytes && !kept.is_empty() {
+    for c in found {
+        if kept.len() >= max_notes {
             break;
         }
-        kept.push(n);
+        if total.saturating_add(c.len as usize) > max_bytes && !kept.is_empty() {
+            break;
+        }
+        let Ok(content) = std::fs::read_to_string(&c.path) else {
+            continue;
+        };
+        total = total.saturating_add(content.len());
+        kept.push(Note { name: c.stem, content, modified_ms: c.modified_ms });
     }
     kept
 }
@@ -1342,5 +1355,22 @@ https://example.invalid/two".into(),
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].name, "consolidated");
         assert_eq!(notes[0].content, "a\nb");
+    }
+
+    /// CAGB-023: the budgets are applied from file sizes, so notes past the
+    /// budget are never read, and an oversized file is skipped outright.
+    #[test]
+    fn notes_past_the_budget_are_not_read() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "aaaa").unwrap();
+        std::fs::write(dir.path().join("b.md"), "bbbb").unwrap();
+        std::fs::write(dir.path().join("c.md"), "cccc").unwrap();
+        let notes = read_source_notes(dir.path(), 10, 8);
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        let notes = read_source_notes(dir.path(), 1, usize::MAX);
+        assert_eq!(notes.len(), 1);
+        let huge = std::fs::File::create(dir.path().join("huge.md")).unwrap();
+        huge.set_len(MAX_NOTE_BYTES + 1).unwrap();
+        assert!(read_source_notes(dir.path(), 10, usize::MAX).iter().all(|n| n.name != "huge"));
     }
 }
