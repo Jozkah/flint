@@ -9,7 +9,30 @@
 //! A schema that uses a keyword outside it (`$ref`, `if`, `patternProperties`,
 //! ...) is refused when it is loaded, never silently treated as passing.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use serde_json::Value;
+
+/// A compiled `pattern`, kept by pattern text so a schema validated on every
+/// call is not recompiled each time. `None` is a pattern the regex crate
+/// cannot compile.
+pub(crate) fn cached_regex(pattern: &str) -> Option<Arc<regex::Regex>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<regex::Regex>>>>> = OnceLock::new();
+    let mut cache = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    if cache.len() > 512 {
+        cache.clear();
+    }
+    cache
+        .entry(pattern.to_string())
+        .or_insert_with(|| regex::Regex::new(pattern).ok().map(Arc::new))
+        .clone()
+}
+
+const TYPE_NAMES: [&str; 7] = ["string", "number", "integer", "boolean", "null", "array", "object"];
 
 /// Repair attempts a run gets by default.
 pub const DEFAULT_ATTEMPTS: u64 = 3;
@@ -62,6 +85,23 @@ pub fn load(schema: Value) -> Result<Value, String> {
                         }
                         _ => {}
                     }
+                }
+                match map.get("type") {
+                    None => {}
+                    Some(Value::String(t)) if TYPE_NAMES.contains(&t.as_str()) => {}
+                    Some(Value::Array(ts))
+                        if ts.iter().all(|t| t.as_str().is_some_and(|t| TYPE_NAMES.contains(&t))) => {}
+                    Some(other) => {
+                        return Err(format!("`type` at {at} must be one of {TYPE_NAMES:?} or a list of them, got {other}"));
+                    }
+                }
+                if map.get("required").is_some_and(|r| {
+                    !r.as_array().is_some_and(|a| a.iter().all(Value::is_string))
+                }) {
+                    return Err(format!("`required` at {at} must be a list of property names"));
+                }
+                if map.get("enum").is_some_and(|e| !e.is_array()) {
+                    return Err(format!("`enum` at {at} must be a list"));
                 }
                 if let Some(Value::String(p)) = map.get("pattern") {
                     regex::Regex::new(p).map_err(|e| format!("invalid `pattern` at {at}: {e}"))?;
@@ -179,7 +219,7 @@ fn check(schema: &Value, v: &Value, at: &str, errors: &mut Vec<String>) {
             }
         }
         if let Some(p) = map.get("pattern").and_then(Value::as_str) {
-            if regex::Regex::new(p).is_ok_and(|re| !re.is_match(s)) {
+            if cached_regex(p).is_some_and(|re| !re.is_match(s)) {
                 errors.push(format!("{at}: does not match pattern {p}"));
             }
         }
@@ -305,6 +345,11 @@ mod tests {
         assert!(load(json!({"properties": {"a": {"$ref": "#/x"}}})).unwrap_err().contains("$ref"));
         assert!(load(json!({"pattern": "("})).is_err());
         assert!(load(json!(3)).is_err());
+        assert!(load(json!({"type": "str"})).unwrap_err().contains("type"));
+        assert!(load(json!({"properties": {"a": {"type": 3}}})).is_err());
+        assert!(load(json!({"type": ["string", "null"], "required": ["a"], "enum": [1]})).is_ok());
+        assert!(load(json!({"required": "a"})).is_err());
+        assert!(load(json!({"enum": 1})).is_err());
         assert!(load(json!(true)).is_ok());
     }
 

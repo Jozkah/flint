@@ -20,6 +20,9 @@ const USER_AGENT: &str = "jan-agent-skill-import";
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// At most this many hub requests in flight at once.
 const MAX_CONCURRENT: usize = 8;
+/// Largest single hub file, and largest whole skill, accepted on import.
+const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_SKILL_BYTES: usize = 20 * 1024 * 1024;
 
 /// Every segment of a hub-relative path (split on `/` and `\`) must be a safe
 /// single component, so a crafted tree entry cannot escape the staging dir.
@@ -166,7 +169,13 @@ pub async fn import(root: &Path, name: &str) -> Result<(), String> {
             if !resp.status().is_success() {
                 return Err(format!("ERROR: downloading {path}: {}", resp.status()));
             }
+            if resp.content_length().is_some_and(|n| n > MAX_FILE_BYTES) {
+                return Err(format!("ERROR: {path} is larger than {} MB", MAX_FILE_BYTES >> 20));
+            }
             let bytes = resp.bytes().await.map_err(|e| format!("ERROR: {e}"))?;
+            if bytes.len() as u64 > MAX_FILE_BYTES {
+                return Err(format!("ERROR: {path} is larger than {} MB", MAX_FILE_BYTES >> 20));
+            }
             Ok::<_, String>((rel, bytes))
         }
     });
@@ -175,8 +184,17 @@ pub async fn import(root: &Path, name: &str) -> Result<(), String> {
         .buffer_unordered(MAX_CONCURRENT)
         .collect()
         .await;
+    let mut total = 0usize;
     for result in results {
-        fetched.push(result?);
+        let (rel, bytes) = result?;
+        total += bytes.len();
+        if total > MAX_SKILL_BYTES {
+            return Err(format!(
+                "ERROR: skill '{name}' is larger than {} MB",
+                MAX_SKILL_BYTES >> 20
+            ));
+        }
+        fetched.push((rel, bytes));
     }
 
     // Phase 2: replace the destination with the freshly fetched files.

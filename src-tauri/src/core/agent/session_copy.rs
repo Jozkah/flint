@@ -244,6 +244,31 @@ fn write_manifest(copy: &Path, manifest: &Manifest) -> Result<(), String> {
     write_atomic(&manifest_path(copy), text.as_bytes())
 }
 
+type StagedCopy = (BTreeMap<String, String>, BTreeMap<String, (u64, u128)>, Vec<String>);
+
+/// Copy and hash every file of `source` into `staging`.
+fn stage_copy(source: &Path, staging: &Path) -> Result<StagedCopy, String> {
+    let mut files = BTreeMap::new();
+    let mut stats = BTreeMap::new();
+    let (listed, skipped) = walk_with_skips(source);
+    for rel in listed {
+        let from = source.join(&rel);
+        let to = staging.join(&rel);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::copy(&from, &to).map_err(|e| format!("could not copy {rel}: {e}"))?;
+        let stat = stat_of(&to);
+        let h = hash_file(&to).ok_or_else(|| format!("could not read {rel} after copying it"))?;
+        if let Some(stat) = stat {
+            stats.insert(rel.clone(), stat);
+        }
+        files.insert(rel, h);
+    }
+    std::fs::create_dir_all(staging).map_err(|e| e.to_string())?;
+    Ok((files, stats, skipped))
+}
+
 /// Copy `source` for `session_id`, or return the copy it already has.
 pub fn create(
     source: &Path,
@@ -264,6 +289,12 @@ pub fn create(
         return Err("Flint's data folder is inside this folder, so it cannot be copied".into());
     }
     let copy = root.join(short_id(session_id));
+    if copy.exists() && !manifest_path(&copy).exists() {
+        // The copy was renamed into place but its record never landed, so
+        // nothing can have been applied back from it: rebuild it.
+        std::fs::remove_dir_all(&copy)
+            .map_err(|e| format!("could not clear the unfinished copy {}: {e}", copy.display()))?;
+    }
     if copy.exists() {
         let manifest = read_manifest(&copy)?;
         return manifest
@@ -273,26 +304,17 @@ pub fn create(
     }
     let staging = root.join(format!("{}.partial", short_id(session_id)));
     let _ = std::fs::remove_dir_all(&staging);
-    let mut files = BTreeMap::new();
-    let mut stats = BTreeMap::new();
-    let (listed, skipped) = walk_with_skips(&source);
-    for rel in listed {
-        let from = source.join(&rel);
-        let to = staging.join(&rel);
-        if let Some(parent) = to.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let (files, stats, skipped) = match stage_copy(&source, &staging) {
+        Ok(staged) => staged,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e);
         }
-        std::fs::copy(&from, &to).map_err(|e| format!("could not copy {rel}: {e}"))?;
-        let stat = stat_of(&to);
-        if let Some(h) = hash_file(&to) {
-            if let Some(stat) = stat {
-                stats.insert(rel.clone(), stat);
-            }
-            files.insert(rel, h);
-        }
+    };
+    if let Err(e) = std::fs::rename(&staging, &copy) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!("could not finish the copy: {e}"));
     }
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    std::fs::rename(&staging, &copy).map_err(|e| format!("could not finish the copy: {e}"))?;
     let record = CopyRecord {
         path: copy.to_string_lossy().to_string(),
         source_root: source.to_string_lossy().to_string(),
@@ -498,6 +520,16 @@ mod tests {
             src,
             roots,
         }
+    }
+
+    #[test]
+    fn rebuilds_a_copy_whose_record_never_landed() {
+        let f = fixture();
+        let r = create(&f.src, &f.roots, "s1").unwrap();
+        std::fs::remove_file(manifest_path(Path::new(&r.path))).unwrap();
+        let again = create(&f.src, &f.roots, "s1").unwrap();
+        assert_eq!(again.file_count, 2);
+        assert!(load(Path::new(&again.path), &f.roots).is_ok());
     }
 
     #[test]
