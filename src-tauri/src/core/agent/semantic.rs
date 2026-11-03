@@ -343,8 +343,15 @@ pub fn holds_secrets(path: &str) -> bool {
         || name.starts_with("id_rsa")
         || name.starts_with("id_ed25519")
         || [".pem", ".key", ".p12", ".pfx", ".keystore", ".jks"].iter().any(|ext| name.ends_with(ext))
-        || name == ".netrc"
-        || name == "credentials"
+        || name.starts_with("id_ecdsa")
+        || name.starts_with("id_dsa")
+        || name.starts_with("secrets.")
+        || name.starts_with("service-account")
+        || [".p8", ".tfvars", ".kdbx"].iter().any(|ext| name.ends_with(ext))
+        || matches!(
+            name.as_str(),
+            ".netrc" | "credentials" | ".npmrc" | ".pypirc" | ".git-credentials" | "terraform.tfstate" | "kubeconfig"
+        )
 }
 
 /// Overlapping line ranges of a text: `(start, end, text)`, 1-based inclusive.

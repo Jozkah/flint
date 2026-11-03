@@ -91,6 +91,15 @@ fn normalized(path: &str) -> String {
     path.replace('\\', "/")
 }
 
+/// Repo-controlled text goes into the system prompt: drop control characters
+/// and backticks and cap the length (same rule as `tooling::prompt_safe`).
+fn prompt_safe(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() && *c != '`')
+        .take(200)
+        .collect()
+}
+
 /// Whether a path is vendored, built or generated output rather than source.
 fn excluded(path: &str) -> bool {
     let path = normalized(path).to_ascii_lowercase();
@@ -216,12 +225,13 @@ pub(crate) fn render(index: &Index, input: &Input<'_>) -> Option<String> {
     let mut out = String::from(HEADER);
     let mut listed = 0usize;
     for (_, path, entry) in ranked {
-        let mut names = pick_symbols(entry, &words);
+        let mut names: Vec<String> = pick_symbols(entry, &words).iter().map(|n| prompt_safe(n)).collect();
+        let shown = prompt_safe(&normalized(path));
         let line = loop {
             let line = if names.is_empty() {
-                format!("{}\n", normalized(path))
+                format!("{shown}\n")
             } else {
-                format!("{}: {}\n", normalized(path), names.join(", "))
+                format!("{shown}: {}\n", names.join(", "))
             };
             if out.len() + line.len() <= max_chars {
                 break Some(line);

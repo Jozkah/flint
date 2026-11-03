@@ -99,6 +99,24 @@ fn threads_dirs(project_root: Option<&Path>, data_folder: Option<&Path>) -> Vec<
 /// The text of a message, whatever shape it was written in: a plain string, or
 /// the desktop's content-part array.
 fn text_of(message: &serde_json::Value) -> String {
+    let mut text = content_text(message);
+    // Tool-call names and arguments, so a path or command that only appears
+    // in a call can be found.
+    if let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+        for call in calls {
+            let function = call.get("function");
+            for key in ["name", "arguments"] {
+                if let Some(s) = function.and_then(|f| f.get(key)).and_then(|v| v.as_str()) {
+                    text.push(' ');
+                    text.push_str(s);
+                }
+            }
+        }
+    }
+    text
+}
+
+fn content_text(message: &serde_json::Value) -> String {
     match message.get("content") {
         Some(serde_json::Value::String(s)) => s.clone(),
         Some(serde_json::Value::Array(parts)) => parts
@@ -204,16 +222,18 @@ pub fn search(
                 continue;
             }
             let path = session_dir.join("messages.jsonl");
-            let Ok(text) = std::fs::read_to_string(&path) else {
+            let Ok(file) = std::fs::File::open(&path) else {
                 continue;
             };
             found.searched += 1;
-            for (i, line) in text.lines().enumerate() {
+            // Streamed: a long transcript is read only up to the message bound.
+            for (i, line) in std::io::BufRead::lines(std::io::BufReader::new(file)).enumerate() {
                 if i + 1 > MAX_MESSAGES {
                     found.truncated.push(session.clone());
                     break;
                 }
-                let Ok(message) = serde_json::from_str::<serde_json::Value>(line) else {
+                let Ok(line) = line else { continue };
+                let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
                     continue;
                 };
                 let role = message
@@ -318,7 +338,7 @@ pub fn export(
             .get("role")
             .and_then(|v| v.as_str())
             .unwrap_or("(no role)");
-        let body = text_of(&message);
+        let body = content_text(&message);
         let calls = message
             .get("tool_calls")
             .and_then(|v| v.as_array())

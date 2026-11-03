@@ -487,6 +487,11 @@ fn events_file_counted(path: &Path) -> Vec<Counted> {
         out.push(record);
     }
     if let (Some(key), Ok(mut c)) = (key, cache.lock()) {
+        // One entry per log and the scan reads at most 10k: past that the
+        // cache is dropped rather than left to grow with every deleted session.
+        if c.len() >= 10_000 && !c.contains_key(path) {
+            c.clear();
+        }
         c.insert(path.to_path_buf(), (key, out.clone()));
     }
     out

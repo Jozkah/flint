@@ -9,6 +9,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+/// Bounds on a list, since its open summary is injected into reminders every turn.
+const MAX_TASKS: usize = 200;
+const MAX_TASK_CHARS: usize = 500;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TodoStatus {
@@ -179,7 +183,7 @@ impl TodoList {
 
     /// Replace the whole list. `list` is `[{phase, items}]`; a flat `items`
     /// array is wrapped into a single unnamed phase (`""`).
-    pub fn init(&mut self, phases: Vec<TodoPhase>) -> Result<(), String> {
+    pub fn init(&mut self, mut phases: Vec<TodoPhase>) -> Result<(), String> {
         let mut names = std::collections::HashSet::new();
         for phase in &phases {
             if !names.insert(phase.name.as_str()) {
@@ -189,6 +193,9 @@ impl TodoList {
             for task in &phase.tasks {
                 if task.content.trim().is_empty() {
                     return Err("task content must not be empty".to_string());
+                }
+                if task.content.chars().count() > MAX_TASK_CHARS {
+                    return Err(format!("task content is over {MAX_TASK_CHARS} characters"));
                 }
                 if !tasks.insert(task.content.as_str()) {
                     return Err(format!("duplicate task '{}'", task.content));
@@ -202,6 +209,20 @@ impl TodoList {
                 if !all_tasks.insert(task.content.as_str()) {
                     return Err(format!("duplicate task '{}' across phases", task.content));
                 }
+            }
+        }
+        if phases.iter().map(|p| p.tasks.len()).sum::<usize>() > MAX_TASKS {
+            return Err(format!("more than {MAX_TASKS} tasks"));
+        }
+        // Single-active-task invariant: keep the first in-progress task and
+        // demote any others, whatever statuses the model sent.
+        let mut active_seen = false;
+        for task in phases.iter_mut().flat_map(|p| p.tasks.iter_mut()) {
+            if task.status == TodoStatus::InProgress {
+                if active_seen {
+                    task.status = TodoStatus::Pending;
+                }
+                active_seen = true;
             }
         }
         self.phases = phases;
@@ -526,6 +547,23 @@ mod tests {
                 .map(|s| TodoItem::pending(s.to_string()))
                 .collect(),
         }
+    }
+
+    #[test]
+    fn init_keeps_only_the_first_in_progress_task() {
+        let mut list = TodoList::default();
+        let mut p = phase("A", &["a", "b", "c"]);
+        p.tasks[1].status = TodoStatus::InProgress;
+        p.tasks[2].status = TodoStatus::InProgress;
+        list.init(vec![p]).unwrap();
+        let active = list
+            .phases
+            .iter()
+            .flat_map(|p| &p.tasks)
+            .filter(|t| t.status == TodoStatus::InProgress)
+            .count();
+        assert_eq!(active, 1);
+        assert_eq!(list.active().unwrap().1.content, "b");
     }
 
     #[test]
