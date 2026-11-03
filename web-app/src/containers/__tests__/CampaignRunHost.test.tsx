@@ -24,6 +24,9 @@ vi.mock('@/lib/platform/utils', async (orig) => ({
 vi.mock('@/lib/campaignHost', () => ({
   getCampaignRunner: () => ({ kick: mocks.kick }),
 }))
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({ t: (k: string) => k }),
+}))
 vi.mock('@/containers/SplitConversation', () => ({
   CoworkPane: () => null,
 }))
@@ -103,5 +106,24 @@ describe('CampaignRunHost', () => {
     const r = await mount(campaigns())
     r.unmount()
     expect(screen.queryByTestId('pane-s1')).toBeNull()
+  })
+
+  it('puts a lost run back with a translated reason', async () => {
+    vi.useFakeTimers()
+    try {
+      await mount(campaigns())
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000)
+      })
+      expect(mocks.transition).toHaveBeenCalledWith('c1', {
+        task: {
+          id: 't1',
+          to: 'queued',
+          patch: { detail: 'common:campaignRunLost' },
+        },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

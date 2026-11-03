@@ -208,7 +208,7 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
         {selecting && (
           <div
             role="toolbar"
-            aria-label="Text formatting"
+            aria-label={t('common:textFormattingToolbar')}
             className="absolute -top-9 left-3 z-10 flex gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
           >
             {button('Bold', <Bold size={14} />, () => editor?.chain().focus().toggleBold().run(), !!editor?.isActive('bold'))}

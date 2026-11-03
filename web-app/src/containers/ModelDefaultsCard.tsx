@@ -22,6 +22,11 @@ export function ModelDefaultsCard() {
   const downloadLimitMBps = useGeneralSetting((s) => s.downloadLimitMBps)
   const setDownloadLimitMBps = useGeneralSetting((s) => s.setDownloadLimitMBps)
   const [isValidatingToken, setIsValidatingToken] = useState(false)
+  // The last check's outcome stays next to the field; a toast alone is gone
+  // before it is read. Cleared when the token is edited.
+  const [tokenCheck, setTokenCheck] = useState<
+    'valid' | 'invalid' | 'timedOut' | 'failed' | null
+  >(null)
   // Edited as text and committed on blur/Enter, so a half-typed or cleared
   // field never writes a limit (CTB-007).
   const [limitDraft, setLimitDraft] = useState(String(downloadLimitMBps))
@@ -42,6 +47,7 @@ export function ModelDefaultsCard() {
       return
     }
     setIsValidatingToken(true)
+    setTokenCheck(null)
     const controller = new AbortController()
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -53,6 +59,7 @@ export function ModelDefaultsCard() {
         signal: controller.signal,
       })
       if (resp.ok) {
+        setTokenCheck('valid')
         const data = await resp.json()
         toast.success(t('settings:general.hfToken.valid'), {
           description: data?.name
@@ -60,6 +67,7 @@ export function ModelDefaultsCard() {
             : t('settings:general.hfToken.validDesc'),
         })
       } else {
+        setTokenCheck('invalid')
         toast.error(t('settings:general.hfToken.invalid'), {
           description: t('settings:general.hfToken.invalidDesc'),
         })
@@ -67,10 +75,12 @@ export function ModelDefaultsCard() {
     } catch (e) {
       const name = (e as { name?: string })?.name
       if (name === 'AbortError') {
+        setTokenCheck('timedOut')
         toast.error(t('settings:general.hfToken.timedOut'), {
           description: t('settings:general.hfToken.timedOutDesc'),
         })
       } else {
+        setTokenCheck('failed')
         toast.error(t('settings:general.hfToken.failed'), {
           description: t('settings:general.hfToken.failedDesc'),
         })
@@ -99,12 +109,16 @@ export function ModelDefaultsCard() {
         })}
         column
         actions={
+          <div className="flex w-full min-w-0 flex-col gap-1">
           <div className="flex w-full min-w-0 items-center gap-2">
             <SecretInput
               id="hf-token"
               className="min-w-0 flex-1 font-mono"
               value={huggingfaceToken || ''}
-              onChange={(e) => setHuggingfaceToken(e.target.value)}
+              onChange={(e) => {
+                setTokenCheck(null)
+                setHuggingfaceToken(e.target.value)
+              }}
               placeholder={'hf_xxx_xxx'}
             />
             <Button
@@ -115,6 +129,20 @@ export function ModelDefaultsCard() {
             >
               {t('settings:general.verify')}
             </Button>
+          </div>
+          {tokenCheck && (
+            <p
+              role="status"
+              data-testid="hf-token-status"
+              className={
+                tokenCheck === 'valid'
+                  ? 'text-xs text-success'
+                  : 'text-xs text-destructive'
+              }
+            >
+              {t(`settings:general.hfToken.${tokenCheck}`)}
+            </p>
+          )}
           </div>
         }
       />

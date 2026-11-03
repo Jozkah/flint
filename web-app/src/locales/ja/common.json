@@ -3400,5 +3400,11 @@
     "discard": "下書きを破棄",
     "resurvey": "再調査",
     "accept": "承認して FLINT.md を書き込む"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

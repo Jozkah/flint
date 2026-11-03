@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
+import { isPlatformTauri } from '@/lib/platform/utils'
 import { autostartGet, autostartSet, type AutostartStatus } from '@/lib/autostart'
 
 /**
@@ -27,12 +28,15 @@ export function StartupItems() {
   const [confirming, setConfirming] = useState(false)
   const [minimizedChoice, setMinimizedChoice] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const load = useCallback(async () => {
     try {
       setStatus(await autostartGet())
+      setLoadFailed(false)
     } catch {
       setStatus(null)
+      setLoadFailed(true)
     }
   }, [])
 
@@ -40,6 +44,26 @@ export function StartupItems() {
     void load()
   }, [load])
 
+  // On the desktop app a failed read is an error to show; elsewhere there is
+  // no startup list at all, so the row stays hidden.
+  if (!status && loadFailed && isPlatformTauri()) {
+    return (
+      <CardItem
+        anchor="settings-general-start-with-computer"
+        title={t('settings:startup.title')}
+        description={
+          <span role="alert" className="text-destructive">
+            {t('settings:startup.loadFailed')}
+          </span>
+        }
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void load()}>
+            {t('settings:startup.retry')}
+          </Button>
+        }
+      />
+    )
+  }
   if (!status) return null
 
   const apply = async (enable: boolean, minimized: boolean) => {

@@ -130,6 +130,7 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
 import { MessageItem } from '../MessageItem'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { wrapForModel } from '@/lib/sessionMailbox'
+import { useMessageErrors } from '@/stores/message-errors'
 
 const makeMsg = (overrides: any = {}) => ({
   id: 'msg-1',
@@ -747,6 +748,25 @@ describe('MessageItem', () => {
       expect(bodies).toHaveLength(1)
       expect(bodies[0]).toHaveTextContent('final')
     })
+  })
+
+  it('words the per-message error title through the translations', () => {
+    useMessageErrors.setState({ errors: { 'msg-1': 'model said no' } })
+    try {
+      render(
+        <MessageItem
+          message={makeMsg() as any}
+          isFirstMessage
+          isLastMessage
+          status={'ready' as any}
+        />
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'chat:messageItem.generationFailed'
+      )
+    } finally {
+      useMessageErrors.setState({ errors: {} })
+    }
   })
 
   it('renders tool error when state is output-error', () => {

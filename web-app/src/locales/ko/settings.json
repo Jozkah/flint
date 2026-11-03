@@ -1511,7 +1511,9 @@
     "confirmBody": "아래 항목만 그대로 사용자 계정에 기록하며 그 외에는 아무것도 기록하지 않습니다. 관리자 권한은 필요하지 않습니다.",
     "confirmUndo": "스위치를 끄면 이 항목이 제거됩니다.",
     "confirm": "항목 추가",
-    "failed": "시작 항목을 변경하지 못했습니다"
+    "failed": "시작 항목을 변경하지 못했습니다",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "사이드바 항목",

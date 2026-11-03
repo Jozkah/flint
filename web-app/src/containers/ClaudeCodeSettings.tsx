@@ -4,7 +4,12 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useClaudeCodeModel } from '@/hooks/useClaudeCodeModel'
-import { availableHelperModels, claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
+import {
+  availableHelperModels,
+  claudeCodeApiUrl,
+  serverModelsToPersist,
+  waitForModelsActive,
+} from '@/lib/claudeCodeLaunch'
 import { useClaudeCodeContextPlans } from '@/hooks/useClaudeCodeContext'
 import { CLAUDE_CODE_MIN_CONTEXT } from '@/lib/claudeCodeContext'
 import { useAppState } from '@/hooks/useAppState'
@@ -216,7 +221,10 @@ export function ClaudeCodeSettings() {
           .models()
           .getActiveModels()
           .then((models) => setActiveModels(models || []))
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await waitForModelsActive(
+          () => serviceHub.models().getActiveModels(),
+          modelsToStart
+        )
       } else if (loadedModels.length === 0 && helperModelsToStart.length === 0) {
         const modelToStart = getModelToStart({
           selectedModel,
@@ -235,7 +243,10 @@ export function ClaudeCodeSettings() {
                 .models()
                 .getActiveModels()
                 .then((models) => setActiveModels(models || []))
-              return new Promise((resolve) => setTimeout(resolve, 500))
+              return waitForModelsActive(
+                () => serviceHub.models().getActiveModels(),
+                [modelToStart.model]
+              )
             })
             .finally(() => setIsModelLoading(false))
         }
@@ -276,10 +287,7 @@ export function ClaudeCodeSettings() {
         .getActiveModels()
         .catch(() => [] as string[])
       if (activeModels.length > 0) {
-        const serverModels = activeModels.flatMap((id) => {
-          const p = providers.find((p) => p?.models?.some((m) => m.id === id))
-          return p ? [{ model: id, provider: p.provider }] : []
-        })
+        const serverModels = serverModelsToPersist(activeModels, providers)
         if (serverModels.length > 0) setLastServerModels(serverModels)
       }
     }

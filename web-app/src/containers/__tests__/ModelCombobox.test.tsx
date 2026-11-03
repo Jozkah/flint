@@ -90,6 +90,13 @@ describe('ModelCombobox', () => {
     expect(input).toHaveAttribute('placeholder', 'Choose a model')
   })
 
+  it('labels the chevron toggle for assistive tech', () => {
+    render(<ModelCombobox {...defaultProps} />)
+    expect(
+      screen.getByRole('button', { name: 'common:toggleModelList' })
+    ).toBeInTheDocument()
+  })
+
   it('renders dropdown trigger button', () => {
     act(() => {
       render(<ModelCombobox {...defaultProps} />)

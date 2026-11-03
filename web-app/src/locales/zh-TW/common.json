@@ -3405,5 +3405,11 @@
     "discard": "捨棄草稿",
     "resurvey": "重新勘查",
     "accept": "接受並寫入 FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

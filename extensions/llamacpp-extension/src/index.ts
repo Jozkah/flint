@@ -509,7 +509,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   private config: LlamacppConfig
   private providerPath!: string
-  private pendingDownloads: Map<string, Promise<void>> = new Map()
   /** Keyed by modelId; two imports of one model would cancel each other. */
   private pendingImports: Map<string, Promise<void>> = new Map()
   /**
@@ -534,7 +533,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private presetPath?: string
   private engineStartLock: Promise<void> | null = null
   private userModelsMax: number = 1
-  private engineEmbeddingBonus: number = 0
   private loadedChatOrder: string[] = []
   // Models whose `auto` KV cache defaults failed to load and now run f16. Kept
   // for the session so the next load does not fail the same way; cleared when
@@ -1121,7 +1119,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
     this.userModelsMax = modelsMax
     const bonus = modelsMax > 0 && embeddingCount > 0 ? 1 : 0
-    this.engineEmbeddingBonus = bonus
     return modelsMax + bonus
   }
 

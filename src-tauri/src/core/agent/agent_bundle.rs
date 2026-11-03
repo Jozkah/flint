@@ -18,7 +18,10 @@
 //! * **Policy cannot widen silently.** The `[tools]` section goes through the
 //!   same comparison `flint cli agent policy import` uses: a bundle that would
 //!   allow more than the project does now is refused unless widening is
-//!   accepted explicitly.
+//!   accepted explicitly. So is a new or changed skill script (an executable
+//!   file the agent can be told to run), named in the refusal. A subagent
+//!   definition needs no such review: its toolset is its list intersected with
+//!   its parent's, so it can narrow the parent and never widen it.
 //! * **All or nothing.** Everything is written to a staging directory first
 //!   and moved into place only when every entry has been written; a failure
 //!   part-way removes the staging directory and leaves the project as it was.
@@ -141,6 +144,24 @@ fn checked_path(path: &str) -> Result<(Kind, PathBuf), String> {
         return Err(format!("{path:?} names a directory, not a file"));
     }
     Ok((*kind, relative))
+}
+
+/// Whether a bundle path is an executable file of a skill: anything under a
+/// skill's `scripts/` folder, or with an extension a shell or interpreter runs.
+fn is_skill_script(path: &str) -> bool {
+    if !path.starts_with("skills/") {
+        return false;
+    }
+    let lower = path.to_ascii_lowercase();
+    if lower.split('/').rev().skip(1).any(|dir| dir == "scripts" || dir == "bin") {
+        return true;
+    }
+    let ext = lower.rsplit_once('.').map_or("", |(_, e)| e);
+    matches!(
+        ext,
+        "sh" | "bash" | "zsh" | "fish" | "ps1" | "psm1" | "bat" | "cmd" | "py" | "rb" | "pl" | "js" | "mjs"
+            | "cjs" | "ts" | "exe" | "dll" | "com" | "vbs" | "wsf" | "lua" | "php"
+    )
 }
 
 fn walk(dir: &Path, base: &Path, out: &mut Vec<PathBuf>, skipped: &mut Vec<String>) {
@@ -343,6 +364,24 @@ pub fn import(
             Err(e) => return Err(err(ErrorKind::Io, Stage::Persistence, format!("{}: {e}", entry.path))),
         }
         *report.counts.entry(format!("{:?}", entry.kind).to_lowercase()).or_default() += 1;
+    }
+    // A script the agent can run is code arriving with the bundle. It is
+    // written only when the caller has said so, having been shown which.
+    let scripts: Vec<&str> = to_write
+        .iter()
+        .filter(|e| is_skill_script(&e.path))
+        .map(|e| e.path.as_str())
+        .collect();
+    if !scripts.is_empty() && !accept_widening {
+        return Err(err(
+            ErrorKind::PolicyViolation,
+            Stage::Persistence,
+            format!(
+                "the bundle brings {} the agent can run: {}. Nothing was written; accept widening to import them",
+                if scripts.len() == 1 { "a script" } else { "scripts" },
+                scripts.join(", ")
+            ),
+        ));
     }
     // Policy is planned before anything is written, so a refused widening
     // leaves the components unwritten too.
@@ -602,14 +641,37 @@ mod tests {
         let text = serde_json::to_string(&bundle).unwrap();
         let dst = project("dst");
         let parsed = parse(&text).unwrap();
-        let written = import(&dst, &parsed, false, false, false).unwrap();
+        let written = import(&dst, &parsed, false, true, false).unwrap();
         assert_eq!(written.written, 5);
         let (again, _) = export(&dst).unwrap();
         assert_eq!(again.entries, bundle.entries, "a second export is the first");
         assert!(again.policy.as_deref().unwrap().contains("bash"), "the policy came across");
         // A second import of the same bundle changes nothing.
-        let repeat = import(&dst, &parsed, false, false, false).unwrap();
+        let repeat = import(&dst, &parsed, false, true, false).unwrap();
         assert_eq!((repeat.written, repeat.unchanged), (0, 5));
+    }
+
+    /// O09-039: a skill script arriving in a bundle is code the agent can run,
+    /// so it is written only with an explicit acceptance, and the refusal names
+    /// it. The other components are not written either.
+    #[test]
+    fn a_skill_script_needs_an_explicit_acceptance() {
+        let src = seeded();
+        let (bundle, _) = export(&src).unwrap();
+        let dst = project("scripts");
+        let refused = import(&dst, &bundle, false, false, false).unwrap_err();
+        assert_eq!(refused.kind(), ErrorKind::PolicyViolation);
+        assert!(refused.to_string().contains("skills/deploy/scripts/run.sh"), "{refused}");
+        assert!(!agent_dir(&dst).join("subagents").exists(), "nothing was written");
+        // Without a script nothing needs accepting.
+        let mut plain = bundle.clone();
+        plain.entries.retain(|e| !is_skill_script(&e.path));
+        plain.policy = None;
+        assert!(import(&dst, &plain, false, false, false).is_ok());
+        assert!(is_skill_script("skills/x/scripts/a.txt"));
+        assert!(is_skill_script("skills/x/run.PS1"));
+        assert!(!is_skill_script("skills/x/SKILL.md"));
+        assert!(!is_skill_script("subagents/a.toml"));
     }
 
     #[test]
@@ -656,7 +718,7 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::PolicyViolation);
         assert_eq!(std::fs::read_to_string(agent_dir(&conflict).join("skills/flat.md")).unwrap(), "mine\n");
         assert!(!agent_dir(&conflict).join("subagents").exists());
-        assert!(import(&conflict, &plain, true, false, false).is_ok());
+        assert!(import(&conflict, &plain, true, true, false).is_ok());
     }
 
     /// A directory where the bundle puts a file is not "absent": it refuses
@@ -794,10 +856,10 @@ mod tests {
         let src = seeded();
         let (bundle, _) = export(&src).unwrap();
         let dst = project("dry");
-        let r = import(&dst, &bundle, false, false, true).unwrap();
+        let r = import(&dst, &bundle, false, true, true).unwrap();
         assert_eq!(r.written, 5);
         assert!(!agent_dir(&dst).join("skills").exists());
-        import(&dst, &bundle, false, false, false).unwrap();
+        import(&dst, &bundle, false, true, false).unwrap();
         let leftovers: Vec<_> = std::fs::read_dir(agent_dir(&dst)).unwrap().flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with(".bundle-import")).collect();
         assert!(leftovers.is_empty());

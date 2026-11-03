@@ -1,4 +1,5 @@
 import type { UIMessage } from '@ai-sdk/react'
+import { readAsDataUrl } from '@/lib/attachmentIntake'
 
 /**
  * llama.cpp reads an image with stb_image, which cannot decode WebP, so a WebP
@@ -36,12 +37,7 @@ export const transcodeToPngWithCanvas: TranscodeToPng = async (dataUrl) => {
       canvas.toBlob(resolve, 'image/png')
     )
     if (!png) return null
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(png)
-    })
+    return await readAsDataUrl(png)
   } finally {
     bitmap.close?.()
   }
