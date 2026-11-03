@@ -379,15 +379,20 @@ fn spawn_load_progress_listener<S: ProgressSink>(
         announce();
 
         let mut stream = resp.bytes_stream();
-        let mut buf = String::new();
+        // Bytes until a whole block is in, so a multi-byte character split
+        // across chunks decodes intact; bounded so a block that never ends
+        // cannot grow it without limit (ENG-008).
+        const MAX_PENDING: usize = 1024 * 1024;
+        let mut buf: Vec<u8> = Vec::new();
         let mut fail_tx = Some(fail_tx);
         let mut saw_loading = false;
         while let Some(chunk) = stream.next().await {
             let Ok(bytes) = chunk else { break };
-            buf.push_str(&String::from_utf8_lossy(&bytes));
+            buf.extend_from_slice(&bytes);
 
-            while let Some(pos) = buf.find("\n\n") {
-                let event_block: String = buf.drain(..pos + 2).collect();
+            while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
+                let raw: Vec<u8> = buf.drain(..pos + 2).collect();
+                let event_block = String::from_utf8_lossy(&raw).into_owned();
                 if let Some(payload) = parse_load_progress_event(&event_block, &model_id) {
                     sink.load_progress(payload);
                 }
@@ -402,6 +407,10 @@ fn spawn_load_progress_listener<S: ProgressSink>(
                     }
                     _ => {}
                 }
+            }
+            if buf.len() > MAX_PENDING {
+                log::warn!("/models/sse sent {} bytes without ending a block; dropping them", buf.len());
+                buf.clear();
             }
         }
     })
