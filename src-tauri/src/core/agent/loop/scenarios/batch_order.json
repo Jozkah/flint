@@ -1,0 +1,24 @@
+{
+  "name": "batch_order",
+  "description": "A read listed before a write in the same batch sees the file as it was; a read listed after sees the write (#1263).",
+  "files": { "a.txt": "old contents\n", "b.txt": "untouched\n" },
+  "task": "Read a.txt, overwrite it, and read it again.",
+  "model": [
+    { "calls": [
+      { "id": "c1", "name": "read", "args": { "path": "a.txt" } },
+      { "id": "c2", "name": "write", "args": { "path": "a.txt", "content": "new contents\n" } },
+      { "id": "c3", "name": "read", "args": { "path": "a.txt" } }
+    ] },
+    { "say": "The first read saw the old text and the second the new." }
+  ],
+  "expect": {
+    "requests": 2,
+    "final_text_contains": ["first read saw the old"],
+    "tool_results": [
+      { "call": "c1", "contains": "old contents" },
+      { "call": "c3", "contains": "new contents" }
+    ],
+    "files": { "a.txt": "new contents\n" },
+    "unchanged": ["b.txt"]
+  }
+}

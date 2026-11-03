@@ -1,0 +1,15 @@
+{
+  "name": "empty_glob",
+  "description": "An empty optional glob or path means not given, so the search still finds the file (#1255).",
+  "files": { "a.txt": "needle here\n", "b.txt": "nothing\n" },
+  "task": "Find needle.",
+  "model": [
+    { "calls": [ { "id": "g1", "name": "grep", "args": { "pattern": "needle", "glob": "", "path": "" } } ] },
+    { "say": "Found it in a.txt." }
+  ],
+  "expect": {
+    "requests": 2,
+    "tool_results": [ { "call": "g1", "contains": "a.txt" } ],
+    "unchanged": ["a.txt", "b.txt"]
+  }
+}
