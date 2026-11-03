@@ -1,4 +1,5 @@
 {
+  "readFailed": "Nie udało się odczytać dziennika: {{message}}",
   "noLogs": "Brak dzienników",
   "noMatch": "Żadne wiersze nie pasują do filtra",
   "title": "Dzienniki",

@@ -1,21 +1,18 @@
+import { peekBatches } from '@/lib/rooms/peekBatches'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
-import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import HeaderPage from '@/containers/HeaderPage'
-import { ArrowRight, MessagesSquare, Plus } from 'lucide-react'
+import { MessagesSquare, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon, type IconName } from '@/components/ui/icon'
 import { Segmented } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { KpiRow, KpiTile } from '@/containers/engine/EngineKit'
 import type { RoomStatus, RoomSummary } from '@/lib/rooms/types'
 import {
   normalizeError,
@@ -34,13 +30,15 @@ import {
 } from '@/containers/rooms/roomsBindings'
 import {
   activeParticipants,
-  lastSaid,
   messagesOf,
-  timeAgo,
   type RoomDetail,
 } from '@/containers/rooms/roomUi'
-import { RoomAvatar } from '@/containers/rooms/RoomAvatar'
-import { AvatarStack, RoomCard } from '@/containers/rooms/RoomCard'
+import { RoomCard } from '@/containers/rooms/RoomCard'
+import {
+  CreateRoomDialog,
+  RoomsKpis,
+  WaitingRooms,
+} from '@/containers/rooms/RoomsListParts'
 import { roomFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 
@@ -87,7 +85,6 @@ function RoomsList() {
   const createdRoomRef = useRef<Awaited<ReturnType<typeof api.createRoom>> | null>(null)
   const { summaries, listLoading, lastError } = useRoomsState()
   const navigate = useNavigate()
-  const uid = useId()
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   // The group the room being created joins, when "+" on a group opened it.
@@ -112,19 +109,31 @@ function RoomsList() {
     const peek = api.peekRoom
     if (!peek) return
     let live = true
-    Promise.all(
-      summaries.slice(0, 48).map((s) =>
-        peek(s.id).then(
-          (d) => [s.id, d] as const,
-          () => null
+    const byId = new Map(summaries.map((s) => [s.id, s]))
+    void (async () => {
+      // Every room, newest first, a few at a time: the cards in view fill in
+      // first and the weekly statistics end up covering all rooms.
+      for (const batch of peekBatches(summaries)) {
+        const rows = await Promise.all(
+          batch.map((id) =>
+            peek(id).then(
+              (d) => [id, d] as const,
+              () => null
+            )
+          )
         )
-      )
-    ).then((rows) => {
-      if (!live) return
-      const next: Record<string, RoomDetail> = {}
-      for (const row of rows) if (row) next[row[0]] = row[1]
-      setDetails(next)
-    })
+        if (!live) return
+        // Keep what earlier rounds read (a refetch must not blank the cards),
+        // drop rooms that are gone, and overwrite with this round's answers.
+        setDetails((prev) => {
+          const next: Record<string, RoomDetail> = {}
+          for (const id of byId.keys()) if (prev[id]) next[id] = prev[id]
+          for (const row of rows) if (row && byId.has(row[0])) next[row[0]] = row[1]
+          return next
+        })
+      }
+      if (live && summaries.length === 0) setDetails({})
+    })()
     return () => {
       live = false
     }
@@ -341,111 +350,9 @@ function RoomsList() {
 
           {hasRooms && (
             <>
-              <KpiRow>
-                <KpiTile
-                  testId="rooms-kpi-running"
-                  title={t('rooms:kpi.running')}
-                  icon={<Icon name="x-play" />}
-                  value={String(stats.running)}
-                  sub={t('rooms:kpi.paused', { count: stats.paused })}
-                  delay={40}
-                />
-                <KpiTile
-                  testId="rooms-kpi-waiting"
-                  title={t('rooms:kpi.waiting')}
-                  icon={<Icon name="bell" />}
-                  value={String(stats.waiting)}
-                  sub={
-                    stats.waiting > 0 ? (
-                      <span className="text-warning">{t('rooms:kpi.waitingHint')}</span>
-                    ) : (
-                      t('rooms:kpi.waitingNone')
-                    )
-                  }
-                  delay={90}
-                />
-                <KpiTile
-                  testId="rooms-kpi-turns"
-                  title={t('rooms:kpi.turns')}
-                  icon={<Icon name="x-activity" />}
-                  value={String(stats.turnsWeek)}
-                  sub={t('rooms:kpi.turnsHint', { count: stats.roomsWeek })}
-                  delay={140}
-                />
-                <KpiTile
-                  testId="rooms-kpi-models"
-                  title={t('rooms:kpi.models')}
-                  icon={<Icon name="x-cpu" />}
-                  value={String(stats.models.length)}
-                  sub={
-                    stats.models.length > 0 ? (
-                      <span
-                        className="flex items-center"
-                        title={stats.models.map((m) => m.id).join('\n')}
-                      >
-                        {stats.models.slice(0, 8).map((m, i) => (
-                          <RoomAvatar
-                            key={`${m.provider}/${m.id}`}
-                            model={m}
-                            name={m.id}
-                            size={20}
-                            className={i > 0 ? '-ml-1.5 ring-2 ring-card' : 'ring-2 ring-card'}
-                          />
-                        ))}
-                      </span>
-                    ) : (
-                      t('rooms:kpi.modelsNone')
-                    )
-                  }
-                  delay={190}
-                />
-              </KpiRow>
+              <RoomsKpis stats={stats} />
 
-              {waiting.length > 0 && (
-                <Frame
-                  data-testid="rooms-waiting"
-                  className="motion-safe:animate-rise-in [animation-delay:120ms]"
-                >
-                  <FrameHeader
-                    icon={<Icon name="bell" />}
-                    title={t('rooms:waiting.title')}
-                    actions={<Chip tone="warn" dot live>{waiting.length}</Chip>}
-                  />
-                  <FrameBody className="divide-y divide-border">
-                    {waiting.map((s) => {
-                      const d = details[s.id]
-                      const last = d ? lastSaid(d.journal) : null
-                      return (
-                        <div
-                          key={s.id}
-                          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3"
-                        >
-                          {d && <AvatarStack room={d.room} size={26} />}
-                          <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
-                            <b className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
-                              {s.title || t('rooms:list.untitled')}
-                            </b>
-                            <span className="truncate text-xs text-muted-foreground">
-                              {last
-                                ? `${last.author.kind === 'participant' ? last.author.name : t('rooms:transcript.you')}: ${last.text.replace(/[`*_#>]/g, '')}`
-                                : t('rooms:stage.awaitingHint')}
-                            </span>
-                          </div>
-                          <span className="hidden text-xs text-subtle-foreground @[40rem]/rooms:inline">
-                            {timeAgo(s.updatedAt, lang)}
-                          </span>
-                          <Button size="sm" variant="outline" className="pointer-coarse:h-11" asChild>
-                            <Link to={route.roomDetail} params={{ roomId: s.id }}>
-                              {t('rooms:waiting.action')}
-                              <ArrowRight aria-hidden />
-                            </Link>
-                          </Button>
-                        </div>
-                      )
-                    })}
-                  </FrameBody>
-                </Frame>
-              )}
+              <WaitingRooms waiting={waiting} details={details} lang={lang} />
 
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -494,59 +401,20 @@ function RoomsList() {
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void create()
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>{t('rooms:create.title')}</DialogTitle>
-              <DialogDescription>{t('rooms:create.description')}</DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${uid}-title`}>{t('rooms:create.titleLabel')}</Label>
-              <Input
-                id={`${uid}-title`}
-                placeholder={t('rooms:create.titlePlaceholder')}
-                value={title}
-                aria-invalid={titleError || undefined}
-                aria-describedby={titleError ? `${uid}-title-error` : undefined}
-                onChange={(e) => {
-                  setTitle(e.target.value)
-                  setTitleError(false)
-                }}
-              />
-              {titleError && (
-                <p id={`${uid}-title-error`} className="text-xs text-destructive">
-                  {t('rooms:create.titleRequired')}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${uid}-objective`}>{t('rooms:create.objectiveLabel')}</Label>
-              <Textarea
-                id={`${uid}-objective`}
-                rows={3}
-                value={objective}
-                placeholder={t('rooms:create.objectivePlaceholder')}
-                onChange={(e) => setObjective(e.target.value)}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="surface" onClick={() => setCreateOpen(false)}>
-                {t('rooms:create.cancel')}
-              </Button>
-              <Button type="submit" disabled={creating}>
-                {t('rooms:create.submit')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateRoomDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title={title}
+        onTitleChange={(value) => {
+          setTitle(value)
+          setTitleError(false)
+        }}
+        objective={objective}
+        onObjectiveChange={setObjective}
+        titleError={titleError}
+        creating={creating}
+        onSubmit={() => void create()}
+      />
 
       <Dialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">

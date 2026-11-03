@@ -1,4 +1,5 @@
 {
+  "readFailed": "로그를 읽지 못했습니다: {{message}}",
   "noLogs": "사용 가능한 로그 없음",
   "noMatch": "필터와 일치하는 줄이 없습니다",
   "title": "로그",

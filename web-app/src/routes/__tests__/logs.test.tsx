@@ -160,6 +160,15 @@ describe('LogsViewer route', () => {
     expect(screen.getByText('logs:noMatch')).toBeInTheDocument()
   })
 
+  it('shows why the log could not be read', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.readLogs.mockRejectedValue(new Error('access denied'))
+    renderComponent()
+    const alert = await screen.findByTestId('log-read-error')
+    expect(alert).toHaveTextContent('logs:readFailed')
+    errorSpy.mockRestore()
+  })
+
   it('clears interval on unmount', async () => {
     const clearSpy = vi.spyOn(global, 'clearInterval')
     const { unmount } = renderComponent()

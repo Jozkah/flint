@@ -20,8 +20,12 @@ import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
+  classifyServerStartError,
+  serverModelsFromActive,
+  startLocalApiServer,
+} from '@/lib/localApiServer'
+import {
   cn,
-  guardServerStart,
   MODEL_LOAD_WATCHDOG_MS,
   withTimeout,
 } from '@/lib/utils'
@@ -182,13 +186,10 @@ function LocalAPIServerContent() {
           // Remember loaded models for next startup
           const activeModels = await serviceHub.models().getActiveModels()
           if (activeModels && activeModels.length > 0) {
-            const allProviders = useModelProvider.getState().providers
-            const serverModels = activeModels.flatMap((id: string) => {
-              const p = allProviders.find((p) =>
-                p?.models?.some((m: { id: string }) => m.id === id)
-              )
-              return p ? [{ model: id, provider: p.provider }] : []
-            })
+            const serverModels = serverModelsFromActive(
+              activeModels,
+              useModelProvider.getState().providers
+            )
             if (serverModels.length > 0) setLastServerModels(serverModels)
           }
 
@@ -199,19 +200,17 @@ function LocalAPIServerContent() {
         .then(() => {
           // Then start the server
           phase = 'server'
-          return guardServerStart(
-            window.core?.api?.startServer({
-              host: serverHost,
-              port: serverPort,
-              prefix: apiPrefix,
+          return startLocalApiServer({
+              serverHost,
+              serverPort,
+              apiPrefix,
               apiKey,
               trustedHosts,
-              isCorsEnabled: corsEnabled,
-              isVerboseEnabled: verboseLogs,
-              proxyTimeout: proxyTimeout,
+              corsEnabled,
+              verboseLogs,
+              proxyTimeout,
               enableServerToolExecution,
             })
-          )
         })
         .then((actualPort: number | undefined) => {
           // Track the port actually bound (important for mobile with port 0).
@@ -235,31 +234,20 @@ function LocalAPIServerContent() {
           setIsModelLoading(false) // Reset loading state on error
           toast.dismiss()
 
-          // Extract error message from various error formats
-          const errorMsg =
-            error && typeof error === 'object' && 'message' in error
-              ? String(error.message)
-              : String(error)
-
-          // `start_server` rejects with { code, message } (ServerStartError).
-          const code =
-            error && typeof error === 'object' && 'code' in error
-              ? String((error as { code: unknown }).code)
-              : undefined
-
-          if (phase === 'server' && code === 'PORT_IN_USE') {
+          const failure = classifyServerStartError(error, phase)
+          if (failure.kind === 'port-in-use') {
             toast.error(t('model-errors:serverPortOccupied'), {
               description: t('model-errors:serverPortOccupiedDescription', {
                 port: serverPort,
               }),
             })
-          } else if (phase === 'model') {
+          } else if (failure.kind === 'model') {
             toast.error(t('model-errors:serverStartModelFailed'), {
-              description: errorMsg,
+              description: failure.message,
             })
           } else {
             toast.error(t('model-errors:serverStartFailed'), {
-              description: errorMsg,
+              description: failure.message,
             })
           }
         })

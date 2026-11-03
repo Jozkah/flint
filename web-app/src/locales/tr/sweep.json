@@ -98,6 +98,7 @@
     "newest": "En yeni",
     "noMatching": "Eşleşen model yok",
     "noMatchingHint": "Daha geniş bir arama dene veya filtrelerden birini kaldır.",
+    "filesFailed": "Bu depodaki varyantlar yüklenemedi.",
     "noVariants": "Bu depoda indirilebilir GGUF varyantı bulunamadı.",
     "onThisMac": "Bu Mac'te",
     "onlyFit": "Yalnızca uyan modeller",

@@ -13,19 +13,30 @@ export class ModelManager {
     }
   }
 
+  private upsert<T extends Model>(model: T) {
+    // Precedence is deliberate: a model that is already registered keeps its
+    // stored values (user edits survive re-registration); the incoming entry
+    // only fills in fields the stored one lacks.
+    const existing = this.models.get(model.id)
+    this.models.set(model.id, existing ? { ...model, ...existing } : model)
+  }
+
   /**
    * Registers a model.
    * @param model - The model to register.
    */
   register<T extends Model>(model: T) {
-    if (this.models.has(model.id)) {
-      this.models.set(model.id, {
-        ...model,
-        ...this.models.get(model.id),
-      })
-    } else {
-      this.models.set(model.id, model)
-    }
+    this.upsert(model)
+    events.emit(ModelEvent.OnModelsUpdate, {})
+  }
+
+  /**
+   * Registers several models and emits a single update event.
+   * @param models - The models to register.
+   */
+  registerMany<T extends Model>(models: T[]) {
+    if (!models.length) return
+    for (const model of models) this.upsert(model)
     events.emit(ModelEvent.OnModelsUpdate, {})
   }
 

@@ -1,4 +1,5 @@
 {
+  "readFailed": "Impossible de lire le journal : {{message}}",
   "noLogs": "Aucun journal disponible",
   "noMatch": "Aucune ligne ne correspond au filtre",
   "title": "Journaux",

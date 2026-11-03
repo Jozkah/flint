@@ -17,6 +17,7 @@ const MAX_LOG_ENTRIES = 20000
 function LogsViewer() {
   const { t } = useTranslation()
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [readError, setReadError] = useState<string | null>(null)
   const serviceHub = useServiceHub()
 
   useEffect(() => {
@@ -42,6 +43,7 @@ function LogsViewer() {
               .then((entries) => ({ entries, offset: 0, reset: true }))
       read
         .then(({ entries, reset }) => {
+          setReadError(null)
           const next = entries.filter(Boolean) as LogEntry[]
           if (reset) {
             setLogs((prev) =>
@@ -57,7 +59,10 @@ function LogsViewer() {
             setLogs((prev) => [...prev, ...next].slice(-MAX_LOG_ENTRIES))
           }
         })
-        .catch((error) => console.error('Failed to read logs:', error))
+        .catch((error) => {
+          console.error('Failed to read logs:', error)
+          setReadError(error instanceof Error ? error.message : String(error))
+        })
         .finally(() => {
           reading = false
         })
@@ -83,6 +88,7 @@ function LogsViewer() {
       description={t('logs:description')}
       fileName="app.log"
       logs={logs}
+      readError={readError}
     />
   )
 }

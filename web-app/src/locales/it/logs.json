@@ -1,4 +1,5 @@
 {
+  "readFailed": "Impossibile leggere il registro: {{message}}",
   "noLogs": "Nessun log disponibile",
   "noMatch": "Nessuna riga corrisponde al filtro",
   "title": "Log",

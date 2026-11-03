@@ -96,6 +96,7 @@
     "newest": "최신순",
     "noMatching": "일치하는 모델이 없습니다",
     "noMatchingHint": "더 넓게 검색하거나 필터를 하나 해제해 보세요.",
+    "filesFailed": "이 저장소의 변형을 불러오지 못했습니다.",
     "noVariants": "이 저장소에서 다운로드할 수 있는 GGUF 변형을 찾지 못했습니다.",
     "onThisMac": "이 Mac용",
     "onlyFit": "맞는 모델만",

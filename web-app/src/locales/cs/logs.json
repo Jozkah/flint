@@ -1,4 +1,5 @@
 {
+  "readFailed": "Záznam se nepodařilo přečíst: {{message}}",
   "noLogs": "Nejsou k dispozici žádné záznamy",
   "noMatch": "Filtru neodpovídají žádné řádky",
   "title": "Protokoly",

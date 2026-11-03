@@ -1,4 +1,5 @@
 {
+  "readFailed": "No se pudo leer el registro: {{message}}",
   "noLogs": "No hay registros disponibles",
   "noMatch": "Ninguna línea coincide con el filtro",
   "title": "Registros",

@@ -98,6 +98,7 @@
     "newest": "Newest",
     "noMatching": "No matching models",
     "noMatchingHint": "Try a broader search or remove one of the filters.",
+    "filesFailed": "Could not load the variants for this repository.",
     "noVariants": "No downloadable GGUF variants were found in this repository.",
     "onThisMac": "On this Mac",
     "onlyFit": "Only models that fit",
