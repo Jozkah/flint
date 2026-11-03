@@ -16,6 +16,7 @@
     "MODEL_LOAD_TIMED_OUT": "Il modello ha impiegato troppo a caricarsi ed è stato fermato. Un modello più piccolo o una dimensione di contesto minore di solito aiutano.",
     "MISSING_SHARED_LIBRARY": "Manca una libreria necessaria al motore, quindi non può avviarsi.",
     "GPU_DRIVER_TOO_OLD": "Il driver della tua GPU è troppo vecchio per questo motore. Aggiornare il driver, o passare al motore CPU nelle Impostazioni, risolverà il problema.",
+    "GPU_NOT_SUPPORTED": "Questa GPU NVIDIA è troppo vecchia per il componente aggiuntivo CUDA del motore, che richiede compute capability 7.5 (GeForce RTX serie 20) o superiore. Rimuovi il componente CUDA in Componenti del motore, nelle Impostazioni, per usare Vulkan.",
     "CPU_NOT_SUPPORTED": "Il processore di questo computer non ha le istruzioni richieste dal motore (serve una CPU x86 con AVX), quindi il motore è andato in crash. Flint ha già riprovato il modello una volta solo sulla CPU; se vedi ancora questo messaggio, anche quel tentativo è andato in crash oppure il motore era già impostato solo su CPU.",
     "OS_VERSION_UNSUPPORTED": "Questa versione di macOS è troppo vecchia per il motore. Aggiornare macOS risolverà il problema.",
     "MODEL_QUANT_NOT_SUPPORTED": "Questo modello usa un tipo di quantizzazione che il backend GPU non può eseguire. Scarica un'altra quantizzazione, come Q4_K_M, oppure disattiva lo scarico sulla GPU.",

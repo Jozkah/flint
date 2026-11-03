@@ -41,10 +41,14 @@ const MAX_REPEATED_BROKEN_TOOL_TURNS: usize = 5;
 /// Hard ceiling on consecutive turns with nothing executable, however the
 /// broken calls vary, so a run can never loop forever on malformed calls.
 const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
-/// Consecutive turns issuing the identical set of tool calls (same names and
-/// arguments), or consecutive turns whose every tool call failed, after which
-/// the run is considered stuck and the user is asked for guidance.
+/// Consecutive turns whose every tool call failed, after which the run is
+/// considered stuck and the user is asked for guidance.
 pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+/// Consecutive turns issuing the identical set of tool calls (same names and
+/// arguments), after which the run is considered stuck. The model is reminded
+/// on the way there (`stuck::REPEAT_REMINDER_AT`), so a legitimate poll or
+/// re-run is not cut off at the first repeats.
+pub(crate) const REPEATED_CALLS_LIMIT: usize = 8;
 
 /// A stalled local read or web request must not hold the entire tool batch open.
 const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
@@ -5151,6 +5155,9 @@ async fn run_turn_cycle(
     let mut refill_guard = crate::core::agent::compaction_policy::RefillGuard::new(
         crate::core::agent::compaction_policy::RefillLimits::default(),
     );
+    // The provider's last prompt count, so the proactive trigger measures from
+    // what the request really cost instead of a characters-over-four guess.
+    let mut usage_anchor: Option<crate::core::agent::compaction_policy::UsageAnchor> = None;
     // Holds this cycle's offload budget; `None` condenses stale results in place.
     let mut offloader = json_body
         .get(BODY_OFFLOAD_ROOT)
@@ -5359,7 +5366,11 @@ async fn run_turn_cycle(
         if let Some(thresholds) = compaction_thresholds {
             use crate::core::agent::compaction_policy as cpol;
             refill_guard.on_turn();
-            if cpol::should_compact(&conversation_messages, &thresholds) {
+            if cpol::should_compact_calibrated(
+                &conversation_messages,
+                usage_anchor.as_ref(),
+                &thresholds,
+            ) {
                 match refill_guard.decide() {
                     cpol::CompactionDecision::Proceed => {
                         let before = cpol::estimate_tokens(&conversation_messages);
@@ -5371,7 +5382,12 @@ async fn run_turn_cycle(
                         );
                         // 2. Full compaction only if still over the threshold.
                         let mut full_shrunk = false;
-                        if cpol::should_compact(&projected, &thresholds) {
+                        if cpol::calibrated_tokens_after(
+                            &conversation_messages,
+                            &projected,
+                            usage_anchor.as_ref(),
+                        ) >= thresholds.compact_at
+                        {
                             let opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
                             report_compaction(
@@ -5653,6 +5669,13 @@ async fn run_turn_cycle(
             });
         }
         budget.record(&turn_usage);
+        // Right now the conversation is exactly what that request carried.
+        usage_anchor = turn_usage
+            .as_ref()
+            .and_then(|u| u.prompt_tokens)
+            .and_then(|tokens| {
+                crate::core::agent::compaction_policy::UsageAnchor::new(tokens, &conversation_messages)
+            });
         if budget.max_usd().is_some() {
             last_completion = Some(completion.clone());
         }
@@ -6206,6 +6229,9 @@ Address it and continue."
             )
         };
 
+        if let Some(text) = stuck.take_reminder() {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+        }
         let mut todo_touched_this_batch = false;
         let mut ledger_failed: HashMap<String, bool> = HashMap::new();
         for outcome in tool_results {

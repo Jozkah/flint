@@ -2547,6 +2547,12 @@ impl CompositeToolInvoker {
                 let _registered = registered;
                 let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
                 let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
+                // Only where the model can read the file back.
+                let text = if available_tools.iter().any(|t| t == "read") {
+                    crate::core::agent::compaction_policy::spill_large_result(&scratch, tool.name, &id, text)
+                } else {
+                    text
+                };
                 ToolOutcome {
                     diff,
                     images: images.unwrap_or_default(),
@@ -2661,6 +2667,19 @@ impl CompositeToolInvoker {
                 read_futures.push(self.schedule_read(tool, args, id, name));
                 continue;
             }
+            // Whatever follows may change what an earlier read would see, and
+            // the model listed that read first: settle the reads gathered so
+            // far, together, before this call runs. A later read is gathered
+            // afresh and waits for the next barrier or the end of the batch.
+            if !read_futures.is_empty() {
+                use futures::StreamExt;
+                let mut reads: futures::stream::FuturesUnordered<_> =
+                    std::mem::take(&mut read_futures).into_iter().collect();
+                while let Some(outcome) = reads.next().await {
+                    out.push(outcome);
+                    announce_screened(&self.project_root, tool_calls, &mut out, &mut announced, &mut screening_cfg, on_complete);
+                }
+            }
             // The harness's own word that this call ended in the null-device
             // refusal; text in the output never counts.
             let null_refusal = tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal::default();
@@ -2728,6 +2747,11 @@ impl CompositeToolInvoker {
             // Transcript audit #12: a refusal of the arguments shows the call
             // it expected.
             let text = tauri_plugin_agent_tools::tools::call_shape::explain(name, &args, text);
+            let text = if self.available_tools.iter().any(|t| t == "read") {
+                crate::core::agent::compaction_policy::spill_large_result(&self.scratch_root, name, &id, text)
+            } else {
+                text
+            };
             out.push(ToolOutcome {
                 diff,
                 images: images.unwrap_or_default(),

@@ -50,7 +50,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let file = tempfile::NamedTempFile::new().unwrap();
         let mut zip = zip::ZipWriter::new(file.reopen().unwrap());
-        zip.start_file("sd-server", zip::write::FileOptions::default().unix_permissions(0o6755)).unwrap();
+        zip.start_file("sd-server", zip::write::SimpleFileOptions::default().unix_permissions(0o6755)).unwrap();
         std::io::Write::write_all(&mut zip, b"engine").unwrap();
         zip.finish().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -61,7 +61,7 @@ mod tests {
     fn archive_paths_cannot_escape() {
         let file = tempfile::NamedTempFile::new().unwrap();
         let mut zip = zip::ZipWriter::new(file.reopen().unwrap());
-        zip.start_file("../escape", zip::write::FileOptions::default()).unwrap();
+        zip.start_file("../escape", zip::write::SimpleFileOptions::default()).unwrap();
         std::io::Write::write_all(&mut zip, b"bad").unwrap();
         zip.finish().unwrap();
         let dir = tempfile::tempdir().unwrap();
