@@ -118,23 +118,38 @@ pub async fn load_mlx_model_impl(
 
     // Port 0 means "any": pick a concrete free port here. Passing 0 through
     // let the server bind somewhere this process never learned, so the
-    // session was recorded with port 0 and could not be reached.
-    let port = if port == 0 {
-        std::net::TcpListener::bind(("127.0.0.1", 0))
-            .and_then(|l| l.local_addr())
-            .map(|a| a.port())
-            .map_err(|e| {
+    // session was recorded with port 0 and could not be reached. The pick skips
+    // ports other loads have reserved or sessions hold, and tries again if a
+    // concurrent load reserves the same one first.
+    let (port, _reservation) = if port == 0 {
+        let mut picked = None;
+        for _ in 0..5 {
+            let mut used: std::collections::HashSet<u16> = process_map_arc
+                .lock()
+                .await
+                .values()
+                .filter_map(|s| u16::try_from(s.info.port).ok())
+                .collect();
+            used.extend(pending_ports());
+            let candidate = crate::process::pick_dynamic_port(&used).map_err(|e| {
                 MlxError::new(
                     ErrorCode::ModelLoadFailed,
                     format!("Could not find a free port: {e}"),
                     None,
                 )
-            })?
-    } else {
-        port
-    };
-    let _reservation = if port == 0 {
-        None
+            })?;
+            if let Some(reservation) = reserve_port(candidate) {
+                picked = Some((candidate, reservation));
+                break;
+            }
+        }
+        picked.ok_or_else(|| {
+            MlxError::new(
+                ErrorCode::ModelLoadFailed,
+                "Could not reserve a free port".to_string(),
+                None,
+            )
+        })?
     } else {
         let reservation = reserve_port(port).ok_or_else(|| port_in_use(port))?;
         let taken = process_map_arc
@@ -145,7 +160,7 @@ pub async fn load_mlx_model_impl(
         if taken {
             return Err(port_in_use(port));
         }
-        Some(reservation)
+        (port, reservation)
     };
 
     let api_key = crate::hardening::generate_mlx_key();
@@ -196,6 +211,11 @@ pub async fn load_mlx_model_impl(
 
     // Create channels for communication between tasks
     let (ready_tx, mut ready_rx) = mpsc::channel::<bool>(1);
+    // After readiness the per-line server output (tool-call arguments, request
+    // summaries) drops to debug, so app.log stays small and free of chat content.
+    let is_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stdout_flag = is_ready.clone();
+    let stderr_flag = is_ready.clone();
 
     // Spawn task to monitor stdout for readiness
     let stdout_ready_tx = ready_tx.clone();
@@ -211,7 +231,11 @@ pub async fn load_mlx_model_impl(
                     let line = String::from_utf8_lossy(&byte_buffer);
                     let line = line.trim_end();
                     if !line.is_empty() {
-                        log::info!("[mlx stdout] {}", line);
+                        if stdout_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                            log::debug!("[mlx stdout] {}", line);
+                        } else {
+                            log::info!("[mlx stdout] {}", line);
+                        }
                     }
 
                     let line_lower = line.to_lowercase();
@@ -225,6 +249,7 @@ pub async fn load_mlx_model_impl(
                             "MLX server appears to be ready based on stdout: '{}'",
                             line
                         );
+                        stdout_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                         let _ = stdout_ready_tx.send(true).await;
                     }
                 }
@@ -264,7 +289,11 @@ pub async fn load_mlx_model_impl(
                             }
                             tail.push_back(line.to_string());
                         }
-                        log::info!("[mlx] {}", line);
+                        if stderr_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                            log::debug!("[mlx] {}", line);
+                        } else {
+                            log::info!("[mlx] {}", line);
+                        }
 
                         let line_lower = line.to_lowercase();
                         if line_lower.contains("server is listening")
@@ -275,6 +304,7 @@ pub async fn load_mlx_model_impl(
                                 "MLX model appears to be ready based on logs: '{}'",
                                 line
                             );
+                            stderr_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                             let _ = ready_tx.send(true).await;
                         }
                     }
