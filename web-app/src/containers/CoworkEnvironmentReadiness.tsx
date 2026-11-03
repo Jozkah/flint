@@ -15,6 +15,7 @@
  * placeholder for "fine".
  */
 
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CoworkCollapseHeader } from '@/containers/CoworkCollapseHeader'
@@ -273,7 +274,7 @@ export function CoworkEnvironmentReadiness({
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<ReadinessComponent | null>(null)
   const [busy, setBusy] = useState<ReadinessComponent | 'all' | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag(2000)
   const [open, setOpen] = useState(!collapsible)
   const [attempt, setAttempt] = useState(0)
   // Re-read the clock each time a new report arrives, not on every render.
@@ -329,7 +330,6 @@ export function CoworkEnvironmentReadiness({
     try {
       await navigator.clipboard.writeText(diagnosticsText(readiness))
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
     } catch {
       // A denied clipboard is not worth an error state; the text is on screen.
     }

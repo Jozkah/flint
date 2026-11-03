@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,18 @@ export function ModelDefaultsCard() {
   const downloadLimitMBps = useGeneralSetting((s) => s.downloadLimitMBps)
   const setDownloadLimitMBps = useGeneralSetting((s) => s.setDownloadLimitMBps)
   const [isValidatingToken, setIsValidatingToken] = useState(false)
+  // Edited as text and committed on blur/Enter, so a half-typed or cleared
+  // field never writes a limit (CTB-007).
+  const [limitDraft, setLimitDraft] = useState(String(downloadLimitMBps))
+  useEffect(() => {
+    setLimitDraft(String(downloadLimitMBps))
+  }, [downloadLimitMBps])
+  const commitLimit = () => {
+    const n = Math.max(0, Math.floor(Number(limitDraft)))
+    const next = Number.isFinite(n) ? n : downloadLimitMBps
+    setLimitDraft(String(next))
+    if (next !== downloadLimitMBps) setDownloadLimitMBps(next)
+  }
 
   const validateToken = async () => {
     const token = (huggingfaceToken || '').trim()
@@ -94,12 +106,11 @@ export function ModelDefaultsCard() {
               value={huggingfaceToken || ''}
               onChange={(e) => setHuggingfaceToken(e.target.value)}
               placeholder={'hf_xxx_xxx'}
-              required
             />
             <Button
               variant="outline"
               size="sm"
-              disabled={isValidatingToken}
+              disabled={isValidatingToken || !(huggingfaceToken || '').trim()}
               onClick={validateToken}
             >
               {t('settings:general.verify')}
@@ -119,8 +130,12 @@ export function ModelDefaultsCard() {
               min={0}
               step={1}
               className="w-24"
-              value={downloadLimitMBps}
-              onChange={(e) => setDownloadLimitMBps(Number(e.target.value))}
+              value={limitDraft}
+              onChange={(e) => setLimitDraft(e.target.value)}
+              onBlur={commitLimit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
             />
           }
         />

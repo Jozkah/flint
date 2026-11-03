@@ -1,3 +1,4 @@
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Check, WrapText } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -213,7 +214,7 @@ export function FileViewerDialog({
   const [version, setVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [wrap, setWrap] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag()
   const [doc, setDoc] = useState<FilePreview | null>(null)
   const reader = useRef<ChunkReader | null>(null)
   const ctl = useRef<AbortController | null>(null)
@@ -271,7 +272,6 @@ export function FileViewerDialog({
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
     } catch {
       /* clipboard refused */
     }

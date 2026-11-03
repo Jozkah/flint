@@ -561,12 +561,7 @@ const ThreadItem = memo(
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              disabled={thread.title === 'What is Jan?' && !localStorage.getItem('setup-completed')}
-              onSelect={() => {
-                if (thread.title !== 'What is Jan?' || localStorage.getItem('setup-completed')) {
-                  setDeleteConfirmOpen(true)
-                }
-              }}
+              onSelect={() => setDeleteConfirmOpen(true)}
             >
               <Trash2 className="size-4" />
               <span>{t('common:delete')}</span>

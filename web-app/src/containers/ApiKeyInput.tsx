@@ -1,3 +1,4 @@
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 import { Input } from '@/components/ui/input'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useState, useEffect, useCallback } from 'react'
@@ -20,7 +21,7 @@ export function ApiKeyInput({
   const { apiKey, setApiKey } = useLocalApiServer()
   const [inputValue, setInputValue] = useState(apiKey.toString())
   const [showPassword, setShowPassword] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag(2000)
   const [error, setError] = useState('')
   const { t } = useTranslation()
 
@@ -69,7 +70,6 @@ export function ApiKeyInput({
     if (!inputValue) return
     if (!(await copyToClipboard(inputValue))) return
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   const hasError = error && showError
