@@ -78,17 +78,21 @@ export function bestGroup(
 ): HuggingFaceFileGroup | undefined {
   const models = groups.filter((group) => group.kind === 'model')
   if (!models.length) return undefined
-  return [...models].sort((a, b) => {
-    const aScore =
-      fitRank(fitOfGroup(a, groups, context).verdict) + quantPreference(a.quantization)
-    const bScore =
-      fitRank(fitOfGroup(b, groups, context).verdict) + quantPreference(b.quantization)
-    if (aScore !== bScore) return bScore - aScore
+  // One fit assessment per variant, not two per comparison.
+  const scored = models.map((group) => ({
+    group,
+    score:
+      fitRank(fitOfGroup(group, groups, context).verdict) +
+      quantPreference(group.quantization),
+  }))
+  scored.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score
     return (
-      (a.totalSize ?? Number.MAX_SAFE_INTEGER) -
-      (b.totalSize ?? Number.MAX_SAFE_INTEGER)
+      (a.group.totalSize ?? Number.MAX_SAFE_INTEGER) -
+      (b.group.totalSize ?? Number.MAX_SAFE_INTEGER)
     )
-  })[0]
+  })
+  return scored[0].group
 }
 
 /**

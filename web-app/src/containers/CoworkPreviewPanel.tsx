@@ -114,14 +114,14 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
     setState({ status: 'loading', path })
 
     void (async () => {
-      const url = await toAssetUrl(abs)
-      if (isAssetKind(kind)) {
-        // The element streams the file itself, so there is nothing to fetch and
-        // a large video costs nothing to "open".
-        if (alive) setState({ status: 'ready', path, kind, assetUrl: url })
-        return
-      }
       try {
+        const url = await toAssetUrl(abs)
+        if (isAssetKind(kind)) {
+          // The element streams the file itself, so there is nothing to fetch and
+          // a large video costs nothing to "open".
+          if (alive) setState({ status: 'ready', path, kind, assetUrl: url })
+          return
+        }
         const res = await fetch(url)
         if (!res.ok) throw new Error(String(res.status))
         const size = Number(res.headers.get('content-length') ?? 0)

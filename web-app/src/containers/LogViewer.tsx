@@ -1,3 +1,4 @@
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 import { useMemo, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
@@ -54,14 +55,13 @@ const LEVEL_LABEL_KEY: Record<LogLevelFilter, string> = {
 /** Copies every line shown in the viewer. */
 export function CopyLogsButton({ logs }: { logs: LogEntry[] }) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag(2000)
 
   const copy = async () => {
     try {
       // Redacted as the log export is: a copied log gets pasted into issues.
       await navigator.clipboard.writeText(redactSecrets(logsAsText(logs)))
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
     } catch (error) {
       console.error('Failed to copy logs:', error)
     }

@@ -48,15 +48,19 @@ const asText = (output: unknown): string =>
       ? (output as { content: string }).content
       : ''
 
-const OutputBlock = ({ children }: { children: string }) => (
-  <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-normal text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-    {parseBareFilePaths(children).map((part, index) =>
-      part.type === 'path' ? (
-        <InlinePathLink key={index} href={pathHref(part.text)}>{part.text}</InlinePathLink>
-      ) : <span key={index}>{part.text}</span>
-    )}
-  </pre>
-)
+const OutputBlock = ({ children }: { children: string }) => {
+  // Tool output can be large and the transcript re-renders per streamed token.
+  const parts = useMemo(() => parseBareFilePaths(children), [children])
+  return (
+    <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-normal text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
+      {parts.map((part, index) =>
+        part.type === 'path' ? (
+          <InlinePathLink key={index} href={pathHref(part.text)}>{part.text}</InlinePathLink>
+        ) : <span key={index}>{part.text}</span>
+      )}
+    </pre>
+  )
+}
 
 /**
  * A `write`/`edit` diff. Kept out of the model-facing tool output on purpose (it
@@ -375,12 +379,10 @@ const firstMatch = (group: GrepGroup): number | undefined =>
  * A `find` or `ls` result as a list whose file entries open in the Code
  * panel. Directories (a trailing `/`) and notes stay text.
  */
-const PathListing = ({ body, base }: { body: string; base?: string }) => (
-  <pre
-    className="mt-1.5 max-h-80 overflow-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted-foreground"
-    data-testid="path-listing"
-  >
-    {body.split('\n').map((line, i) => {
+const PathListing = ({ body, base }: { body: string; base?: string }) => {
+  const rows = useMemo(
+    () =>
+      body.split('\n').map((line, i) => {
       const entry = line.trim()
       const isFile =
         entry.length > 0 &&
@@ -397,9 +399,18 @@ const PathListing = ({ body, base }: { body: string; base?: string }) => (
           )}
         </span>
       )
-    })}
-  </pre>
-)
+    }),
+    [body, base]
+  )
+  return (
+    <pre
+      className="mt-1.5 max-h-80 overflow-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted-foreground"
+      data-testid="path-listing"
+    >
+      {rows}
+    </pre>
+  )
+}
 
 /** `grep` results grouped per file, collapsible, with the matches highlighted. */
 export const GrepResults = memo(

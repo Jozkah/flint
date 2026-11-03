@@ -189,12 +189,12 @@ export type EndpointDiagnostics = {
   responded: string | null
 }
 
+const LINE_BREAK = '\n'
+
 /**
  * Set when the page is served by `flint serve`: provider requests then go
  * through the server's copy of the transport instead of the Tauri bridge.
  */
-const LINE_BREAK = String.fromCharCode(10)
-
 export function enableServerTransport(): void {
   setServerTransport(true)
   routeLoopbackThroughServer()

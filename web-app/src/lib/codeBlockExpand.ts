@@ -10,7 +10,12 @@ function load(): Set<string> {
   if (cache) return cache
   try {
     const raw = sessionStorage.getItem(KEY)
-    cache = new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    cache = new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === 'string')
+        : []
+    )
   } catch {
     cache = new Set()
   }

@@ -1,6 +1,6 @@
 import { runColumns } from '@/lib/runColumns'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import {
   Calendar,
   ChevronDown,
@@ -68,6 +68,7 @@ function greetingKey(now: Date) {
 
 /** A small line chart of a daily series, scaled to its own maximum. */
 function Sparkline({ values, tone }: { values: number[]; tone: 'up' | 'down' }) {
+  const gradId = `spark-${useId().replace(/\W/g, "")}`
   const w = 91
   const h = 36
   const max = Math.max(...values, 1)
@@ -81,12 +82,12 @@ function Sparkline({ values, tone }: { values: number[]; tone: 'up' | 'down' }) 
       aria-hidden
     >
       <defs>
-        <linearGradient id={`spark-${tone}`} x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor={color} stopOpacity="0.25" />
           <stop offset="1" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill={`url(#spark-${tone})`} />
+      <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill={`url(#${gradId})`} />
       <polyline
         points={pts.join(' ')}
         fill="none"

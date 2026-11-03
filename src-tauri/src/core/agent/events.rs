@@ -465,7 +465,16 @@ pub fn describe_tool_call(name: &str, args: &serde_json::Value) -> String {
             format!("{verb} {kind}: {item}")
         };
     }
-    format!("{name} {args}")
+    // Cap the rendered args: a `write` body or a `bash` command can carry file
+    // contents or a token, and this line lands in terminals and CI logs.
+    let rendered = args.to_string();
+    let mut chars = rendered.chars();
+    let clipped: String = chars.by_ref().take(200).collect();
+    if chars.next().is_some() {
+        format!("{name} {clipped}\u{2026}")
+    } else {
+        format!("{name} {rendered}")
+    }
 }
 
 fn arg_name(args: &serde_json::Value) -> String {
@@ -972,6 +981,13 @@ pub(crate) mod tests {
             describe_tool_call("write", &json!({"path": ".jan/agent/memory/decisions.md"})),
             "Updating memory: decisions"
         );
+    }
+
+    #[test]
+    fn describe_clips_huge_args() {
+        let out = describe_tool_call("write", &json!({"content": "x".repeat(5000)}));
+        assert!(out.chars().count() < 220);
+        assert!(out.ends_with('\u{2026}'));
     }
 
     #[test]

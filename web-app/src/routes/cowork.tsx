@@ -197,11 +197,8 @@ export function CoworkPage() {
     selectedProvider as never
   )
 
-  const sessionModel = useCoworkSessions(
-    (s) =>
-      s.sessions.find((x) => x.id === (coworkPane?.sessionId ?? s.currentId))
-        ?.model
-  )
+  // Same selector as `viewedModel` above: one subscription, one name.
+  const sessionModel = viewedModel
   // What the composer checks before sending: the same resolution the run
   // uses (session model, then the picker's), never the bare global picker.
   const composerModel = useMemo(() => {
@@ -917,6 +914,12 @@ export function CoworkPage() {
   widgetBusyRef.current = running
   const widgetSubmitRef = useRef(handleSubmit)
   widgetSubmitRef.current = handleSubmit
+  // Stable identity for hooks that memoize on it (the saved-workflow slash
+  // list); the ref always calls the current render's closure.
+  const stableSubmit = useCallback<typeof handleSubmit>(
+    (text, files, onRefused) => widgetSubmitRef.current(text, files, onRefused),
+    []
+  )
   const widgetHost = useMemo<WidgetHost>(
     () => ({
       sendPrompt: (text) => {
@@ -955,7 +958,7 @@ export function CoworkPage() {
     modelCapabilities,
     t,
     runRequestRef,
-    handleSubmit,
+    handleSubmit: stableSubmit,
     sidePaneIdRef,
     paneSessionIdRef,
   })

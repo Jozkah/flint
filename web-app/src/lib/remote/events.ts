@@ -90,6 +90,20 @@ export function changedKeys<T>(
   return [...keys].filter((k) => prev[k] !== next[k])
 }
 
+// Rebuilt only when the sessions array changes, so watchRecord's reference check
+// skips unrelated store updates.
+let lastSessions: unknown
+let lastById: Record<string, unknown> = {}
+function coworkMessagesById(s: {
+  sessions: { id: string; messages: unknown }[]
+}): Record<string, unknown> {
+  if (s.sessions !== lastSessions) {
+    lastSessions = s.sessions
+    lastById = Object.fromEntries(s.sessions.map((x) => [x.id, x.messages]))
+  }
+  return lastById
+}
+
 function watchRecord<S, T>(
   store: Watch<S>,
   select: (s: S) => Record<string, T>,
@@ -200,7 +214,7 @@ export function startRemoteEventForwarding(emit: RemoteEmit): () => void {
     // A Cowork session's stored messages (a run committed, a message sent).
     watchRecord(
       useCoworkSessions,
-      (s) => Object.fromEntries(s.sessions.map((x) => [x.id, x.messages])),
+      coworkMessagesById,
       (ids) => ids.forEach((id) => updated('cowork', id))
     ),
     watchIds(

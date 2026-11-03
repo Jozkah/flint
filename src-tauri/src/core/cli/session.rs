@@ -35,19 +35,6 @@ pub(super) fn session_budget_source(
     }
 }
 
-/// Session token ceiling for one run. Precedence is the per-invocation
-/// `--max-session-tokens` flag, then `agent.toml [budget].max_tokens`, then
-/// `DEFAULT_MAX_SESSION_TOKENS` - the same flag/config/default shape the
-/// sandbox setting resolves with. `0` from either source means unbounded and is
-/// carried through as-is (see `body_session_budget`).
-/// The money ceiling for a run (upstream #9034): `--max-budget-usd`, then
-/// `[budget].max_usd`, then none.
-///
-/// A ceiling is only meaningful if the run can be priced, and in this fork the
-/// price is what a person declared in `<data folder>/prices.toml`. So a model
-/// with no declared price is **refused** rather than run uncapped, and a
-/// negative limit is refused as a typo. `0` is allowed and honest: it stops at
-/// the first billed request. Refused at startup, before any paid request.
 /// `[budget].pause_at_usd`, refused at startup when it is not a non-negative
 /// amount, like a ceiling typo.
 pub(super) fn validate_pause_at_usd(pause: Option<f64>) -> Result<Option<f64>, String> {
@@ -59,6 +46,14 @@ pub(super) fn validate_pause_at_usd(pause: Option<f64>) -> Result<Option<f64>, S
     }
 }
 
+/// The money ceiling for a run (upstream #9034): `--max-budget-usd`, then
+/// `[budget].max_usd`, then none.
+///
+/// A ceiling is only meaningful if the run can be priced, and in this fork the
+/// price is what a person declared in `<data folder>/prices.toml`. So a model
+/// with no declared price is **refused** rather than run uncapped, and a
+/// negative limit is refused as a typo. `0` is allowed and honest: it stops at
+/// the first billed request. Refused at startup, before any paid request.
 pub(super) fn resolve_cost_ceiling(
     flag: Option<f64>,
     configured: Option<f64>,
@@ -94,6 +89,11 @@ pub(super) fn resolve_cost_ceiling(
     }))
 }
 
+/// Session token ceiling for one run. Precedence is the per-invocation
+/// `--max-session-tokens` flag, then `agent.toml [budget].max_tokens`, then
+/// `DEFAULT_MAX_SESSION_TOKENS` - the same flag/config/default shape the
+/// sandbox setting resolves with. `0` from either source means unbounded and is
+/// carried through as-is (see `body_session_budget`).
 ///
 /// `window` is the model's context window, passed only when it is actually
 /// known (configured or in the catalog, not the 128K fallback guess). With
