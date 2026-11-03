@@ -235,6 +235,13 @@ fn save_key(path: &std::path::Path, key: &[u8; 32]) -> std::io::Result<[u8; 32]>
     result
 }
 
+/// A drive-letter (`C:\x`, `C:/x`) or UNC (`\host\share`) path: a location, not a secret.
+fn is_windows_abs_path(value: &str) -> bool {
+    let b = value.as_bytes();
+    (b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/'))
+        || value.starts_with(r"\\")
+}
+
 fn is_secret_name(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     if NOT_SECRETS.contains(&upper.as_str()) {
@@ -267,7 +274,7 @@ impl SecretFilter {
             }
         };
         for (name, value) in vars {
-            if is_secret_name(name) && !value.starts_with('/') {
+            if is_secret_name(name) && !value.starts_with('/') && !is_windows_abs_path(value) {
                 push(label_of(name), value);
             }
         }
@@ -549,6 +556,14 @@ mod tests {
     use serde_json::json;
 
     const KEY: [u8; 32] = [7; 32];
+
+    #[test]
+    fn windows_paths_are_not_secret_values() {
+        assert!(is_windows_abs_path(r"C:\Users\me\key.json"));
+        assert!(is_windows_abs_path("C:/Users/me/key.json"));
+        assert!(is_windows_abs_path(r"\\host\share\key"));
+        assert!(!is_windows_abs_path("sk-abcdefgh12345678"));
+    }
 
     fn filter(vars: &[(&str, &str)]) -> SecretFilter {
         let vars: Vec<(String, String)> = vars

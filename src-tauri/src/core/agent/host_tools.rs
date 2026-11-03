@@ -60,6 +60,9 @@ const MAX_NAME_LEN: usize = 64;
 /// set; it exists so a malformed or generated file cannot put an unbounded
 /// number of schemas into every request's prefix.
 const MAX_HOST_TOOLS: usize = 128;
+/// Per-tool bounds on what is repeated in every request prefix.
+const MAX_DESC_CHARS: usize = 4096;
+const MAX_SCHEMA_BYTES: usize = 32 * 1024;
 
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -282,6 +285,8 @@ pub enum DeclError {
     Duplicate(String),
     NonObjectSchema(String),
     TooMany(usize),
+    /// A description or schema over the per-tool size cap.
+    TooLarge(String),
     UnknownKey(String, String),
 }
 
@@ -301,6 +306,10 @@ impl std::fmt::Display for DeclError {
             DeclError::TooMany(n) => write!(
                 f,
                 "{n} host tools declared, more than the {MAX_HOST_TOOLS} a run accepts"
+            ),
+            DeclError::TooLarge(n) => write!(
+                f,
+                "host tool '{n}' has a description over {MAX_DESC_CHARS} characters or a schema over {MAX_SCHEMA_BYTES} bytes"
             ),
             DeclError::UnknownKey(n, key) => write!(
                 f,
@@ -396,6 +405,11 @@ impl HostToolSet {
             if !parameters.is_object() {
                 return Err(DeclError::NonObjectSchema(name));
             }
+            if entry.description.chars().count() > MAX_DESC_CHARS
+                || parameters.to_string().len() > MAX_SCHEMA_BYTES
+            {
+                return Err(DeclError::TooLarge(name));
+            }
             set.tools.push(HostTool {
                 qualified_name,
                 name,
@@ -434,6 +448,16 @@ mod tests {
             capability: None,
             unknown: Default::default(),
         }
+    }
+
+    #[test]
+    fn an_oversized_description_or_schema_is_refused() {
+        let mut long = decl("big");
+        long.description = "x".repeat(MAX_DESC_CHARS + 1);
+        assert!(matches!(HostToolSet::declare(vec![long]), Err(DeclError::TooLarge(_))));
+        let mut wide = decl("wide");
+        wide.parameters = Some(serde_json::json!({ "type": "object", "x": "y".repeat(MAX_SCHEMA_BYTES) }));
+        assert!(matches!(HostToolSet::declare(vec![wide]), Err(DeclError::TooLarge(_))));
     }
 
     #[test]

@@ -438,7 +438,9 @@ fn strip_ansi(text: &str) -> String {
 /// The end of a failed log, bounded by lines and then by chars, with colour
 /// codes and credentials removed. Returns the excerpt and whether it was cut.
 pub(crate) fn excerpt_failed_log(raw: &str, already_cut: bool) -> (String, bool) {
-    let clean = strip_ansi(raw);
+    // Redacted before the cut: a credential that straddles the cut would
+    // otherwise survive as a suffix too short to match.
+    let clean = tauri_plugin_agent_tools::secrets::redact_secrets(&strip_ansi(raw));
     let lines: Vec<&str> = clean.lines().collect();
     let mut cut = already_cut || lines.len() > EXCERPT_MAX_LINES;
     let tail = lines[lines.len().saturating_sub(EXCERPT_MAX_LINES)..].join("\n");
@@ -449,10 +451,7 @@ pub(crate) fn excerpt_failed_log(raw: &str, already_cut: bool) -> (String, bool)
     } else {
         tail
     };
-    (
-        tauri_plugin_agent_tools::secrets::redact_secrets(tail.trim_end()),
-        cut,
-    )
+    (tail.trim_end().to_string(), cut)
 }
 
 /// Fetch a failed check's log, `run` standing in for one `gh` invocation so

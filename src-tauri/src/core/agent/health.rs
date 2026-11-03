@@ -170,9 +170,29 @@ fn package_runner(project_root: &Path) -> Option<(&'static str, &'static str)> {
         ("yarn.lock", "yarn"),
         ("pnpm-lock.yaml", "pnpm"),
         ("package-lock.json", "npm"),
+        ("bun.lockb", "bun"),
+        ("bun.lock", "bun"),
     ] {
         if project_root.join(lockfile).is_file() {
             return Some((program, lockfile));
+        }
+    }
+    // No lockfile: a declared `packageManager` (`pnpm@9.1.0`) is still the
+    // project's own word on which runner to use.
+    let declared = std::fs::read_to_string(project_root.join("package.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|json| json.get("packageManager")?.as_str().map(str::to_string));
+    if let Some(declared) = declared {
+        let program = match declared.split('@').next().unwrap_or_default() {
+            "yarn" => Some("yarn"),
+            "pnpm" => Some("pnpm"),
+            "bun" => Some("bun"),
+            "npm" => Some("npm"),
+            _ => None,
+        };
+        if let Some(program) = program {
+            return Some((program, "package.json"));
         }
     }
     // A package.json with no lockfile still declares scripts; npm is the

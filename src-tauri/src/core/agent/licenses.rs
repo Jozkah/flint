@@ -300,6 +300,9 @@ fn cargo_dependencies(project_root: &Path) -> Result<Vec<Dependency>, HarnessErr
     Ok(out)
 }
 
+/// How many levels of `node_modules` inside a package are read.
+const MAX_NESTED_DEPTH: usize = 6;
+
 /// Every installed package under `node_modules`, with the licence each
 /// declares in its own `package.json`.
 ///
@@ -357,28 +360,41 @@ fn npm_dependencies(project_root: &Path) -> Result<Vec<Dependency>, HarnessError
             license,
         });
     };
-    let Ok(entries) = std::fs::read_dir(&modules) else {
-        return Ok(Vec::new());
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+    // A package can carry its own `node_modules` (a nested, version-conflicting
+    // install), so those are walked too, to a bounded depth.
+    let mut pending = vec![(modules, 0usize)];
+    while let Some((modules, depth)) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&modules) else {
             continue;
         };
-        if name.starts_with('.') {
-            continue;
-        }
-        // A scope directory (`@scope/`) holds packages rather than being one.
-        if name.starts_with('@') {
-            if let Ok(scoped) = std::fs::read_dir(&path) {
-                for package in scoped.flatten() {
-                    read_package(&package.path());
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.starts_with('.') {
+                continue;
+            }
+            let mut packages = Vec::new();
+            // A scope directory (`@scope/`) holds packages rather than being one.
+            if name.starts_with('@') {
+                if let Ok(scoped) = std::fs::read_dir(&path) {
+                    packages.extend(scoped.flatten().map(|p| p.path()));
+                }
+            } else {
+                packages.push(path);
+            }
+            for package in packages {
+                read_package(&package);
+                let nested = package.join("node_modules");
+                if depth < MAX_NESTED_DEPTH && nested.is_dir() {
+                    pending.push((nested, depth + 1));
                 }
             }
-            continue;
         }
-        read_package(&path);
     }
+    out.sort();
+    out.dedup();
     Ok(out)
 }
 
