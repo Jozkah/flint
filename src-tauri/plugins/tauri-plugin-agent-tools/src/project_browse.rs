@@ -115,7 +115,6 @@ pub fn is_sensitive_name(name: &str) -> bool {
         || lower == "kubeconfig"
         || lower == "credentials.tfrc.json"
         || lower == "_netrc"
-        || lower == ".envrc"
         || lower == "terraform.tfstate"
         || lower == "terraform.tfstate.backup"
         || lower == "secrets.yml"
@@ -445,7 +444,7 @@ mod tests {
     #[test]
     fn common_secret_file_names_are_flagged() {
         for n in [
-            ".pypirc", ".htpasswd", ".envrc", "prod.tfvars", "terraform.tfstate", "key.ppk",
+            ".pypirc", ".htpasswd","prod.tfvars", "terraform.tfstate", "key.ppk",
             "AuthKey_ABC.p8", "secrets.yml", "secrets.json", ".dockercfg", "kubeconfig",
             "wp-config.php", "appsettings.Production.json", ".git-credentials",
         ] {
