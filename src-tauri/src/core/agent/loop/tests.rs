@@ -5762,8 +5762,15 @@ async fn a_read_listed_before_a_write_sees_the_file_before_it() {
 async fn a_huge_builtin_result_is_spilled_to_a_file() {
     let root = std::env::temp_dir().join(format!("flint-spill-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    let lines: String = (0..4000).map(|i| format!("needle line number {i} {}
-", "p".repeat(300))).collect();
+    // The spill goes to a scratch of this test's own. The shared test scratch is
+    // never created by a test that does not need it: on Linux a `/tmp` path is
+    // treated as inside the scratch once it exists, which would stop a later
+    // test's "write outside the project" from being asked about (CI runs the
+    // tests one after another).
+    let scratch = std::env::temp_dir().join(format!("flint-spill-scratch-{}", std::process::id()));
+    let lines: String = (0..4000)
+        .map(|i| format!("needle line number {i} {}\n", "p".repeat(300)))
+        .collect();
     std::fs::write(root.join("a.txt"), lines).unwrap();
     let (tx, _rx) = mpsc::unbounded_channel();
     let mut invoker = build_invoker_for(
@@ -5773,6 +5780,7 @@ async fn a_huge_builtin_result_is_spilled_to_a_file() {
         ToolPermissions::allow_all(),
         tauri_plugin_agent_tools::subject::Subject::MainAgent,
     );
+    invoker.scratch_root = scratch.clone();
     invoker.available_tools = vec!["read".to_string(), "grep".to_string()];
     let call = serde_json::json!({ "id": "g1", "type": "function",
         "function": { "name": "grep", "arguments": "{\"pattern\":\"needle\",\"limit\":5000}" } });
@@ -5780,11 +5788,13 @@ async fn a_huge_builtin_result_is_spilled_to_a_file() {
     let text = &out[0].content;
     assert!(text.contains("chars omitted") && text.contains("saved to"), "{}", &text[..text.len().min(300)]);
     assert!(text.chars().count() < 12_000, "{}", text.chars().count());
+    assert!(scratch.join(".flint-outputs").join("g1.txt").is_file(), "the full result is in this test's scratch");
     // Without the read tool the model could not open the file: nothing spills.
     invoker.available_tools = vec!["grep".to_string()];
     let whole = invoker.invoke(&[call]).await.expect("dispatch");
     assert!(!whole[0].content.contains("saved to"), "no read tool, no spill");
     let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// `after` is met only by a call of the earlier tool that ran and
