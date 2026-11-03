@@ -14,7 +14,15 @@ pub struct ProxyConfig {
 
 /// Check if a port is available for binding
 pub fn is_port_available(port: u16) -> bool {
-    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+    if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
+        return false;
+    }
+    // A server bound only on ::1 is busy too. A host without IPv6 fails with
+    // AddrNotAvailable (or similar), which says nothing about the port.
+    match std::net::TcpListener::bind(("::1", port)) {
+        Err(e) => e.kind() != std::io::ErrorKind::AddrInUse,
+        Ok(_) => true,
+    }
 }
 
 /// Poll until `port` is free or `timeout` elapses; returns whether it freed.
@@ -546,8 +554,19 @@ mod orphan_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::wait_for_port_free;
+    use super::{is_port_available, wait_for_port_free};
     use std::time::Duration;
+
+    #[test]
+    fn port_held_on_loopback_v6_is_not_available() {
+        // Skip on hosts without IPv6 loopback.
+        let Ok(l) = std::net::TcpListener::bind(("::1", 0)) else {
+            return;
+        };
+        let port = l.local_addr().unwrap().port();
+        assert!(!is_port_available(port));
+        drop(l);
+    }
 
     #[tokio::test]
     async fn wait_for_port_free_returns_true_when_free() {

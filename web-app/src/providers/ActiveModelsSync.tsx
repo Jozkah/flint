@@ -33,8 +33,10 @@ export function ActiveModelsSync() {
         .then((models) => {
           if (!alive || seq !== latest) return
           const next = models ?? []
-          const { activeModels, setActiveModels } = useAppState.getState()
+          const { activeModels, setActiveModels, markActiveModelsSynced } =
+            useAppState.getState()
           if (!sameList(activeModels, next)) setActiveModels(next)
+          markActiveModelsSynced()
         })
         .catch(() => {})
     }

@@ -9,12 +9,18 @@ import { i18n } from '@/i18n/react-i18next-compat'
  */
 export function UsageActivityRecorder() {
   const activeModels = useAppState((s) => s.activeModels)
+  const synced = useAppState((s) => s.activeModelsSynced)
   const previous = useRef<string[] | null>(null)
 
   useEffect(() => {
     const before = previous.current
     previous.current = activeModels
-    if (before === null) return
+    // Until the engine has been read, the list is the store's empty default;
+    // the first real list is start-up state, not a load (LIBC-030).
+    if (!synced || before === null) {
+      if (!synced) previous.current = null
+      return
+    }
     const loaded = activeModels.filter((m) => !before.includes(m))
     const unloaded = before.filter((m) => !activeModels.includes(m))
     const stats = useUsageStats.getState()
@@ -30,7 +36,7 @@ export function UsageActivityRecorder() {
         stats.pushActivity({ kind: 'model-loaded', title: i18n.t('overview:activityModelLoaded'), detail: m })
       }
     }
-  }, [activeModels])
+  }, [activeModels, synced])
 
   return null
 }

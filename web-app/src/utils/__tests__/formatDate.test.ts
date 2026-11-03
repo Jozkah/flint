@@ -125,4 +125,10 @@ describe('formatDate timezone handling', () => {
       'December 25, 2023'
     )
   })
+
+  it('formats with a requested locale (F6m-033)', () => {
+    const d = new Date('2023-12-25T15:30:45Z')
+    expect(formatDate(d, { includeTime: false, locale: 'de' })).toMatch(/Dezember/)
+    expect(formatDate(d, { includeTime: false })).toMatch(/December/)
+  })
 })

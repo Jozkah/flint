@@ -25,13 +25,17 @@ const PUBLIC = path.resolve(__dirname, 'public')
  * imported by mobile.css and bundled.) */
 const SHARED_ASSETS = ['images/flint-mark.png', 'images/logos', 'images/model-provider']
 
+// 'unsafe-inline' for styles stays: React and Tailwind set inline style
+// attributes. Scripts are 'self' only. The phone talks to the server that
+// served it (REST and the events WebSocket share its origin), so connect-src
+// is 'self', which covers same-origin ws/wss in current browsers (F6m-036).
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' ws: wss:",
+  "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",
