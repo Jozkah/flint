@@ -904,9 +904,11 @@ impl From<genai::Error> for AttemptError {
     }
 }
 
-/// The failure for a stream that closed early. Not retried: the provider did
-/// answer (the status was a success), so another attempt would replay output the
-/// consumer has already seen or hide a provider that answers with nothing.
+/// The failure for a stream that closed early. A stream that had already
+/// delivered part of its answer is not retried: another attempt would replay
+/// output the consumer has already seen. One that closed before any byte is
+/// retried like a dropped connection, and ends here only once the attempts or
+/// the retry budget run out.
 fn truncated_stream_message(partial: bool) -> String {
     if partial {
         "Upstream request failed: the provider closed the stream before it finished its answer, so the response is incomplete".to_string()
@@ -1088,8 +1090,18 @@ async fn attempt_with_key(
         .await
         {
             Ok(completion) => return KeyOutcome::Done(Ok(completion)),
-            Err(AttemptError::Truncated { partial }) => {
-                return KeyOutcome::Done(Err(truncated_stream_message(partial)));
+            // Nothing reached the consumer, so another attempt is exactly as
+            // safe as after a dropped connection.
+            Err(AttemptError::Truncated { partial: false }) => {
+                state.last_err = truncated_stream_message(false);
+                if let Some(outcome) =
+                    back_off(plan, events, state, attempt, key_index, None, None).await
+                {
+                    return outcome;
+                }
+            }
+            Err(AttemptError::Truncated { partial: true }) => {
+                return KeyOutcome::Done(Err(truncated_stream_message(true)));
             }
             Err(AttemptError::Upstream(err)) => {
                 let (status, err_body, headers) = http_parts(&err);
@@ -1164,70 +1176,11 @@ async fn attempt_with_key(
                         }
                         return KeyOutcome::NextKey;
                     }
-                    Disposition::Retry if attempt + 1 == MAX_ATTEMPTS => {
-                        return KeyOutcome::Done(Err(format!(
-                            "{} (after {MAX_ATTEMPTS} attempts)",
-                            state.last_err
-                        )));
-                    }
-                    Disposition::Retry if state.started.elapsed() >= RETRY_WALL_BUDGET => {
-                        return KeyOutcome::Done(Err(format!(
-                            "{} (gave up after {}s of retries)",
-                            state.last_err,
-                            state.started.elapsed().as_secs()
-                        )));
-                    }
                     Disposition::Retry => {
-                        if should_try_next(status, key_index, plan.keys.len()) {
-                            return KeyOutcome::NextKey;
-                        }
-                        // Independent clients failing against the same
-                        // provider at the same moment would otherwise
-                        // wake together and retry in lockstep.
-                        let provider = headers.and_then(provider_retry_after);
-                        let delay = next_delay(attempt, provider, rand::random::<f64>());
-                        // A wait the provider asked for is not cut down to fit:
-                        // retrying early only earns another 429.
-                        if provider.is_some_and(|p| p == delay) && exceeds_budget(delay, state.spent) {
-                            return KeyOutcome::Done(Err(format!(
-                                "{} (the provider asked for a {}s wait, longer than the retry budget)",
-                                state.last_err,
-                                delay.as_secs()
-                            )));
-                        }
-                        let Some(delay) = budgeted(delay, state.spent) else {
-                            return KeyOutcome::Done(Err(format!(
-                                "{} (retry budget exhausted)",
-                                state.last_err
-                            )));
-                        };
-                        state.spent += delay;
-                        log::warn!(
-                            "genai: {} -- retrying in {}ms (attempt {}/{MAX_ATTEMPTS})",
-                            state.last_err,
-                            delay.as_millis(),
-                            attempt + 2
-                        );
-                        // The TUI mutes the log, so the warning above never
-                        // reaches the user; the event is what they see.
-                        let _ = events.send(StreamEvent::Retry {
-                            attempt: attempt + 2,
-                            max_attempts: MAX_ATTEMPTS,
-                            delay_ms: delay.as_millis() as u64,
-                            // genai's errors span lines (Cause/Status/Body);
-                            // a status row has one.
-                            reason: state.last_err.split_whitespace().collect::<Vec<_>>().join(" "),
-                        });
-                        // AH-023. A run cancelled during a two-minute
-                        // backoff should stop then, not two minutes later.
-                        if let Some(reason) =
-                            tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay).await
+                        if let Some(outcome) =
+                            back_off(plan, events, state, attempt, key_index, status, headers).await
                         {
-                            return KeyOutcome::Done(Err(format!(
-                                "{} (retry {} while waiting to retry)",
-                                state.last_err,
-                                reason.as_str()
-                            )));
+                            return outcome;
                         }
                     }
                 }
@@ -1235,6 +1188,88 @@ async fn attempt_with_key(
         }
     }
     KeyOutcome::NextKey
+}
+
+/// Wait out the backoff after a failure that is safe to retry, or give up.
+///
+/// `None` means the wait is over and the caller should try again; `Some` is the
+/// outcome that ends this key (out of attempts, out of budget, a cancelled run,
+/// or a key to rotate to). `status` and `headers` are the HTTP response, when
+/// there was one.
+async fn back_off(
+    plan: &ChatPlan<'_>,
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    state: &mut RetryState,
+    attempt: u32,
+    key_index: usize,
+    status: Option<u16>,
+    headers: Option<&reqwest13::header::HeaderMap>,
+) -> Option<KeyOutcome> {
+    if attempt + 1 == MAX_ATTEMPTS {
+        return Some(KeyOutcome::Done(Err(format!(
+            "{} (after {MAX_ATTEMPTS} attempts)",
+            state.last_err
+        ))));
+    }
+    if state.started.elapsed() >= RETRY_WALL_BUDGET {
+        return Some(KeyOutcome::Done(Err(format!(
+            "{} (gave up after {}s of retries)",
+            state.last_err,
+            state.started.elapsed().as_secs()
+        ))));
+    }
+    if should_try_next(status, key_index, plan.keys.len()) {
+        return Some(KeyOutcome::NextKey);
+    }
+    // Independent clients failing against the same
+    // provider at the same moment would otherwise
+    // wake together and retry in lockstep.
+    let provider = headers.and_then(provider_retry_after);
+    let delay = next_delay(attempt, provider, rand::random::<f64>());
+    // A wait the provider asked for is not cut down to fit:
+    // retrying early only earns another 429.
+    if provider.is_some_and(|p| p == delay) && exceeds_budget(delay, state.spent) {
+        return Some(KeyOutcome::Done(Err(format!(
+            "{} (the provider asked for a {}s wait, longer than the retry budget)",
+            state.last_err,
+            delay.as_secs()
+        ))));
+    }
+    let Some(delay) = budgeted(delay, state.spent) else {
+        return Some(KeyOutcome::Done(Err(format!(
+            "{} (retry budget exhausted)",
+            state.last_err
+        ))));
+    };
+    state.spent += delay;
+    log::warn!(
+        "genai: {} -- retrying in {}ms (attempt {}/{MAX_ATTEMPTS})",
+        state.last_err,
+        delay.as_millis(),
+        attempt + 2
+    );
+    // The TUI mutes the log, so the warning above never
+    // reaches the user; the event is what they see.
+    let _ = events.send(StreamEvent::Retry {
+        attempt: attempt + 2,
+        max_attempts: MAX_ATTEMPTS,
+        delay_ms: delay.as_millis() as u64,
+        // genai's errors span lines (Cause/Status/Body);
+        // a status row has one.
+        reason: state.last_err.split_whitespace().collect::<Vec<_>>().join(" "),
+    });
+    // AH-023. A run cancelled during a two-minute
+    // backoff should stop then, not two minutes later.
+    if let Some(reason) =
+        tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay).await
+    {
+        return Some(KeyOutcome::Done(Err(format!(
+            "{} (retry {} while waiting to retry)",
+            state.last_err,
+            reason.as_str()
+        ))));
+    }
+    None
 }
 
 /// The error text kept for a failed attempt: the HTTP status when the provider
@@ -2020,15 +2055,29 @@ mod tests {
         )
     }
 
+    /// O11-006: a 200 whose stream closed before any byte reached the consumer
+    /// is as safe to retry as a dropped connection, so the next attempt carries
+    /// the turn instead of the empty one ending it.
     #[tokio::test]
-    async fn an_empty_successful_stream_fails_instead_of_finishing() {
-        let (url, server) = serve(vec![Some(cut_off_response(&[]))]).await;
+    async fn an_empty_successful_stream_is_retried_not_finished() {
+        let (url, server) = serve(vec![
+            Some(cut_off_response(&[])),
+            Some(sse_response(&[
+                r#"{"choices":[{"delta":{"content":"hi"}}]}"#,
+                r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+            ])),
+        ])
+        .await;
         let (tx, _rx) = sink();
-        let err = run(&url, &[], &tx)
-            .await
-            .expect_err("no answer at all is not a completed one");
-        assert!(err.contains("without sending an answer"), "{err}");
+        let completion = run(&url, &[], &tx).await.expect("the retry carries the turn");
+        assert_eq!(completion["choices"][0]["message"]["content"], "hi");
         server.await.expect("server");
+    }
+
+    #[test]
+    fn an_empty_stream_names_what_happened() {
+        assert!(truncated_stream_message(false).contains("without sending an answer"));
+        assert!(truncated_stream_message(true).contains("before it finished"));
     }
 
     #[tokio::test]

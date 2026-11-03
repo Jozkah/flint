@@ -893,7 +893,13 @@ pub(crate) fn load_memories(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let instructions = instructions_above_memory(project_root, context);
+    // Reading every skill's description is only worth it when there is a
+    // memory for it to be checked against.
+    let instructions = if records.is_empty() {
+        Vec::new()
+    } else {
+        instructions_above_memory(project_root, context)
+    };
     // `[memory] ranked = true`: relevance + recency + use under a token cap.
     let memory_cfg = crate::core::agent::project::load_agent_config(project_root)
         .map(|c| c.memory)
@@ -1013,14 +1019,8 @@ recording in your answer instead.",
     // How the project builds and tests, so the model does not rediscover it
     // with `ls` every run, or guess. AH-068 / AH-069 / AH-070. A detection
     // that cannot run is logged with its reason; the prompt goes without.
-    let no_cancel = std::sync::atomic::AtomicBool::new(false);
-    match crate::core::agent::tooling::detect(project_root, &no_cancel) {
-        Ok(tooling) => {
-            if let Some(block) = tooling.render() {
-                blocks.push((Composer::ProjectTooling, block));
-            }
-        }
-        Err(e) => log::warn!("{e}"),
+    if let Some(block) = project_tooling_block(project_root) {
+        blocks.push((Composer::ProjectTooling, block));
     }
     if offers(offered, "memory_read") {
         if let Some(memory) = memory_catalog_for(project_root, session_id) {
@@ -1038,6 +1038,51 @@ recording in your answer instead.",
         blocks.push((Composer::RememberedMemories, remembered));
     }
     (blocks, selection)
+}
+
+/// How long a project's detected tooling block is reused. Detection walks the
+/// project for manifests, and the prompt is composed on every turn; a build
+/// file changing between two turns seconds apart is not worth a rescan each.
+const TOOLING_BLOCK_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Projects whose tooling block is remembered at once.
+const MAX_TOOLING_BLOCKS: usize = 32;
+
+type ToolingBlocks = std::collections::HashMap<std::path::PathBuf, (std::time::Instant, Option<String>)>;
+
+/// The `# Project tooling` block for `project_root`, from a short-lived cache.
+/// A detection that cannot run is logged and not cached, so the next turn
+/// tries again.
+fn project_tooling_block(project_root: &Path) -> Option<String> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<ToolingBlocks>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    {
+        let cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((at, block)) = cache.get(project_root) {
+            if at.elapsed() < TOOLING_BLOCK_TTL {
+                return block.clone();
+            }
+        }
+    }
+    let no_cancel = std::sync::atomic::AtomicBool::new(false);
+    match crate::core::agent::tooling::detect(project_root, &no_cancel) {
+        Ok(tooling) => {
+            let block = tooling.render();
+            let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+            if cache.len() >= MAX_TOOLING_BLOCKS {
+                cache.retain(|_, (at, _)| at.elapsed() < TOOLING_BLOCK_TTL);
+                if cache.len() >= MAX_TOOLING_BLOCKS {
+                    cache.clear();
+                }
+            }
+            cache.insert(project_root.to_path_buf(), (std::time::Instant::now(), block.clone()));
+            block
+        }
+        Err(e) => {
+            log::warn!("{e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]
