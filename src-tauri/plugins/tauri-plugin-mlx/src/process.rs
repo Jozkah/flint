@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use sysinfo::{Pid, System};
 use tauri::{Manager, Runtime, State};
 
 use crate::error::MlxError;
@@ -90,11 +89,9 @@ pub async fn is_process_running_by_pid<R: Runtime>(
         return Err(serde_json::to_string(&err).unwrap_or(err.message));
     }
 
-    // Not ours (or already reaped): look at just that pid.
-    let mut system = System::new();
-    let process_pid = Pid::from(pid as usize);
-    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
-    Ok(system.process(process_pid).is_some())
+    // Not ours (or already reaped): a bare OS process with this pid may be an
+    // unrelated process that reused it, so it is never reported as a live server.
+    Ok(false)
 }
 
 /// Get a random available port, avoiding ports used by existing sessions
@@ -125,7 +122,7 @@ pub async fn get_random_available_port<R: Runtime>(
 /// A free loopback port from the IANA dynamic range (49152-65535), so it does
 /// not land on the 3000-4000 band dev servers use. Falls back to the shared
 /// picker only if the whole range is somehow unusable.
-fn pick_dynamic_port(used: &HashSet<u16>) -> Result<u16, String> {
+pub(crate) fn pick_dynamic_port(used: &HashSet<u16>) -> Result<u16, String> {
     use std::hash::{BuildHasher, Hasher};
     const LOW: u32 = 49152;
     const SPAN: u32 = 65535 - LOW + 1;

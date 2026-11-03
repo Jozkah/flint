@@ -36,25 +36,18 @@ pub async fn wait_for_port_free(
     }
 }
 
-/// Generate a random port that's not in the used_ports set and is available
+/// Generate a random port that's not in the used_ports set and is available.
+/// Drawn from the IANA dynamic range (49152-65535), not the 3000-4000 band dev
+/// servers use.
 pub fn generate_random_port(used_ports: &HashSet<u16>) -> Result<u16, String> {
-    const MAX_ATTEMPTS: u32 = 20000;
-    let mut attempts = 0;
+    const MAX_ATTEMPTS: u32 = 1000;
     let mut rng = StdRng::from_entropy();
 
-    while attempts < MAX_ATTEMPTS {
-        let port = rng.gen_range(3000..4000);
-
-        if used_ports.contains(&port) {
-            attempts += 1;
-            continue;
-        }
-
-        if is_port_available(port) {
+    for _ in 0..MAX_ATTEMPTS {
+        let port = rng.gen_range(49152..=65535);
+        if !used_ports.contains(&port) && is_port_available(port) {
             return Ok(port);
         }
-
-        attempts += 1;
     }
 
     Err("Failed to find an available port for the model to load".into())
