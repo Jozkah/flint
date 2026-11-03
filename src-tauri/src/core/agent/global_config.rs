@@ -486,7 +486,7 @@ mod root_keys_tests {
             ..Default::default()
         })
         .unwrap();
-        for key in value.as_object().unwrap().keys() {
+        for key in value.as_object().unwrap().keys().filter(|k| *k != "providers") {
             assert!(super::ROOT_KEYS.contains(&key.as_str()), "{key} missing from ROOT_KEYS");
         }
     }

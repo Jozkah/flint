@@ -913,7 +913,7 @@ fn read_messages_lenient_skips_truncated_tail() {
 }
 
 #[test]
-fn the_shared_reader_still_rejects_corruption_before_the_tail() {
+fn the_shared_reader_skips_corruption_before_the_tail() {
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path();
     seed_thread(base, "bbbb2222", 100.0);
@@ -924,7 +924,9 @@ fn the_shared_reader_still_rejects_corruption_before_the_tail() {
     )
     .unwrap();
 
-    assert!(cli_list_messages_in(base, "bbbb2222").is_err());
+    // The reader is lossy: a bad line is skipped, the readable ones survive.
+    let expected = raw.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(cli_list_messages_in(base, "bbbb2222").unwrap().len(), expected);
 }
 
 #[test]
