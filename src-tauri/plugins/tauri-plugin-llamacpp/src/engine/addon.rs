@@ -962,18 +962,35 @@ async fn download_resumable_to(
     if !resume {
         have = 0;
     }
-    let mut out = fs::OpenOptions::new()
+    // Async file IO: a multi-hundred-MB pack must not park a runtime worker in
+    // blocking writes or in the final fsync.
+    use tokio::io::AsyncWriteExt;
+    let mut out = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .append(resume)
         .truncate(!resume)
-        .open(part)?;
+        .open(part)
+        .await?;
     let mut stream = res.bytes_stream();
     let mut last = std::time::Instant::now();
     on_progress(Progress { phase: "download", received: have, total: expected });
-    while let Some(chunk) = stream.next().await {
+    loop {
+        // Wake up regularly so Cancel is honoured on a stalled connection too,
+        // not only between chunks.
+        let next = match tokio::time::timeout(std::time::Duration::from_millis(250), stream.next()).await {
+            Ok(next) => next,
+            Err(_) => {
+                if cancel.load(Ordering::SeqCst) {
+                    out.flush().await?;
+                    return Err(AddonError::Cancelled);
+                }
+                continue;
+            }
+        };
+        let Some(chunk) = next else { break };
         if cancel.load(Ordering::SeqCst) {
-            out.flush()?;
+            out.flush().await?;
             return Err(AddonError::Cancelled);
         }
         let chunk = chunk.map_err(net_err)?;
@@ -983,13 +1000,14 @@ async fn download_resumable_to(
             let _ = fs::remove_file(part);
             return Err(AddonError::Corrupt("the download is larger than the manifest says".into()));
         }
-        out.write_all(&chunk)?;
+        out.write_all(&chunk).await?;
         if last.elapsed() >= std::time::Duration::from_millis(250) {
             last = std::time::Instant::now();
             on_progress(Progress { phase: "download", received: have, total: expected });
         }
     }
-    out.sync_all()?;
+    out.flush().await?;
+    out.sync_all().await?;
     on_progress(Progress { phase: "download", received: have, total: expected });
     if have != expected {
         return Err(AddonError::Offline("the connection closed early; try again to resume".into()));

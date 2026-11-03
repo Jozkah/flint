@@ -87,8 +87,22 @@ fn parse_args() -> Result<Args, String> {
     Ok(out)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // Taken (not read) so it does not linger in this process's environment.
+    // Done before the runtime starts: changing the environment while worker
+    // threads may read it is a data race.
+    let api_key = std::env::var(API_KEY_ENV).unwrap_or_default();
+    std::env::remove_var(API_KEY_ENV);
+    match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+        Ok(runtime) => runtime.block_on(run(api_key)),
+        Err(e) => {
+            eprintln!("flint-llama-worker: could not start the async runtime: {e}");
+            std::process::exit(8);
+        }
+    }
+}
+
+async fn run(api_key: String) {
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
@@ -168,11 +182,6 @@ async fn main() {
     }
 
     let registry = Arc::new(Mutex::new(registry));
-    // Taken (not read) so it does not linger in this process's environment,
-    // which is also readable via /proc on Linux.
-    let api_key = std::env::var(API_KEY_ENV).unwrap_or_default();
-    std::env::remove_var(API_KEY_ENV);
-
     let registry_for_teardown = Arc::clone(&registry);
     let (server, listener) =
         match EngineServer::bind(registry, args.port, api_key).await {

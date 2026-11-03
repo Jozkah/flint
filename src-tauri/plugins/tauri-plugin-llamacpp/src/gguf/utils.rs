@@ -18,6 +18,12 @@ fn is_loopback_url(url: &str) -> bool {
         || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
+/// True for a path that names a remote file rather than a local one. The one
+/// scheme check every gguf entry point shares, so a URL is never read as a path.
+pub fn is_remote(path: &str) -> bool {
+    path.starts_with("http://") || path.starts_with("https://")
+}
+
 /// Runs a parse over a gguf, local or remote.
 ///
 /// A remote file is fetched in range chunks and the parse retried after each
@@ -29,8 +35,8 @@ async fn parse_gguf<T, F>(path: &str, what: &str, parse: F) -> Result<T, String>
 where
     F: Fn(&mut (dyn ReadSeek + '_)) -> std::io::Result<T>,
 {
-    if path.starts_with("http://") || path.starts_with("https://") {
-        // Remote: read in 2MB chunks until successful
+    if is_remote(path) {
+        // Remote: read in growing chunks until successful
         let mut builder = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(120));
@@ -43,7 +49,12 @@ where
         let client = builder
             .build()
             .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
-        let chunk_size = 2 * 1024 * 1024; // Fixed 2MB chunks
+        // The first chunk is 2 MiB (the KV section of nearly every model fits)
+        // and each retry asks for twice the last, so a header that needs more
+        // is re-parsed a handful of times, not once per 2 MiB up to the cap.
+        const FIRST_CHUNK: usize = 2 * 1024 * 1024;
+        const LARGEST_CHUNK: usize = 32 * 1024 * 1024;
+        let mut chunk_size = FIRST_CHUNK;
         let max_total_size = 120 * 1024 * 1024; // Don't exceed 120MB total
         let mut total_downloaded = 0;
         let mut accumulated_data = Vec::new();
@@ -79,7 +90,7 @@ where
                         }
                         None => true,
                     };
-                    if done || data.len() - parsed_at >= chunk_size {
+                    if done || data.len() - parsed_at >= FIRST_CHUNK {
                         parsed_at = data.len();
                         let mut cursor = std::io::Cursor::new(data.as_slice());
                         if let Ok(parsed) = parse(&mut cursor) {
@@ -117,6 +128,7 @@ where
             if chunk_data.len() < chunk_size {
                 break;
             }
+            chunk_size = (chunk_size * 2).min(LARGEST_CHUNK);
         }
         Err(format!("Could not read {} from downloaded data", what))
     } else {
@@ -552,6 +564,19 @@ fn parse_head_count(s: &str) -> Option<u64> {
         return None;
     }
     Some(vals.iter().sum::<u64>().div_ceil(vals.len() as u64))
+}
+
+#[cfg(test)]
+mod remote_scheme_tests {
+    use super::is_remote;
+
+    #[test]
+    fn both_http_schemes_are_remote_and_paths_are_not() {
+        assert!(is_remote("https://huggingface.co/x/y.gguf"));
+        assert!(is_remote("http://127.0.0.1:8080/y.gguf"));
+        assert!(!is_remote("C:\\models\\y.gguf"));
+        assert!(!is_remote("/models/httpfoo.gguf"));
+    }
 }
 
 #[cfg(test)]

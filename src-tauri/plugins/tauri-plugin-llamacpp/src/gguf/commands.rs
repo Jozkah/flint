@@ -95,7 +95,7 @@ pub async fn find_gguf_tensors(path: String, names: Vec<String>) -> Result<Vec<S
 }
 
 pub async fn get_model_size(path: String) -> Result<u64, String> {
-    if path.starts_with("https://") || path.starts_with("http://") {
+    if crate::gguf::utils::is_remote(&path) {
         // Handle remote URL
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
@@ -213,7 +213,7 @@ pub async fn is_model_supported(
 ) -> Result<ModelSupportStatus, String> {
     let no_kv_offload = no_kv_offload.unwrap_or(false);
     // The metadata lives in shard 1 of a split model, whichever shard was named.
-    let path = if path.starts_with("https://") {
+    let path = if crate::gguf::utils::is_remote(&path) {
         path
     } else {
         gguf_shard_paths(&path).into_iter().next().unwrap_or(path)
@@ -260,7 +260,7 @@ pub async fn is_model_supported(
     // loaded into the same device alongside the weights + KV cache. Only
     // inspected for local paths — remote URLs route through the importer
     // and won't hit this branch with the final on-disk layout.
-    let mmproj_size: u64 = if path.starts_with("https://") || path.starts_with("http://") {
+    let mmproj_size: u64 = if crate::gguf::utils::is_remote(&path) {
         0
     } else {
         sibling_mmproj_size(std::path::Path::new(&path))

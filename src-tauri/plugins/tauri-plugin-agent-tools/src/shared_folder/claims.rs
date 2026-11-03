@@ -90,8 +90,8 @@ pub struct ClaimTable {
     recent: HashMap<String, VecDeque<RecentEdit>>,
     holds: HashMap<(String, String), Hold>,
     hold_log: HashMap<String, VecDeque<HoldRecord>>,
-    /// When a session last sent a message.
-    messaged: HashMap<String, i64>,
+    /// When a session last sent a message to another one: (sender, target).
+    messaged: HashMap<(String, String), i64>,
     /// When a session last read a file.
     reads: HashMap<(String, String), i64>,
     /// Session -> (scope, until).
@@ -107,8 +107,13 @@ impl ClaimTable {
 
     // -- evidence the agent coordinated ------------------------------------
 
-    pub fn note_message_sent(&mut self, session: &str, now: i64) {
-        self.messaged.insert(session.to_string(), now);
+    pub fn note_message_sent(&mut self, session: &str, target: &str, now: i64) {
+        if self.messaged.len() > 4096 {
+            if let Some(oldest) = self.messaged.iter().min_by_key(|(_, at)| **at).map(|(k, _)| k.clone()) {
+                self.messaged.remove(&oldest);
+            }
+        }
+        self.messaged.insert((session.to_string(), target.to_string()), now);
     }
 
     pub fn note_read(&mut self, session: &str, file: &str, now: i64) {
@@ -154,7 +159,7 @@ impl ClaimTable {
 
     /// Hold the first attempt; pass a retry that follows a message or a
     /// re-read (`reread`), or the attempt after `MAX_HOLDS` holds.
-    fn gate(&mut self, session: &str, target: &str, reread: Option<i64>, now: i64) -> bool {
+    fn gate(&mut self, session: &str, target: &str, owner: &str, reread: Option<i64>, now: i64) -> bool {
         let key = (session.to_string(), target.to_string());
         let live = self.holds.get(&key).filter(|h| now - h.at <= HOLD_TTL_MS).cloned();
         match live {
@@ -163,7 +168,11 @@ impl ClaimTable {
                 true
             }
             Some(h) => {
-                let messaged = self.messaged.get(session).is_some_and(|t| *t > h.at);
+                // Only a message to the one holding the claim is coordination.
+                let messaged = self
+                    .messaged
+                    .get(&(session.to_string(), owner.to_string()))
+                    .is_some_and(|t| *t > h.at);
                 let reread = reread.is_some_and(|t| t > h.at);
                 if messaged || reread || h.count >= MAX_HOLDS {
                     self.holds.remove(&key);
@@ -220,7 +229,7 @@ impl ClaimTable {
             return Decision::Allow;
         }
         let reread = self.reads.get(&(me.to_string(), file.to_string())).copied();
-        if self.gate(me, file, reread, now) {
+        if self.gate(me, file, &claim.session, reread, now) {
             self.log_hold(
                 me,
                 HoldRecord {
@@ -297,7 +306,7 @@ impl ClaimTable {
             return Decision::Allow;
         }
         let target = format!("git:{kind}");
-        if self.gate(me, &target, None, now) {
+        if self.gate(me, &target, owner_id, None, now) {
             self.log_hold(
                 me,
                 HoldRecord {
@@ -339,7 +348,7 @@ impl ClaimTable {
         self.release_session(session);
         self.recent.remove(session);
         self.hold_log.remove(session);
-        self.messaged.remove(session);
+        self.messaged.retain(|(from, to), _| from != session && to != session);
         self.reads.retain(|(s, _), _| s != session);
         self.allowed.remove(session);
     }
@@ -395,7 +404,7 @@ mod tests {
         );
         // A retry with nothing in between is held again.
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 2000), Decision::Hold { .. }));
-        t.note_message_sent("b", T0 + 3000);
+        t.note_message_sent("b", "a", T0 + 3000);
         assert_eq!(t.check_write("b", "f", &name, &live, T0 + 4000), Decision::Allow);
         // The pass consumed the hold: a fresh claim by a starts over.
         t.record_write("a", "f", true, T0 + 5000);
@@ -403,10 +412,19 @@ mod tests {
     }
 
     #[test]
+    fn a_message_to_an_unrelated_session_does_not_release_the_hold() {
+        let mut t = ClaimTable::new();
+        t.record_write("a", "f", true, T0);
+        assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 1), Decision::Hold { .. }));
+        t.note_message_sent("b", "c", T0 + 2);
+        assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 3), Decision::Hold { .. }));
+    }
+
+    #[test]
     fn a_message_sent_before_the_hold_is_not_evidence() {
         let mut t = ClaimTable::new();
         t.record_write("a", "f", true, T0);
-        t.note_message_sent("b", T0);
+        t.note_message_sent("b", "a", T0);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Hold { .. }));
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 20), Decision::Hold { .. }));
     }
@@ -525,7 +543,7 @@ mod tests {
         let mut t = ClaimTable::new();
         assert!(matches!(t.check_git("b", "checkout", "a", "A", T0), Decision::Hold { .. }));
         assert!(matches!(t.check_git("b", "checkout", "a", "A", T0 + 1), Decision::Hold { .. }));
-        t.note_message_sent("b", T0 + 2);
+        t.note_message_sent("b", "a", T0 + 2);
         assert_eq!(t.check_git("b", "checkout", "a", "A", T0 + 3), Decision::Allow);
         // A different operation is its own hold.
         assert!(matches!(t.check_git("b", "stash", "a", "A", T0 + 4), Decision::Hold { .. }));
@@ -559,7 +577,7 @@ mod tests {
     fn forgetting_a_session_clears_everything() {
         let mut t = ClaimTable::new();
         t.record_write("a", "f", true, T0);
-        t.note_message_sent("a", T0);
+        t.note_message_sent("a", "b", T0);
         t.allow("a", Scope::All, 5, T0);
         t.forget_session("a");
         assert!(t.recent_of("a", RECENT_WINDOW_MS, T0).is_empty());

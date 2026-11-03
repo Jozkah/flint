@@ -801,16 +801,28 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<usize, String
 }
 
 /// Keep only the newest `max` snapshots.
+///
+/// Works on lines, never parsing them: each line holds a whole redacted prompt
+/// and this runs on the dispatch path under the log lock.
 pub fn prune(data_folder: &Path, max: usize) -> Result<usize, String> {
-    // Counted by line, not parsed: this runs on the append path.
-    let total = std::fs::File::open(log_path(data_folder))
-        .map(|f| crate::retention::lossy_lines(f).filter(|l| !l.trim().is_empty()).count())
-        .unwrap_or(0);
+    let _guard = crate::retention::lock_for(data_folder);
+    let path = log_path(data_folder);
+    let Ok(bytes) = std::fs::read(&path) else {
+        return Ok(0);
+    };
+    let is_record = |l: &&[u8]| l.iter().any(|b| !b.is_ascii_whitespace());
+    let total = bytes.split(|b| *b == b'\n').filter(is_record).count();
     if total <= max {
         return Ok(0);
     }
     let cut = total - max;
-    rewrite(data_folder, move |index, _| index >= cut)
+    let mut out = Vec::with_capacity(bytes.len());
+    for line in bytes.split(|b| *b == b'\n').filter(is_record).skip(cut) {
+        out.extend_from_slice(line);
+        out.push(b'\n');
+    }
+    crate::atomic_file::write_atomic(&path, &out)?;
+    Ok(cut)
 }
 
 pub fn find(data_folder: &Path, id: &str) -> Option<PromptSnapshot> {
@@ -1253,6 +1265,19 @@ mod tests {
             h = h.wrapping_mul(0x0000_0100_0000_01b3);
         }
         assert_eq!(hash_payload(&v), format!("fnv1a64:{h:016x}"));
+    }
+
+    #[test]
+    fn prune_keeps_the_newest_lines_without_parsing_them() {
+        let d = std::env::temp_dir().join(format!("jan-snap-prune-{}", std::process::id()));
+        let path = log_path(&d);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Not valid snapshots: pruning is by line, so they are kept or cut alike.
+        std::fs::write(&path, "{\"n\":1}\n\n{\"n\":2}\nnot json\n{\"n\":4}\n").unwrap();
+        assert_eq!(prune(&d, 5).unwrap(), 0);
+        assert_eq!(prune(&d, 2).unwrap(), 2);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json\n{\"n\":4}\n");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

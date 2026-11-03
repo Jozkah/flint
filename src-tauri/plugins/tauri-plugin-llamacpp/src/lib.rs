@@ -18,6 +18,7 @@ pub mod gguf;
 pub mod load_cancel;
 mod process;
 pub mod state;
+pub(crate) mod sse;
 #[cfg(feature = "tauri")]
 pub use cleanup::cleanup_llama_processes;
 #[cfg(feature = "tauri")]
