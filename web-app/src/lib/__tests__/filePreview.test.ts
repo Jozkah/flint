@@ -115,6 +115,17 @@ describe('filePreview', () => {
     })
   })
 
+  it('decodes numeric entities, attributed <si>, skips phonetics, counts refless cells', async () => {
+    const sst =
+      '<sst><si xml:space="preserve"><t>a&#x20AC;&#10;</t><rPh sb="0"><t>x</t></rPh></si><si><t>b</t></si></sst>'
+    const sheet =
+      '<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row></sheetData></worksheet>'
+    const p = await xlsxPreview(
+      zip({ 'xl/sharedStrings.xml': sst, 'xl/worksheets/sheet1.xml': sheet })
+    )
+    expect(p).toEqual({ kind: 'table', rows: [['a€\n', 'b']] })
+  })
+
   it('extracts pptx first slide text, also from stored entries', async () => {
     const xml =
       '<p:sld><a:p><a:r><a:t>Title</a:t></a:r></a:p><a:p><a:r><a:t>Point</a:t></a:r></a:p></p:sld>'
