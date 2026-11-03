@@ -1,0 +1,23 @@
+{
+  "name": "repeat_reminder",
+  "description": "A model that repeats the same call is reminded at the 3rd and 5th repeat and is not stopped there (#1248).",
+  "files": { "a.txt": "same every time\n" },
+  "task": "Check a.txt.",
+  "model": [
+    { "calls": [ { "id": "c1", "name": "read", "args": { "path": "a.txt" } } ] },
+    { "calls": [ { "id": "c2", "name": "read", "args": { "path": "a.txt" } } ] },
+    { "calls": [ { "id": "c3", "name": "read", "args": { "path": "a.txt" } } ] },
+    { "calls": [ { "id": "c4", "name": "read", "args": { "path": "a.txt" } } ] },
+    { "calls": [ { "id": "c5", "name": "read", "args": { "path": "a.txt" } } ] },
+    { "say": "It says: same every time." }
+  ],
+  "expect": {
+    "requests": 6,
+    "final_text_contains": ["same every time"],
+    "last_request_contains": [
+      "same tool call several times in a row",
+      "identical tool call 5 times in a row"
+    ],
+    "unchanged": ["a.txt"]
+  }
+}

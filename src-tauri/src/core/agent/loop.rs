@@ -878,6 +878,27 @@ fn early_tool_profile(
 
 type Attribution = (String, tauri_plugin_agent_tools::tools::git_attribution::Settings);
 
+/// An optional filter or directory the model sent as the exact empty string
+/// means "not given" (no glob filter, the default directory). Dropped before
+/// the permission gate, which cannot resolve an empty path and would refuse the
+/// call, costing the model a retry for a value with one obvious reading.
+/// Whitespace-only text is still a value, and only these tools' optional
+/// arguments are touched.
+fn drop_empty_optional_args(name: &str, args: &mut serde_json::Value) {
+    let optional: &[&str] = match name {
+        "grep" => &["path", "glob"],
+        "find" | "ls" => &["path"],
+        _ => return,
+    };
+    if let Some(map) = args.as_object_mut() {
+        for key in optional {
+            if map.get(*key).and_then(|v| v.as_str()) == Some("") {
+                map.remove(*key);
+            }
+        }
+    }
+}
+
 /// Flint's attribution on a `git` tool call (a commit's co-author trailer, a
 /// pull request body's footer), added before the call is judged or put to the
 /// user so the prompt shows what will be committed or posted.
@@ -6444,3 +6465,6 @@ mod tests;
 #[cfg(test)]
 #[path = "approval_loop_tests.rs"]
 mod approval_loop_tests;
+
+#[cfg(test)]
+mod scenario_tests;

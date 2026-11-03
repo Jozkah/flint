@@ -2635,6 +2635,7 @@ impl CompositeToolInvoker {
                 continue;
             };
             let tool = lookup(name).expect("is_builtin implies lookup");
+            drop_empty_optional_args(name, &mut args);
             // Transcript audit #5: a backslash JSON turned into a TAB.
             if let Err(e) = tauri_plugin_agent_tools::tools::path_repair::repair_args_on_disk(
                 name,
