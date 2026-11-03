@@ -76,6 +76,8 @@ type ThreadState = {
   updateCurrentThreadAssistant: (assistant: Assistant) => void
   updateThreadTimestamp: (threadId: string) => void
   updateThread: (threadId: string, updates: Partial<Thread>) => void
+  /** Patch several threads in one store write; ids that no longer exist are skipped. */
+  updateThreads: (updates: Record<string, Partial<Thread>>) => void
   deleteAllThreadsByProject: (projectId: string) => void
   /**
    * Load the full assistant of a thread listed as a summary, replacing the
@@ -681,6 +683,22 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         threads: newThreads,
         searchIndex: null,
       }
+    })
+  },
+  updateThreads: (updates) => {
+    set((state) => {
+      const newThreads = { ...state.threads }
+      let changed = false
+      const now = Date.now() / 1000
+      for (const [threadId, patch] of Object.entries(updates)) {
+        const thread = state.threads[threadId]
+        if (!thread) continue
+        const updatedThread = { ...thread, ...patch, updated: now }
+        persistThread(updatedThread, thread)
+        newThreads[threadId] = updatedThread
+        changed = true
+      }
+      return changed ? { threads: newThreads, searchIndex: null } : state
     })
   },
 }))

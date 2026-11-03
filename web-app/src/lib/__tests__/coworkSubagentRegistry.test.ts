@@ -60,4 +60,17 @@ describe('coworkSubagentRegistry', () => {
     await listSubagents()
     expect(invoke).toHaveBeenCalledTimes(1)
   })
+
+  it('recovers once the retry pause has passed instead of caching the failure', async () => {
+    vi.useFakeTimers()
+    try {
+      invoke.mockRejectedValueOnce(new Error('plugin not ready'))
+      await expect(listSubagents()).resolves.toEqual([])
+      invoke.mockResolvedValue([def('a')])
+      vi.advanceTimersByTime(20_000)
+      await expect(listSubagents()).resolves.toEqual([def('a')])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

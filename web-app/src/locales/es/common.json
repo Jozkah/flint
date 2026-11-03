@@ -2934,7 +2934,9 @@
     "pagesAsImages": "Enviar páginas como imágenes",
     "pagesAsImagesHint": "Envía las páginas de este PDF como imágenes para que el modelo vea escaneos, gráficos y diseño",
     "pdfPagesCut": "Se enviaron las primeras {{sent}} de {{total}} páginas de {{name}} como imágenes",
-    "pdfScannedAsImages": "{{name}} no tiene texto, así que sus páginas se enviaron como imágenes"
+    "pdfScannedAsImages": "{{name}} no tiene texto, así que sus páginas se enviaron como imágenes",
+    "ingestImageFailed": "No se pudo procesar la imagen adjunta",
+    "ingestFailed": "No se pudieron indexar los adjuntos"
   },
   "fileViewer": {
     "openFull": "Abrir vista previa completa",

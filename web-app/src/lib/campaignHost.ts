@@ -326,6 +326,12 @@ export function trackCampaign(id: string): void {
   tracked.add(id)
 }
 
+export const isEndedCampaign = (status: string | undefined): boolean =>
+  status === 'done' || status === 'failed' || status === 'cancelled'
+
+/** Whether the host still sweeps and kicks this campaign (tests). */
+export const isTrackedCampaign = (id: string): boolean => tracked.has(id)
+
 const kickAll = () => {
   for (const id of tracked) {
     void getCampaignRunner()
@@ -336,9 +342,14 @@ const kickAll = () => {
 
 /** Limits, waiting state and closed panes, for every tracked campaign. */
 const sweepAll = () => {
-  for (const id of tracked) {
+  for (const id of [...tracked]) {
     void getCampaignRunner()
       .sweep(id)
+      .then((status) => {
+        // An ended campaign was announced by that sweep; nothing more to poll
+        // (startup skips these too).
+        if (isEndedCampaign(status)) tracked.delete(id)
+      })
       .catch((e) => console.warn('[campaign] sweep failed:', errorText(e)))
   }
 }

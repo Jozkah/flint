@@ -430,6 +430,30 @@ describe('agentTools', () => {
     expect(executeTool).not.toHaveBeenCalled()
   })
 
+  it('does not hold output forever behind a chunk that never arrives', async () => {
+    executeToolStreaming.mockImplementation(
+      async (
+        _d: string,
+        _t: string,
+        _n: string,
+        _a: unknown,
+        channel: { onmessage: (m: { seq: number; text: string }) => void }
+      ) => {
+        // seq 0 is lost; everything after it still has to reach the sink.
+        for (let seq = 1; seq <= 400; seq++) channel.onmessage({ seq, text: `${seq};` })
+        return { content: 'done [exit 0]', diff: null, isError: false }
+      }
+    )
+    const chunks: string[] = []
+    const { executeAgentTool } = await import('../agentTools')
+    await executeAgentTool('bash', { command: 'x' }, 't', {
+      onOutput: (text) => chunks.push(text),
+    })
+    expect(chunks).toHaveLength(400)
+    expect(chunks[0]).toBe('1;')
+    expect(chunks[399]).toBe('400;')
+  })
+
   // Cancellation goes by call id (`cancel_tool`), so the streaming path has
   // to carry it exactly as the plain one does; a failed command comes back as
   // the same error result, with only the chunks that arrived streamed.
