@@ -288,6 +288,11 @@ fn canonical_or_self(path: &Path) -> PathBuf {
 /// The canonical path as a person reads it: no `\\?\` prefix.
 pub fn display_path(path: &Path) -> String {
     let raw = path.to_string_lossy();
+    // A share canonicalizes to `\\?\UNC\server\share`; show the real
+    // `\\server\share` so the UNC refusal in `resolve_grantable` sees it.
+    if raw.len() > 8 && raw.is_char_boundary(8) && raw[..8].eq_ignore_ascii_case(r"\\?\UNC\") {
+        return format!(r"\\{}", &raw[8..]);
+    }
     raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_string()
 }
 
@@ -1263,6 +1268,14 @@ mod tests {
         }
         #[cfg(unix)]
         assert_eq!(prepare("/dev/sda", AccessMode::Read, &e).unwrap_err().code, RefusalCode::DevicePath);
+    }
+
+    #[test]
+    fn a_canonical_share_path_displays_as_unc_and_is_refused() {
+        let shown = display_path(Path::new(r"\\?\UNC\server\share\proj"));
+        assert_eq!(shown, r"\\server\share\proj");
+        assert_eq!(is_unc_or_device_text(&shown), Some(RefusalCode::UncPath));
+        assert_eq!(display_path(Path::new(r"\\?\C:\proj")), r"C:\proj");
     }
 
     fn link_dir(target: &Path, link: &Path) -> bool {
