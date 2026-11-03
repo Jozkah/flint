@@ -31,6 +31,10 @@ use super::Route;
 
 type Body = BoxBody<Bytes, Infallible>;
 
+/// Largest request body the worker will buffer. Chat requests with inline
+/// images need headroom; anything beyond this is refused with 413.
+const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
+
 /// One model load at a time, process-wide.
 ///
 /// Auto-fit sizes a model against the device memory free when its load starts.
@@ -197,7 +201,16 @@ impl EngineServer {
                     biased;
                     _ = &mut shutdown => break,
                     accepted = listener.accept() => {
-                        let Ok((stream, _)) = accepted else { continue };
+                        let (stream, _) = match accepted {
+                            Ok(a) => a,
+                            Err(e) => {
+                                // Handle or descriptor exhaustion fails every
+                                // accept; back off instead of spinning a core.
+                                log::warn!("accept failed: {e}");
+                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                continue;
+                            }
+                        };
                         let state = Arc::clone(&state);
                         connections.spawn(async move {
                             let io = TokioIo::new(stream);
@@ -445,9 +458,9 @@ impl EngineServer {
         // because it carries the resized `models_max` the router could not
         // change without a restart.
         if method == Method::POST && path == "/models/reload" {
-            let body = match req.into_body().collect().await {
-                Ok(b) => b.to_bytes(),
-                Err(_) => return json_error(StatusCode::BAD_REQUEST, "could not read the body"),
+            let body = match read_body(req).await {
+                Ok(b) => b,
+                Err(resp) => return resp,
             };
             return self.reload_models(&String::from_utf8_lossy(&body)).await;
         }
@@ -457,9 +470,9 @@ impl EngineServer {
         // means `load_llama_model` / `unload_llama_model` need no rewrite.
         if method == Method::POST && matches!(path.as_str(), "/models/load" | "/models/unload") {
             let load = path.ends_with("/load");
-            let body = match req.into_body().collect().await {
-                Ok(b) => b.to_bytes(),
-                Err(_) => return json_error(StatusCode::BAD_REQUEST, "could not read the body"),
+            let body = match read_body(req).await {
+                Ok(b) => b,
+                Err(resp) => return resp,
             };
             let body = String::from_utf8_lossy(&body).into_owned();
             let Some(model) = extract_model(&body) else {
@@ -474,9 +487,9 @@ impl EngineServer {
 
         // Dropping a thread's saved KV cache, for a thread the user deleted.
         if method == Method::POST && path == "/slots/state/erase" {
-            let body = match req.into_body().collect().await {
-                Ok(b) => b.to_bytes(),
-                Err(_) => return json_error(StatusCode::BAD_REQUEST, "could not read the body"),
+            let body = match read_body(req).await {
+                Ok(b) => b,
+                Err(resp) => return resp,
             };
             return self.erase_slot_state(&String::from_utf8_lossy(&body)).await;
         }
@@ -485,9 +498,9 @@ impl EngineServer {
             return json_error(StatusCode::NOT_FOUND, &format!("no such route: {path}"));
         };
 
-        let body = match req.into_body().collect().await {
-            Ok(b) => b.to_bytes(),
-            Err(_) => return json_error(StatusCode::BAD_REQUEST, "could not read the body"),
+        let body = match read_body(req).await {
+            Ok(b) => b,
+            Err(resp) => return resp,
         };
         let body = String::from_utf8_lossy(&body).into_owned();
 
@@ -648,7 +661,7 @@ impl EngineServer {
             Ok(engine) => {
                 // Resident but idle, so it stays evictable under models_max.
                 drop(engine);
-                release_model(&self.registry, model).await;
+                release_model(&self.registry, model, true).await;
                 Ok(())
             }
             Err(e) => Err(e),
@@ -753,6 +766,26 @@ impl EngineServer {
             };
             first
         };
+        // Liveness and read-only probes must not count as use, or a periodic
+        // `/health` poll keeps the idle auto-unload from ever firing.
+        if matches!(
+            route,
+            Route::Health
+                | Route::Props
+                | Route::Slots
+                | Route::Tokenize
+                | Route::Detokenize
+                | Route::ApplyTemplate
+        ) {
+            let pinned = self.registry.lock().await.pin_for_save(&first);
+            let Some(eng) = pinned else {
+                return json_error(StatusCode::SERVICE_UNAVAILABLE, "no model is loaded");
+            };
+            let guard = InflightGuard::untouched(self.registry.clone(), first);
+            let (out, done) = run(eng, route, body, STREAM_BUFFER).await;
+            release_when_done(guard, done).await;
+            return out;
+        }
         let eng = match acquire_engine(&self.registry, &first).await {
             Ok(e) => e,
             Err(e) => {
@@ -977,6 +1010,9 @@ async fn slot_tokens(engine: &Arc<super::Engine>, slot: i32) -> u64 {
 struct InflightGuard {
     registry: Arc<Mutex<Registry>>,
     model: Option<String>,
+    /// Whether giving the reference back counts as use of the model, restarting
+    /// its idle-unload clock. False for read-only probes (`/health`, `/props`).
+    touch: bool,
 }
 
 impl InflightGuard {
@@ -984,12 +1020,23 @@ impl InflightGuard {
         Self {
             registry,
             model: Some(model),
+            touch: true,
+        }
+    }
+
+    /// For a reference taken with `pin_for_save`: blocks eviction while held but
+    /// leaves the idle clock alone.
+    fn untouched(registry: Arc<Mutex<Registry>>, model: String) -> Self {
+        Self {
+            registry,
+            model: Some(model),
+            touch: false,
         }
     }
 
     async fn release(mut self) {
         if let Some(model) = self.model.take() {
-            release_model(&self.registry, &model).await;
+            release_model(&self.registry, &model, self.touch).await;
         }
     }
 }
@@ -1000,11 +1047,12 @@ impl Drop for InflightGuard {
             return;
         };
         let registry = self.registry.clone();
+        let touch = self.touch;
         // Drop cannot await the async mutex, so hand the release to the runtime.
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => {
                 handle.spawn(async move {
-                    release_model(&registry, &model).await;
+                    release_model(&registry, &model, touch).await;
                 });
             }
             Err(_) => {
@@ -1017,10 +1065,14 @@ impl Drop for InflightGuard {
 
 /// Releases a request's hold on `model`, then tears down whatever that retired
 /// (a model a reload superseded) after the lock is gone.
-async fn release_model(registry: &Arc<Mutex<Registry>>, model: &str) {
+async fn release_model(registry: &Arc<Mutex<Registry>>, model: &str, touch: bool) {
     let retired = {
         let mut reg = registry.lock().await;
-        reg.release(model);
+        if touch {
+            reg.release(model);
+        } else {
+            reg.unpin_after_save(model);
+        }
         reg.take_retired()
     };
     retired.drain().await;
@@ -1305,6 +1357,21 @@ fn json_ok(v: &serde_json::Value) -> HttpResponse<Body> {
         .header(hyper::header::CONTENT_TYPE, "application/json; charset=utf-8")
         .body(Full::new(Bytes::from(v.to_string())).boxed())
         .expect("a literal json response is always buildable")
+}
+
+/// Buffers a request body up to `MAX_BODY_BYTES`, answering 413 past it so a
+/// runaway client cannot grow the worker's memory without bound.
+async fn read_body(req: Request<Incoming>) -> Result<Bytes, HttpResponse<Body>> {
+    match http_body_util::Limited::new(req.into_body(), MAX_BODY_BYTES)
+        .collect()
+        .await
+    {
+        Ok(b) => Ok(b.to_bytes()),
+        Err(e) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => Err(
+            json_error(StatusCode::PAYLOAD_TOO_LARGE, "request body is too large"),
+        ),
+        Err(_) => Err(json_error(StatusCode::BAD_REQUEST, "could not read the body")),
+    }
 }
 
 fn json_error(status: StatusCode, message: &str) -> HttpResponse<Body> {

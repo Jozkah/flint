@@ -17,6 +17,7 @@ const classify = (a) => {
   if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(a)) return 'private'
   if (a.startsWith('fd7a:115c:a1e0')) return 'tailscale-ula'
   if (a.startsWith('fe80:')) return 'link-local'
+  if (a.startsWith('127.') || a === '::1') return 'loopback'
   if (/^f[cd]/i.test(a)) return 'private-v6'
   return 'public'
 }
@@ -28,7 +29,9 @@ const candidates = (await dns.lookup(host, { all: true })).map((c) => ({
   kind: classify(c.address),
 }))
 const isPrivate = (c) => c.kind !== 'public'
-// A public candidate is never used when a private one exists.
+// Advisory only: the requests below go through `fetch(BASE)`, so the OS
+// resolver still picks the address. This reports what a pinned connection
+// would have used.
 const usable = candidates.some(isPrivate)
   ? candidates.filter(isPrivate)
   : candidates
@@ -42,7 +45,7 @@ for (const c of candidates) {
   console.log(`  ${mark} ${c.kind.padEnd(16)} v${c.family} ${c.address}`)
 }
 console.log(
-  'suppressed public:',
+  'public (not pinned):',
   candidates.filter((c) => !isPrivate(c)).length
 )
 
