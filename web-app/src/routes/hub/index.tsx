@@ -222,6 +222,8 @@ function ModelDiscoverRoute() {
         })
       } catch (err) {
         if (!cancelled) {
+          // Drop the previous query's results so they do not sit beside this error.
+          setModels([])
           setError(err instanceof Error ? err.message : String(err))
         }
       } finally {
@@ -234,6 +236,11 @@ function ModelDiscoverRoute() {
       cancelled = true
     }
   }, [debouncedQuery, token, format, source, resultLimit])
+
+  // File lists fetched under another token (e.g. a gated repo without one) are stale.
+  useEffect(() => {
+    setFilesByRepo({})
+  }, [token])
 
   const installedIds = useMemo(() => {
     const ids = new Set<string>()
@@ -704,6 +711,7 @@ function ModelDiscoverRoute() {
                 }
                 const recommended = bestGroup(groups, fitContext)
                 const isMlx = repoLooksMlx(model)
+                const installedProvider = installedSlice(model)
                 const mlxBytes = isMlx ? mlxWeightsBytes(files) : null
                 const recommendedFit: GroupFit | null = repoFit(
                   model,
@@ -793,9 +801,9 @@ function ModelDiscoverRoute() {
                         </button>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                          {installedSlice(model) && (
+                          {installedProvider && (
                             <DialogDeleteAllModels
-                              provider={installedSlice(model)!}
+                              provider={installedProvider}
                               iconOnly
                             />
                           )}
