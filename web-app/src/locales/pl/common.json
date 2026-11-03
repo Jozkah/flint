@@ -2992,7 +2992,9 @@
     "pagesAsImages": "Wyślij strony jako obrazy",
     "pagesAsImagesHint": "Wyślij strony tego PDF jako obrazy, aby model widział skany, wykresy i układ",
     "pdfPagesCut": "Wysłano jako obrazy pierwsze {{sent}} z {{total}} stron pliku {{name}}",
-    "pdfScannedAsImages": "{{name}} nie zawiera tekstu, więc jego strony wysłano jako obrazy"
+    "pdfScannedAsImages": "{{name}} nie zawiera tekstu, więc jego strony wysłano jako obrazy",
+    "ingestImageFailed": "Nie udało się przetworzyć załączonego obrazu",
+    "ingestFailed": "Nie udało się zaindeksować załączników"
   },
   "fileViewer": {
     "openFull": "Otwórz pełny podgląd",

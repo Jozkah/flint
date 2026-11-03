@@ -398,6 +398,15 @@ describe('campaign runner: run end', () => {
   })
 })
 
+describe('campaign runner: sweep result', () => {
+  it('reports the status of an ended campaign so the host can stop polling it', async () => {
+    const ended = fixture([task('a', 'merged')], { status: 'done' })
+    expect(await ended.runner.sweep('c1')).toBe('done')
+    const live = fixture([task('a')])
+    expect(await live.runner.sweep('c1')).toBeUndefined()
+  })
+})
+
 describe('campaign runner: restart and cancel', () => {
   it('re-queues interrupted tasks and continues them in their own session', async () => {
     const f = fixture(
