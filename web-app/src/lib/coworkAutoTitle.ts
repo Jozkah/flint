@@ -7,6 +7,8 @@ import { generateThreadTitle } from '@/lib/thread-title-summarizer'
 /** How long a local model may stay busy with the run before the title waits no more. */
 const LOCAL_WAIT_MS = 10 * 60 * 1000
 const LOCAL_POLL_MS = 2000
+/** One title job per session; a newer run aborts the older poller. */
+const titleJobs = new Map<string, AbortController>()
 
 /**
  * Replace a Cowork session's placeholder title (the first prompt, cut short)
@@ -23,6 +25,10 @@ export function autoTitleCoworkSession(
 ): void {
   if (!useInterfaceSettings.getState().autoGenerateTitle) return
   const { selectedProvider, selectedModel } = useModelProvider.getState()
+  titleJobs.get(sessionId)?.abort()
+  const controller = new AbortController()
+  titleJobs.set(sessionId, controller)
+  const { signal } = controller
   void (async () => {
     if (selectedProvider === 'llamacpp' && selectedModel?.id) {
       const deadline = Date.now() + LOCAL_WAIT_MS
@@ -34,13 +40,15 @@ export function autoTitleCoworkSession(
           idle = true
         }
         if (idle) break
-        if (Date.now() > deadline) return
+        if (signal.aborted || Date.now() > deadline) return
+        if (!useCoworkSessions.getState().sessions.some((s) => s.id === sessionId)) return
         await new Promise((r) => setTimeout(r, LOCAL_POLL_MS))
       }
     }
+    if (signal.aborted) return
     const title = await generateThreadTitle(
       prompt,
-      new AbortController().signal,
+      signal,
       sessionId,
       prompt
     )
@@ -48,5 +56,9 @@ export function autoTitleCoworkSession(
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sessionId)
     if (current && current.title === placeholder) store.setTitle(sessionId, title)
-  })().catch((err) => console.warn('[CoworkTitle] failed:', err))
+  })()
+    .catch((err) => console.warn('[CoworkTitle] failed:', err))
+    .finally(() => {
+      if (titleJobs.get(sessionId) === controller) titleJobs.delete(sessionId)
+    })
 }

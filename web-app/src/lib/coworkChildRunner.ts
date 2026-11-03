@@ -276,7 +276,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     const resolved = resolveSubagent(
       req,
       env.definitions,
-      parentToolNames(env.parentTools())
+      parentToolNames(env.parentTools(), spawn)
     )
     if ('error' in resolved) {
       return { output: `ERROR: ${resolved.error}`, isError: true }

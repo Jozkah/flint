@@ -49,7 +49,7 @@ export const MAX_INLINE_CHARS_PER_FILE = 60_000
 export const MAX_INLINE_CHARS_TOTAL = 150_000
 
 /** A code fence longer than any run of backticks inside `text`. */
-function fenceFor(text: string): string {
+export function fenceFor(text: string): string {
   const longest = (text.match(/`+/g) ?? []).reduce((n, run) => Math.max(n, run.length), 0)
   return '`'.repeat(Math.max(3, longest + 1))
 }
