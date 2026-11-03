@@ -145,6 +145,29 @@ describe('CoworkPreviewPanel', () => {
     await screen.findByText('common:preview.tooLarge')
   })
 
+  it('stops reading a body with no content-length once it passes the cap', async () => {
+    const cancel = vi.fn(async () => undefined)
+    const chunk = new Uint8Array(MAX_PREVIEW_BYTES + 1)
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: chunk })
+      .mockResolvedValue({ done: true })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        headers: { get: () => null },
+        body: { getReader: () => ({ read, cancel }) },
+        text: async () => {
+          throw new Error('must not buffer the whole body')
+        },
+      }))
+    )
+    view('stream.html')
+    await screen.findByText('common:preview.tooLarge')
+    expect(cancel).toHaveBeenCalled()
+  })
+
   it('reports a read failure rather than rendering an empty page', async () => {
     vi.stubGlobal(
       'fetch',

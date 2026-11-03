@@ -6,6 +6,7 @@ import {
   capToolOutput,
   convertThreadMessageToUIMessage,
   extractContentPartsFromUIMessage,
+  countTerminalToolParts,
   mergeSettledToolParts,
   type PersistedToolCall,
 } from '../messages'
@@ -99,5 +100,22 @@ describe('tool call persistence', () => {
     expect(calls[0].input).toEqual({ command: 'ls' })
     expect(calls[1].output).toBe('kept')
     expect(mergeSettledToolParts(merged!, assistant([]))).toBeNull()
+  })
+})
+
+describe('countTerminalToolParts', () => {
+  it('counts only tool parts that reached a terminal state', () => {
+    const live = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'hi' },
+        { type: 'tool-bash', toolCallId: '1', state: 'input-available', input: {} },
+        { type: 'tool-bash', toolCallId: '2', state: 'output-available', output: 'x' },
+        { type: 'tool-read', toolCallId: '3', state: 'output-error', errorText: 'e' },
+        { type: 'dynamic-tool', toolCallId: '4', state: 'output-available', output: 'y' },
+      ],
+    } as never
+    expect(countTerminalToolParts(live)).toBe(3)
   })
 })

@@ -1383,7 +1383,9 @@
     "confirmBody": "Isto grava exatamente a entrada abaixo na sua conta de usuário, e nada mais. Não exige direitos de administrador.",
     "confirmUndo": "Desativar a chave remove esta entrada.",
     "confirm": "Adicionar entrada",
-    "failed": "Não foi possível alterar a entrada de inicialização"
+    "failed": "Não foi possível alterar a entrada de inicialização",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Itens da barra lateral",

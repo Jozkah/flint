@@ -134,7 +134,9 @@
     "shards_one": "{{count}} shard",
     "shards_few": "{{count}} shards",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Импортируйте файл модели GGUF, чтобы добавить его в коллекцию. Включите мультимодальную поддержку, чтобы подключить mmproj для ввода изображений или звука, либо поддержку черновых моделей для спекулятивного декодирования. Модели эмбеддингов определяются автоматически.",

@@ -102,6 +102,8 @@
       "idle": "boşta",
       "awaiting_approval": "onay bekliyor",
       "awaiting_answer": "yanıt bekliyor"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

@@ -102,6 +102,8 @@
       "idle": "rảnh",
       "awaiting_approval": "chờ phê duyệt",
       "awaiting_answer": "chờ câu trả lời"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

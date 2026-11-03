@@ -182,7 +182,7 @@ export function ServerFolderBrowser({
                 <span className="min-w-0 flex-1 truncate">
                   {path === null ? displayPath(entry.path) : entry.name}
                 </span>
-                {entry.git && <GitBranch className="size-3.5 shrink-0 text-muted-foreground" aria-label="git" />}
+                {entry.git && <GitBranch className="size-3.5 shrink-0 text-muted-foreground" aria-label={t('common:gitRepository')} />}
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               </button>
             </li>

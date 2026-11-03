@@ -21,7 +21,7 @@ import {
   findAmbiguousModelIds,
   isFavoriteItem,
   locationKind,
-  remoteLabelFor,
+  makeRemoteLabeler,
   type SearchableModel,
 } from '@/lib/modelPickerItems'
 import { useModelPickerKeyNav } from '@/hooks/useModelPickerKeyNav'
@@ -528,8 +528,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     [searchableItems]
   )
 
-  const remoteLabel = useCallback(
-    (p: ModelProvider) => remoteLabelFor(searchableItems, p),
+  const remoteLabel = useMemo(
+    () => makeRemoteLabeler(searchableItems),
     [searchableItems]
   )
 

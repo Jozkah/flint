@@ -1356,7 +1356,9 @@
     "confirmBody": "Això escriu exactament l'entrada de sota al teu compte d'usuari, i res més. No cal ser administrador.",
     "confirmUndo": "Si desactives l'interruptor, aquesta entrada s'elimina.",
     "confirm": "Afegeix l'entrada",
-    "failed": "No s'ha pogut canviar l'entrada d'inici"
+    "failed": "No s'ha pogut canviar l'entrada d'inici",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Elements de la barra lateral",

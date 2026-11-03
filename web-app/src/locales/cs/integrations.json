@@ -102,6 +102,8 @@
       "idle": "nečinná",
       "awaiting_approval": "čeká na schválení",
       "awaiting_answer": "čeká na odpověď"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

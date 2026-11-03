@@ -159,6 +159,42 @@ describe('ImportLlamacppModelDialog', () => {
     )
   })
 
+  it('checks a draft chosen before the main model once the model arrives', async () => {
+    hoisted.dialogOpen
+      .mockResolvedValueOnce('/tmp/draft.gguf')
+      .mockResolvedValueOnce('/tmp/ok.gguf')
+    hoisted.validateGgufFile.mockImplementation(async (path: string) => ({
+      isValid: true,
+      metadata: {
+        metadata: {
+          'general.architecture': 'llama',
+          'tokenizer.ggml.model': path.includes('draft') ? 'bpe' : 'llama',
+        },
+      },
+    }))
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(document.getElementById('draft-model')!)
+    fireEvent.click(screen.getByText('Select Draft GGUF File'))
+    await waitFor(() =>
+      expect(screen.getAllByText('draft.gguf').length).toBeGreaterThan(0)
+    )
+    expect(
+      screen.queryByText(/not compatible with the main model/i)
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Select GGUF File'))
+    await waitFor(() =>
+      expect(
+        screen.getByText(/not compatible with the main model/i)
+      ).toBeInTheDocument()
+    )
+  })
+
   it('accepts a draft model whose architecture name differs but tokenizer matches (MTP assistant heads)', async () => {
     hoisted.dialogOpen
       .mockResolvedValueOnce('/tmp/ok.gguf')

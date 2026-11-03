@@ -3577,5 +3577,11 @@
     "discard": "Odrzuć szkic",
     "resurvey": "Przejrzyj ponownie",
     "accept": "Zaakceptuj i zapisz FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

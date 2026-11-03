@@ -1338,7 +1338,9 @@
     "confirmBody": "This writes exactly the entry below to your user account, and nothing else. It needs no administrator rights.",
     "confirmUndo": "Turning the switch off removes this entry.",
     "confirm": "Add entry",
-    "failed": "Could not change the startup entry"
+    "failed": "Could not change the startup entry",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Sidebar items",

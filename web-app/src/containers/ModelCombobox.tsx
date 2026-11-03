@@ -585,6 +585,7 @@ export function ModelCombobox({
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleDropdownToggle}
+            aria-label={t('common:toggleModelList')}
           >
             <ChevronDown className="size-4 text-muted-foreground" />
           </Button>

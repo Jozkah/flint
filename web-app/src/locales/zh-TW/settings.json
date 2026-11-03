@@ -1338,7 +1338,9 @@
     "confirmBody": "這只會將下方這一筆項目寫入你的使用者帳號，不會寫入其他任何內容。不需要系統管理員權限。",
     "confirmUndo": "關閉開關會移除這筆項目。",
     "confirm": "加入項目",
-    "failed": "無法變更啟動項目"
+    "failed": "無法變更啟動項目",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "側邊欄項目",
