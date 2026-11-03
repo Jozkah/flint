@@ -21,6 +21,9 @@ use crate::tools::git_tool::Roots;
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 const MAX_TIMEOUT_SECS: u64 = 900;
 const MAX_COMMAND_CHARS: usize = 8_000;
+/// Base64 of the UTF-8 bytes rides the Windows command line (32,767 units):
+/// multibyte text can pass the character cap and still not fit (F5x3-011).
+const MAX_ENCODED_CHARS: usize = 30_000;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan {
@@ -42,8 +45,8 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         .and_then(Value::as_str)
         .filter(|c| !c.trim().is_empty())
         .ok_or("ERROR: host_wsl needs a 'command' for the Linux shell.")?;
-    if command.chars().count() > MAX_COMMAND_CHARS || command.contains('\0') {
-        return Err(format!("ERROR: a host_wsl command is at most {MAX_COMMAND_CHARS} characters and has no NUL; put a longer script in a file."));
+    if command.chars().count() > MAX_COMMAND_CHARS || command.len().div_ceil(3) * 4 > MAX_ENCODED_CHARS || command.contains('\0') {
+        return Err(format!("ERROR: a host_wsl command is at most {MAX_COMMAND_CHARS} characters ({MAX_ENCODED_CHARS} once encoded; multibyte text counts more) and has no NUL; put a longer script in a file."));
     }
     let distro = match args.get("distro") {
         None | Some(Value::Null) => None,

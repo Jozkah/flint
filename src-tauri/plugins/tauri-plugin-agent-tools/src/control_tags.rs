@@ -189,6 +189,14 @@ fn control_tag(bytes: &[u8], at: usize) -> Option<Option<usize>> {
     if bytes.get(j) == Some(&b'/') {
         j += 1;
     }
+    // `< system-reminder>` reads as the tag to a model: blanks after the `<`
+    // are skipped, but only a tag that closes on this line counts, so prose
+    // such as `a < system` is left alone (O03-025).
+    let mut spaced = false;
+    while matches!(bytes.get(j), Some(b' ' | b'\t')) {
+        j += 1;
+        spaced = true;
+    }
     let name_start = j;
     while j < bytes.len()
         && (bytes[j].is_ascii_alphanumeric() || matches!(bytes[j], b'_' | b'-' | b':' | b'.'))
@@ -203,6 +211,7 @@ fn control_tag(bytes: &[u8], at: usize) -> Option<Option<usize>> {
         return None;
     }
     match bytes.get(j) {
+        None | Some(b'\n') | Some(b'\r') if spaced => None,
         None | Some(b'\n') | Some(b'\r') => Some(None),
         Some(b'>') => Some(Some(j)),
         Some(b'/') if bytes.get(j + 1) == Some(&b'>') => Some(Some(j + 1)),
@@ -214,6 +223,9 @@ fn control_tag(bytes: &[u8], at: usize) -> Option<Option<usize>> {
                 .position(|b| matches!(b, b'>' | b'<' | b'\n'))
                 .map(|p| j + p)
                 .filter(|&p| bytes[p] == b'>');
+            if spaced && end.is_none() {
+                return None;
+            }
             Some(end)
         }
         // `<system-reminders>` was cut at the name above; `<systemd>` never
@@ -232,6 +244,13 @@ mod tests {
 
     fn n(text: &str) -> (String, usize) {
         neutralize(text)
+    }
+
+    #[test]
+    fn a_blank_after_the_bracket_does_not_hide_a_tag() {
+        assert!(n("< system-reminder>x</ system-reminder>").1 > 0);
+        assert!(n("<\tsystem>x").1 > 0);
+        assert_eq!(n("if a < system then"), ("if a < system then".to_string(), 0));
     }
 
     #[test]
