@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
+import { toast } from 'sonner'
 import { HuggingFaceDownloadAction } from '../HuggingFaceDownloadAction'
 
 type Task =
@@ -84,5 +85,20 @@ describe('HuggingFaceDownloadAction ready hold', () => {
     render(<HuggingFaceDownloadAction repo="org/model" />)
     expect(screen.queryByRole('progressbar')).toBeNull()
     expect(screen.getByText('Installed')).toBeInTheDocument()
+  })
+})
+
+describe('HuggingFaceDownloadAction start errors', () => {
+  it('words the missing-variant error through the translations', async () => {
+    state.task = undefined
+    state.installed = false
+    render(<HuggingFaceDownloadAction repo="org/model" />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button'))
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'Could not start model download',
+      { description: 'No GGUF variant selected.' }
+    )
   })
 })

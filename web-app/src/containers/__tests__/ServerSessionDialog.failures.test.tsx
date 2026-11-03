@@ -10,11 +10,13 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/hooks/useModelProvider', () => ({
   useModelProvider: { getState: () => ({ selectedModel: null }) },
 }))
-vi.mock('@/lib/remoteRunner', () => ({
-  listRunModels: vi.fn().mockRejectedValue(new Error('down')),
+const api = vi.hoisted(() => ({
+  listRunModels: vi.fn(),
+  runnerInfo: vi.fn(),
 }))
+vi.mock('@/lib/remoteRunner', () => ({ listRunModels: api.listRunModels }))
 vi.mock('@/lib/remoteCowork', () => ({
-  runnerInfo: vi.fn().mockRejectedValue(new Error('down')),
+  runnerInfo: api.runnerInfo,
   sendRemoteTurn: vi.fn(),
   startRemoteSession: vi.fn(),
 }))
@@ -32,9 +34,20 @@ import { ServerSessionDialog } from '../ServerSessionDialog'
 
 describe('ServerSessionDialog failures', () => {
   it('tells the user when the runner check fails', async () => {
+    api.runnerInfo.mockRejectedValue(new Error('down'))
+    api.listRunModels.mockRejectedValue(new Error('down'))
     render(<ServerSessionDialog open onOpenChange={() => {}} />)
     expect(
       await screen.findByText('integrations:serverSession.checkFailed')
+    ).toBeInTheDocument()
+  })
+
+  it('tells the user when the model list fails to load', async () => {
+    api.runnerInfo.mockResolvedValue({ agent: true, runsSessions: true, missing: [] })
+    api.listRunModels.mockRejectedValue(new Error('down'))
+    render(<ServerSessionDialog open onOpenChange={() => {}} />)
+    expect(
+      await screen.findByText('integrations:serverSession.modelsFailed')
     ).toBeInTheDocument()
   })
 })

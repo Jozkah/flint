@@ -626,6 +626,27 @@ export function extractContentPartsFromUIMessage(message: UIMessage): ThreadCont
  * those calls as still running, with no output or error. Only tool calls the
  * stored copy has not settled are touched; everything else stays as saved.
  */
+/**
+ * How many tool parts of `live` are in a terminal state. A cheap stand-in for
+ * "did a new result land": `mergeSettledToolParts` only has something to do
+ * when this grows, so a caller can skip it on the many deltas that add text.
+ */
+export function countTerminalToolParts(live: UIMessage): number {
+  let n = 0
+  for (const part of live.parts ?? []) {
+    const p = part as { type?: string; state?: string }
+    if (
+      (p.type?.startsWith('tool-') || p.type === 'dynamic-tool') &&
+      (p.state === 'output-available' ||
+        p.state === 'output-error' ||
+        p.state === 'output-denied')
+    ) {
+      n++
+    }
+  }
+  return n
+}
+
 export function mergeSettledToolParts(
   stored: ThreadMessage,
   live: UIMessage

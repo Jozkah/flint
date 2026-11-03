@@ -31,6 +31,33 @@ import { errorText } from '@/lib/errorText'
 const TOO_LARGE = 'common:preview.tooLarge'
 
 /**
+ * The response body as text, or null once it passes `max` bytes. Reads the
+ * stream and cancels it at the cap, so a response without a content-length
+ * header never lands in memory whole.
+ */
+async function readTextCapped(res: Response, max: number): Promise<string | null> {
+  const reader = res.body?.getReader?.()
+  if (!reader) {
+    const text = await res.text()
+    return text.length > max ? null : text
+  }
+  const decoder = new TextDecoder()
+  let received = 0
+  let out = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > max) {
+      void reader.cancel().catch(() => undefined)
+      return null
+    }
+    out += decoder.decode(value, { stream: true })
+  }
+  return out + decoder.decode()
+}
+
+/**
  * Sandboxed HTML/SVG frame. In the desktop app the document is served from the
  * flintpreview: scheme with its own CSP; an about:srcdoc frame would inherit
  * the app's CSP, which blocks every inline script in a release build (#135).
@@ -126,8 +153,8 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
         if (!res.ok) throw new Error(String(res.status))
         const size = Number(res.headers.get('content-length') ?? 0)
         if (size > MAX_PREVIEW_BYTES) throw new Error(TOO_LARGE)
-        const content = await res.text()
-        if (content.length > MAX_PREVIEW_BYTES) throw new Error(TOO_LARGE)
+        const content = await readTextCapped(res, MAX_PREVIEW_BYTES)
+        if (content === null) throw new Error(TOO_LARGE)
         if (!alive) return
         setState({
           status: 'ready',

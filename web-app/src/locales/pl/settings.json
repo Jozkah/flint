@@ -1370,7 +1370,9 @@
     "confirmBody": "Zapisuje dokładnie poniższy wpis w Twoim koncie użytkownika i nic więcej. Nie wymaga uprawnień administratora.",
     "confirmUndo": "Wyłączenie przełącznika usuwa ten wpis.",
     "confirm": "Dodaj wpis",
-    "failed": "Nie udało się zmienić wpisu autostartu"
+    "failed": "Nie udało się zmienić wpisu autostartu",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Pozycje paska bocznego",

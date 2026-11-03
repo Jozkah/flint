@@ -1370,7 +1370,9 @@
     "confirmBody": "Zapíše přesně níže uvedený záznam do vašeho uživatelského účtu a nic dalšího. Nejsou potřeba práva správce.",
     "confirmUndo": "Vypnutím přepínače se tento záznam odebere.",
     "confirm": "Přidat záznam",
-    "failed": "Záznam o spuštění se nepodařilo změnit"
+    "failed": "Záznam o spuštění se nepodařilo změnit",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Položky postranního panelu",

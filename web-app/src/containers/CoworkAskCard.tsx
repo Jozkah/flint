@@ -16,20 +16,14 @@ import type {
   AskRequestPayload,
   TodoList,
 } from '@/types/coworkSession'
+import { readAsDataUrl } from '@/lib/attachmentIntake'
 
 type PastedImage = { dataUrl: string; name: string }
 
-const readPastedImage = (file: File): Promise<PastedImage> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () =>
-      resolve({
-        dataUrl: String(reader.result),
-        name: file.name || 'pasted-image',
-      })
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+const readPastedImage = async (file: File): Promise<PastedImage> => ({
+  dataUrl: await readAsDataUrl(file),
+  name: file.name || 'pasted-image',
+})
 
 /**
  * The option mark: a radio dot for a single choice, a square for several. No

@@ -307,5 +307,9 @@
     "pageNotDrawn": "the page could not be drawn",
     "noCanvas": "no canvas is available to draw the image",
     "imageNotEncoded": "the image could not be encoded"
+  },
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
   }
 }

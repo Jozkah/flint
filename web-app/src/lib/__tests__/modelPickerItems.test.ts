@@ -8,6 +8,7 @@ import {
   hostOf,
   isFavoriteItem,
   locationKind,
+  makeRemoteLabeler,
   remoteLabelFor,
 } from '../modelPickerItems'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
@@ -91,6 +92,23 @@ describe('ambiguity and labels', () => {
 
   it('remote label is the title when unique', () => {
     expect(remoteLabelFor(items, items[0].provider)).not.toContain('·')
+  })
+
+  it('the one-pass labeler agrees with the per-provider scan', () => {
+    const twins = buildSearchableItems(
+      [
+        prov('openai', [{ id: 'gpt-4o' }]),
+        prov('OpenAI', [{ id: 'gpt-4o' }], { base_url: 'https://x.example/v1' }),
+        prov('work', [{ id: 'other' }]),
+      ],
+      { hideProvider: noHide, selectedProvider: '' }
+    )
+    for (const set of [items, twins]) {
+      const label = makeRemoteLabeler(set)
+      for (const i of set) {
+        expect(label(i.provider)).toBe(remoteLabelFor(set, i.provider))
+      }
+    }
   })
 
   it('disambiguation keys are item values', () => {
