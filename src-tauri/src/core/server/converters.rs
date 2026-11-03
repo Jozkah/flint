@@ -999,6 +999,20 @@ fn gemini_contents(body: &Value) -> (Vec<Value>, Vec<Value>) {
     (contents, system_parts)
 }
 
+/// Carry a Gemini 3 `thoughtSignature` (a sibling of `functionCall` on the
+/// part) onto the chat tool call, where Google's own OpenAI-compatible
+/// endpoint puts it, so a client that echoes the call back returns it.
+fn attach_thought_signature(call: &mut Value, part: &Value) {
+    let sig = part
+        .get("thoughtSignature")
+        .or_else(|| part.get("thought_signature"))
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.is_empty());
+    if let Some(sig) = sig {
+        call["extra_content"] = json!({"google": {"thought_signature": sig}});
+    }
+}
+
 /// An assistant turn as a `model` content (text, then one `functionCall` per
 /// tool call), recording each call's name by id; `None` when it has neither.
 fn gemini_assistant_content(
@@ -1028,7 +1042,16 @@ fn gemini_assistant_content(
             .and_then(|a| a.as_str())
             .unwrap_or("{}");
         let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
-        parts.push(json!({"functionCall": {"name": name, "args": args}}));
+        let mut part = json!({"functionCall": {"name": name, "args": args}});
+        // Gemini 3 wants the signature it issued back on the same part.
+        if let Some(sig) = call
+            .pointer("/extra_content/google/thought_signature")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+        {
+            part["thoughtSignature"] = json!(sig);
+        }
+        parts.push(part);
     }
     (!parts.is_empty()).then(|| json!({"role": "model", "parts": parts}))
 }
@@ -1283,14 +1306,16 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
             for part in parts {
                 if let Some(fc) = part.get("functionCall") {
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
-                    tool_calls.push(json!({
+                    let mut call = json!({
                         "id": format!("call_{call_prefix}_{}", tool_calls.len()),
                         "type": "function",
                         "function": {
                             "name": fc.get("name").cloned().unwrap_or(Value::Null),
                             "arguments": serde_json::to_string(&args).unwrap_or_default(),
                         }
-                    }));
+                    });
+                    attach_thought_signature(&mut call, part);
+                    tool_calls.push(call);
                 } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
                     if part
                         .get("thought")
@@ -1389,19 +1414,17 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                     }
                     push_role_chunk(state, &mut out);
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
-                    out.push(chunk_str(
-                        state,
-                        json!({"tool_calls": [{
-                            "index": idx,
-                            "id": format!("call_{}_{idx}", state.call_prefix),
-                            "type": "function",
-                            "function": {
-                                "name": fc.get("name").cloned().unwrap_or(Value::Null),
-                                "arguments": serde_json::to_string(&args).unwrap_or_default(),
-                            }
-                        }]}),
-                        None,
-                    ));
+                    let mut call = json!({
+                        "index": idx,
+                        "id": format!("call_{}_{idx}", state.call_prefix),
+                        "type": "function",
+                        "function": {
+                            "name": fc.get("name").cloned().unwrap_or(Value::Null),
+                            "arguments": serde_json::to_string(&args).unwrap_or_default(),
+                        }
+                    });
+                    attach_thought_signature(&mut call, part);
+                    out.push(chunk_str(state, json!({"tool_calls": [call]}), None));
                 } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
                     push_role_chunk(state, &mut out);
                     let key = if part
@@ -3049,6 +3072,36 @@ mod google_generate_content_tests {
         assert!(tc["id"].as_str().unwrap().ends_with("_0"));
         assert_eq!(tc["function"]["name"], json!("getw"));
         assert_eq!(tc["function"]["arguments"], json!("{\"city\":\"NYC\"}"));
+    }
+
+    /// P3A-005: a Gemini 3 function call carries a `thoughtSignature` that the
+    /// next request must send back on the same part.
+    #[test]
+    fn a_thought_signature_survives_a_round_trip() {
+        let upstream = json!({
+            "candidates": [{
+                "content": {"parts": [{
+                    "functionCall": {"name": "getw", "args": {"city": "NYC"}},
+                    "thoughtSignature": "sig-abc"
+                }]},
+                "finishReason": "STOP"
+            }]
+        });
+        let out = conv().convert_response(&upstream);
+        let tc = out["choices"][0]["message"]["tool_calls"][0].clone();
+        assert_eq!(tc["extra_content"]["google"]["thought_signature"], json!("sig-abc"));
+
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": "weather?"},
+                {"role": "assistant", "content": null, "tool_calls": [tc.clone()]},
+                {"role": "tool", "tool_call_id": tc["id"], "content": "{\"temp\": 20}"}
+            ]
+        });
+        let req = conv().convert_request(&body);
+        let part = &req["contents"][1]["parts"][0];
+        assert_eq!(part["thoughtSignature"], json!("sig-abc"));
+        assert_eq!(part["functionCall"]["name"], json!("getw"));
     }
 
     fn ev(data: Value) -> SseEvent {

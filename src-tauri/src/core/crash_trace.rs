@@ -713,9 +713,27 @@ pub fn traced<R: tauri::Runtime>(
     handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     move |invoke| {
-        breadcrumb(invoke.message.command());
-        handler(invoke)
+        let command = invoke.message.command().to_string();
+        breadcrumb(&command);
+        let started = std::time::Instant::now();
+        let handled = handler(invoke);
+        // A synchronous command runs inside this call, on the thread that
+        // dispatched it (the main thread for `pub fn` commands), so a long
+        // call here is a UI stall. An async command returns at once and is
+        // not measured by this wrapper.
+        let elapsed = started.elapsed();
+        if is_slow_dispatch(elapsed) {
+            log::warn!("command `{command}` held the dispatch thread for {} ms", elapsed.as_millis());
+        }
+        handled
     }
+}
+
+/// How long a command may hold the dispatch thread before it is reported.
+const SLOW_DISPATCH: std::time::Duration = std::time::Duration::from_millis(100);
+
+fn is_slow_dispatch(elapsed: std::time::Duration) -> bool {
+    elapsed > SLOW_DISPATCH
 }
 
 #[cfg(test)]
@@ -731,6 +749,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn only_a_dispatch_over_100_ms_is_slow() {
+        assert!(!is_slow_dispatch(std::time::Duration::from_millis(100)));
+        assert!(is_slow_dispatch(std::time::Duration::from_millis(101)));
     }
 
     #[test]

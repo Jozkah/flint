@@ -186,13 +186,19 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
     let result = async {
         for asset in &assets {
             let zip_path = staging.join(asset.name);
-            download_asset(app, asset, &zip_path).await?;
-            emit(app, "unpack", 0, 0);
-            let (archive, target) = (zip_path.clone(), dir.clone());
-            tokio::task::spawn_blocking(move || unzip(&archive, &target))
-                .await
-                .map_err(|e| format!("Unpacking stopped: {e}"))??;
+            // The archive is up to ~900 MB; it goes whether or not the
+            // download, checksum or unpack succeeded.
+            let step = async {
+                download_asset(app, asset, &zip_path).await?;
+                emit(app, "unpack", 0, 0);
+                let (archive, target) = (zip_path.clone(), dir.clone());
+                tokio::task::spawn_blocking(move || unzip(&archive, &target))
+                    .await
+                    .map_err(|e| format!("Unpacking stopped: {e}"))?
+            }
+            .await;
             let _ = tokio::fs::remove_file(&zip_path).await;
+            step?;
         }
         emit(app, "check", 0, 0);
         probe(&dir).await?;
