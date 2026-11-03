@@ -9,6 +9,10 @@ type State = {
 const fingerprint = (map: Record<string, WebCitation>) =>
   Object.keys(map).sort().join('|')
 
+// Capped (oldest message first) so a long session does not keep every
+// message's citations until reload.
+const MAX_MESSAGES = 300
+
 export const useWebCitationStore = create<State>((set) => ({
   byMessageId: {},
   setForMessage: (messageId, citations) => {
@@ -18,7 +22,11 @@ export const useWebCitationStore = create<State>((set) => ({
     set((s) => {
       const prev = s.byMessageId[messageId]
       if (prev && fingerprint(prev) === fingerprint(map)) return s
-      return { byMessageId: { ...s.byMessageId, [messageId]: map } }
+      const next = { ...s.byMessageId, [messageId]: map }
+      const keys = Object.keys(next)
+      for (const k of keys.slice(0, Math.max(0, keys.length - MAX_MESSAGES)))
+        delete next[k]
+      return { byMessageId: next }
     })
   },
 }))
