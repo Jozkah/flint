@@ -55,6 +55,14 @@ const SECRET_NAMES = new Set([
   'wp-config.php',
   'settings-security.xml',
   'appsettings.production.json',
+  'appsettings.prod.json',
+  'appsettings.staging.json',
+  'appsettings.stage.json',
+  'appsettings.preprod.json',
+  'appsettings.live.json',
+  'appsettings.qa.json',
+  'appsettings.uat.json',
+  'appsettings.test.json',
 ])
 
 /** Private-key file prefixes. */

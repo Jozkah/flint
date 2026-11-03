@@ -123,6 +123,14 @@ pub fn is_sensitive_name(name: &str) -> bool {
         || lower == "wp-config.php"
         || lower == "settings-security.xml"
         || lower == "appsettings.production.json"
+        || lower == "appsettings.prod.json"
+        || lower == "appsettings.staging.json"
+        || lower == "appsettings.stage.json"
+        || lower == "appsettings.preprod.json"
+        || lower == "appsettings.live.json"
+        || lower == "appsettings.qa.json"
+        || lower == "appsettings.uat.json"
+        || lower == "appsettings.test.json"
     {
         return true;
     }
