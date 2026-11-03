@@ -194,7 +194,19 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
     let (mut registry, can_save) = load_registry_checked();
 
     // Marker carries the id across a move/rename.
-    if let Some(id) = read_marker(folder) {
+    let marker_id = read_marker(folder).filter(|id| {
+        // A recorded folder that still exists, elsewhere, and still carries
+        // this id means `folder` is a copy of it: it gets an id of its own
+        // rather than taking the original's entry.
+        let original_lives = registry.projects.iter().any(|p| {
+            p.id == *id && p.folder != folder_str && {
+                let other = Path::new(&p.folder);
+                other.is_dir() && read_marker(other).as_deref() == Some(id.as_str())
+            }
+        });
+        !original_lives
+    });
+    if let Some(id) = marker_id {
         if let Some(entry) = registry.projects.iter_mut().find(|p| p.id == id) {
             entry.folder = folder_str;
             entry.name = name;
@@ -227,7 +239,7 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
         return entry;
     }
 
-    // Genuinely new project.
+    // Genuinely new project (or a copy of one: its marker is rewritten).
     let id = uuid::Uuid::new_v4().to_string();
     write_marker(folder, &id);
     let entry = ProjectEntry {
@@ -259,15 +271,34 @@ mod tests {
         assert_eq!(e1.id, e2.id, "same folder must reuse id");
         // Simulate rename: new path, but the .project-id marker carries the id.
         let b = tempfile::tempdir().unwrap();
+        let marker_copy = std::fs::read(a.path().join(".jan/agent/.project-id")).unwrap();
+        std::fs::remove_dir_all(a.path().join(".jan")).unwrap();
+        std::fs::create_dir_all(b.path().join(".jan/agent")).unwrap();
+        std::fs::write(b.path().join(".jan/agent/.project-id"), &marker_copy).unwrap();
+        let e3 = register_folder(b.path());
+        assert_eq!(e1.id, e3.id, "moved folder keeps id via marker");
+        assert_eq!(e3.folder, b.path().to_string_lossy());
+    }
+
+    #[test]
+    fn a_copied_folder_with_the_marker_gets_its_own_id() {
+        let data = tempfile::tempdir().unwrap();
+        set_test_registry_root(Some(data.path().to_path_buf()));
+        let a = tempfile::tempdir().unwrap();
+        let original = register_folder(a.path());
+        let b = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(b.path().join(".jan/agent")).unwrap();
         std::fs::copy(
             a.path().join(".jan/agent/.project-id"),
             b.path().join(".jan/agent/.project-id"),
         )
         .unwrap();
-        let e3 = register_folder(b.path());
-        assert_eq!(e1.id, e3.id, "moved folder keeps id via marker");
-        assert_eq!(e3.folder, b.path().to_string_lossy());
+        let copy = register_folder(b.path());
+        assert_ne!(original.id, copy.id);
+        assert_eq!(read_marker(b.path()).as_deref(), Some(copy.id.as_str()));
+        let again = register_folder(a.path());
+        assert_eq!(again.id, original.id);
+        assert_eq!(again.folder, a.path().to_string_lossy());
     }
 
     /// #43: concurrent registrations of different folders both survive.

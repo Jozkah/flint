@@ -156,11 +156,28 @@ fn sweep_partials(dir: &Path) {
     super::partial_dirs::sweep(dir);
 }
 
+/// A Windows device name (`con`, `nul`, `com1`, ...) with or without an
+/// extension, which Win32 resolves to the device rather than a file.
+fn is_reserved_device_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).trim_end().to_ascii_lowercase();
+    matches!(stem.as_str(), "con" | "prn" | "aux" | "nul" | "conin$" | "conout$")
+        || ["com", "lpt"].iter().any(|p| {
+            stem.strip_prefix(p)
+                .is_some_and(|n| n.len() == 1 && n.chars().all(|c| ('1'..='9').contains(&c)))
+        })
+}
+
 /// Where a bundle's file goes, refusing any path that would leave it.
 fn inside(root: &Path, rel: &str) -> Result<PathBuf, ExportError> {
     let mut out = root.to_path_buf();
     for part in rel.split('/') {
-        if part.is_empty() || part == "." || part == ".." || part.contains(':') || part.contains('\\') {
+        if part.is_empty()
+            || part == "."
+            || part == ".."
+            || part.contains(':')
+            || part.contains('\\')
+            || (cfg!(windows) && is_reserved_device_name(part))
+        {
             return Err(ExportError::new(
                 ExportErrorKind::Io,
                 format!("{rel} cannot be written inside the bundle"),
@@ -217,7 +234,12 @@ pub fn export(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "worktree".into());
-    let name = format!("{stamp}-{tail}");
+    let mut name = format!("{stamp}-{tail}");
+    let mut again = 1;
+    while dir.join(&name).exists() || dir.join(format!("{name}.partial")).exists() {
+        again += 1;
+        name = format!("{stamp}-{tail}-{again}");
+    }
     let partial = dir.join(format!("{name}.partial"));
     let done = dir.join(&name);
     let _claim = super::partial_dirs::claim(&partial);
@@ -227,16 +249,33 @@ pub fn export(
         std::fs::write(partial.join("changes.patch"), patch.patch.as_bytes()).map_err(io)?;
         step("changes.patch").map_err(io)?;
         let mut shipped = std::collections::BTreeMap::new();
+        let mut seen = std::collections::BTreeSet::new();
         for whole in &patch.whole {
-            if let Some(content) = &whole.content {
-                let target = inside(&partial.join("files"), &whole.path)?;
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent).map_err(io)?;
-                }
-                std::fs::write(&target, content).map_err(io)?;
-                shipped.insert(whole.path.clone(), sha256_hex(content));
-                step(&whole.path).map_err(io)?;
+            // A deleted file has no content to ship; its manifest entry says
+            // `deleted`, not `whole`.
+            let Some(content) = &whole.content else {
+                continue;
+            };
+            let target = inside(&partial.join("files"), &whole.path)?;
+            if cfg!(windows) && !seen.insert(whole.path.to_lowercase()) {
+                return Err(ExportError::new(
+                    ExportErrorKind::Io,
+                    format!("{} differs from another file only in case, so both cannot be written", whole.path),
+                ));
             }
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(io)?;
+            }
+            std::fs::write(&target, content).map_err(io)?;
+            shipped.insert(whole.path.clone(), sha256_hex(content));
+            step(&whole.path).map_err(io)?;
+        }
+        let head_sha = head_of(record);
+        if head_sha.is_empty() {
+            return Err(ExportError::new(
+                ExportErrorKind::Io,
+                "the worktree's HEAD could not be read, so the bundle would carry no head commit",
+            ));
         }
         let files = summary
             .iter()
@@ -247,7 +286,7 @@ pub fn export(
                     change: s.change,
                     additions: s.additions,
                     deletions: s.deletions,
-                    whole: patch.whole.iter().any(|w| w.path == s.path),
+                    whole: patch.whole.iter().any(|w| w.path == s.path && w.content.is_some()),
                     sha256: shipped.get(&s.path).cloned(),
                     flags: input
                         .map(|i| flags_for(&i.path, i.base.as_deref(), i.proposed.as_deref()))
@@ -261,7 +300,7 @@ pub fn export(
             repository: record.source_root.clone(),
             branch: record.branch.clone(),
             base_sha: record.base_sha.clone(),
-            head_sha: head_of(record),
+            head_sha,
             patch_sha256: sha256_hex(patch.patch.as_bytes()),
             files,
             apply_with: "git apply changes.patch, from a checkout at base_sha; copy files/ over it for anything listed as whole".into(),

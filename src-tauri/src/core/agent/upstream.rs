@@ -1851,8 +1851,12 @@ pub(crate) async fn read_mcp_resource(
             for content in result.contents {
                 match content {
                     rmcp::model::ResourceContents::TextResourceContents { text: body, .. } => {
-                        text.push_str(&body);
-                        text.push('\n');
+                        // Past the cap nothing more is kept, so a huge body is
+                        // not copied whole only to be cut.
+                        if text.len() <= MAX_RESOURCE_CHARS * 4 {
+                            text.extend(body.chars().take(MAX_RESOURCE_CHARS + 1));
+                            text.push('\n');
+                        }
                     }
                     // Not decoded and not passed through: a blob is bytes this
                     // run has no way to read, and base64 in a transcript is

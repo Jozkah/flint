@@ -224,10 +224,32 @@ pub fn read_verdict(reviewer: &str, answer: Result<&str, &str>) -> Verdict {
     let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
     let lower = first.to_ascii_lowercase();
     let rest: String = text.trim().lines().skip(1).collect::<Vec<_>>().join("\n").trim().chars().take(1000).collect();
-    let vote = match lower.strip_prefix("verdict:").map(str::trim) {
-        Some("approve") => Vote::Approve,
-        Some("reject") => Vote::Reject,
-        _ => Vote::Abstain,
+    // Models decorate the line: `**VERDICT: approve**`, `- VERDICT: approve.`,
+    // `VERDICT: approve - looks fine`. The first word after `verdict:` counts,
+    // unless the same line also names the other verdict.
+    let decor = |c: char| matches!(c, '*' | '_' | '`' | '#' | '>' | '-' | '\u{2022}') || c.is_whitespace();
+    let (vote, same_line) = match lower.trim_start_matches(decor).strip_prefix("verdict:") {
+        Some(tail) => {
+            let tail = tail.trim_start_matches(decor);
+            let word_end = tail.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(tail.len());
+            let (word, more) = tail.split_at(word_end);
+            let names = |w: &str| more.split(|c: char| !c.is_ascii_alphabetic()).any(|m| m == w);
+            match word {
+                "approve" if !names("reject") => (Vote::Approve, more),
+                "reject" if !names("approve") => (Vote::Reject, more),
+                _ => (Vote::Abstain, ""),
+            }
+        }
+        None => (Vote::Abstain, ""),
+    };
+    // What follows the verdict word on the same line, in the reviewer's case.
+    let same_line = first[first.len() - same_line.len()..]
+        .trim_matches(|c: char| decor(c) || c.is_ascii_punctuation())
+        .to_string();
+    let rest = match (same_line.is_empty(), rest.is_empty()) {
+        (true, _) => rest,
+        (false, true) => same_line,
+        (false, false) => format!("{same_line}\n{rest}"),
     };
     let reason = match vote {
         Vote::Abstain => format!("no verdict line; answered: {}", text.trim().chars().take(300).collect::<String>()),
@@ -379,6 +401,12 @@ mod tests {
         assert_eq!(read_verdict("r", Ok("VERDICT: approve\nThe change is covered.")).vote, Vote::Approve);
         assert_eq!(read_verdict("r", Ok("  \nverdict: REJECT\nIt drops a check.")).vote, Vote::Reject);
         assert_eq!(read_verdict("r", Ok("VERDICT: approve")).reason, "(no reason given)");
+        for decorated in ["VERDICT: approve.", "**VERDICT: approve**", "- verdict: Approve", "VERDICT: approve - looks fine"] {
+            assert_eq!(read_verdict("r", Ok(decorated)).vote, Vote::Approve, "{decorated:?}");
+        }
+        assert_eq!(read_verdict("r", Ok("VERDICT: approve - Looks Fine")).reason, "Looks Fine");
+        assert_eq!(read_verdict("r", Ok("**VERDICT: reject**")).vote, Vote::Reject);
+        assert_eq!(read_verdict("r", Ok("VERDICT: approve, though reject if x")).vote, Vote::Abstain);
         for unclear in ["Looks good to me.", "VERDICT: approve or reject", "I approve.\nVERDICT: approve", "", "VERDICT:"] {
             assert_eq!(read_verdict("r", Ok(unclear)).vote, Vote::Abstain, "{unclear:?}");
         }

@@ -1184,11 +1184,17 @@ async fn attempt_with_key(
                         // Independent clients failing against the same
                         // provider at the same moment would otherwise
                         // wake together and retry in lockstep.
-                        let delay = next_delay(
-                            attempt,
-                            headers.and_then(provider_retry_after),
-                            rand::random::<f64>(),
-                        );
+                        let provider = headers.and_then(provider_retry_after);
+                        let delay = next_delay(attempt, provider, rand::random::<f64>());
+                        // A wait the provider asked for is not cut down to fit:
+                        // retrying early only earns another 429.
+                        if provider.is_some_and(|p| p == delay) && exceeds_budget(delay, state.spent) {
+                            return KeyOutcome::Done(Err(format!(
+                                "{} (the provider asked for a {}s wait, longer than the retry budget)",
+                                state.last_err,
+                                delay.as_secs()
+                            )));
+                        }
                         let Some(delay) = budgeted(delay, state.spent) else {
                             return KeyOutcome::Done(Err(format!(
                                 "{} (retry budget exhausted)",
@@ -1244,7 +1250,7 @@ fn upstream_failure_message(status: Option<u16>, described: &str) -> String {
 /// or a dropped stream (those retry without counting toward the timeout cap).
 fn is_timeout_text(described: &str) -> bool {
     let d = described.to_ascii_lowercase();
-    d.contains("timed out") || d.contains("timeout")
+    d.contains(STALL_MESSAGE_START) || d.contains("timed out") || d.contains("timeout")
 }
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
@@ -1264,6 +1270,11 @@ fn next_delay(attempt: u32, provider: Option<Duration>, jitter: f64) -> Duration
         Some(p) if p > backoff => p,
         _ => backoff,
     }
+}
+
+/// Whether `delay` is longer than what remains of [`RETRY_BUDGET`].
+fn exceeds_budget(delay: Duration, spent: Duration) -> bool {
+    retry_budget().checked_sub(spent).is_none_or(|remaining| delay > remaining)
 }
 
 /// Clamp a delay to what remains of [`RETRY_BUDGET`]; `None` when nothing does.
@@ -1299,9 +1310,13 @@ fn idle_timeout_from(raw: Option<&str>) -> Option<Duration> {
     }
 }
 
+/// How [`stream_stalled`]'s text begins; [`is_timeout_text`] keys on it, so
+/// rewording the hint after it cannot turn a stall into a non-timeout.
+const STALL_MESSAGE_START: &str = "the model stopped responding";
+
 fn stream_stalled(limit: Duration) -> genai::Error {
     genai::Error::Internal(format!(
-        "the model stopped responding: no data for {}s (set FLINT_OPERATION_TIMEOUT_MS to change the limit, 0 to disable)",
+        "{STALL_MESSAGE_START}: no data for {}s (set FLINT_OPERATION_TIMEOUT_MS to change the limit, 0 to disable)",
         limit.as_secs()
     ))
 }
@@ -1505,6 +1520,7 @@ mod tests {
             ("Request TIMEOUT after 30s", true),
             ("connection refused", false),
             ("stream closed before the first event", false),
+            (&stream_stalled(Duration::from_secs(5)).to_string(), true),
         ] {
             assert_eq!(is_timeout_text(text), expected, "{text}");
         }
@@ -2498,6 +2514,8 @@ mod tests {
             "clamped to what is left"
         );
         assert_eq!(budgeted(Duration::from_secs(1), retry_budget()), None);
+        assert!(exceeds_budget(Duration::from_secs(10), retry_budget() - Duration::from_secs(2)));
+        assert!(!exceeds_budget(Duration::from_secs(1), Duration::ZERO));
     }
 
     #[test]

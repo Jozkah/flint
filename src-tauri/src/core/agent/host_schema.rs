@@ -241,7 +241,7 @@ fn check_string(schema: &Map<String, Value>, s: &str) -> Result<(), String> {
     if let Some(pattern) = schema.get("pattern").and_then(Value::as_str) {
         // A pattern the regex crate cannot compile (a lookaround, say) is the
         // host's dialect, not a bad call; skip it rather than refuse every call.
-        if let Ok(re) = regex::Regex::new(pattern) {
+        if let Some(re) = super::structured_output::cached_regex(pattern) {
             if !re.is_match(s) {
                 return Err(format!("does not match pattern '{pattern}'"));
             }
