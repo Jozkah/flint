@@ -167,6 +167,14 @@ pub struct ToolContext<'a> {
     /// parse-checked and a failure appended to the tool result. On unless
     /// `[tools] check_syntax = false`.
     pub check_syntax: bool,
+    /// The caller already ran the `pre-tool` hooks for this call, before its
+    /// permission gate, so the handler must not run them again. A caller that
+    /// does this can honour a hook's `ask` and `updatedInput`; one that does not
+    /// gets the hooks run here, where neither can be.
+    pub pre_tool_hooks_done: bool,
+    /// Failures the caller's own `pre-tool` hook run turned up, said on this
+    /// call's result as the handler's own would have been.
+    pub pre_tool_warnings: Vec<String>,
     /// Every tool this run could call, built-in and MCP alike (AH-124).
     ///
     /// Carried so a skill that declares a tool nothing here provides is
@@ -340,6 +348,8 @@ impl<'a> ToolContext<'a> {
             credential_override: false,
             direct_shell_start: None,
             nul_programs: &[],
+            pre_tool_hooks_done: false,
+            pre_tool_warnings: Vec::new(),
             on_output: None,
             read_roots: &[],
             write_roots: &[],
@@ -404,6 +414,19 @@ impl<'a> ToolContext<'a> {
     /// (AH-149).
     pub fn with_format_on_edit(mut self, on: bool) -> Self {
         self.format_on_edit = on;
+        self
+    }
+
+    /// Say the `pre-tool` hooks for this call already ran (see
+    /// [`ToolContext::pre_tool_hooks_done`]).
+    pub fn with_pre_tool_hooks_done(mut self, done: bool) -> Self {
+        self.pre_tool_hooks_done = done;
+        self
+    }
+
+    /// Hand over the warnings from the caller's own `pre-tool` hook run.
+    pub fn with_pre_tool_warnings(mut self, warnings: Vec<String>) -> Self {
+        self.pre_tool_warnings = warnings;
         self
     }
 

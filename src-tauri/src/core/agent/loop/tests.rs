@@ -5797,6 +5797,127 @@ async fn a_huge_builtin_result_is_spilled_to_a_file() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// A `pre-tool` hook that asks becomes a prompt where the gate would have
+/// let the call run; the person's answer decides, and a hook never answers for
+/// them.
+#[tokio::test]
+async fn a_pre_tool_hook_that_asks_puts_the_call_to_the_person() {
+    let root = unique_project_root();
+    let dir = root.join(".jan").join("agent");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("hooks.toml"),
+        "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo '{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"check it\\\"}'\"\njson_output = true\ntools = [\"write\"]\n",
+    )
+    .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        registry.clone(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    // Hooks run where `bash` would: unsandboxed here, which this host cannot do otherwise.
+    invoker.sandbox = false;
+    // The person answers each prompt with what is in `answers`, in order.
+    let answers = Arc::new(StdMutex::new(vec![PermissionDecision::Deny, PermissionDecision::AllowOnce]));
+    let answering = registry.clone();
+    let queue = answers.clone();
+    let asked = tokio::spawn(async move {
+        let mut seen = Vec::new();
+        while let Some(event) = rx.recv().await {
+            if let StreamEvent::PermissionRequest { request_id, prompt_kind, reason, offers_always, .. } = event {
+                seen.push((prompt_kind, reason, offers_always));
+                let answer = queue.lock().unwrap().remove(0);
+                if let Some(sender) = answering.lock().await.remove(&request_id) {
+                    let _ = sender.send(answer);
+                }
+            }
+        }
+        seen
+    });
+    let call = |id: &str, path: &str| serde_json::json!({ "id": id, "type": "function", "function": {
+        "name": "write",
+        "arguments": serde_json::json!({ "path": path, "content": "x" }).to_string()
+    } });
+    invoker.invoke(&[call("w1", "denied.txt")]).await.unwrap();
+    assert!(!root.join("denied.txt").exists(), "refused by the person, so it did not run");
+    invoker.invoke(&[call("w2", "allowed.txt")]).await.unwrap();
+    assert!(root.join("allowed.txt").exists(), "allowed by the person, so it ran");
+    drop(invoker);
+    let seen = asked.await.unwrap();
+    assert_eq!(seen.len(), 2, "each call was asked about: {seen:?}");
+    for (kind, reason, offers_always) in &seen {
+        assert_eq!(kind, "write");
+        assert!(reason.as_deref().is_some_and(|r| r.contains("pre-tool hook") && r.contains("check it")), "{reason:?}");
+        assert!(!offers_always, "no standing grant for a hook's question");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A hook may rewrite a call's input, but the rewrite goes through the gate
+/// as if the model had asked for it: it cannot send a call somewhere the gate
+/// would not have allowed.
+#[tokio::test]
+async fn a_pre_tool_rewrite_is_judged_by_the_gate() {
+    let root = unique_project_root();
+    let dir = root.join(".jan").join("agent");
+    std::fs::create_dir_all(&dir).unwrap();
+    let escape = format!("hook_escape_{}.txt", std::process::id());
+    let hook = |body: &str| {
+        format!("[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo '{body}'\"\njson_output = true\ntools = [\"write\"]\n")
+    };
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        registry.clone(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.auto_approve = true;
+    invoker.sandbox = false;
+    // Whoever is asked says no.
+    let answering = registry.clone();
+    let asked = tokio::spawn(async move {
+        let mut kinds = Vec::new();
+        while let Some(event) = rx.recv().await {
+            if let StreamEvent::PermissionRequest { request_id, prompt_kind, .. } = event {
+                kinds.push(prompt_kind);
+                if let Some(sender) = answering.lock().await.remove(&request_id) {
+                    let _ = sender.send(PermissionDecision::Deny);
+                }
+            }
+        }
+        kinds
+    });
+    let call = serde_json::json!({ "id": "w", "type": "function", "function": {
+        "name": "write",
+        "arguments": serde_json::json!({ "path": "original.txt", "content": "x" }).to_string()
+    } });
+    // A rewrite that stays in the project simply runs, on the new path.
+    std::fs::write(dir.join("hooks.toml"), hook("{\\\"updatedInput\\\":{\\\"path\\\":\\\"rewritten.txt\\\",\\\"content\\\":\\\"y\\\"}}")).unwrap();
+    let out = invoker.invoke(&[call.clone()]).await.unwrap();
+    assert!(!root.join("original.txt").exists() && root.join("rewritten.txt").exists(), "{}", out[0].content);
+    assert!(out[0].content.contains("rewritten by a hook"), "{}", out[0].content);
+    // A rewrite that leaves it is asked about, and refused.
+    std::fs::write(
+        dir.join("hooks.toml"),
+        hook(&format!("{{\\\"updatedInput\\\":{{\\\"path\\\":\\\"../{escape}\\\",\\\"content\\\":\\\"y\\\"}}}}")),
+    )
+    .unwrap();
+    invoker.invoke(&[call]).await.unwrap();
+    let outside = root.parent().unwrap().join(&escape);
+    assert!(!outside.exists(), "the rewritten write left the project without being asked");
+    drop(invoker);
+    assert_eq!(asked.await.unwrap(), vec!["write_escape".to_string()]);
+    let _ = std::fs::remove_file(&outside);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// `after` is met only by a call of the earlier tool that ran and
 /// succeeded: a failed read does not unlock the rule, a good one does.
 #[tokio::test]

@@ -2481,6 +2481,7 @@ impl CompositeToolInvoker {
         args: serde_json::Value,
         id: String,
         name: &str,
+        pre_warnings: Vec<String>,
     ) -> impl std::future::Future<Output = ToolOutcome> {
         use tauri_plugin_agent_tools::tools::{handlers::execute_builtin_with_diff, ToolContext};
         // The future outlives this borrow of `self`, so it owns its roots
@@ -2530,6 +2531,8 @@ impl CompositeToolInvoker {
                     .with_format_on_edit(format_on_edit)
                     .with_check_syntax(check_syntax)
                     .with_nul_programs(&nul_programs)
+                    .with_pre_tool_hooks_done(true)
+                    .with_pre_tool_warnings(pre_warnings)
                     .with_cancel(registered.token().clone());
                 let ctx = match record_to.as_deref() {
                     Some(data) => {
@@ -2647,8 +2650,42 @@ impl CompositeToolInvoker {
             // call is judged or put to the user, so the prompt shows exactly
             // what will be committed or posted.
             attribute_git_args(self.attribution.as_ref(), name, &mut args, &self.project_root);
+            // The project's `pre-tool` hooks run here, ahead of the gate: a hook
+            // that asks for confirmation becomes a prompt, and one that rewrites
+            // the input has the rewrite judged by the gate like any other call.
+            // A hook can only make a call harder to run, never easier: it
+            // cannot answer the gate, only change what the gate is asked about.
+            let pre = tauri_plugin_agent_tools::tools::handlers::run_pre_tool_hooks(
+                tool,
+                &args,
+                &self.tool_context_with_run(),
+            )
+            .await;
+            if let Some(refusal) = pre.refusal {
+                out.push(ToolOutcome::plain(id, refusal));
+                continue;
+            }
+            let mut pre_warnings = pre.warnings;
+            if let Some(new_input) = pre.updated_input {
+                if new_input.is_object() {
+                    args = new_input;
+                    if let Err(e) = tauri_plugin_agent_tools::tools::path_repair::repair_args_on_disk(
+                        name,
+                        tool.path_args,
+                        &mut args,
+                        &self.project_root,
+                        Some(self.scratch_root.as_path()),
+                    ) {
+                        out.push(ToolOutcome::plain(id, format!("ERROR: {e}")));
+                        continue;
+                    }
+                    pre_warnings.push("[pre-tool hook] this call's input was rewritten by a hook".to_string());
+                } else {
+                    pre_warnings.push("[pre-tool hook] a rewritten input that is not a JSON object was ignored".to_string());
+                }
+            }
             let (decision, forced_reason, secret_findings) =
-                match self.gate_builtin(tool, name, &args).await {
+                match self.gate_builtin(tool, name, &args, pre.ask.as_deref()).await {
                     Gated::Refused(text) => {
                         out.push(ToolOutcome::plain(id, text));
                         continue;
@@ -2664,7 +2701,7 @@ impl CompositeToolInvoker {
             if matches!(decision, Decision::Allow)
                 && matches!(tool.capability, Capability::Read | Capability::Net)
             {
-                read_futures.push(self.schedule_read(tool, args, id, name));
+                read_futures.push(self.schedule_read(tool, args, id, name, pre_warnings));
                 continue;
             }
             // Whatever follows may change what an earlier read would see, and
@@ -2695,6 +2732,8 @@ impl CompositeToolInvoker {
                     }
                     let ctx = self
                         .streaming_tool_context(&id)
+                        .with_pre_tool_hooks_done(true)
+                        .with_pre_tool_warnings(pre_warnings.clone())
                         .with_cancel(registered.token().clone())
                         .with_refusal_signal(null_refusal.clone())
                         .with_credential_override(!secret_findings.is_empty());
@@ -2716,6 +2755,7 @@ impl CompositeToolInvoker {
                                 forced_reason,
                                 secret_findings: &secret_findings,
                                 null_refusal: &null_refusal,
+                                pre_warnings: &pre_warnings,
                             },
                             &mut out,
                         )
@@ -2864,6 +2904,8 @@ impl CompositeToolInvoker {
         tool: &'static tauri_plugin_agent_tools::tools::BuiltinTool,
         name: &str,
         args: &serde_json::Value,
+        // A `pre-tool` hook asked for this call to be confirmed (its reason).
+        hook_ask: Option<&str>,
     ) -> Gated {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, with_secret_flag, Decision, PromptKind},
@@ -3056,6 +3098,24 @@ impl CompositeToolInvoker {
             }
             other => other,
         };
+        // A hook asked for confirmation: put the call to the person even where the
+        // gate would have let it through. A denial stays a denial, and Bypass (the
+        // user's own "answer every prompt") still answers it, as it does a
+        // destructive-command prompt.
+        let decision = match (hook_ask, &decision) {
+            (Some(reason), d) if !self.bypass && !matches!(d, Decision::HardDeny(_)) => {
+                forced_reason = Some(format!("A pre-tool hook asked for confirmation: {reason}"));
+                match decision {
+                    Decision::Prompt(kind) => Decision::Prompt(kind),
+                    _ => Decision::Prompt(match tool.capability {
+                        Capability::Write => PromptKind::Write,
+                        Capability::Exec => PromptKind::Exec,
+                        _ => PromptKind::Ask,
+                    }),
+                }
+            }
+            _ => decision,
+        };
         if matches!(decision, Decision::Prompt(_)) {
             // Someone is about to be asked: the streak starts over.
             self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
@@ -3090,6 +3150,7 @@ impl CompositeToolInvoker {
             forced_reason,
             secret_findings,
             null_refusal,
+            pre_warnings,
         } = call;
         let secret_findings = secret_findings.to_vec();
         // Only a person can say "write anyway", and only now: it is
@@ -3267,6 +3328,8 @@ impl CompositeToolInvoker {
                     }
                     let ctx = self
                         .streaming_tool_context(&id)
+                        .with_pre_tool_hooks_done(true)
+                        .with_pre_tool_warnings(pre_warnings.to_vec())
                         .with_cancel(registered.token().clone())
                         .with_refusal_signal(null_refusal.clone())
                         .with_credential_override(secret);
@@ -3301,6 +3364,8 @@ impl CompositeToolInvoker {
                     }
                     let ctx = self
                         .streaming_tool_context(&id)
+                        .with_pre_tool_hooks_done(true)
+                        .with_pre_tool_warnings(pre_warnings.to_vec())
                         .with_cancel(registered.token().clone())
                         .with_refusal_signal(null_refusal.clone());
                     execute_builtin_with_diff(tool, args, &ctx).await
@@ -3511,4 +3576,6 @@ pub(super) struct PromptCall<'a> {
     pub forced_reason: Option<String>,
     pub secret_findings: &'a [tauri_plugin_agent_tools::secrets::SecretFinding],
     pub null_refusal: &'a tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal,
+    /// What the `pre-tool` hooks said that belongs on the call's result.
+    pub pre_warnings: &'a [String],
 }
