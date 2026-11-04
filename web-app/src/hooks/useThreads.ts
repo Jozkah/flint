@@ -11,6 +11,8 @@ import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useThreadToolGrants } from '@/hooks/useThreadToolGrants'
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { useWebSearchChoice } from '@/hooks/useWebSearchChoice'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
@@ -102,6 +104,9 @@ const forgetThreadState = (threadId: string) => {
   // behind they would sit in the record forever.
   useModelOverrides.getState().dropThread(threadId)
   useThreadToolGrants.getState().dropThread(threadId)
+  // Persisted per-thread maps that otherwise grow by one entry per chat.
+  useWorkProfiles.getState().dropScope(threadId)
+  useWebSearchChoice.getState().dropScope(threadId)
   useToolApproval.getState().revokeThread(threadId)
   forgetDeadTools(threadId)
 }

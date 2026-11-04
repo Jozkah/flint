@@ -334,5 +334,8 @@
     "reasoningLoop": "El raonament s’ha aturat després de repetir el mateix text. Prova un altre model o un pressupost de raonament més baix.",
     "serviceUnavailable": "El servei de models no està a punt, o no hi ha cap model o proveïdor seleccionat.",
     "contextUsed": "(S’han fet servir {{used}} de {{total}} tokens de context.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

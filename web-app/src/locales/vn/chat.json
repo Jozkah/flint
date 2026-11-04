@@ -334,5 +334,8 @@
     "reasoningLoop": "Quá trình suy luận đã dừng vì lặp lại cùng một đoạn văn bản. Hãy thử mô hình khác hoặc ngân sách suy nghĩ thấp hơn.",
     "serviceUnavailable": "Dịch vụ mô hình chưa sẵn sàng, hoặc chưa chọn mô hình hay nhà cung cấp.",
     "contextUsed": "(Đã dùng {{used}} trên {{total}} token ngữ cảnh.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CountUp } from '@/components/ui/count-up'
 import {
   Atom,
@@ -211,15 +212,17 @@ export function CapabilityChips({
   /** Just the tinted icons, named by their tooltip, for narrow tables. */
   iconOnly?: boolean
 }) {
+  const { t } = useTranslation()
   const shown = capabilities.filter((c) => CAP_STYLE[c])
   if (shown.length === 0) return null
+  const label = (c: string) => t(`common:capabilityChips.${c}`)
   return (
     <span className={cn('flex flex-wrap gap-1', className)}>
       {shown.map((c) => (
         <span
           key={c}
-          title={c === 'web_search' ? 'web search' : c}
-          aria-label={iconOnly ? c : undefined}
+          title={c === 'web_search' ? t('common:capabilityChips.web_searchTitle') : label(c)}
+          aria-label={iconOnly ? label(c) : undefined}
           className={cn(
             'inline-flex h-5 items-center gap-1 rounded-md text-[length:calc(var(--ui-font-base)*0.6875)] font-medium [&_svg]:size-[11px]',
             iconOnly ? 'w-5 justify-center' : 'px-[7px]',
@@ -227,7 +230,7 @@ export function CapabilityChips({
           )}
         >
           {CAP_STYLE[c].icon}
-          {!iconOnly && (c === 'web_search' ? 'web' : c)}
+          {!iconOnly && label(c)}
         </span>
       ))}
     </span>
@@ -257,19 +260,20 @@ export function TBox({
   return (
     <div
       data-slot="tbox"
+      role={head ? 'table' : undefined}
       className={cn('flex min-w-0 flex-col overflow-x-auto rounded-xl', className)}
       style={{ ['--tbox-cols' as string]: columns }}
     >
       {head && (
         <div
-          aria-hidden
+          role="row"
           className={cn(
             'mb-1 grid grid-cols-[var(--tbox-cols)] items-center gap-3 rounded-lg bg-muted px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
             stackOnPhone && 'max-sm:hidden'
           )}
         >
           {head.map((h, i) => (
-            <span key={i} className="min-w-0 truncate">
+            <span key={i} role="columnheader" className="min-w-0 truncate">
               {h}
             </span>
           ))}

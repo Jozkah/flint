@@ -33,6 +33,34 @@ import { recordListedWindows } from '@/lib/listedWindows'
 import { recordListedCapabilities } from '@/lib/listedCapabilities'
 import { findModelEntry } from '@/lib/detectContextWindow'
 
+type ToolSupportEngine = {
+  isToolSupported: (modelId: string) => Promise<boolean>
+}
+
+// The backend call reads the model's metadata, so asking again on every list
+// rebuild was one call per model each time (HKS-034). Answers are kept per
+// engine and model id; an id that leaves the list is forgotten, so a model put
+// back under the same name is asked about afresh.
+const toolSupportCache = new WeakMap<object, Map<string, boolean>>()
+
+function toolSupportOf(engine: ToolSupportEngine, modelId: string): Promise<boolean> {
+  const known = toolSupportCache.get(engine)?.get(modelId)
+  if (known !== undefined) return Promise.resolve(known)
+  return engine.isToolSupported(modelId).then((supported) => {
+    const answers = toolSupportCache.get(engine) ?? new Map<string, boolean>()
+    answers.set(modelId, supported === true)
+    toolSupportCache.set(engine, answers)
+    return supported
+  })
+}
+
+function pruneToolSupport(engine: object, listedIds: string[]) {
+  const answers = toolSupportCache.get(engine)
+  if (!answers) return
+  const listed = new Set(listedIds)
+  for (const id of [...answers.keys()]) if (!listed.has(id)) answers.delete(id)
+}
+
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
     // The canonical provider transport: no CORS, and one endpoint-resolution
@@ -73,6 +101,7 @@ export class TauriProvidersService extends DefaultProvidersService {
       const loaded = await Promise.allSettled(
         engines.map(async ([providerName, value]) => {
           const models = await value.list() ?? []
+          pruneToolSupport(value, models.map((m) => m.id))
           const provider: ModelProvider = {
             active: false,
             persist: true,
@@ -99,8 +128,7 @@ export class TauriProvidersService extends DefaultProvidersService {
                 }
                 if (!capabilities.includes(ModelCapabilities.TOOLS)) {
                   try {
-                    const toolSupported = await value.isToolSupported(model.id)
-                    if (toolSupported) {
+                    if (await toolSupportOf(value, model.id)) {
                       capabilities.push(ModelCapabilities.TOOLS)
                     }
                   } catch (error) {

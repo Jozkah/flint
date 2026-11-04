@@ -72,8 +72,8 @@ function FileFlags({
       className="mt-1 rounded-lg bg-warning-tint px-2.5 py-2 text-xs shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)]"
       data-testid="proposal-flags"
     >
-      {flags.map((flag, i) => (
-        <div key={i} data-testid="proposal-flag" data-kind={flag.kind}>
+      {flags.map((flag) => (
+        <div key={`${flag.kind}:${flag.summary}`} data-testid="proposal-flag" data-kind={flag.kind}>
           <p className="font-medium text-warning">
             {t(FLAG_LABEL[flag.kind])}: {flag.summary}
           </p>

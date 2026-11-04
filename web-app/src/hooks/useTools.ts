@@ -12,7 +12,9 @@ export const useTools = () => {
   const updateTools = useAppState((state) => state.updateTools)
   const updateRagToolNames = useAppState((state) => state.updateRagToolNames)
   const updateMcpToolNames = useAppState((state) => state.updateMcpToolNames)
-  const { isDefaultsInitialized, setDisabledTools, markDefaultsAsInitialized } = useToolAvailable()
+  const isDefaultsInitialized = useToolAvailable((s) => s.isDefaultsInitialized)
+  const setDisabledTools = useToolAvailable((s) => s.setDisabledTools)
+  const markDefaultsAsInitialized = useToolAvailable((s) => s.markDefaultsAsInitialized)
 
   useEffect(() => {
     // Only the newest call may write: a slow older one must not overwrite it.

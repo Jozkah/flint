@@ -499,7 +499,8 @@
       "waitingSlot": "排队中：等待本地模型槽位"
     },
     "retry": "重试",
-    "retryFor": "重试 {{name}}"
+    "retryFor": "重试 {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} 个文件已更改",

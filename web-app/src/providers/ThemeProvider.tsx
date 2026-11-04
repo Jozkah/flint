@@ -17,7 +17,9 @@ export function rgbOf(css: string): number | null {
 }
 
 export function ThemeProvider() {
-  const { isDark, setIsDark, activeTheme } = useTheme()
+  const isDark = useTheme((s) => s.isDark)
+  const setIsDark = useTheme((s) => s.setIsDark)
+  const activeTheme = useTheme((s) => s.activeTheme)
 
   useEffect(() => {
     const root = document.documentElement

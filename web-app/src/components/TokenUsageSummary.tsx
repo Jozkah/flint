@@ -175,7 +175,10 @@ function CostBlock({ usage, pricing, prefix }: { usage: TokenUsage; pricing: Pri
         data-value={cost.total}
       >
         <span className="text-foreground">{t('common:usage.total')}</span>
-        <span className="font-mono tabular-nums text-foreground">{formatUsd(cost.total)}</span>
+        <span className="font-mono tabular-nums text-foreground">
+          {pricing.estimated ? '~' : ''}
+          {formatUsd(cost.total)}
+        </span>
       </div>
       {(fullRate || writeFullRate) && (
         <div className="text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground" data-testid={`${prefix}-cost-fullrate`}>

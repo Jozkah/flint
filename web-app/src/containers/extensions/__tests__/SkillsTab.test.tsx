@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import React from 'react'
 
@@ -22,7 +22,7 @@ vi.mock('@/lib/extensionsStore', () => ({
   listProjects: vi.fn(),
 }))
 
-import { listSkills } from '@/lib/skillStore'
+import { deleteSkill, listSkills } from '@/lib/skillStore'
 import { listProjects } from '@/lib/extensionsStore'
 import SkillsTab from '../SkillsTab'
 
@@ -30,6 +30,46 @@ const mockedListSkills = vi.mocked(listSkills)
 const mockedListProjects = vi.mocked(listProjects)
 
 describe('SkillsTab', () => {
+  it('asks before deleting a global skill, and deletes only on confirm', async () => {
+    mockedListProjects.mockResolvedValue([])
+    mockedListSkills.mockImplementation(async (scope: any) =>
+      scope.kind === 'store'
+        ? ([{ name: 'doomed', description: 'x' }] as any)
+        : []
+    )
+    vi.mocked(deleteSkill).mockResolvedValue(undefined as never)
+
+    render(<SkillsTab />)
+    const trash = await screen.findByLabelText('common:skillDelete: doomed')
+
+    fireEvent.click(trash)
+    expect(deleteSkill).not.toHaveBeenCalled()
+    expect(await screen.findByText('common:skillDeleteConfirmTitle')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('skill-delete-confirm'))
+    await waitFor(() => expect(deleteSkill).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(deleteSkill).mock.calls[0][1]).toBe('doomed')
+  })
+
+  it('keeps the skill when the confirmation is cancelled', async () => {
+    mockedListProjects.mockResolvedValue([])
+    mockedListSkills.mockImplementation(async (scope: any) =>
+      scope.kind === 'store'
+        ? ([{ name: 'kept', description: 'x' }] as any)
+        : []
+    )
+    vi.mocked(deleteSkill).mockClear()
+
+    render(<SkillsTab />)
+    fireEvent.click(await screen.findByLabelText('common:skillDelete: kept'))
+    fireEvent.click(await screen.findByText('common:cancel'))
+
+    await waitFor(() =>
+      expect(screen.queryByText('common:skillDeleteConfirmTitle')).toBeNull()
+    )
+    expect(deleteSkill).not.toHaveBeenCalled()
+  })
+
   it('renders the Global group with a stubbed global skill', async () => {
     mockedListProjects.mockResolvedValue([])
     mockedListSkills.mockImplementation(async (scope: any) => {

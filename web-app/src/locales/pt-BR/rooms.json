@@ -508,7 +508,8 @@
       "waitingSlot": "Na fila: aguardando o slot do modelo local"
     },
     "retry": "Tentar novamente",
-    "retryFor": "Tentar {{name}} novamente"
+    "retryFor": "Tentar {{name}} novamente",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} arquivo alterado",

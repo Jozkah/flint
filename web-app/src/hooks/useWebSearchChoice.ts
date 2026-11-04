@@ -27,6 +27,8 @@ type WebSearchChoiceState = {
   set: (scope: string, on: boolean) => void
   /** Hand a draft's choice (home screen) to the chat it became. */
   move: (from: string, to: string) => void
+  /** Forget a deleted chat's or session's choice, so the map cannot grow forever. */
+  dropScope: (scope: string) => void
 }
 
 export const useWebSearchChoice = create<WebSearchChoiceState>()(
@@ -35,6 +37,13 @@ export const useWebSearchChoice = create<WebSearchChoiceState>()(
       byScope: {},
       set: (scope, on) =>
         set((s) => ({ byScope: { ...s.byScope, [scope]: on } })),
+      dropScope: (scope) =>
+        set((s) => {
+          if (!(scope in s.byScope)) return s
+          const next = { ...s.byScope }
+          delete next[scope]
+          return { byScope: next }
+        }),
       move: (from, to) =>
         set((s) => {
           if (!(from in s.byScope)) return s

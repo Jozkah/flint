@@ -2878,7 +2878,8 @@
     "pdfPagesCut": "已將 {{name}} 共 {{total}} 頁中的前 {{sent}} 頁以圖片傳送",
     "pdfScannedAsImages": "{{name}} 沒有文字，因此已將其頁面以圖片傳送",
     "ingestImageFailed": "無法處理圖片附件",
-    "ingestFailed": "無法為附件建立索引"
+    "ingestFailed": "無法為附件建立索引",
+    "unknownError": "Unknown error"
   },
   "fileViewer": {
     "openFull": "開啟完整預覽",
@@ -3411,5 +3412,25 @@
   "textFormattingToolbar": "Text formatting",
   "gitRepository": "Git repository",
   "enterCustomCliCommand": "Enter custom CLI command",
-  "openAssistantSettings": "Open assistant settings"
+  "openAssistantSettings": "Open assistant settings",
+  "shortcutKeys": {
+    "ctrl": "Ctrl",
+    "alt": "Alt"
+  },
+  "capabilityChips": {
+    "tools": "tools",
+    "vision": "vision",
+    "reasoning": "reasoning",
+    "audio": "audio",
+    "embeddings": "embeddings",
+    "web_search": "web",
+    "web_searchTitle": "web search"
+  },
+  "skillDeleteConfirmTitle": "Delete skill?",
+  "skillDeleteConfirm": "Delete the skill {{name}}? Its file is removed and this cannot be undone.",
+  "browserBuild": {
+    "uploadFailed": "Could not upload {{name}}",
+    "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
+    "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  }
 }

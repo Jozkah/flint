@@ -334,5 +334,8 @@
     "reasoningLoop": "Le raisonnement s’est arrêté après avoir répété le même texte. Essayez un autre modèle ou un budget de réflexion plus bas.",
     "serviceUnavailable": "Le service de modèles n’est pas prêt, ou aucun modèle ou fournisseur n’est sélectionné.",
     "contextUsed": "({{used}} jetons de contexte utilisés sur {{total}}.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

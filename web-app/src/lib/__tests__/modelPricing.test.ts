@@ -133,6 +133,27 @@ describe('resolvePricing by model generation', () => {
       output: 5,
     })
   })
+
+  it.each([
+    ['claude-3-opus-20240229', 15, 75],
+    ['claude-opus-4-20250514', 15, 75],
+    ['claude-opus-4-1-20250805', 15, 75],
+    ['claude-opus-4-5', 5, 25],
+    ['claude-opus-4-6', 5, 25],
+  ])('prices %s at %d/%d', (id, input, output) => {
+    expect(resolvePricing('anthropic', { id })).toMatchObject({ input, output })
+  })
+
+  it('flags table prices as estimated, never the user’s own', () => {
+    expect(resolvePricing('anthropic', { id: 'claude-sonnet-4' })?.estimated).toBe(true)
+    expect(
+      resolvePricing('anthropic', {
+        id: 'claude-sonnet-4',
+        inputCostPerMillion: 2,
+        outputCostPerMillion: 9,
+      })?.estimated
+    ).toBeUndefined()
+  })
 })
 
 describe('resolvePricing with cache prices', () => {
@@ -160,7 +181,13 @@ describe('resolvePricing with cache prices', () => {
 
   it('adds a user’s cached price to a well-known model’s built-in price', () => {
     const p = resolvePricing('anthropic', { id: 'claude-sonnet-4', cachedInputCostPerMillion: 0.3 })
-    expect(p).toEqual({ input: 3, output: 15, cachedInput: 0.3, cacheWrite: 3.75 })
+    expect(p).toEqual({
+      input: 3,
+      output: 15,
+      cachedInput: 0.3,
+      cacheWrite: 3.75,
+      estimated: true,
+    })
   })
 
   it('fills Anthropic cache ratios for Claude models only', () => {
@@ -176,7 +203,7 @@ describe('resolvePricing with cache prices', () => {
     expect(own).toEqual({ input: 10, output: 20, cachedInput: 1, cacheWrite: 12.5 })
     // Not Claude: cached tokens are priced at the input rate, nothing invented.
     const gpt = resolvePricing('openai', { id: 'gpt-4o' })
-    expect(gpt).toEqual({ input: 2.5, output: 10 })
+    expect(gpt).toEqual({ input: 2.5, output: 10, estimated: true })
     const c = costBreakdown(gpt!, { inputTokens: 1_000_000, cachedInputTokens: 500_000 })
     expect(c.total).toBeCloseTo(2.5)
   })

@@ -12,6 +12,8 @@ export type Pricing = {
   cachedInput?: number
   /** Cache-write input, per million. Absent = priced at `input`. */
   cacheWrite?: number
+  /** From the built-in table, not set by the user: shown as approximate. */
+  estimated?: boolean
 }
 
 /** Providers that run on this machine, so a reply costs nothing. */
@@ -20,7 +22,8 @@ const FREE_PROVIDERS = new Set(['llamacpp', 'mlx', 'foundation-models'])
 /**
  * Published list prices, USD per million tokens. Matched by substring of the
  * lowercased model id, first hit wins, so more specific names go first.
- * Prices change; the per-model fields exist so the user can correct them.
+ * Prices change (last checked 2026-11); the per-model fields exist so the user
+ * can correct them, and a price from this table is flagged `estimated`.
  */
 const KNOWN: Array<[match: string, price: Pricing]> = [
   ['gpt-4.1-nano', { input: 0.1, output: 0.4 }],
@@ -31,6 +34,13 @@ const KNOWN: Array<[match: string, price: Pricing]> = [
   ['claude-3-haiku', { input: 0.25, output: 1.25 }],
   ['claude-3-5-haiku', { input: 0.8, output: 4 }],
   ['haiku', { input: 1, output: 5 }],
+  // Opus: the versioned ids first. Opus 3, 4 and 4.1 were 15/75; 4.5 and later
+  // are 5/25, which the bare `opus` entry below catches.
+  ['claude-3-opus', { input: 15, output: 75 }],
+  ['claude-opus-4-1', { input: 15, output: 75 }],
+  ['claude-opus-4-0', { input: 15, output: 75 }],
+  ['claude-opus-4-2025', { input: 15, output: 75 }],
+  ['opus', { input: 5, output: 25 }],
   ['sonnet', { input: 3, output: 15 }],
   ['gemini-2.5-flash', { input: 0.3, output: 2.5 }],
   ['gemini-2.5-pro', { input: 1.25, output: 10 }],
@@ -89,7 +99,9 @@ export function resolvePricing(
   const id = model?.id?.toLowerCase()
   if (!id) return null
   const known = KNOWN.find(([m]) => id.includes(m))?.[1]
-  return known ? withClaudeCacheDefaults(id, { ...known, ...extras }) : null
+  return known
+    ? withClaudeCacheDefaults(id, { ...known, ...extras, estimated: true })
+    : null
 }
 
 /** Whether a price is zero all round: a local model, which costs nothing. */

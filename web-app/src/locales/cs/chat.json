@@ -349,5 +349,8 @@
     "reasoningLoop": "Uvažování se zastavilo po opakování stejného textu. Zkuste jiný model nebo nižší rozpočet na uvažování.",
     "serviceUnavailable": "Služba modelů není připravená, nebo není vybrán žádný model či poskytovatel.",
     "contextUsed": "(Využito {{used}} z {{total}} tokenů kontextu.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

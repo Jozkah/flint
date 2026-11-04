@@ -513,7 +513,8 @@
       "waitingSlot": "В очереди: ждёт слот локальной модели"
     },
     "retry": "Повторить",
-    "retryFor": "Повторить {{name}}"
+    "retryFor": "Повторить {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "Изменён {{count}} файл",

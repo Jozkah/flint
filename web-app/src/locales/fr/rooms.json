@@ -508,7 +508,8 @@
       "waitingSlot": "En file d'attente : attente de l'emplacement du modèle local"
     },
     "retry": "Réessayer",
-    "retryFor": "Réessayer {{name}}"
+    "retryFor": "Réessayer {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} fichier modifié",
