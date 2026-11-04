@@ -88,6 +88,14 @@ fn catalog_window(model_id: &str) -> Option<u64> {
     if ["gpt-5.4", "gpt-5.5"].iter().any(|b| is_version(model_id, b)) {
         return Some(1_050_000);
     }
+    // gpt-5 and its mini/nano variants, and the o-series reasoning models,
+    // would otherwise fall to the 128K default (F2b-007).
+    if ["gpt-5", "gpt-5-mini", "gpt-5-nano"].iter().any(|b| is_version(model_id, b)) {
+        return Some(400_000);
+    }
+    if ["o1", "o3", "o4-mini"].iter().any(|b| is_version(model_id, b)) {
+        return Some(200_000);
+    }
     if is_version(model_id, "gpt-4.1") {
         return Some(1_047_576);
     }
@@ -166,6 +174,11 @@ mod tests {
             resolve_context_window("claude-sonnet-4-6", None).tokens,
             1_000_000
         );
+        assert_eq!(resolve_context_window("gpt-5", None).tokens, 400_000);
+        assert_eq!(resolve_context_window("gpt-5-mini", None).tokens, 400_000);
+        assert_eq!(resolve_context_window("o3", None).tokens, 200_000);
+        assert_eq!(resolve_context_window("o4-mini-2025-04-16", None).tokens, 200_000);
+        assert_eq!(resolve_context_window("o3x", None).source, ContextWindowSource::Fallback);
         assert_eq!(resolve_context_window("gpt-5.2", None).tokens, 400_000);
         assert_eq!(
             resolve_context_window("gpt-5.2-codex", None).tokens,

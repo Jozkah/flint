@@ -210,6 +210,27 @@ pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<Memor
     Ok(record.id.clone())
 }
 
+/// [`commit`] for reviewed proposals of one scope, written in one pass. One
+/// result per proposal, in order; the project identity is persisted once.
+pub fn commit_many(
+    store_root: &std::path::Path,
+    scope: Scope,
+    proposals: &[&Proposal],
+) -> Result<Vec<Result<MemoryId, String>>, String> {
+    let records: Vec<&MemoryRecord> = proposals.iter().map(|p| &p.record).collect();
+    let results = store::insert_many_capped(store_root, scope, &records, MAX_RECORDS_PER_SCOPE)?;
+    if scope == Scope::Project && results.iter().any(Result::is_ok) {
+        if let Some(id) = records.iter().find_map(|r| r.project_id.as_deref()) {
+            super::identity::persist_for_store(store_root, id);
+        }
+    }
+    Ok(results
+        .into_iter()
+        .zip(records)
+        .map(|(r, rec)| r.map(|()| rec.id.clone()))
+        .collect())
+}
+
 /// Forget a memory.
 ///
 /// Marks it deleted and removes its text from disk in the same write: a
@@ -570,6 +591,45 @@ mod tests {
         let path = super::super::identity::identity_path(&project);
         assert_eq!(std::fs::read_to_string(path).unwrap(), id);
         let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// O04-026: a batch lands in one write, in order, and stops at the cap
+    /// per record rather than failing the whole batch.
+    #[test]
+    fn commit_many_writes_every_proposal_in_one_pass() {
+        let root = unique_root();
+        let make = |n: usize| {
+            let mut p = propose(
+                MemoryId::new(format!("m{n}")),
+                &format!("Fact number {n} about the build"),
+                Scope::User,
+                None,
+                None,
+                Creator::Import,
+                Origin::Explicit,
+                1_000,
+                &[],
+            )
+            .unwrap();
+            p.record.id = MemoryId::new(format!("m{n}"));
+            p
+        };
+        let proposals: Vec<Proposal> = (0..3).map(make).collect();
+        let refs: Vec<&Proposal> = proposals.iter().collect();
+        let results = commit_many(&root, Scope::User, &refs).unwrap();
+        assert!(results.iter().all(Result::is_ok));
+        assert_eq!(store::load(&root, Scope::User).records.len(), 3);
+
+        let again = store::insert_many_capped(
+            &root,
+            Scope::User,
+            &[&proposals[0].record, &make(9).record],
+            3,
+        )
+        .unwrap();
+        assert!(again[0].is_ok(), "an existing id is replaced, not counted twice");
+        assert!(again[1].is_err(), "a new record past the cap is refused alone");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

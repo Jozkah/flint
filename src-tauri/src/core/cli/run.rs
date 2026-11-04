@@ -996,6 +996,37 @@ pub(super) async fn run_steered(
     outcome
 }
 
+/// `JAN_DATA_FOLDER` for a `run-subagent --spec F` process, from the raw
+/// arguments, so `main` sets it before any thread exists (CLIA-026). Empty for
+/// every other command, and when the spec's folder is not an existing absolute
+/// directory (the command itself then refuses it).
+pub fn durable_subagent_env_for(args: &[String]) -> Vec<(&'static str, String)> {
+    let args: Vec<&str> = args.iter().map(String::as_str).take_while(|a| *a != "--").collect();
+    let Some(at) = args.iter().position(|a| *a == "run-subagent") else {
+        return Vec::new();
+    };
+    let rest = &args[at + 1..];
+    let file = rest.iter().enumerate().find_map(|(i, a)| {
+        if *a == "--spec" {
+            rest.get(i + 1).map(|v| v.to_string())
+        } else {
+            a.strip_prefix("--spec=").map(str::to_string)
+        }
+    });
+    let Some(file) = file else { return Vec::new() };
+    match crate::core::agent::durable_subagent::read_spec(std::path::Path::new(&file)) {
+        Ok(spec) if !spec.data_folder.is_empty() => {
+            let folder = std::path::Path::new(&spec.data_folder);
+            if folder.is_absolute() && folder.is_dir() {
+                vec![("JAN_DATA_FOLDER", spec.data_folder)]
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// Run one durable subagent from its spec (AH-101). Started by a job
 /// supervisor as `flint cli agent run-subagent --spec <file>`; its answer is what
 /// it prints, which the supervisor keeps as the job's output.
@@ -1012,7 +1043,9 @@ pub async fn run_durable_subagent(
 
     let spec = crate::core::agent::durable_subagent::read_spec(spec_file)?;
     // The data folder the parent uses: its providers, and where the record of
-    // this run belongs. Set before anything reads it.
+    // this run belongs. Validated here; the process environment was already set
+    // from the spec by `main`, before any thread existed (CLIA-026), because
+    // `set_var` on a live multi-threaded runtime races with `getenv`.
     if !spec.data_folder.is_empty() {
         let folder = std::path::Path::new(&spec.data_folder);
         if !folder.is_absolute() || !folder.is_dir() {
@@ -1025,7 +1058,6 @@ pub async fn run_durable_subagent(
             )
             .at(Stage::Startup));
         }
-        std::env::set_var("JAN_DATA_FOLDER", &spec.data_folder);
     }
     let session = prepare_agent_session(
         &spec.project,

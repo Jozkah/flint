@@ -2293,7 +2293,10 @@ fn main() {
     // `schedule tick --data` and `schedule run-spec` need the same, plus the
     // unattended flag; applied here, not inside the async command.
     let raw: Vec<String> = std::env::args().skip(1).collect();
-    for (key, value) in app_lib::core::cli::schedule::process_env_for(&raw) {
+    for (key, value) in app_lib::core::cli::schedule::process_env_for(&raw)
+        .into_iter()
+        .chain(app_lib::core::cli::durable_subagent_env_for(&raw))
+    {
         std::env::set_var(key, value);
     }
     let worker = std::thread::Builder::new()

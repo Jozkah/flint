@@ -373,6 +373,22 @@ mod tests {
         }
     }
 
+    /// CLIA-026: the data folder reaches the process environment from the raw
+    /// arguments (applied by `main` before any thread), not from `set_var` in
+    /// the async command.
+    #[cfg(feature = "cli")]
+    #[test]
+    fn the_child_environment_is_computed_from_the_raw_arguments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_spec(dir.path(), &spec(dir.path())).unwrap();
+        let mut args: Vec<String> = ["cli", "agent", "run-subagent", "--spec"].map(String::from).to_vec();
+        args.push(path.to_string_lossy().to_string());
+        let env = crate::core::cli::durable_subagent_env_for(&args);
+        assert_eq!(env, vec![("JAN_DATA_FOLDER", dir.path().to_string_lossy().to_string())]);
+        let other: Vec<String> = ["cli", "run", "--spec", "x"].map(String::from).to_vec();
+        assert!(crate::core::cli::durable_subagent_env_for(&other).is_empty());
+    }
+
     #[test]
     fn the_child_is_this_binary_with_arguments_never_a_shell_line() {
         let dir = tempfile::tempdir().unwrap();

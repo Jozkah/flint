@@ -109,8 +109,8 @@ fn is_valid_written_id(id: &str) -> bool {
 
 /// Derived from the canonical path rather than random, so a project whose id
 /// file is lost gets the same id back instead of orphaning its memories.
-/// Lower-cased first: on Windows the same directory is reachable by several
-/// spellings, and two of them must not become two projects.
+/// Case-folded first on Windows and macOS: the same directory is reachable by
+/// several spellings there, and two of them must not become two projects.
 fn derived_project_id(project_root: &Path) -> String {
     let canonical = project_root
         .canonicalize()
@@ -118,11 +118,22 @@ fn derived_project_id(project_root: &Path) -> String {
     derive_id(&canonical)
 }
 
+/// Case is folded only where the filesystem folds it: `/src/App` and
+/// `/src/app` are different folders on Linux and must stay different projects
+/// (O04-016).
+fn fold_path(text: &str) -> String {
+    if cfg!(any(windows, target_os = "macos")) {
+        text.to_lowercase()
+    } else {
+        text.to_string()
+    }
+}
+
 /// A stable digest of the canonical path. FNV-1a: it needs to be identical
 /// across processes and cheap, not cryptographic -- nothing is authenticated by
 /// a project id.
 fn derive_id(canonical: &Path) -> String {
-    let text = canonical.to_string_lossy().to_lowercase();
+    let text = fold_path(&canonical.to_string_lossy());
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in text.as_bytes() {
         hash ^= u64::from(*byte);
@@ -158,6 +169,13 @@ mod tests {
             std::env::temp_dir().join(format!("jan_projid_{tag}_{}_{}", std::process::id(), n));
         std::fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    /// O04-016: case is only folded where the filesystem folds it.
+    #[test]
+    fn path_case_is_folded_only_on_case_insensitive_platforms() {
+        let (a, b) = (fold_path("/src/App"), fold_path("/src/app"));
+        assert_eq!(a == b, cfg!(any(windows, target_os = "macos")));
     }
 
     #[test]
@@ -222,7 +240,12 @@ mod tests {
         let root = unique_project("Casing");
         let derived_upper = derive_id(Path::new(r"C:\Src\Jan"));
         let derived_lower = derive_id(Path::new(r"c:\src\jan"));
-        assert_eq!(derived_upper, derived_lower);
+        // Folded only where the filesystem folds case (O04-016): on Linux the
+        // two spellings are different folders and stay different projects.
+        assert_eq!(
+            derived_upper == derived_lower,
+            cfg!(any(windows, target_os = "macos"))
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
