@@ -652,7 +652,7 @@ fn clamp_middle(text: &str, max: usize) -> String {
 fn live_prefix_instruction(kept: usize, focus: Option<&str>, has_prior: bool) -> String {
     let mut text = format!(
         "[Compaction request from the harness, not from the user] Do not call any tool. {} The last {kept} message(s) are kept verbatim after your summary, so leave them out; summarize what came before them.",
-        SUMMARY_SYSTEM_PROMPT.replace("transcript below", "conversation above"),
+        SUMMARY_SYSTEM_PROMPT.replace("conversation transcript below", "conversation above"),
     );
     if has_prior {
         text.push_str(
