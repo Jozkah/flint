@@ -98,8 +98,8 @@ pub fn note_read(ctx: &ToolContext<'_>, file: &Path) {
 }
 
 /// The agent sent a message: evidence for the one-retry rule.
-pub fn note_message_sent(session: &str) {
-    table().note_message_sent(session, now_ms());
+pub fn note_message_sent(session: &str, target: &str) {
+    table().note_message_sent(session, target, now_ms());
 }
 
 // -- git guard ----------------------------------------------------------------
@@ -344,7 +344,7 @@ mod tests {
         );
         // B messages, then retries: through.
         w.tick(1000);
-        w.table.note_message_sent("b", w.now());
+        w.table.note_message_sent("b", "a", w.now());
         w.tick(1000);
         assert!(w.write("b", "src/x.ts").is_none());
         // B now owns the claim; A is held in turn.
@@ -498,7 +498,7 @@ mod tests {
         w.join("b", "Beta", false);
         assert!(w.git("b", &checkout()).is_some());
         w.tick(10);
-        w.table.note_message_sent("b", w.now());
+        w.table.note_message_sent("b", "a", w.now());
         w.tick(10);
         assert!(w.git("b", &checkout()).is_none());
     }

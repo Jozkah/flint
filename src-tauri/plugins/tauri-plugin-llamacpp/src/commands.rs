@@ -216,15 +216,7 @@ pub struct LoadProgressPayload {
 /// any other event, a different model, or malformed input - callers should
 /// simply skip the block.
 fn parse_load_progress_event(block: &str, model_id: &str) -> Option<LoadProgressPayload> {
-    for line in block.lines() {
-        // Comments (`: keepalive`), blank lines and other fields are not data;
-        // skip them rather than ending the scan of the block.
-        let Some(data) = line.strip_prefix("data:") else {
-            continue;
-        };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(data.trim_start()) else {
-            continue;
-        };
+    for json in crate::sse::data_events(block) {
         if json.get("model").and_then(|v| v.as_str()) != Some(model_id) {
             continue;
         }
@@ -276,15 +268,7 @@ enum LoadStatusChange {
 }
 
 fn parse_load_status_change(block: &str, model_id: &str) -> Option<LoadStatusChange> {
-    for line in block.lines() {
-        // Comments (`: keepalive`), blank lines and other fields are not data;
-        // skip them rather than ending the scan of the block.
-        let Some(data) = line.strip_prefix("data:") else {
-            continue;
-        };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(data.trim_start()) else {
-            continue;
-        };
+    for json in crate::sse::data_events(block) {
         if json.get("model").and_then(|v| v.as_str()) != Some(model_id) {
             continue;
         }
@@ -379,20 +363,14 @@ fn spawn_load_progress_listener<S: ProgressSink>(
         announce();
 
         let mut stream = resp.bytes_stream();
-        // Bytes until a whole block is in, so a multi-byte character split
-        // across chunks decodes intact; bounded so a block that never ends
-        // cannot grow it without limit (ENG-008).
-        const MAX_PENDING: usize = 1024 * 1024;
-        let mut buf: Vec<u8> = Vec::new();
+        let mut reader = crate::sse::BlockReader::default();
         let mut fail_tx = Some(fail_tx);
         let mut saw_loading = false;
         while let Some(chunk) = stream.next().await {
             let Ok(bytes) = chunk else { break };
-            buf.extend_from_slice(&bytes);
+            reader.push(&bytes);
 
-            while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
-                let raw: Vec<u8> = buf.drain(..pos + 2).collect();
-                let event_block = String::from_utf8_lossy(&raw).into_owned();
+            while let Some(event_block) = reader.next_block() {
                 if let Some(payload) = parse_load_progress_event(&event_block, &model_id) {
                     sink.load_progress(payload);
                 }
@@ -408,9 +386,9 @@ fn spawn_load_progress_listener<S: ProgressSink>(
                     _ => {}
                 }
             }
-            if buf.len() > MAX_PENDING {
-                log::warn!("/models/sse sent {} bytes without ending a block; dropping them", buf.len());
-                buf.clear();
+            let dropped = reader.drop_if_oversized();
+            if dropped > 0 {
+                log::warn!("/models/sse sent {dropped} bytes without ending a block; dropping them");
             }
         }
     })

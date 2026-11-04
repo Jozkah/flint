@@ -2440,7 +2440,7 @@ pub async fn run_tool(
                         Ok((target_id, r)) => {
                             // Evidence, for a held write's retry, that this
                             // session talked to the other one.
-                            crate::shared_folder::tools::note_message_sent(session_id);
+                            crate::shared_folder::tools::note_message_sent(session_id, &target_id);
                             let mut out = serde_json::json!({
                                 "message_id": r.message_id,
                                 "delivered_to_status": r.delivered_to_status,

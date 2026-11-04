@@ -602,9 +602,6 @@ pub fn thread_segment(thread_id: &str) -> Result<String, String> {
     Ok(id.to_string())
 }
 
-/// Sanitize a caller-supplied entry name into a safe `<stem>.md` filename.
-/// Rejects path separators and `..` so the result can never escape the
-/// store directory. `.md` is appended if absent.
 /// Replace `path` with `bytes` so that a failure part-way leaves the old file
 /// whole (Jozkah/jan#238): the new contents go to a uniquely named sibling,
 /// which is then renamed over the target. A plain write truncates first, and
@@ -639,6 +636,9 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     })
 }
 
+/// Sanitize a caller-supplied entry name into a safe `<stem>.md` filename.
+/// Rejects path separators and `..` so the result can never escape the
+/// store directory. `.md` is appended if absent.
 pub fn workspace_filename(name: &str) -> Result<String, String> {
     let trimmed = name.trim();
     let stem = trimmed.strip_suffix(".md").unwrap_or(trimmed);

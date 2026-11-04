@@ -21,7 +21,7 @@ use hyper::body::{Frame, Incoming};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response as HttpResponse, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
@@ -126,6 +126,13 @@ const STREAM_BUFFER: usize = 32;
 /// finer-grained timer.
 const IDLE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Connections served at once. The app and the local API proxy open a handful;
+/// the cap only bites on a client that leaks them.
+const MAX_CONNECTIONS: usize = 256;
+
+/// How long a connection may take to deliver a request's headers.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
 impl EngineServer {
     /// Binds `127.0.0.1:port`. Pass 0 to let the OS choose, then read `port`
     /// back -- unlike the old `49152 + random` guess, this cannot collide.
@@ -190,6 +197,7 @@ impl EngineServer {
             })
         };
         let mut connections = tokio::task::JoinSet::new();
+        let slots = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
         let shutdown = std::pin::pin!(shutdown);
 
         {
@@ -211,8 +219,15 @@ impl EngineServer {
                                 continue;
                             }
                         };
+                        // A leaking client must not exhaust descriptors for
+                        // everyone: past the cap a connection is refused.
+                        let Ok(permit) = Arc::clone(&slots).try_acquire_owned() else {
+                            log::warn!("refusing a connection: {MAX_CONNECTIONS} already open");
+                            continue;
+                        };
                         let state = Arc::clone(&state);
                         connections.spawn(async move {
+                            let _permit = permit;
                             let io = TokioIo::new(stream);
                             let svc = service_fn(move |req| {
                                 let state = Arc::clone(&state);
@@ -220,7 +235,13 @@ impl EngineServer {
                             });
                             // A dropped connection is the normal way a client
                             // cancels, so this is not worth logging loudly.
-                            let _ = http1::Builder::new().serve_connection(io, svc).await;
+                            // A peer that opens a connection and never finishes
+                            // its headers is cut off rather than held forever.
+                            let _ = http1::Builder::new()
+                                .timer(TokioTimer::new())
+                                .header_read_timeout(HEADER_READ_TIMEOUT)
+                                .serve_connection(io, svc)
+                                .await;
                         });
                     }
                     // Reap finished connections so the set does not grow for the
@@ -521,7 +542,7 @@ impl EngineServer {
         let Some(preset_path) = parsed.get("preset_path").and_then(|v| v.as_str()) else {
             return json_error(StatusCode::BAD_REQUEST, "preset_path is required");
         };
-        let ini = match std::fs::read_to_string(preset_path) {
+        let ini = match tokio::fs::read_to_string(preset_path).await {
             Ok(s) => s,
             Err(e) => {
                 return json_error(
