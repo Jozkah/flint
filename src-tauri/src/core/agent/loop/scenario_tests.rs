@@ -14,6 +14,7 @@
 //!   "name": "…", "description": "…",
 //!   "files": { "a.txt": "old\n" },            // the workspace before the run
 //!   "goal_tool": true,                        // optional: offer `update_goal` as a /goal run does
+//!   "body": { "jan_compaction_compact_at": 300 }, // optional: keys merged into the request body
 //!   "task": "the user's first message",
 //!   "model": [                                // one entry per model reply
 //!     { "calls": [ { "id": "c1", "name": "read", "args": { "path": "a.txt" } } ] },
@@ -25,7 +26,8 @@
 //!     "tool_results": [ { "call": "c1", "contains": "old" } ],
 //!     "last_request_contains": ["…"],         // anywhere in what the model saw last
 //!     "files": { "a.txt": "new\n" },          // the workspace after
-//!     "unchanged": ["b.txt"]                  // byte-identical to before
+//!     "unchanged": ["b.txt"],                 // byte-identical to before
+//!     "extends_previous": 2                   // request 2 opens with request 1's messages and tools
 //!   }
 //! }
 //! ```
@@ -48,6 +50,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("update_goal_claims.json", include_str!("scenarios/update_goal_claims.json")),
     ("apply_patch_multi_file.json", include_str!("scenarios/apply_patch_multi_file.json")),
     ("apply_patch_refused_whole.json", include_str!("scenarios/apply_patch_refused_whole.json")),
+    ("compaction_cache_prefix.json", include_str!("scenarios/compaction_cache_prefix.json")),
 ];
 
 /// A model that answers from the script and records what it was shown.
@@ -145,7 +148,7 @@ async fn replay(name: &str, fixture: &str) -> Vec<String> {
     let mut budget = SessionBudget::new(None);
     let result = run_turn_cycle(
         &tx,
-        &json!({}),
+        &f.get("body").cloned().unwrap_or_else(|| json!({})),
         "m",
         &[],
         vec![json!({ "role": "user", "content": f["task"] })],
@@ -181,6 +184,22 @@ async fn replay(name: &str, fixture: &str) -> Vec<String> {
     if let Some(n) = expect["requests"].as_u64() {
         if requests.len() as u64 != n {
             problems.push(format!("the model was asked {} times, expected {n}", requests.len()));
+        }
+    }
+    if let Some(i) = expect["extends_previous"].as_u64().map(|i| i as usize) {
+        match (i.checked_sub(1).and_then(|p| requests.get(p)), requests.get(i)) {
+            (Some(prev), Some(req)) => {
+                let (before, after) = (prev["messages"].as_array(), req["messages"].as_array());
+                let extends = matches!((before, after), (Some(b), Some(a)) if a.len() > b.len()
+                    && a.iter().zip(b).all(|(x, y)| x.to_string() == y.to_string()));
+                if !extends {
+                    problems.push(format!("request {i} does not open with request {}'s messages", i - 1));
+                }
+                if req["tools"].to_string() != prev["tools"].to_string() {
+                    problems.push(format!("request {i} carries other tools than request {}", i - 1));
+                }
+            }
+            _ => problems.push(format!("there is no request {i} to compare")),
         }
     }
     for want in expect["tool_results"].as_array().into_iter().flatten() {

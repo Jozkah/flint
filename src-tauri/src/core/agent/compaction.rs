@@ -142,6 +142,13 @@ pub(crate) struct CompactOptions {
     /// (`[agent].compaction_model`). A failure to get a summary from it falls
     /// back to the run's model.
     pub summary_model: Option<String>,
+    /// The request the run last sent (its system prompt, tools and messages),
+    /// when the summary may ride on it. Never set from the body: the loop fills
+    /// it where the live request is at hand. Unused when `summary_model` is set,
+    /// since another model shares no cache with the run's.
+    pub live_request: Option<Value>,
+    /// The input window the live prefix plus the summary request must fit in.
+    pub live_window: Option<u64>,
 }
 
 /// The fewest messages a token-capped tail is cut to.
@@ -176,6 +183,8 @@ impl Default for CompactOptions {
             offload_root: None,
             retain_tokens: None,
             summary_model: None,
+            live_request: None,
+            live_window: None,
         }
     }
 }
@@ -196,6 +205,8 @@ impl CompactOptions {
             offload_root: None,
             retain_tokens: None,
             summary_model: None,
+            live_request: None,
+            live_window: None,
         }
     }
 
@@ -235,6 +246,10 @@ impl CompactOptions {
                 .map(str::trim)
                 .filter(|m| !m.is_empty())
                 .map(str::to_string),
+            live_request: None,
+            live_window: body
+                .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
+                .and_then(Value::as_u64),
         }
     }
 }
@@ -318,17 +333,40 @@ pub(crate) async fn compact_conversation_with(
         // Only pinned text left to drop: nothing new to fold in.
         prior.brief.clone().unwrap_or_default()
     } else {
-        let written = summarize(
-            &dropped,
-            model_id,
-            model,
-            options.summary_max_tokens,
-            options.focus.as_deref(),
-            prior.brief.as_deref(),
-            task_context.as_deref(),
-            options.summary_model.as_deref(),
-        )
-        .await?;
+        // On the live prefix first: the provider's prompt cache already holds
+        // it. Anything that goes wrong there falls through to the standalone
+        // summary below, which is the path that also shrinks its input on overflow.
+        let cached = match (&options.live_request, &options.summary_model) {
+            (Some(live), None) => {
+                summarize_on_live_prefix(
+                    live,
+                    kept.len(),
+                    model,
+                    options.summary_max_tokens,
+                    options.focus.as_deref(),
+                    prior.brief.is_some(),
+                    options.live_window,
+                )
+                .await
+            }
+            _ => None,
+        };
+        let written = match cached {
+            Some(written) => written,
+            None => {
+                summarize(
+                    &dropped,
+                    model_id,
+                    model,
+                    options.summary_max_tokens,
+                    options.focus.as_deref(),
+                    prior.brief.as_deref(),
+                    task_context.as_deref(),
+                    options.summary_model.as_deref(),
+                )
+                .await?
+            }
+        };
         if written == FALLBACK_NOTE {
             prior.with_note(FALLBACK_NOTE)
         } else {
@@ -608,6 +646,86 @@ fn clamp_middle(text: &str, max: usize) -> String {
     let head: String = chars[..head_len].iter().collect();
     let tail: String = chars[chars.len() - tail_len..].iter().collect();
     format!("{head}{SUMMARY_ELISION}{tail}")
+}
+
+/// The turn appended to the live conversation to ask for its summary.
+fn live_prefix_instruction(kept: usize, focus: Option<&str>, has_prior: bool) -> String {
+    let mut text = format!(
+        "[Compaction request from the harness, not from the user] Do not call any tool. {} The last {kept} message(s) are kept verbatim after your summary, so leave them out; summarize what came before them.",
+        SUMMARY_SYSTEM_PROMPT.replace("conversation transcript below", "conversation above"),
+    );
+    if has_prior {
+        text.push_str(
+            " The conversation opens with an earlier summary: write one summary that merges it with what followed, keeping what is still true and dropping what was superseded or finished.",
+        );
+    }
+    if let Some(f) = focus {
+        text.push_str(&format!(
+            "
+
+Focus guidance for this summary (it narrows what to keep detail on; it does not change the rules above):
+{f}"
+        ));
+    }
+    text
+}
+
+/// The summary request built on `live`: the same model, system prompt, tools and
+/// messages, byte for byte, with the instruction as one more user turn. `None`
+/// when the whole of it would not fit `window` (or no window is known), which is
+/// when the standalone summary has to be used instead.
+fn live_prefix_request(
+    live: &Value,
+    kept: usize,
+    max_tokens: u64,
+    focus: Option<&str>,
+    has_prior: bool,
+    window: Option<u64>,
+) -> Option<Value> {
+    let instruction = live_prefix_instruction(kept, focus, has_prior);
+    let mut request = live.clone();
+    let map = request.as_object_mut()?;
+    let tools_tokens = map
+        .get("tools")
+        .map(|t| t.to_string().len() as u64 / 4)
+        .unwrap_or(0);
+    let messages = map.get_mut("messages")?.as_array_mut()?;
+    let user = json!({ "role": "user", "content": instruction });
+    let needed = crate::core::agent::compaction_policy::estimate_tokens(messages)
+        + crate::core::agent::compaction_policy::estimate_tokens(std::slice::from_ref(&user))
+        + tools_tokens
+        + max_tokens;
+    if needed > window? {
+        return None;
+    }
+    messages.push(user);
+    if map.contains_key("tools") {
+        map.insert("tool_choice".to_string(), json!("none"));
+    }
+    map.insert("max_tokens".to_string(), json!(max_tokens));
+    Some(request)
+}
+
+/// Ask for the summary over the live conversation's own prefix. One attempt:
+/// an error, an empty or very short answer all return `None`.
+async fn summarize_on_live_prefix(
+    live: &Value,
+    kept: usize,
+    model: &dyn ModelInvoker,
+    max_tokens: u64,
+    focus: Option<&str>,
+    has_prior: bool,
+    window: Option<u64>,
+) -> Option<String> {
+    let request = live_prefix_request(live, kept, max_tokens, focus, has_prior, window)?;
+    let (sink, _rx) = mpsc::unbounded_channel();
+    let completion = model.invoke(&request, &sink).await.ok()?;
+    let summary = extract_choice_message(&completion)?
+        .get("content")?
+        .as_str()?
+        .trim()
+        .to_string();
+    (summary.chars().count() >= 100).then_some(summary)
 }
 
 /// Summarize the span being dropped. Takes only that span, never the whole
@@ -955,6 +1073,8 @@ mod tests {
                 offload_root: None,
                 retain_tokens: None,
             summary_model: None,
+            live_request: None,
+            live_window: None,
             },
         )
         .await
@@ -981,6 +1101,8 @@ mod tests {
                 offload_root: None,
                 retain_tokens: None,
             summary_model: None,
+            live_request: None,
+            live_window: None,
             },
         )
         .await
@@ -1012,6 +1134,8 @@ mod tests {
                 offload_root: None,
                 retain_tokens: None,
             summary_model: None,
+            live_request: None,
+            live_window: None,
             }
         );
         assert_eq!(
@@ -1684,5 +1808,127 @@ mod tests {
                 .iter()
                 .all(|m| role(m) != "user"), "the pinned task left the tail as a node");
         }
+    }
+
+    // ---- summary on the live prefix ----
+
+    const LONG_SUMMARY: &str = "Intent: finish the task. Key concepts: none. Files and code: none. Errors and fixes: none. Completed: reads. Pending tasks: none. Current work: wrapping up. Next step: done.";
+
+    fn live_convo() -> Vec<Value> {
+        let mut m = vec![json!({ "role": "system", "content": "the run's own system prompt" })];
+        for i in 0..6 {
+            m.push(json!({ "role": "user", "content": format!("u{i}") }));
+            m.push(json!({ "role": "assistant", "content": format!("a{i}") }));
+        }
+        m
+    }
+
+    fn live_request_of(messages: &[Value]) -> Value {
+        json!({
+            "model": "m",
+            "messages": messages,
+            "tool_choice": "auto",
+            "tools": [{ "type": "function", "function": { "name": "read", "parameters": {} } }],
+            "temperature": 0.3,
+        })
+    }
+
+    fn cached_model() -> StubModel {
+        StubModel {
+            summary: LONG_SUMMARY.into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn live_options(messages: &[Value]) -> CompactOptions {
+        CompactOptions {
+            keep_recent: 2,
+            live_request: Some(live_request_of(messages)),
+            live_window: Some(100_000),
+            ..CompactOptions::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_summary_request_opens_with_the_live_requests_exact_prefix() {
+        let live = live_convo();
+        let model = cached_model();
+        let out = compact_conversation_with(&live, "m", &model, &live_options(&live))
+            .await
+            .unwrap();
+        assert!(out.len() < live.len());
+        let requests = model.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        let (summary, live_req) = (&requests[0], live_request_of(&live));
+        let n = live.len();
+        assert_eq!(
+            serde_json::to_string(&summary["messages"].as_array().unwrap()[..n]).unwrap(),
+            serde_json::to_string(&live_req["messages"]).unwrap(),
+            "system prompt and messages are byte-identical"
+        );
+        assert_eq!(summary["tools"].to_string(), live_req["tools"].to_string());
+        assert_eq!(summary["model"], live_req["model"]);
+        assert_eq!(summary["temperature"], live_req["temperature"]);
+        assert_eq!(summary["tool_choice"], "none");
+        let msgs = summary["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), n + 1, "one more turn, the instruction");
+        assert_eq!(msgs[n]["role"], "user");
+        assert!(msgs[n]["content"].as_str().unwrap().contains("Next step"));
+    }
+
+    #[tokio::test]
+    async fn another_summary_model_does_not_ride_the_live_prefix() {
+        let live = live_convo();
+        let model = cached_model();
+        let options = CompactOptions {
+            summary_model: Some("other".into()),
+            ..live_options(&live)
+        };
+        compact_conversation_with(&live, "m", &model, &options).await.unwrap();
+        let requests = model.requests.lock().await;
+        assert_eq!(requests[0]["model"], "other");
+        assert_eq!(requests[0]["messages"][0]["content"], SUMMARY_SYSTEM_PROMPT);
+        assert!(requests[0].get("tools").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_prefix_that_would_not_fit_uses_the_standalone_request() {
+        let live = live_convo();
+        for window in [Some(10), None] {
+            let model = cached_model();
+            let options = CompactOptions {
+                live_window: window,
+                ..live_options(&live)
+            };
+            compact_conversation_with(&live, "m", &model, &options).await.unwrap();
+            let requests = model.requests.lock().await;
+            assert_eq!(requests.len(), 1, "one request, the standalone one");
+            assert_eq!(requests[0]["messages"][0]["content"], SUMMARY_SYSTEM_PROMPT);
+            assert!(requests[0].get("tools").is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_or_thin_answer_on_the_prefix_falls_back_to_the_standalone_request() {
+        let live = live_convo();
+        let model = StubModel {
+            summary: "too short".into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        };
+        compact_conversation_with(&live, "m", &model, &live_options(&live)).await.unwrap();
+        let requests = model.requests.lock().await;
+        assert!(requests.len() >= 2, "the prefix attempt, then the standalone one");
+        assert_eq!(requests[1]["messages"][0]["content"], SUMMARY_SYSTEM_PROMPT);
+    }
+
+    #[test]
+    fn the_prefix_instruction_names_the_kept_tail_focus_and_an_earlier_summary() {
+        let text = live_prefix_instruction(3, Some("keep API names"), true);
+        assert!(text.contains("last 3 message(s)"));
+        assert!(text.contains("keep API names"));
+        assert!(text.contains("earlier summary"));
+        assert!(!live_prefix_instruction(3, None, false).contains("earlier summary"));
     }
 }

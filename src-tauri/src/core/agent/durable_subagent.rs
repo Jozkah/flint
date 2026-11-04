@@ -313,6 +313,11 @@ pub async fn await_child(
             return Err(HarnessError::new(ErrorKind::NotFound, format!("no durable subagent '{run_id}' in this conversation"))
                 .at(Stage::Child));
         };
+        // O11-004: the child has read its spec and is done; the brief and
+        // system prompt it carried have no further use on disk.
+        if !matches!(record.state, JobState::Running) && !record.invocation.is_empty() {
+            let _ = std::fs::remove_file(spec_path(data_folder, &record.invocation));
+        }
         match record.state {
             JobState::Running => {}
             // The child's words re-enter the parent's context: what imitates
