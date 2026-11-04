@@ -171,6 +171,11 @@ fn segments(command: &str) -> Vec<String> {
     for c in command.chars() {
         match quote {
             Some(q) => {
+                // A substitution runs inside double quotes too (F5x4-011).
+                if q == '"' && (c == '`' || (c == '(' && current.ends_with('$'))) {
+                    out.push(std::mem::take(&mut current));
+                    continue;
+                }
                 current.push(c);
                 if c == q {
                     quote = None;
@@ -181,7 +186,12 @@ fn segments(command: &str) -> Vec<String> {
                     quote = Some(c);
                     current.push(c);
                 }
-                '&' | '|' | ';' | '\n' | '\r' => {
+                // `$(...)` and backticks run their own command: split so the
+                // program inside is judged, not just the word before it.
+                '&' | '|' | ';' | '\n' | '\r' | '`' | ')' => {
+                    out.push(std::mem::take(&mut current));
+                }
+                '(' if current.ends_with('$') => {
                     out.push(std::mem::take(&mut current));
                 }
                 _ => current.push(c),
@@ -243,6 +253,14 @@ fn program_of(segment: &str) -> Option<String> {
             continue;
         }
         let program = normalize(&word);
+        // A loop or `case` header names no program; the body's own segments do.
+        if matches!(program.as_str(), "for" | "select" | "case") {
+            return None;
+        }
+        // Keywords that lead into the command proper: `do go build`, `! git x`.
+        if matches!(program.as_str(), "do" | "then" | "else" | "elif" | "if" | "while" | "until" | "!") {
+            continue;
+        }
         // `env A=b go build`: the program is after env's own assignments.
         if program == "env" || program.is_empty() {
             continue;
@@ -257,6 +275,19 @@ mod tests {
 
     fn hit(command: &str) -> Option<String> {
         opens_null_device(command, &[])
+    }
+
+    #[test]
+    fn substitutions_and_loop_bodies_are_judged_by_their_program() {
+        assert_eq!(hit("echo $(git rev-parse HEAD)"), Some("git".into()));
+        assert_eq!(hit("echo `git rev-parse HEAD`"), Some("git".into()));
+        assert_eq!(hit("echo \"v=$(go version)\""), Some("go".into()));
+        assert_eq!(hit("for f in `git ls-files`; do echo $f; done"), Some("git".into()));
+        assert_eq!(hit("for f in a b; do go vet $f; done"), Some("go".into()));
+        assert_eq!(hit("if git diff --quiet; then echo ok; fi"), Some("git".into()));
+        assert_eq!(hit("echo $(date)"), None);
+        assert_eq!(hit("for f in a b; do echo $f; done"), None);
+        assert_eq!(hit("for git in a b; do echo $git; done"), None, "a loop variable is not a program");
     }
 
     #[test]

@@ -814,6 +814,25 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
             bases.insert(base);
             return true;
         }
+        // POSIX `for NAME in WORDS`, `select NAME in WORDS` and `case WORD in`
+        // headers run nothing: the words are data, and the body's own segments
+        // (after `;`/newline/`)`) are scanned apart. Without this the loop
+        // variable became a command "base" and every `case` went opaque
+        // (F06-005). Not under PowerShell, where `for (...) { ... }` holds its
+        // body inline.
+        if !shell_is_powershell()
+            && tokens.get(idx + 2).is_some_and(|t| t == "in")
+            && match name.as_str() {
+                "for" | "select" => tokens[idx + 1]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && !tokens[idx + 1].is_empty(),
+                "case" => true,
+                _ => false,
+            }
+        {
+            return true;
+        }
         if WRAPPERS.contains(&name.as_str()) {
             idx += 1;
             // Skip the wrapper's flags, numeric args (durations/priorities), and
@@ -1384,6 +1403,21 @@ mod tests {
         }
         let b = bases("for f in a.txt b.txt; do rm $f; done");
         assert!(b.contains("rm"), "{b:?}");
+    }
+
+    #[test]
+    fn loop_and_case_headers_name_no_command() {
+        POWERSHELL_OVERRIDE.with(|c| c.set(Some(false)));
+        let outcome = std::panic::catch_unwind(|| {
+            let b = bases("for f in a.txt b.txt; do rm $f; done");
+            assert!(b.contains("rm") && !b.contains("f"), "the loop variable is not a command: {b:?}");
+            let b = bases("case $x in");
+            assert!(b.is_empty(), "a case header runs nothing: {b:?}");
+            let b = bases("for f in a; do ls; done");
+            assert!(b.contains("ls") && !b.contains("f"), "{b:?}");
+        });
+        POWERSHELL_OVERRIDE.with(|c| c.set(None));
+        outcome.unwrap();
     }
 
     #[test]

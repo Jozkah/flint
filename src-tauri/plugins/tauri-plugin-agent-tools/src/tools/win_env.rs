@@ -111,13 +111,13 @@ pub const SYSTEM_PASSTHROUGH: &[&str] = &[
 /// true for the shell's own conventions, not only for the filesystem ACLs.
 pub const HOME_KEYS: &[&str] = &["HOME", "USERPROFILE", "APPDATA"];
 
-/// Every spelling of "where temporary files go".
 /// Tool caches pointed into the synthetic home, and where under it.
 pub const HOME_CACHES: &[(&str, &str)] = &[
     ("GOCACHE", r"AppData\Local\go-build"),
     ("PIP_CACHE_DIR", r"AppData\Local\pip\Cache"),
 ];
 
+/// Every spelling of "where temporary files go".
 pub const TEMP_KEYS: &[&str] = &["TEMP", "TMP", "TMPDIR"];
 
 /// Name of the variable that tells a shell prologue it is inside the Windows
@@ -155,10 +155,11 @@ pub const NODE_SANDBOX_OPTIONS: &str = "--preserve-symlinks --preserve-symlinks-
 /// This variable moves the file; it is pointed at the scratch.
 pub const PS_CACHE_KEY: &str = "PSModuleAnalysisCachePath";
 
-/// Names that must never be copied to a sandboxed process even if some future
-/// passthrough list grows to include them. Matched case-insensitively on a
-/// substring, because the interesting ones are provider-prefixed
-/// (`OPENAI_API_KEY`, `ANTHROPIC_AUTH_TOKEN`) and no fixed list would keep up.
+/// Names whose values diagnostics must redact (see [`looks_secret`]). Matched
+/// case-insensitively on a substring, because the interesting ones are
+/// provider-prefixed (`OPENAI_API_KEY`, `ANTHROPIC_AUTH_TOKEN`) and no fixed
+/// list would keep up. This does not filter what [`build`] copies into the
+/// environment; it only decides what is printed.
 const SECRET_MARKERS: &[&str] = &[
     "key",
     "token",

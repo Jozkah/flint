@@ -19,38 +19,10 @@ use std::process::Command;
 
 use serde::Serialize;
 
-/// A GitHub repository coordinate, normalized for comparison.
-///
-/// Owner and repository are compared case-insensitively (GitHub treats them so),
-/// and a trailing `.git` is dropped, so every remote spelling of the same repo
-/// compares equal.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RepoRef {
-    pub owner: String,
-    pub repo: String,
-}
-
-impl RepoRef {
-    fn new(owner: &str, repo: &str) -> Self {
-        Self {
-            owner: owner.trim().to_ascii_lowercase(),
-            repo: repo
-                .trim()
-                .strip_suffix(".git")
-                .unwrap_or_else(|| repo.trim())
-                .to_ascii_lowercase(),
-        }
-    }
-
-    /// `owner/repo`, lower-cased -- for messages, never for a fresh comparison
-    /// (compare `RepoRef`s directly).
-    pub fn slug(&self) -> String {
-        format!("{}/{}", self.owner, self.repo)
-    }
-}
-
-/// The GitHub hosts whose URLs name a repository we can resolve locally.
-const GITHUB_HOSTS: &[&str] = &["github.com", "api.github.com", "raw.githubusercontent.com"];
+// One implementation of the GitHub-repo coordinate and native-tool discovery,
+// shared with the `git_inspect` tool (Q1-034). `parse_github_repo` stays here:
+// this side accepts only URL and scp spellings, not a bare `owner/repo`.
+pub use tauri_plugin_agent_tools::tools::git_native::{discover_git, on_path, two_segments, RepoRef, GITHUB_HOSTS};
 
 /// Parse an owner/repo out of any GitHub URL or git remote spelling, or `None`
 /// when the string does not name a GitHub repository.
@@ -98,164 +70,12 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     two_segments(path).map(|(o, r)| RepoRef::new(o, r))
 }
 
-/// The first two non-empty, query/fragment-stripped path segments.
-fn two_segments(path: &str) -> Option<(&str, &str)> {
-    let path = path.split(['?', '#']).next().unwrap_or(path);
-    let mut it = path.split('/').filter(|seg| !seg.is_empty());
-    let owner = it.next()?;
-    let repo = it.next()?;
-    if owner.is_empty() || repo.is_empty() {
-        return None;
-    }
-    Some((owner, repo))
-}
-
 /// Whether two remote spellings name the same GitHub repository.
 pub fn remotes_match(a: &str, b: &str) -> bool {
     match (parse_github_repo(a), parse_github_repo(b)) {
         (Some(x), Some(y)) => x == y,
         _ => false,
     }
-}
-
-/// Locate a native Git executable without relying only on a shell.
-///
-/// Order: `git`/`git.exe` on `PATH` (resolved in-process, not via `where`), then
-/// the well-known Git-for-Windows install locations, then the path recorded by
-/// the installer in the registry. Returns the executable to run directly.
-pub fn discover_git() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        if let Some(p) = on_path("git.exe") {
-            return Some(p);
-        }
-        for known in [
-            r"C:\Program Files\Git\cmd\git.exe",
-            r"C:\Program Files\Git\bin\git.exe",
-            r"C:\Program Files (x86)\Git\cmd\git.exe",
-            r"C:\Program Files (x86)\Git\bin\git.exe",
-        ] {
-            let p = Path::new(known);
-            if p.is_file() {
-                return Some(p.to_path_buf());
-            }
-        }
-        git_from_registry()
-    }
-    #[cfg(not(windows))]
-    {
-        on_path("git")
-    }
-}
-
-/// Resolve `name` against `PATH` in-process (honouring `PATHEXT` on Windows),
-/// without launching `where`/`which` -- a shell is never composed.
-pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    #[cfg(windows)]
-    let exts: Vec<String> = std::env::var("PATHEXT")
-        .unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string())
-        .split(';')
-        .filter(|e| !e.is_empty())
-        .map(|e| e.to_ascii_lowercase())
-        .collect();
-    for dir in std::env::split_paths(&path) {
-        // An empty PATH entry means the current directory; a program found
-        // there is whatever the working folder holds, not an installed tool.
-        if dir.as_os_str().is_empty() || !dir.is_absolute() {
-            continue;
-        }
-        let direct = dir.join(name);
-        if direct.is_file() {
-            return Some(direct);
-        }
-        #[cfg(windows)]
-        if Path::new(name).extension().is_none() {
-            for ext in &exts {
-                let cand = dir.join(format!("{name}{ext}"));
-                if cand.is_file() {
-                    return Some(cand);
-                }
-            }
-        }
-    }
-    None
-}
-
-/// The Git-for-Windows install path from the registry, if the installer left
-/// one. `HKLM` first (all-users install), then `HKCU` (per-user).
-#[cfg(windows)]
-fn git_from_registry() -> Option<PathBuf> {
-    for (root, sub) in [
-        ("HKLM", "SOFTWARE\\GitForWindows"),
-        ("HKCU", "SOFTWARE\\GitForWindows"),
-    ] {
-        if let Some(install) = reg_read_string(root, sub, "InstallPath") {
-            for tail in ["cmd\\git.exe", "bin\\git.exe"] {
-                let cand = Path::new(&install).join(tail);
-                if cand.is_file() {
-                    return Some(cand);
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Read a `REG_SZ` value, or `None`. A thin wrapper over `RegGetValueW` so no
-/// registry crate is pulled in.
-#[cfg(windows)]
-fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
-    use windows_sys::Win32::System::Registry::{
-        RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
-    };
-
-    let hkey = match root {
-        "HKLM" => HKEY_LOCAL_MACHINE,
-        "HKCU" => HKEY_CURRENT_USER,
-        _ => return None,
-    };
-    let wide = |s: &str| -> Vec<u16> {
-        std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
-    };
-    let sub = wide(subkey);
-    let val = wide(value);
-    // First call sizes the buffer.
-    let mut len: u32 = 0;
-    let rc = unsafe {
-        RegGetValueW(
-            hkey,
-            sub.as_ptr(),
-            val.as_ptr(),
-            RRF_RT_REG_SZ,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut len,
-        )
-    };
-    if rc != ERROR_SUCCESS || len == 0 {
-        return None;
-    }
-    let mut buf = vec![0u16; (len as usize) / 2 + 1];
-    let mut len2 = (buf.len() * 2) as u32;
-    let rc = unsafe {
-        RegGetValueW(
-            hkey,
-            sub.as_ptr(),
-            val.as_ptr(),
-            RRF_RT_REG_SZ,
-            std::ptr::null_mut(),
-            buf.as_mut_ptr() as *mut _,
-            &mut len2,
-        )
-    };
-    if rc != ERROR_SUCCESS {
-        return None;
-    }
-    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-    Some(String::from_utf16_lossy(&buf[..end]))
 }
 
 /// Run native Git with the given args against `repo_dir`, direct (no shell),

@@ -43,7 +43,7 @@ pub struct RepoRef {
 }
 
 impl RepoRef {
-    fn new(owner: &str, repo: &str) -> Self {
+    pub fn new(owner: &str, repo: &str) -> Self {
         Self {
             owner: owner.trim().to_ascii_lowercase(),
             repo: repo
@@ -53,12 +53,14 @@ impl RepoRef {
                 .to_ascii_lowercase(),
         }
     }
-    fn slug(&self) -> String {
+    /// `owner/repo`, lower-cased -- for messages, never for a fresh comparison
+    /// (compare `RepoRef`s directly).
+    pub fn slug(&self) -> String {
         format!("{}/{}", self.owner, self.repo)
     }
 }
 
-const GITHUB_HOSTS: &[&str] = &["github.com", "api.github.com", "raw.githubusercontent.com"];
+pub const GITHUB_HOSTS: &[&str] = &["github.com", "api.github.com", "raw.githubusercontent.com"];
 
 /// Parse an owner/repo out of any GitHub URL, remote spelling, or a bare
 /// `owner/repo`, or `None` when it is not a GitHub repository.
@@ -107,7 +109,8 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     two_segments(path).map(|(o, r)| RepoRef::new(o, r))
 }
 
-fn two_segments(path: &str) -> Option<(&str, &str)> {
+/// The first two non-empty, query/fragment-stripped path segments.
+pub fn two_segments(path: &str) -> Option<(&str, &str)> {
     let path = path.split(['?', '#']).next().unwrap_or(path);
     let mut it = path.split('/').filter(|seg| !seg.is_empty());
     let owner = it.next()?;
@@ -153,7 +156,9 @@ pub fn discover_git() -> Option<PathBuf> {
     }
 }
 
-pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
+/// Resolve `name` against `PATH` in-process (honouring `PATHEXT` on Windows),
+/// without launching `where`/`which` -- a shell is never composed.
+pub fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     #[cfg(windows)]
     let exts: Vec<String> = std::env::var("PATHEXT")
@@ -163,6 +168,11 @@ pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
         .map(|e| e.to_ascii_lowercase())
         .collect();
     for dir in std::env::split_paths(&path) {
+        // An empty PATH entry means the current directory; a program found
+        // there is whatever the working folder holds, not an installed tool.
+        if dir.as_os_str().is_empty() || !dir.is_absolute() {
+            continue;
+        }
         let direct = dir.join(name);
         if direct.is_file() {
             return Some(direct);

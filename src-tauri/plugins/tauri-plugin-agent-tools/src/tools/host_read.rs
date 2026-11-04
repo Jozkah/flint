@@ -57,7 +57,7 @@ pub fn is_private_query(query: &str) -> bool {
 }
 
 /// A value name that is never shown, whatever key it sits in.
-const SECRET_NAMES: &str = "(?i)pass|pwd|secret|token|credential|api.?key|access.?key|key\\b|private|cookie|session|auth|conn(ection)?.?str|licen[cs]e|serial|seed|salt|bearer|sig(nature)?\\b|hash";
+const SECRET_NAMES: &str = "(?i)pass|pwd|secret|token|credential|api.?key|access.?key|key\\b|private|cookie|session|auth|conn(ection)?.?str|licen[cs]e|serial|product.?(id|key)|seed|salt|bearer|sig(nature)?\\b|hash";
 
 /// Registry keys a model may read, as prefixes after normalising the hive.
 const REGISTRY_ROOTS: &[&str] = &[
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn registry_hides_more_secret_names_and_never_prints_binary() {
         let re = regex::Regex::new(SECRET_NAMES).unwrap();
-        for hidden in ["AccessKey", "ConnectionString", "LicenseKey", "ProductSerial", "Pwd", "Signature", "Salt"] {
+        for hidden in ["AccessKey", "ConnectionString", "LicenseKey", "ProductSerial", "DigitalProductId", "ProductKey", "Pwd", "Signature", "Salt"] {
             assert!(re.is_match(hidden), "{hidden}");
         }
         for shown in ["Version", "InstallPath", "DisplayName"] {

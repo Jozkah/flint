@@ -20,6 +20,14 @@ extern "C" {
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" { fn CFRelease(object: Event); }
+/// Image pixels per logical point for a capture `width` pixels wide: the same
+/// ratio [`capture_note`] tells the model to divide by.
+pub fn image_pixels_per_point(width: u32) -> f64 {
+    // SAFETY: CGMainDisplayID and CGDisplayBounds take and return plain values.
+    let points = unsafe { CGDisplayBounds(CGMainDisplayID()) }.size.width;
+    let scale = f64::from(width) / points;
+    if scale.is_finite() && scale >= 1.0 { scale } else { 1.0 }
+}
 pub fn capture_note(width: u32, height: u32) -> String {
     // SAFETY: CGMainDisplayID and CGDisplayBounds take and return plain values.
     let bounds = unsafe { CGDisplayBounds(CGMainDisplayID()) };

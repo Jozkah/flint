@@ -385,7 +385,30 @@ pub fn release_holder(_workspace: &Path, _pid: u32) {}
 /// is authority nobody can see. Commands re-grant what applies when they run.
 #[cfg(windows)]
 pub fn sweep_recorded_roots() {
-    let Ok(entries) = std::fs::read_dir(win::roots_record_dir()) else {
+    sweep_record_dir(&win::roots_record_dir());
+    // Records an older build left in `%TEMP%`: moved beside the current ones
+    // (after those were swept, so none is overwritten) and withdrawn the same
+    // way. Their leftovers are then removed with the old folder.
+    let legacy = win::legacy_roots_record_dir();
+    if legacy != win::roots_record_dir() {
+        if let Ok(entries) = std::fs::read_dir(&legacy) {
+            let _ = std::fs::create_dir_all(win::roots_record_dir());
+            for entry in entries.flatten() {
+                let is_record = entry.file_type().map(|t| t.is_file()).unwrap_or(false)
+                    && !entry.file_name().to_string_lossy().ends_with(".applied");
+                if is_record {
+                    let _ = std::fs::rename(entry.path(), win::roots_record_dir().join(entry.file_name()));
+                }
+            }
+        }
+        sweep_record_dir(&win::roots_record_dir());
+        let _ = std::fs::remove_dir_all(&legacy);
+    }
+}
+
+#[cfg(windows)]
+fn sweep_record_dir(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -498,6 +521,26 @@ pub fn await_startup_sweep() {
 /// Folder name, under the host temp folder, of the granted-write-roots record.
 const ROOTS_RECORD_DIR_NAME: &str = "jan-appcontainer-write-roots";
 
+/// Folder name of the same record under the per-user app-data folder, where it
+/// now lives (F5c-008): Disk Cleanup and Storage Sense empty `%TEMP%`, and a
+/// record deleted that way leaves the container's ACEs on the user's folders
+/// with nothing for the startup sweep to find.
+#[cfg_attr(not(windows), allow(dead_code))]
+const ROOTS_RECORD_HOME_DIR: &str = "Flint";
+
+/// Where the granted-roots record lives: under `%LOCALAPPDATA%` (not writable
+/// by the container, not cleaned automatically), or the temp folder when that
+/// variable is missing.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn roots_record_dir_in(local_app_data: Option<std::ffi::OsString>, temp: &Path) -> PathBuf {
+    match local_app_data.filter(|v| !v.is_empty()) {
+        Some(base) => PathBuf::from(base)
+            .join(ROOTS_RECORD_HOME_DIR)
+            .join(ROOTS_RECORD_DIR_NAME),
+        None => temp.join(ROOTS_RECORD_DIR_NAME),
+    }
+}
+
 pub fn grant_refusal(path: &Path) -> Option<String> {
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let protected: Vec<PathBuf> = [
@@ -512,6 +555,10 @@ pub fn grant_refusal(path: &Path) -> Option<String> {
     // The record of granted write roots: a grant on it (or on the temp folder
     // holding it) would let a sandboxed command erase it and keep a grant alive.
     .chain(std::iter::once(std::env::temp_dir().join(ROOTS_RECORD_DIR_NAME)))
+    .chain(std::iter::once(roots_record_dir_in(
+        std::env::var_os("LOCALAPPDATA"),
+        &std::env::temp_dir(),
+    )))
     .collect();
     // Flint's data folder is checked where the grant is issued, which knows
     // it: its managed worktrees live inside it and must stay grantable.
@@ -1444,6 +1491,11 @@ mod win {
     }
 
     pub(super) fn roots_record_dir() -> PathBuf {
+        super::roots_record_dir_in(std::env::var_os("LOCALAPPDATA"), &std::env::temp_dir())
+    }
+
+    /// Where records lived before they moved out of `%TEMP%`.
+    pub(super) fn legacy_roots_record_dir() -> PathBuf {
         std::env::temp_dir().join(super::ROOTS_RECORD_DIR_NAME)
     }
 
@@ -2950,6 +3002,20 @@ mod tests {
         }
         // Long-path spellings compare like their plain form.
         assert!(refused("\\\\?\\C:\\Users\\me"));
+    }
+
+    #[test]
+    fn the_roots_record_lives_under_local_app_data_not_temp() {
+        let temp = Path::new(r"T:\temp");
+        let dir = roots_record_dir_in(Some(r"C:\Users\me\AppData\Local".into()), temp);
+        assert_eq!(
+            dir,
+            PathBuf::from(r"C:\Users\me\AppData\Local").join("Flint").join(ROOTS_RECORD_DIR_NAME)
+        );
+        assert!(!dir.starts_with(temp));
+        // No app-data variable: the old location is the fallback.
+        assert_eq!(roots_record_dir_in(None, temp), temp.join(ROOTS_RECORD_DIR_NAME));
+        assert_eq!(roots_record_dir_in(Some("".into()), temp), temp.join(ROOTS_RECORD_DIR_NAME));
     }
 
     #[test]
