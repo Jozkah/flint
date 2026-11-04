@@ -1216,7 +1216,7 @@ impl SearchProvider for YouComProvider {
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
         match &self.mode {
             // No keyless content endpoint, so read the page directly.
-            YouComMode::Hosted => fetch_url_direct(&self.client, url, "You.com").await,
+            YouComMode::Hosted => fetch_url_direct(url, "You.com").await,
             YouComMode::Rest(key) => {
                 let parsed = self
                     .post_rest(
@@ -1360,7 +1360,7 @@ impl SearchProvider for SearxngProvider {
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        http_get_page(&self.client, url, "SearXNG").await
+        http_get_page(url, "SearXNG").await
     }
 }
 
@@ -1370,7 +1370,6 @@ impl SearchProvider for SearxngProvider {
 /// Serper) share this: there is nothing provider-specific about pulling a URL
 /// and reading its body, so the logic lives once.
 async fn http_get_page(
-    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
@@ -1439,7 +1438,7 @@ impl SearchProvider for BraveProvider {
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        http_get_page(&self.client, url, "Brave").await
+        http_get_page(url, "Brave").await
     }
 
     async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
@@ -1543,7 +1542,7 @@ impl SearchProvider for SerperProvider {
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        http_get_page(&self.client, url, "Serper").await
+        http_get_page(url, "Serper").await
     }
 
     async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
@@ -1696,7 +1695,7 @@ impl SearchProvider for DuckDuckGoProvider {
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        http_get_page(&self.client, url, "DuckDuckGo").await
+        http_get_page(url, "DuckDuckGo").await
     }
 }
 
@@ -1912,7 +1911,6 @@ fn duckduckgo_destination(href: &str) -> Option<String> {
 /// Used by backends that have no content-extraction endpoint on the active
 /// transport, so `web_fetch` still answers instead of erroring.
 async fn fetch_url_direct(
-    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
@@ -2231,14 +2229,13 @@ mod tests {
     async fn a_direct_fetch_never_reaches_a_local_address() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let client = build_http_client("test").unwrap();
         for url in [
             format!("http://127.0.0.1:{port}/"),
             format!("http://localhost:{port}/"),
             format!("http://[::ffff:127.0.0.1]:{port}/"),
         ] {
-            assert!(http_get_page(&client, &url, "test").await.is_err(), "{url}");
-            assert!(fetch_url_direct(&client, &url, "test").await.is_err(), "{url}");
+            assert!(http_get_page(&url, "test").await.is_err(), "{url}");
+            assert!(fetch_url_direct(&url, "test").await.is_err(), "{url}");
         }
         let connected =
             tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await;
