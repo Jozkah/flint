@@ -33,7 +33,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-agent-tools-api@workspace:tauri-plugin-agent-tools"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -45,7 +45,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-hardware-api@workspace:tauri-plugin-hardware"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -57,7 +57,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-llamacpp-api@workspace:tauri-plugin-llamacpp"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -69,7 +69,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-mlx-api@workspace:tauri-plugin-mlx"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -81,7 +81,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-rag-api@workspace:tauri-plugin-rag"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -93,7 +93,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-vector-db-api@workspace:tauri-plugin-vector-db"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -105,7 +105,7 @@ __metadata:
   resolution: "@janhq/tauri-plugin-websearch-api@workspace:tauri-plugin-websearch"
   dependencies:
     "@rollup/plugin-typescript": "npm:^12.0.0"
-    "@tauri-apps/api": "npm:>=2.0.0-beta.6"
+    "@tauri-apps/api": "npm:2.11.1"
     rollup: "npm:^4.9.6"
     tslib: "npm:^2.6.2"
     typescript: "npm:^5.3.3"
@@ -323,10 +323,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/api@npm:>=2.0.0-beta.6":
-  version: 2.8.0
-  resolution: "@tauri-apps/api@npm:2.8.0"
-  checksum: 10c0/fb111e4d7572372997b440ebe6879543fa8c4765151878e3fddfbfe809b18da29eed142ce83061d14a9ca6d896b3266dc8a4927c642d71cdc0b4277dc7e3aabf
+"@tauri-apps/api@npm:2.11.1":
+  version: 2.11.1
+  resolution: "@tauri-apps/api@npm:2.11.1"
+  checksum: 10c0/78a08a64ee7eab9d34bd4ba1bdc3a2440c7e9cc5737b3f1d77bd80fa38b0cb5e9601efe04da40c947c5da2ca38dc702bec21b4ae96b18ee5f3e82980d1f0b325
   languageName: node
   linkType: hard
 
