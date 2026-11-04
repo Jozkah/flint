@@ -5430,8 +5430,20 @@ async fn run_turn_cycle(
                             usage_anchor.as_ref(),
                         ) >= thresholds.compact_at
                         {
-                            let opts =
+                            let mut opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
+                            // The request the run last sent, so the summary can
+                            // reuse its prompt-cache prefix.
+                            let loaded = tools.loaded_tools();
+                            let live_tools: Vec<serde_json::Value> =
+                                openai_tools.iter().cloned().chain(loaded).collect();
+                            opts.live_request = Some(build_completion_request(
+                                model_id,
+                                &conversation_messages,
+                                &live_tools,
+                                json_body,
+                                None,
+                            ));
                             report_compaction(
                                 events,
                                 CompactionPhase::Started,

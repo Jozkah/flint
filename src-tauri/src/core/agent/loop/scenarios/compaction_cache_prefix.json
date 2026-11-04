@@ -1,0 +1,54 @@
+{
+  "name": "compaction_cache_prefix",
+  "description": "A summary asked mid-run rides on the live conversation's own prefix: the request opens with the previous request's messages and tools, plus one final user turn, so the provider's prompt cache holds.",
+  "files": {
+    "a.txt": "short note\n",
+    "b.txt": "line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. line of notes about the project that goes on and on. \n"
+  },
+  "body": {
+    "jan_compaction_compact_at": 600,
+    "jan_compaction_effective_window": 100000,
+    "jan_compaction_keep_recent": 1
+  },
+  "task": "Read a.txt, then b.txt, then say you are done.",
+  "model": [
+    {
+      "calls": [
+        {
+          "id": "c1",
+          "name": "read",
+          "args": {
+            "path": "a.txt"
+          }
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "id": "c2",
+          "name": "read",
+          "args": {
+            "path": "b.txt"
+          }
+        }
+      ]
+    },
+    {
+      "say": "Intent: read a.txt and b.txt for the user. Key concepts: none. Files and code: a.txt is a short note, b.txt is long repeated notes. Errors and fixes: (none). Completed: both reads. Pending tasks: report done. Current work: reading finished. Next step: say done. User messages: Read a.txt, then b.txt, then say you are done."
+    },
+    {
+      "say": "Done."
+    }
+  ],
+  "expect": {
+    "requests": 4,
+    "extends_previous": 2,
+    "final_text_contains": [
+      "Done"
+    ],
+    "last_request_contains": [
+      "Summary of earlier conversation"
+    ]
+  }
+}
