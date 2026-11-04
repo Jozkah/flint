@@ -520,8 +520,9 @@ fn settle_test_pause(task_id: &str) {
 }
 
 /// Delete the records of children that failed or were cancelled more than
-/// `retention_days` ago. Completed children are kept: their work may still be
-/// waiting for review. Returns how many records went.
+/// `retention_days` ago, and completed ones whose worktree is gone. Completed
+/// children with a worktree are kept: their work may still be waiting for
+/// review. Returns how many records went.
 pub fn prune(data_folder: &Path, retention_days: i64) -> usize {
     prune_at(data_folder, retention_days, chrono::Utc::now())
 }
@@ -550,7 +551,11 @@ fn prune_at(data_folder: &Path, retention_days: i64, at: chrono::DateTime<chrono
             .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
             .is_some_and(|t| t < cutoff);
         let unfinished_ending = matches!(record.status, ChildStatus::Failed | ChildStatus::Cancelled);
-        if old && unfinished_ending && std::fs::remove_file(&path).is_ok() {
+        // A completed child is kept while its worktree is still there to
+        // review; once that is gone the record has nothing left to show.
+        let nothing_to_review = record.status == ChildStatus::Completed
+            && !Path::new(&record.worktree_path).exists();
+        if old && (unfinished_ending || nothing_to_review) && std::fs::remove_file(&path).is_ok() {
             removed += 1;
         }
     }
@@ -936,6 +941,22 @@ mod tests {
         assert!(!has("old-cancelled"));
         assert!(has("old-done"));
         assert!(has("new-cancelled"));
+    }
+
+    /// CAGC-036: a completed child whose worktree is gone is pruned too.
+    #[test]
+    fn prune_removes_old_completed_records_whose_worktree_is_gone() {
+        let f = fixture("prune_gone");
+        let rec = start(&f, "gone");
+        settle(&f.data, &f.roots, "sess", "gone", ChildStatus::Completed, "").unwrap();
+        let owner = tauri_plugin_agent_tools::child_session_id("sess", "gone");
+        let mut r = load(&f.data, &owner).unwrap();
+        r.ended_at = Some("2000-01-01T00:00:00Z".to_string());
+        save(&f.data, &r).unwrap();
+        assert_eq!(prune(&f.data, 30), 0, "the worktree still exists");
+        std::fs::remove_dir_all(&rec.worktree_path).unwrap();
+        assert_eq!(prune(&f.data, 30), 1);
+        assert!(load(&f.data, &owner).is_err());
     }
 
     /// Failed and cancelled children are refused as clean proposals; the

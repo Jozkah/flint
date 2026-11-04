@@ -40,7 +40,7 @@ use sha2::{Digest, Sha256};
 
 /// The version of the stored shape. An index written by an older build is
 /// rebuilt rather than misread.
-pub const INDEX_VERSION: u32 = 1;
+pub const INDEX_VERSION: u32 = 2;
 /// The most files an index holds.
 pub const MAX_FILES: usize = 20_000;
 /// The most bytes read from one file.
@@ -191,6 +191,16 @@ fn ignored(name: &str) -> bool {
     )
 }
 
+/// Dot-names the walk skips. Hidden folders are skipped except a few that hold
+/// config worth navigating (`.github`, `.cargo`, `.config`, `.storybook`); a
+/// hidden source file such as `.eslintrc.js` is indexed like any other.
+fn hidden_skipped(name: &str, is_dir: bool) -> bool {
+    if !name.starts_with('.') || !is_dir {
+        return false;
+    }
+    !matches!(name, ".github" | ".cargo" | ".config" | ".storybook")
+}
+
 fn indexable(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
@@ -307,7 +317,7 @@ pub fn refresh(
             }
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || ignored(&name) {
+            if hidden_skipped(&name, entry.file_type().is_ok_and(|t| t.is_dir())) || ignored(&name) {
                 continue;
             }
             // A symlink is not followed, in either direction. Following one
@@ -395,6 +405,9 @@ fn symbols_in(path: &Path, text: &str) -> Vec<Symbol> {
     let mut out = Vec::new();
     let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
     let python = path.extension().and_then(|e| e.to_str()) == Some("py");
+    let go = path.extension().and_then(|e| e.to_str()) == Some("go");
+    let ruby = path.extension().and_then(|e| e.to_str()) == Some("rb");
+    let java = path.extension().and_then(|e| e.to_str()) == Some("java");
     for (index, raw) in text.lines().enumerate() {
         if out.len() >= MAX_SYMBOLS_PER_FILE {
             break;
@@ -407,7 +420,17 @@ fn symbols_in(path: &Path, text: &str) -> Vec<Symbol> {
             .or_else(|| line.strip_prefix("export "))
             .unwrap_or(line);
         let line = line.strip_prefix("async ").unwrap_or(line);
-        let found = if rust {
+        let found = if go {
+            go_symbol(line)
+        } else if ruby {
+            first_word_after(line, "def self.")
+                .or_else(|| first_word_after(line, "def "))
+                .map(|n| (n, SymbolKind::Function))
+                .or_else(|| first_word_after(line, "class ").map(|n| (n, SymbolKind::Type)))
+                .or_else(|| first_word_after(line, "module ").map(|n| (n, SymbolKind::Type)))
+        } else if java {
+            java_symbol(line)
+        } else if rust {
             first_word_after(line, "fn ")
                 .map(|n| (n, SymbolKind::Function))
                 .or_else(|| first_word_after(line, "struct ").map(|n| (n, SymbolKind::Type)))
@@ -434,6 +457,67 @@ fn symbols_in(path: &Path, text: &str) -> Vec<Symbol> {
         }
     }
     out
+}
+
+/// A Go declaration: `func Name(`, `func (r T) Name(`, `type Name ...`,
+/// `const Name` / `var Name`.
+fn go_symbol(line: &str) -> Option<(String, SymbolKind)> {
+    if let Some(rest) = line.strip_prefix("func ") {
+        // A method names its receiver first: `func (s *Server) Start(`.
+        let rest = match rest.strip_prefix('(') {
+            Some(after) => after.split_once(')')?.1.trim_start(),
+            None => rest,
+        };
+        return first_word_after(rest, "").map(|n| (n, SymbolKind::Function));
+    }
+    first_word_after(line, "type ")
+        .map(|n| (n, SymbolKind::Type))
+        .or_else(|| first_word_after(line, "const ").map(|n| (n, SymbolKind::Constant)))
+        .or_else(|| first_word_after(line, "var ").map(|n| (n, SymbolKind::Constant)))
+}
+
+/// A Java declaration: a type (`class`, `interface`, `enum`, `record`) or a
+/// method written as modifiers, a return type, then `name(`.
+fn java_symbol(line: &str) -> Option<(String, SymbolKind)> {
+    let mut rest = line;
+    let mut had_modifier = false;
+    'strip: loop {
+        for modifier in [
+            "public ", "protected ", "private ", "static ", "final ", "abstract ",
+            "synchronized ", "default ",
+        ] {
+            if let Some(after) = rest.strip_prefix(modifier) {
+                rest = after;
+                had_modifier = true;
+                continue 'strip;
+            }
+        }
+        break;
+    }
+    for marker in ["class ", "interface ", "enum ", "record "] {
+        if let Some(name) = first_word_after(rest, marker) {
+            return Some((name, SymbolKind::Type));
+        }
+    }
+    // `Type name(` after a modifier: bare `foo(x)` or `return foo(x)` is a
+    // call, not a declaration.
+    if !had_modifier {
+        return None;
+    }
+    let mut words = rest.split_whitespace();
+    let first = words.next()?;
+    let head = match words.next() {
+        Some(second) if !first.contains('(') => second,
+        _ => first,
+    };
+    if !head.contains('(') {
+        return None;
+    }
+    let name: String = head
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+        .collect();
+    (!name.is_empty()).then_some((name, SymbolKind::Function))
 }
 
 /// The identifier that follows `marker`, when the line begins with it.
@@ -500,6 +584,9 @@ pub struct Reference {
     /// Whether this line is the definition the index recorded, rather than a
     /// use of it.
     pub is_definition: bool,
+    /// Whether the whole line (not the bounded `text`) calls the name.
+    #[serde(skip)]
+    pub called: bool,
 }
 
 /// The most references returned, and the most of a line kept.
@@ -532,7 +619,7 @@ pub fn find_references(index: &Index, name: &str, limit: usize) -> Vec<Reference
             .filter(|s| s.name == needle)
             .map(|s| s.line)
             .collect();
-        let Ok(text) = std::fs::read_to_string(project.join(&file.path)) else { continue };
+        let Some(text) = read_source(&project, &file.path) else { continue };
         if !text.contains(needle) {
             continue;
         }
@@ -549,10 +636,44 @@ pub fn find_references(index: &Index, name: &str, limit: usize) -> Vec<Reference
                 line: number,
                 text: line.trim().chars().take(MAX_REFERENCE_TEXT).collect(),
                 is_definition: defined_at.contains(&number),
+                called: is_called(line, needle),
             });
         }
     }
     out
+}
+
+/// Bound on the source text kept between queries, in bytes.
+const SOURCE_CACHE_BYTES: usize = 32 * 1024 * 1024;
+
+type SourceCache = std::collections::HashMap<PathBuf, (u64, u64, std::sync::Arc<String>)>;
+
+/// A source file's text, kept between queries while its size and modification
+/// time are unchanged, so a references or call-hierarchy query does not re-read
+/// every indexed file from disk each time. The cache is bounded (cleared when
+/// full) and a changed file is re-read.
+fn read_source(project: &Path, relative: &str) -> Option<std::sync::Arc<String>> {
+    static CACHE: std::sync::Mutex<Option<SourceCache>> = std::sync::Mutex::new(None);
+    let path = project.join(relative);
+    let meta = std::fs::metadata(&path).ok()?;
+    let (size, modified) = (meta.len(), modified_ms(&meta));
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((s, m, text)) = guard.as_ref().and_then(|c| c.get(&path)) {
+            if *s == size && *m == modified {
+                return Some(text.clone());
+            }
+        }
+    }
+    let text = std::sync::Arc::new(std::fs::read_to_string(&path).ok()?);
+    if let Ok(mut guard) = CACHE.lock() {
+        let cache = guard.get_or_insert_with(Default::default);
+        let held: usize = cache.values().map(|(_, _, t)| t.len()).sum();
+        if held + text.len() > SOURCE_CACHE_BYTES {
+            cache.clear();
+        }
+        cache.insert(path, (size, modified, text.clone()));
+    }
+    Some(text)
 }
 
 /// Whether `line` uses `needle` as a whole word.
@@ -655,7 +776,7 @@ pub fn hierarchy(index: &Index, name: &str, limit: usize) -> Hierarchy {
     // Callers: every place the name is called, with the function it is called
     // from. The definition line itself is not a call.
     for reference in find_references(index, needle, MAX_CALLS) {
-        if reference.is_definition || !is_called(&reference.text, needle) {
+        if reference.is_definition || !reference.called {
             continue;
         }
         if result.callers.len() >= limit {
@@ -674,7 +795,7 @@ pub fn hierarchy(index: &Index, name: &str, limit: usize) -> Hierarchy {
     // Callees: the names called inside the function's own body, which is the
     // lines from its definition to the next definition in that file.
     for definition in &result.defined {
-        let Ok(text) = std::fs::read_to_string(project.join(&definition.path)) else { continue };
+        let Some(text) = read_source(&project, &definition.path) else { continue };
         let lines: Vec<&str> = text.lines().collect();
         let end = index
             .files
@@ -770,7 +891,7 @@ mod concurrent_save_tests {
         let project = data.join("proj");
         std::fs::create_dir_all(&project).unwrap();
         let index = Index {
-            version: 1,
+            version: INDEX_VERSION,
             project: project.to_string_lossy().into_owned(),
             commit: None,
             files: BTreeMap::new(),
@@ -1203,7 +1324,7 @@ func UseFile() error {
 ";
 
     #[test]
-    fn the_index_cannot_say_which_method_a_go_call_reaches() {
+    fn go_methods_are_indexed_by_name_but_a_name_cannot_pick_the_receiver() {
         let data = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("go.mod"), "module example.com/probe
@@ -1214,9 +1335,74 @@ go 1.22
         let cancel = std::sync::atomic::AtomicBool::new(false);
         let (index, _) = refresh(data.path(), project.path(), &cancel).unwrap();
         let close: Vec<_> = find_symbol(&index, "Close", 20).into_iter().filter(|d| d.name == "Close").collect();
-        assert!(close.is_empty(), "the index now reads Go methods; revisit lsp.rs's comparison: {close:?}");
-        // A name-based lookup would be ambiguous even if it did: both methods
-        // are named Close.
+        // F1m-003: Go declarations are read now. A name-based lookup is still
+        // ambiguous: both methods are named Close, so the language server in
+        // lsp.rs is what picks the receiver.
+        assert_eq!(close.len(), 2, "{close:?}");
         assert_eq!(GO_FIXTURE.matches(") Close() error").count(), 2);
+    }
+}
+
+#[cfg(test)]
+mod declaration_tests {
+    use super::*;
+
+    fn names(path: &str, text: &str) -> Vec<String> {
+        symbols_in(Path::new(path), text).into_iter().map(|s| s.name).collect()
+    }
+
+    /// F1m-003: Go, Java and Ruby declarations are recognised.
+    #[test]
+    fn go_java_and_ruby_declarations_are_read() {
+        assert_eq!(
+            names("a.go", "func Run() {}\nfunc (s *Srv) Start() {}\ntype Srv struct{}\nconst Max = 1\n"),
+            ["Run", "Start", "Srv", "Max"]
+        );
+        assert_eq!(
+            names(
+                "A.java",
+                "public class A {\n  public static void main(String[] a) {\n    foo(1);\n    return bar(2);\n  }\n  private int size() { return 1; }\n}\n"
+            ),
+            ["A", "main", "size"]
+        );
+        assert_eq!(
+            names("a.rb", "module M\n  class K\n    def run\n    end\n    def self.make\n    end\n  end\nend\n"),
+            ["M", "K", "run", "make"]
+        );
+    }
+
+    /// F1m-004: a call past the 200-character cut-off is still a call.
+    #[test]
+    fn a_call_past_the_bounded_text_is_still_found() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let line = format!("let x = \"{}\"; target_fn(1);\n", "p".repeat(260));
+        std::fs::write(project.path().join("a.rs"), format!("fn target_fn(a: u8) {{}}\nfn caller() {{ {line} }}\n")).unwrap();
+        let cancel = AtomicBool::new(false);
+        let (index, _) = refresh(data.path(), project.path(), &cancel).unwrap();
+        let h = hierarchy(&index, "target_fn", 10);
+        assert_eq!(h.callers.len(), 1, "{:?}", h.callers);
+    }
+
+    /// CAGB-030: config folders worth navigating and hidden source files are
+    /// walked; other hidden folders are not.
+    #[test]
+    fn named_dot_folders_and_hidden_source_files_are_indexed() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        for (path, body) in [
+            (".eslintrc.js", "module.exports = {};\n"),
+            (".cargo/build.rs", "fn cfg() {}\n"),
+            (".secret/x.rs", "fn hidden() {}\n"),
+        ] {
+            let full = project.path().join(path);
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(full, body).unwrap();
+        }
+        let cancel = AtomicBool::new(false);
+        let (index, _) = refresh(data.path(), project.path(), &cancel).unwrap();
+        let mut seen: Vec<_> = index.files.keys().cloned().collect();
+        seen.sort();
+        assert_eq!(seen, [".cargo/build.rs", ".eslintrc.js"]);
     }
 }

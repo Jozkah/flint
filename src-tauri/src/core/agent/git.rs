@@ -472,6 +472,7 @@ pub(crate) fn snapshot_worktree(
     parent: Option<&str>,
     msg: &str,
 ) -> Result<String, String> {
+    let repo = &top_level(repo);
     let idx = temp_index()?;
     let result = (|| {
         let base = match parent {
@@ -587,6 +588,7 @@ fn worktree_changes(repo: &Path, idx: &Path, commit: &str) -> Result<Vec<RawChan
 /// ignored files and nested repositories excluded. Nothing is written except
 /// loose objects for the scratch staging, which garbage collection reclaims.
 pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, String> {
+    let repo = &top_level(repo);
     let idx = temp_index()?;
     let result = worktree_changes(repo, &idx, commit).map(|changes| {
         changes
@@ -597,6 +599,14 @@ pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, St
     });
     drop(idx);
     result
+}
+
+/// `repo` as the repository top-level. `diff --raw` names paths relative to the
+/// top-level, and staging uses `add -A -- .`, so a `repo` that is a
+/// subdirectory would stage only that subtree (everything else reading as
+/// deleted) and join top-level paths onto the wrong base.
+fn top_level(repo: &Path) -> PathBuf {
+    repo_root(repo).unwrap_or_else(|| repo.to_path_buf())
 }
 
 /// What removing one path did.
@@ -718,6 +728,7 @@ pub(crate) fn restore_worktree(
     repo: &Path,
     target: &str,
 ) -> Result<RestoreOutcome, RestoreError> {
+    let repo = &top_level(repo);
     // R22: `checkout-index -f` runs every smudge filter the repository names.
     crate::core::agent::vcs::refuse_filter_programs(repo).map_err(RestoreError::Refused)?;
     let current_idx = temp_index().map_err(RestoreError::Refused)?;
@@ -1984,6 +1995,26 @@ mod tests {
         )
         .ok()?;
         repo_root(&root)
+    }
+
+    /// O11-010: a `repo` that is a subdirectory must not read the rest of the
+    /// tree as deleted, nor restore into the wrong base.
+    #[test]
+    fn restore_and_changed_since_work_from_a_subdirectory() {
+        let Some(root) = init_repo() else { return };
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/b.txt"), "b
+").unwrap();
+        let snap = snapshot_worktree(&root, None, "base").expect("snapshot");
+        std::fs::write(root.join("a.txt"), "changed
+").unwrap();
+        let sub = root.join("sub");
+        assert_eq!(changed_since(&sub, &snap).unwrap(), vec!["a.txt".to_string()]);
+        restore_worktree(&sub, &snap).expect("restore");
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one
+");
+        assert_eq!(std::fs::read_to_string(root.join("sub/b.txt")).unwrap(), "b
+");
     }
 
     /// Two repositories, one thread id. Before the index was keyed by

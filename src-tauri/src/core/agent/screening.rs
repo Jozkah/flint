@@ -34,7 +34,9 @@ use tauri_plugin_agent_tools::{control_tags, secrets};
 use super::r#loop::ToolOutcome;
 
 /// Built-in tools whose results come from outside the machine.
-const EXTERNAL_BUILTINS: [&str; 3] = ["web_fetch", "web_search", "browser"];
+/// `mcp_resource_read` returns a server's resource body, which is as untrusted
+/// as a tool result (CAGC-044).
+const EXTERNAL_BUILTINS: [&str; 4] = ["web_fetch", "web_search", "browser", "mcp_resource_read"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ControlMode {
@@ -390,6 +392,12 @@ control = \"redact\"").unwrap().loosens());
     }
 
     const KEY_LINE: &str = "export OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+
+    /// CAGC-044: an MCP resource body is screened like a tool result.
+    #[test]
+    fn an_mcp_resource_read_is_screened() {
+        assert!(is_external_builtin("mcp_resource_read"));
+    }
 
     #[test]
     fn a_secret_in_a_result_never_reaches_the_model() {

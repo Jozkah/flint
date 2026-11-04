@@ -1402,6 +1402,32 @@ fn git(args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// The longest a plugin clone may run, and the most it may leave on disk.
+const CLONE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(600);
+const MAX_CLONE_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Whether the files under `root` add up to more than `limit` bytes. Stops
+/// counting as soon as it is over, and does not follow links.
+fn dir_bytes_over(root: &Path, limit: u64) -> bool {
+    let mut total = 0u64;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                stack.push(entry.path());
+            } else {
+                total = total.saturating_add(meta.len());
+                if total > limit {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// How a cancellable child process ended badly.
 #[derive(Debug)]
 enum RunError {
@@ -1415,7 +1441,18 @@ enum RunError {
 /// block on a full pipe while we poll. On cancel the drain threads are not
 /// joined: a grandchild (git's remote helper) may still hold the pipe, and
 /// cancelling must not wait for it.
-fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Result<String, RunError> {
+fn run_cancellable(cmd: Command, cancel: &AtomicBool) -> Result<String, RunError> {
+    run_cancellable_within(cmd, cancel, None)
+}
+
+/// [`run_cancellable`] with an overall deadline: a child still running when it
+/// passes is killed and reported as failed (P2A-012).
+fn run_cancellable_within(
+    mut cmd: Command,
+    cancel: &AtomicBool,
+    limit: Option<std::time::Duration>,
+) -> Result<String, RunError> {
+    let deadline = limit.map(|l| std::time::Instant::now() + l);
     if cancel.load(Ordering::SeqCst) {
         return Err(RunError::Cancelled);
     }
@@ -1449,6 +1486,14 @@ fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Result<String, RunE
             let _ = child.kill();
             let _ = child.wait();
             return Err(RunError::Cancelled);
+        }
+        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(RunError::Failed(format!(
+                "timed out after {}s",
+                limit.map(|l| l.as_secs()).unwrap_or(0)
+            )));
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -1703,7 +1748,7 @@ fn install_git_pinned(
         // No terminal to answer a credential prompt: fail instead of hanging.
         cmd.env("GIT_TERMINAL_PROMPT", "0");
     }
-    if let Err(e) = run_cancellable(cmd, &ctx.cancel) {
+    if let Err(e) = run_cancellable_within(cmd, &ctx.cancel, Some(CLONE_DEADLINE)) {
         remove_staging(&tmp);
         return Err(match e {
             RunError::Cancelled => cancelled_error(),
@@ -1720,6 +1765,16 @@ fn install_git_pinned(
         });
     }
 
+    if dir_bytes_over(&tmp, MAX_CLONE_BYTES) {
+        remove_staging(&tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::GitFailed,
+            format!(
+                "the repository is larger than {} MB; it is not installed as a plugin",
+                MAX_CLONE_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
     let commit_sha = git_output_in(&tmp, &["rev-parse", "HEAD"])
         .ok()
         .filter(|s| !s.is_empty());
@@ -3900,6 +3955,38 @@ mod lifecycle_tests {
         .expect("cancelled");
         assert_eq!(err.code, PluginErrorCode::Cancelled);
         assert!(entries(&skills::plugins_dir(&root)).is_empty());
+    }
+
+    /// P2A-012: a child that outlives its deadline is killed and reported.
+    #[test]
+    fn a_child_past_its_deadline_is_killed() {
+        #[cfg(windows)]
+        let cmd = {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let cancel = AtomicBool::new(false);
+        let started = std::time::Instant::now();
+        let result =
+            run_cancellable_within(cmd, &cancel, Some(std::time::Duration::from_millis(300)));
+        assert!(matches!(&result, Err(RunError::Failed(m)) if m.contains("timed out")), "{result:?}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn a_tree_over_the_limit_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        std::fs::write(dir.path().join("a/f"), vec![0u8; 100]).unwrap();
+        assert!(dir_bytes_over(dir.path(), 50));
+        assert!(!dir_bytes_over(dir.path(), 100));
     }
 
     /// The kill path itself: a long-running child is stopped promptly.
