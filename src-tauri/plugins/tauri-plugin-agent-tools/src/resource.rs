@@ -453,6 +453,19 @@ impl Resource {
                             pid: None,
                         });
                     }
+                    // Text written to an interactive job's stdin may be read
+                    // as commands (a shell, a REPL), so each line is gated
+                    // like a command the model had run itself.
+                    if args.get("action").and_then(|v| v.as_str()) == Some("write") {
+                        if let Some(input) = args.get("input").and_then(|v| v.as_str()) {
+                            out.extend(
+                                input
+                                    .lines()
+                                    .filter(|l| !l.trim().is_empty())
+                                    .map(Resource::command),
+                            );
+                        }
+                    }
                 }
             }
         }
