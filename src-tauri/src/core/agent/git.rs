@@ -2346,6 +2346,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // `a -> b.txt` is not a legal Windows file name.
+    #[cfg(not(windows))]
     #[test]
     fn changed_paths_returns_unquoted_non_ascii_space_and_arrow_names() {
         let Some(root) = init_repo() else { return };
