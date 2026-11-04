@@ -4,8 +4,10 @@
 // `prefix` ("" for the first tab, "t2" for the second, ...) is part of every ref,
 // so a ref says which tab it belongs to. Refs live in this document only, so a navigation drops them, which is how a
 // stale ref is detected (the helper is gone, or the element is detached).
-((prefix) => {
-  const KEY = Symbol.for('flint.browser.v1');
+// `token` is random per process and never reaches the page, so a page cannot
+// pre-install a fake API under the key this helper trusts (O02-020).
+((prefix, token) => {
+  const KEY = Symbol.for('flint.browser.v1.' + token);
   if (window[KEY]) return window[KEY];
 
   const refs = new Map(); // 'e3' -> WeakRef(element)
@@ -328,6 +330,6 @@
   const element = (ref) => get(ref);
 
   const api = { snapshot, locate, rectOf, focusField, choose, scrollBy, scrollTo, hasText, hasSelector, meta, pos, focus, fileCheck, element };
-  Object.defineProperty(window, KEY, { value: api, enumerable: false, configurable: true });
+  Object.defineProperty(window, KEY, { value: api, enumerable: false, configurable: false, writable: false });
   return api;
 })

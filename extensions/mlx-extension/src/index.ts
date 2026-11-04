@@ -346,7 +346,8 @@ export default class mlx_extension extends AIEngine {
     }
 
     const mlxConfig: MlxConfig = {
-      ctx_size: cfg.ctx_size ?? 4096,
+      // 0 = unset: the server then applies no rotating window (#70).
+      ctx_size: cfg.ctx_size ?? 0,
     }
 
     logger.info(
@@ -900,7 +901,13 @@ export default class mlx_extension extends AIEngine {
   async getModelProps(
     modelId: string
   ): Promise<{ nCtx: number; modelAlias?: string }> {
-    return { nCtx: this.config.ctx_size ?? 4096, modelAlias: modelId }
+    const configured = Number(this.config.ctx_size)
+    if (Number.isInteger(configured) && configured > 0) {
+      return { nCtx: configured, modelAlias: modelId }
+    }
+    // No explicit window: the model's own limit from config.json is the real one.
+    const limit = await this.getModelContextLimit(modelId).catch(() => undefined)
+    return { nCtx: limit ?? 0, modelAlias: modelId }
   }
 
   async isVisionSupported(modelPath: string): Promise<boolean> {

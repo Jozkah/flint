@@ -68,6 +68,7 @@ pub enum Refusal {
     ControlCharacter,
     PathSeparator,
     ParentDirectory,
+    WindowsReserved,
     Whitespace,
     NotInSession,
     SelfParent,
@@ -81,6 +82,7 @@ impl Refusal {
             Self::ControlCharacter => "it contains a control character",
             Self::PathSeparator => "it contains a path separator",
             Self::ParentDirectory => "it contains `..`",
+            Self::WindowsReserved => "it has a character or name Windows does not allow in a file name",
             Self::Whitespace => "it begins or ends with whitespace",
             Self::NotInSession => "it does not belong to that session",
             Self::SelfParent => "it names itself as its own parent",
@@ -125,7 +127,22 @@ fn check(kind: IdKind, raw: &str) -> Result<(), (Refusal, HarnessError)> {
     if raw.contains("..") {
         return fail(Refusal::ParentDirectory);
     }
+    // `:` stays allowed (`chat:...`, `agent:...` are written today), so an id is
+    // still not a path component: storage hashes it first. What is refused is
+    // what could never be a Windows file name even so (O03-038).
+    if raw.contains(['*', '?', '<', '>', '|', '"']) || is_windows_device_name(raw) {
+        return fail(Refusal::WindowsReserved);
+    }
     Ok(())
+}
+
+/// `CON`, `NUL`, `COM1` and the rest, bare or with an extension.
+fn is_windows_device_name(raw: &str) -> bool {
+    let stem = raw.split('.').next().unwrap_or(raw).trim_end().to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 
 macro_rules! id_type {
@@ -271,6 +288,16 @@ mod tests {
         JobId::parse("bash-a4708-0").unwrap();
         AgentId::parse("agent:scribe").unwrap();
         SnapshotId::parse("snap-18d49acc0115232c8294-1").unwrap();
+    }
+
+    #[test]
+    fn names_windows_cannot_store_are_refused() {
+        for raw in ["CON", "nul", "com1", "LPT9.txt", "a*b", "a?b", "a|b", "a<b", "q\"x"] {
+            assert!(SessionId::parse(raw).is_err(), "{raw}");
+        }
+        for raw in ["console", "com10", "com0", "chat:abc", "agent:scribe", "null-run"] {
+            assert!(SessionId::parse(raw).is_ok(), "{raw}");
+        }
     }
 
     /// Security: an id that could become a place on disk, or could not be

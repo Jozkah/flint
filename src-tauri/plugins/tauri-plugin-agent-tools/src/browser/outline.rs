@@ -22,7 +22,20 @@ pub const HELPER_JS: &str = include_str!("page_helper.js");
 /// helper is first installed in a document and part of every ref it hands out.
 pub fn call_expression(prefix: &str, method: &str, args: &[Value]) -> String {
     let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-    format!("({HELPER_JS})({}).{method}({})", Value::String(prefix.to_string()), args.join(","))
+    format!(
+        "({HELPER_JS})({}, {}).{method}({})",
+        Value::String(prefix.to_string()),
+        Value::String(helper_token().to_string()),
+        args.join(",")
+    )
+}
+
+/// The key the helper installs itself under, random per process: a page that
+/// planted an object under a fixed key could steer every decision made from
+/// the helper's answers (O02-020).
+fn helper_token() -> &'static str {
+    static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TOKEN.get_or_init(|| format!("{:032x}", rand::random::<u128>()))
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -312,7 +325,9 @@ mod tests {
     #[test]
     fn a_call_expression_embeds_the_helper_and_json_args() {
         let e = call_expression("t2", "locate", &[json!("t2e3")]);
-        assert!(e.starts_with("(") && e.contains(")(\"t2\").locate(\"t2e3\")"), "{}", &e[e.len() - 40..]);
-        assert!(HELPER_JS.contains("Symbol.for('flint.browser.v1')"));
+        assert!(e.starts_with("(") && e.contains(&format!(")(\"t2\", \"{}\").locate(\"t2e3\")", helper_token())), "{}", &e[e.len() - 40..]);
+        assert!(HELPER_JS.contains("Symbol.for('flint.browser.v1.' + token)"));
+        assert!(e.contains(helper_token()));
+        assert_eq!(helper_token().len(), 32);
     }
 }

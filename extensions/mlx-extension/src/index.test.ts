@@ -64,10 +64,20 @@ describe('getModelProps', () => {
     expect(props).toEqual({ nCtx: 8192, modelAlias: 'org/model' })
   })
 
-  it('falls back to a 4096 default when ctx_size is unset', async () => {
+  it('reads the model limit from config.json when ctx_size is unset', async () => {
     const ext = newExt()
+    mockInvoke.mockResolvedValueOnce({ model_path: '/external/model' })
+    mockFileStat.mockResolvedValue({ isDirectory: true } as never)
+    mockInvoke.mockResolvedValueOnce(JSON.stringify({ max_position_embeddings: 40960 }))
     const props = await ext.getModelProps('org/model')
-    expect(props.nCtx).toBe(4096)
+    expect(props.nCtx).toBe(40960)
+  })
+
+  it('reports 0, not a made-up 4096, when no limit is known', async () => {
+    const ext = newExt()
+    mockInvoke.mockRejectedValueOnce(new Error('no model.yml'))
+    const props = await ext.getModelProps('org/model')
+    expect(props.nCtx).toBe(0)
   })
 })
 

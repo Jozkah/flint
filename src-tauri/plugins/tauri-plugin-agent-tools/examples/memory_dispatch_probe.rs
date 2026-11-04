@@ -62,7 +62,7 @@ fn main() {
             let session = (args[2] != "-").then(|| args[2].clone());
             let content = &args[3];
             let existing = store::load(&root, scope).records;
-            let id = MemoryId::new(format!("mem_{}", now()));
+            let id = MemoryId::new(format!("mem_{}_{:08x}", now(), rand::random::<u32>()));
             let proposal = match create::propose(
                 id,
                 content,

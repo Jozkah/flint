@@ -21,7 +21,6 @@
     "opener:allow-default-urls",
     "log:default",
     "core:webview:allow-create-webview-window",
-    "opener:allow-open-url",
     "store:default",
     "vector-db:default",
     "rag:default",
@@ -47,10 +46,6 @@
         }
       ],
       "deny": []
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": []
     },
     {
       "identifier": "opener:allow-open-url",
