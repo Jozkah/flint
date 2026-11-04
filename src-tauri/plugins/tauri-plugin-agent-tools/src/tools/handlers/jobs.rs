@@ -382,6 +382,24 @@ pub fn bash_job_output_since(job_id: &str, owner: Option<&str>, offset: u64) -> 
     Some((crate::audit::redact(&tail.text[from..]), total))
 }
 
+/// [`bash_job_output_since`] without redaction, for a caller that looks for its
+/// own marker in the text and redacts what it shows afterwards.
+pub(super) fn bash_job_raw_since(job_id: &str, owner: Option<&str>, offset: u64) -> Option<(String, u64)> {
+    let jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
+    let job = jobs.get(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    let tail = job.tail.lock().ok()?;
+    let total = (tail.dropped + tail.text.len()) as u64;
+    let start = offset.saturating_sub(tail.dropped as u64).min(tail.text.len() as u64) as usize;
+    let mut from = start;
+    while !tail.text.is_char_boundary(from) {
+        from += 1;
+    }
+    Some((tail.text[from..].to_string(), total))
+}
+
 /// Make room for one more job under `owner`. Drops the oldest *finished*
 /// uncollected job when the owner is at its limit; returns false when every
 /// job it holds is still running, so the caller refuses rather than grows.

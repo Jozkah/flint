@@ -463,9 +463,14 @@
               "status",
               "cancel",
               "write",
-              "list"
+              "list",
+              "close"
             ],
-            "description": "What to do with background commands when no command is given. Default with a job_id: await. `write` sends `input` to an `interactive` job's stdin."
+            "description": "What to do with background commands when no command is given. Default with a job_id: await. `write` sends `input` to an `interactive` job's stdin. `close` ends a `session`."
+          },
+          "session": {
+            "type": "string",
+            "description": "Run the command in a persistent shell with this name (1-32 letters, digits, - or _). The shell keeps its working directory, exported variables and functions between calls, so `cd` and `export` carry over. Foreground only; at most 4 per conversation. A timeout or `exit` ends it and the next call starts a fresh one. Use `action: \"close\"` with `session` to end it."
           },
           "interactive": {
             "type": "boolean",
