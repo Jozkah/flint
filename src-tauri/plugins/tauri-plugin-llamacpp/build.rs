@@ -1174,10 +1174,7 @@ mod engine {
             // directory first, which is where packaging puts the DLLs.
             "windows" => {}
             _ => {
-                // No `gomp`: ggml is built with GGML_OPENMP=OFF, so nothing
-                // references OpenMP, and linking it would add a libgomp.so.1
-                // requirement on machines that do not have it (O08-020).
-                for l in ["stdc++", "m", "pthread", "dl"] {
+                for l in ["stdc++", "m", "pthread", "dl", "gomp"] {
                     println!("cargo:rustc-link-lib=dylib={l}");
                 }
                 println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
