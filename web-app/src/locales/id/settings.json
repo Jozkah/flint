@@ -348,6 +348,8 @@
     "attributionCommitsDesc": "Commit yang dibuat agen diakhiri trailer Co-Authored-By yang menyebut Flint dan model yang menulisnya.",
     "attributionPullRequests": "Tambahkan 'Generated with Flint' ke pull request",
     "attributionPullRequestsDesc": "Deskripsi pull request yang ditulis agen diakhiri baris 'Generated with Flint'.",
+    "userLineShare": "Bagikan nama pengguna dan folder home saya ke model",
+    "userLineShareDesc": "Catatan runtime yang dikirim ke model menyebut akun OS dan folder profil Anda agar model tidak menebak jalur. Matikan agar tidak disertakan di setiap permintaan.",
     "toolchains": {
       "title": "Toolchain sandbox",
       "description": "Ini terpasang tetapi sandbox tidak dapat menjalankannya: foldernya tidak mengizinkan aplikasi ter-sandbox membaca dan menjalankan isinya. Anda dapat mengizinkannya satu toolchain pada satu waktu.",

@@ -350,6 +350,8 @@
     "attributionCommitsDesc": "Commits the agent makes end with a Co-Authored-By trailer naming Flint and the model that wrote them.",
     "attributionPullRequests": "Add 'Generated with Flint' to pull requests",
     "attributionPullRequestsDesc": "Pull request descriptions the agent writes end with a 'Generated with Flint' line.",
+    "userLineShare": "Share my user name and home folder with the model",
+    "userLineShareDesc": "The runtime note sent to the model names your OS account and profile folders so it stops guessing paths. Turn off to keep them out of every request.",
     "toolchains": {
       "title": "Sandbox toolchains",
       "description": "These are installed but the sandbox cannot run them: their folder does not allow sandboxed apps to read and run what is inside. You can allow it for one toolchain at a time.",

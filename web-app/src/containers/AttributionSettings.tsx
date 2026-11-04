@@ -10,20 +10,27 @@ import {
   setAttributionSettings,
   type AttributionSettings as Settings,
 } from '@/lib/gitAttribution'
+import { getUserLineSetting, setUserLineSetting } from '@/lib/userLineSetting'
 
 /**
- * The two attribution switches for the agent's `git` work: Flint as co-author
+ * The attribution switches for the agent's `git` work: Flint as co-author
  * on commits, and "Generated with Flint" on pull requests. Both default to on,
  * are stored in the data folder, and are read by the desktop and the CLI.
+ * Also the privacy switch for the user name and home folder in the runtime
+ * note the model receives.
  */
 export function AttributionSettings() {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<Settings>(DEFAULT_ATTRIBUTION_SETTINGS)
+  const [shareUser, setShareUser] = useState(true)
 
   useEffect(() => {
     let live = true
     getAttributionSettings()
       .then((s) => live && setSettings(s))
+      .catch(() => {})
+    getUserLineSetting()
+      .then((on) => live && setShareUser(on))
       .catch(() => {})
     return () => {
       live = false
@@ -36,6 +43,14 @@ export function AttributionSettings() {
     setSettings(next)
     setAttributionSettings(next).catch((e) => {
       setSettings(previous)
+      toast.error(String(e))
+    })
+  }
+
+  const changeShareUser = (on: boolean) => {
+    setShareUser(on)
+    setUserLineSetting(on).catch((e) => {
+      setShareUser(!on)
       toast.error(String(e))
     })
   }
@@ -65,6 +80,19 @@ export function AttributionSettings() {
             data-testid="attribution-pull-requests"
             checked={settings.pullRequests}
             onCheckedChange={(pullRequests) => change({ pullRequests })}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-agent-tools-user-line"
+        title={t('settings:agentTools.userLineShare')}
+        description={t('settings:agentTools.userLineShareDesc')}
+        align="start"
+        actions={
+          <Switch
+            data-testid="share-user-line"
+            checked={shareUser}
+            onCheckedChange={changeShareUser}
           />
         }
       />

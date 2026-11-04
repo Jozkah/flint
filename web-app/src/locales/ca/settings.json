@@ -354,6 +354,8 @@
     "attributionCommitsDesc": "Els commits que fa l'agent acaben amb un tràiler Co-Authored-By que anomena Flint i el model que els ha escrit.",
     "attributionPullRequests": "Afegeix 'Generated with Flint' a les pull requests",
     "attributionPullRequestsDesc": "Les descripcions de pull request que escriu l'agent acaben amb una línia 'Generated with Flint'.",
+    "userLineShare": "Comparteix el meu nom d'usuari i la carpeta personal amb el model",
+    "userLineShareDesc": "La nota d'entorn enviada al model inclou el teu compte del sistema i les carpetes de perfil perquè no endevini rutes. Desactiva-ho per mantenir-los fora de cada petició.",
     "toolchains": {
       "title": "Cadenes d'eines de l'entorn aïllat",
       "description": "Aquestes estan instal·lades però l'entorn aïllat no les pot executar: la seva carpeta no permet que les aplicacions aïllades llegeixin i executin el que hi ha dins. Ho pots permetre per a una cadena d'eines cada vegada.",

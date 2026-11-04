@@ -26,6 +26,7 @@ import {
   type SkillScope,
 } from '@/lib/skillStore'
 import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
+import { folderTrustStatus } from '@/lib/folderTrust'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon } from '@/components/ui/icon'
@@ -50,8 +51,8 @@ type GroupKey = 'global' | string
  * (the desktop's permanent skill store, full CRUD -- the same store
  * `SkillsManagerDialog` edits) plus one read-oriented group per registered
  * project, so a project's local skills are visible without leaving the
- * page. Project skills open read-only in the same editor on click; edit
- * them in the project folder itself.
+ * page. Project skills open in the same editor on click, read-only unless the
+ * project folder is trusted, in which case they save in place.
  */
 export default function SkillsTab() {
   const { t } = useTranslation()
@@ -108,6 +109,8 @@ export default function SkillsTab() {
 
   // Editor state: which (group, skill) is open, or a fresh draft.
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null)
+  // A project's skill is editable in place only once its folder is trusted.
+  const [projectTrusted, setProjectTrusted] = useState(false)
   const editor = useSkillEditor()
   const { selected, isNew, name, setName, content, setContent, saving, editing } =
     editor
@@ -117,14 +120,23 @@ export default function SkillsTab() {
       ? storeScope
       : projectScope(projects.find((p) => p.id === group)?.folder ?? '')
 
+  const canEdit = openGroup === 'global' || (openGroup !== null && projectTrusted)
+
   const closeEditor = () => {
     setOpenGroup(null)
+    setProjectTrusted(false)
     editor.close()
   }
 
   const openSkill = async (group: GroupKey, skillName: string) => {
     try {
       const body = await readSkill(scopeFor(group), skillName)
+      let trusted = false
+      if (group !== 'global') {
+        const folder = projects.find((p) => p.id === group)?.folder ?? ''
+        trusted = folder ? (await folderTrustStatus(folder))?.trusted === true : false
+      }
+      setProjectTrusted(trusted)
       setOpenGroup(group)
       editor.show(skillName, body)
     } catch (e) {
@@ -134,6 +146,7 @@ export default function SkillsTab() {
 
   const startNew = () => {
     setOpenGroup('global')
+    setProjectTrusted(false)
     editor.startNew()
   }
 
@@ -142,6 +155,7 @@ export default function SkillsTab() {
       toast.error(t('common:skillNameRequired'))
       return
     }
+    if (openGroup !== 'global' && !projectTrusted) return
     const scope = scopeFor(openGroup)
     await editor.save((skillName, body) => writeSkill(scope, skillName, body), refresh)
   }
@@ -358,14 +372,14 @@ export default function SkillsTab() {
               onChange={(e) => setContent(e.target.value)}
               placeholder={t('common:skillContentPlaceholder')}
               className="min-h-64 resize-y font-mono text-base md:text-xs"
-              readOnly={openGroup !== 'global'}
-              aria-readonly={openGroup !== 'global' ? true : undefined}
+              readOnly={!canEdit}
+              aria-readonly={!canEdit ? true : undefined}
             />
             <div className="flex justify-end gap-2">
               <Button variant="surface" size="sm" onClick={closeEditor}>
                 {t('common:cancel')}
               </Button>
-              {openGroup === 'global' && (
+              {canEdit && (
                 <Button size="sm" onClick={handleSave} disabled={saving}>
                   {t('common:skillSave')}
                 </Button>

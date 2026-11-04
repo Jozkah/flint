@@ -551,7 +551,43 @@ fn user_line(
     Some(line)
 }
 
+fn user_line_setting_path() -> Option<std::path::PathBuf> {
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    (!data.as_os_str().is_empty()).then(|| data.join("prompt-privacy.json"))
+}
+
+/// Whether the runtime block names the OS account and profile folders
+/// (`<data folder>/prompt-privacy.json`, `{"userLine": false}` to opt out).
+/// On unless the file says otherwise: a missing or unreadable file keeps the
+/// default, so a broken preference never changes what the prompt says.
+pub(crate) fn user_line_enabled() -> bool {
+    user_line_setting_path()
+        .and_then(|p| std::fs::read(p).ok())
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.get("userLine").and_then(serde_json::Value::as_bool))
+        .unwrap_or(true)
+}
+
+/// Persist the opt-out chosen in Settings.
+pub(crate) fn set_user_line_enabled(enabled: bool) -> Result<(), String> {
+    let path = user_line_setting_path().ok_or("Flint data folder is unavailable")?;
+    let body = serde_json::json!({ "userLine": enabled }).to_string();
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))
+}
+
+/// The user line when the person opted out of sending their account name and
+/// profile paths to the provider: no identifying value, only how to refer to it.
+fn hidden_user_line() -> String {
+    "
+User name and profile paths are withheld for privacy: refer to the home folder as `~` (`$HOME`, `$env:USERPROFILE`) and never guess another profile path"
+        .to_string()
+}
+
 fn live_user_line(sandboxed: bool) -> String {
+    if !user_line_enabled() {
+        return hidden_user_line();
+    }
     let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
     let profile = tauri_plugin_agent_tools::tools::host_tools::current_profile().or_else(dirs::home_dir);
     let username = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).ok();
@@ -2068,10 +2104,34 @@ We build with make.")
     fn runtime_environment_block_names_the_live_home() {
         let root = scratch_project("home");
         std::fs::create_dir_all(&root).unwrap();
-        let block = runtime_environment_block(&root, None);
-        if let Some(home) = tauri_plugin_agent_tools::tools::host_tools::current_profile() {
-            assert!(block.contains(&format!("home `{}`", display_path(&home))), "{block}");
-        }
+        with_temp_data_folder(|_| {
+            let block = runtime_environment_block(&root, None);
+            if let Some(home) = tauri_plugin_agent_tools::tools::host_tools::current_profile() {
+                assert!(block.contains(&format!("home `{}`", display_path(&home))), "{block}");
+            }
+        });
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn runtime_environment_block_withholds_the_user_when_opted_out() {
+        let root = scratch_project("home-hidden");
+        std::fs::create_dir_all(&root).unwrap();
+        with_temp_data_folder(|_| {
+            assert!(user_line_enabled(), "on by default");
+            set_user_line_enabled(false).unwrap();
+            assert!(!user_line_enabled());
+            let block = runtime_environment_block(&root, None);
+            assert!(block.contains("withheld for privacy"), "{block}");
+            assert!(!block.contains("User: `"), "{block}");
+            assert!(!block.contains("AppData `"), "{block}");
+            if let Some(name) = std::env::var("USERNAME").ok().filter(|n| n.len() > 3) {
+                assert!(!block.contains(&format!("`{name}`")), "{block}");
+            }
+            set_user_line_enabled(true).unwrap();
+            assert!(user_line_enabled());
+            assert!(runtime_environment_block(&root, None).contains("User: `"));
+        });
         let _ = std::fs::remove_dir_all(&root);
     }
 

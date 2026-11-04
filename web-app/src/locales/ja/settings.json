@@ -350,6 +350,8 @@
     "attributionCommitsDesc": "エージェントのコミットの末尾に、Flint と作成したモデルを示す Co-Authored-By トレーラーを付けます。",
     "attributionPullRequests": "プルリクエストに「Generated with Flint」を追加",
     "attributionPullRequestsDesc": "エージェントが書くプルリクエストの説明の末尾に「Generated with Flint」の行を付けます。",
+    "userLineShare": "ユーザー名とホームフォルダーをモデルと共有する",
+    "userLineShareDesc": "モデルに送る実行環境メモには、パスを推測させないために OS アカウント名とプロファイルフォルダーが含まれます。オフにすると、すべてのリクエストから除外されます。",
     "toolchains": {
       "title": "サンドボックスのツールチェーン",
       "description": "これらはインストールされていますが、サンドボックスでは実行できません。そのフォルダーが、サンドボックス内のアプリによる内容の読み取りと実行を許可していないためです。ツールチェーンごとに 1 つずつ許可できます。",

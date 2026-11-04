@@ -354,6 +354,8 @@
     "attributionCommitsDesc": "Commity vytvořené agentem končí trailerem Co-Authored-By, který uvádí Flint a model, jenž je napsal.",
     "attributionPullRequests": "Přidat 'Generated with Flint' do pull requestů",
     "attributionPullRequestsDesc": "Popisy pull requestů, které agent napíše, končí řádkem 'Generated with Flint'.",
+    "userLineShare": "Sdílet moje uživatelské jméno a domovskou složku s modelem",
+    "userLineShareDesc": "Poznámka o prostředí odesílaná modelu uvádí váš účet v systému a složky profilu, aby nehádal cesty. Vypnutím je z každého požadavku vynecháte.",
     "toolchains": {
       "title": "Toolchainy sandboxu",
       "description": "Tyto jsou nainstalovány, ale sandbox je nemůže spustit: jejich složka nedovoluje aplikacím v sandboxu číst a spouštět to, co je uvnitř. Povolit to můžete vždy pro jeden toolchain.",

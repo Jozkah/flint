@@ -151,6 +151,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::get_compaction_policy,
         core::agent::commands::get_attribution_settings,
         core::agent::commands::set_attribution_settings,
+        core::agent::commands::get_user_line_setting,
+        core::agent::commands::set_user_line_setting,
         core::agent::commands::get_computer_exclusions,
         core::agent::commands::set_computer_exclusions,
         core::agent::commands::capture_desktop_preview,

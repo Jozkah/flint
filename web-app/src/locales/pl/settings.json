@@ -354,6 +354,8 @@
     "attributionCommitsDesc": "Commity agenta kończą się trailerem Co-Authored-By wskazującym Flint i model, który je napisał.",
     "attributionPullRequests": "Dodaj 'Generated with Flint' do pull requestów",
     "attributionPullRequestsDesc": "Opisy pull requestów pisane przez agenta kończą się wierszem 'Generated with Flint'.",
+    "userLineShare": "Udostępniaj modelowi moją nazwę użytkownika i folder domowy",
+    "userLineShareDesc": "Notatka środowiska wysyłana do modelu zawiera konto systemowe i foldery profilu, aby model nie zgadywał ścieżek. Wyłącz, aby nie trafiały do żadnego żądania.",
     "toolchains": {
       "title": "Zestawy narzędzi piaskownicy",
       "description": "Są zainstalowane, ale piaskownica nie może ich uruchomić: ich folder nie pozwala aplikacjom w piaskownicy czytać i uruchamiać tego, co jest w środku. Możesz na to zezwolić dla jednego zestawu narzędzi naraz.",
