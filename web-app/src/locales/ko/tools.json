@@ -170,6 +170,7 @@
     "target": "an alias can only name a path inside the attached folder",
     "lines": "lines are a number or a range such as 12-20, starting at 1",
     "taken": "@alias:{{name}} already names {{target}}",
-    "unknown": "there is no alias named {{name}} in this folder"
+    "unknown": "there is no alias named {{name}} in this folder",
+    "unusable": "@alias:{{name}} names {{target}}, which could not be used: {{reason}}"
   }
 }

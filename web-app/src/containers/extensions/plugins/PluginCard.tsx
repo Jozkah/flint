@@ -109,7 +109,7 @@ export function PluginCard({
           {surfaces && (
             <div className="flex flex-wrap items-center gap-1">
               <span className="mr-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
-                {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
+                {t('common:extensionsManager.enablement.title')}
               </span>
               {surfaces.slice(0, 4).map((c) => {
                 const on = isOnSurface(c.key)
