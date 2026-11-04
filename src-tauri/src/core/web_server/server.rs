@@ -976,15 +976,6 @@ async fn rpc_route(
         "plugin:hardware|get_system_usage" => {
             blocking(|| Ok(tauri_plugin_hardware::sample_system_usage())).await
         }
-        "plugin:llamacpp|generate_api_key" => {
-            let (Some(model), Some(secret)) = (str_field(&args, "modelId"), str_field(&args, "apiSecret")) else {
-                return text(StatusCode::BAD_REQUEST, "modelId and apiSecret are required");
-            };
-            match tauri_plugin_llamacpp::commands::generate_api_key(model.to_owned(), secret.to_owned()) {
-                Ok(key) => json(&key),
-                Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
-            }
-        }
         "plugin:llamacpp|load_llama_model" | "plugin:llamacpp|ensure_session_ready" => {
             let Some(model) = str_field(&args, "modelId") else {
                 return text(StatusCode::BAD_REQUEST, "modelId is required");

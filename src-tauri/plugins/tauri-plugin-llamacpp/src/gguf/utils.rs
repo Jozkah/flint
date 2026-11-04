@@ -24,6 +24,41 @@ pub fn is_remote(path: &str) -> bool {
     path.starts_with("http://") || path.starts_with("https://")
 }
 
+/// Refuses a remote model URL that could reach the local network: plain
+/// `http://` is only for a loopback server, and an `https://` host written as a
+/// private, link-local or unspecified IP literal is rejected (O08-019).
+pub fn check_remote_url(url: &str) -> Result<(), String> {
+    if is_loopback_url(url) {
+        return Ok(());
+    }
+    if !url.starts_with("https://") {
+        return Err("Remote model URLs must use https".to_string());
+    }
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let auth = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let auth = auth.rsplit('@').next().unwrap_or(auth);
+    let host = if let Some(v6) = auth.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("")
+    } else {
+        auth.split(':').next().unwrap_or("")
+    };
+    let private = match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => {
+            ip.is_private() || ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast()
+        }
+        Ok(std::net::IpAddr::V6(ip)) => {
+            ip.is_unspecified()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+                || (ip.segments()[0] & 0xffc0) == 0xfe80
+        }
+        Err(_) => false,
+    };
+    if private {
+        return Err("Remote model URL points at a private address".to_string());
+    }
+    Ok(())
+}
+
 /// Runs a parse over a gguf, local or remote.
 ///
 /// A remote file is fetched in range chunks and the parse retried after each
@@ -36,6 +71,7 @@ where
     F: Fn(&mut (dyn ReadSeek + '_)) -> std::io::Result<T>,
 {
     if is_remote(path) {
+        check_remote_url(path)?;
         // Remote: read in growing chunks until successful
         let mut builder = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
@@ -589,5 +625,20 @@ mod head_count_tests {
         assert_eq!(parse_head_count("[8, 8, 0, 8]"), Some(8));
         assert_eq!(parse_head_count("[0, 0]"), None);
         assert_eq!(parse_head_count("<Array of type Int32 with 40 elements, data skipped>"), None);
+    }
+}
+
+#[cfg(test)]
+mod remote_url_tests {
+    use super::check_remote_url;
+
+    #[test]
+    fn https_public_and_loopback_http_pass_others_fail() {
+        assert!(check_remote_url("https://huggingface.co/a/b.gguf").is_ok());
+        assert!(check_remote_url("http://127.0.0.1:8080/b.gguf").is_ok());
+        assert!(check_remote_url("http://example.com/b.gguf").is_err());
+        assert!(check_remote_url("https://192.168.1.5/b.gguf").is_err());
+        assert!(check_remote_url("https://169.254.169.254/x").is_err());
+        assert!(check_remote_url("https://[fd00::1]/x").is_err());
     }
 }

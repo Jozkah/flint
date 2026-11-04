@@ -1602,17 +1602,28 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * value is picked up at the next start and a warning says so.
    */
   private async restartEngineForEnv(): Promise<void> {
-    if (!(await this.getEngineInfo())) return // next start reads the new env
-    if (!(await engineSlotsIdle())) {
-      logger.warn(
-        'Environment variables changed while a model is generating; the engine will use them after its next restart.'
-      )
-      return
+    // Hold engineStartLock across the idle check and the stop, so a concurrent
+    // startEngine cannot interleave between them (H01-010).
+    while (this.engineStartLock) {
+      await this.engineStartLock.catch(() => undefined)
     }
-    await pluginStopEngine()
-    this.enginePort = undefined
-    this.engineApiKey = undefined
-    await this.startEngine()
+    const run = (async () => {
+      if (!(await this.getEngineInfo())) return // next start reads the new env
+      if (!(await engineSlotsIdle())) {
+        logger.warn(
+          'Environment variables changed while a model is generating; the engine will use them after its next restart.'
+        )
+        return
+      }
+      await pluginStopEngine()
+      this.enginePort = undefined
+      this.engineApiKey = undefined
+      await this.runStartEngine()
+    })().finally(() => {
+      this.engineStartLock = null
+    })
+    this.engineStartLock = run
+    return run
   }
 
   /**

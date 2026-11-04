@@ -25,7 +25,6 @@ const COMMANDS: &[&str] = &[
     "load_llama_model",
     "unload_llama_model",
     "cancel_model_load",
-    "generate_api_key",
     "ensure_session_ready",
     "find_session_by_model",
     "get_loaded_models",
@@ -1175,7 +1174,7 @@ mod engine {
             // directory first, which is where packaging puts the DLLs.
             "windows" => {}
             _ => {
-                for l in ["stdc++", "m", "pthread", "dl", "gomp"] {
+                for l in ["stdc++", "m", "pthread", "dl"] {
                     println!("cargo:rustc-link-lib=dylib={l}");
                 }
                 println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");

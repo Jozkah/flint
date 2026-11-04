@@ -299,7 +299,6 @@ try {
   const tensors = await rpc('plugin:llamacpp|find_gguf_tensors', { path: gguf, names: ['a'] })
   check('rpc reports which tensors a gguf holds', tensors.status === 200 && (await tensors.json()).length === 0)
   rmSync(gguf, { force: true })
-  check('rpc derives an api key', typeof (await (await rpc('plugin:llamacpp|generate_api_key', { modelId: 'm1', apiSecret: 's' })).json()) === 'string')
 
   check('rpc stops the engine', (await rpc('plugin:llamacpp|stop_engine')).status === 200 && (await (await rpc('plugin:llamacpp|get_engine_info')).json()) === null)
 
