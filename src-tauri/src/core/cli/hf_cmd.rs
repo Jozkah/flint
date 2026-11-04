@@ -464,7 +464,9 @@ mod tests {
         let data = Path::new("data");
         let p = download_path(data, "o/n", "sub/a b.gguf");
         assert!(p.starts_with("data/downloads/huggingface/o/n"));
-        assert!(p.to_string_lossy().ends_with("a-b.gguf"));
+        // A name that needed sanitising gets a hash tag so two names cannot collide.
+        let name = p.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("a-b-") && name.ends_with(".gguf"), "{name}");
         assert!(!download_path(data, "o/n", "..x").to_string_lossy().contains(".."));
     }
 
