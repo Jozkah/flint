@@ -53,7 +53,7 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
 
     const run = spawnSync('bash', ['-s'], {
       cwd: dir,
-      input: `export PATH="$PWD/stub:$PATH"\n${SCRIPT}`,
+      input: `export PATH="$PWD/stub:$PATH"\n${SHA256SUM_STUB}\n${SCRIPT}`,
       encoding: 'utf8',
     })
 
@@ -79,7 +79,7 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
 
     const run = spawnSync('bash', ['-s'], {
       cwd: dir,
-      input: `export PATH="$PWD/stub:$PATH"\n${SCRIPT}`,
+      input: `export PATH="$PWD/stub:$PATH"\n${SHA256SUM_STUB}\n${SCRIPT}`,
       encoding: 'utf8',
     })
 
