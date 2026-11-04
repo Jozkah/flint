@@ -585,12 +585,31 @@ const SNAPSHOT_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
     let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
+    let Ok(mut file) = std::fs::File::open(&path) else {
+        return Ok(());
+    };
+    let len = file.metadata().map_err(|e| e.to_string())?.len();
+    if len <= keep {
+        return Ok(());
+    }
+    // Read only the tail that could be kept (PERF-008); the whole log is read
+    // only when the newest line alone is over the budget.
+    let tail_start = len - keep;
+    let mut tail = Vec::with_capacity(keep as usize);
+    {
+        use std::io::{Read, Seek, SeekFrom};
+        file.seek(SeekFrom::Start(tail_start)).map_err(|e| e.to_string())?;
+        file.read_to_end(&mut tail).map_err(|e| e.to_string())?;
+    }
+    drop(file);
+    if let Some(i) = tail.iter().position(|b| *b == b'\n') {
+        if i + 1 < tail.len() {
+            return crate::workspace::write_atomic(&path, &tail[i + 1..]).map_err(|e| e.to_string());
+        }
+    }
     let Ok(bytes) = std::fs::read(&path) else {
         return Ok(());
     };
-    if bytes.len() as u64 <= keep {
-        return Ok(());
-    }
     let from = bytes.len() - keep as usize;
     let mut start = bytes[from..]
         .iter()
