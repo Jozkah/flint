@@ -202,7 +202,7 @@ export async function resolveAlias(
   if (!root || !alias) {
     return {
       ok: false,
-      message: `there is no alias named ${name} in this folder`,
+      message: aliasText('unknown', 'there is no alias named {{name}} in this folder', { name }),
     }
   }
   // A selection is read as the lines it names, checked against the file as
@@ -220,7 +220,11 @@ export async function resolveAlias(
   if (!resolved.ok) {
     return {
       ok: false,
-      message: `@alias:${name} names ${alias.target}, which could not be used: ${resolved.message}`,
+      message: aliasText(
+        'unusable',
+        '@alias:{{name}} names {{target}}, which could not be used: {{reason}}',
+        { name, target: alias.target, reason: resolved.message }
+      ),
     }
   }
   return {

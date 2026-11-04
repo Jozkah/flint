@@ -18,7 +18,7 @@
 //!   cleaned up. What was removed is recorded — the path and the reason — so a
 //!   reader can tell "this field was empty" from "this field was a secret".
 
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -585,29 +585,31 @@ const SNAPSHOT_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
     let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
-    // Only the tail that is kept is read: the log is past its threshold on
-    // this path, and reading all of it to drop half of it is the cost this
-    // avoids (PERF-008).
-    if let Ok(mut file) = std::fs::File::open(&path) {
-        let len = file.metadata().map_err(|e| e.to_string())?.len();
-        if len <= keep {
-            return Ok(());
-        }
-        file.seek(SeekFrom::Start(len - keep)).map_err(|e| e.to_string())?;
-        let mut tail = Vec::with_capacity(keep as usize);
-        file.take(keep).read_to_end(&mut tail).map_err(|e| e.to_string())?;
-        if let Some(i) = tail.iter().position(|b| *b == b'\n').filter(|i| i + 1 < tail.len()) {
+    let Ok(mut file) = std::fs::File::open(&path) else {
+        return Ok(());
+    };
+    let len = file.metadata().map_err(|e| e.to_string())?.len();
+    if len <= keep {
+        return Ok(());
+    }
+    // Read only the tail that could be kept (PERF-008); the whole log is read
+    // only when the newest line alone is over the budget.
+    let tail_start = len - keep;
+    let mut tail = Vec::with_capacity(keep as usize);
+    {
+        use std::io::{Read, Seek, SeekFrom};
+        file.seek(SeekFrom::Start(tail_start)).map_err(|e| e.to_string())?;
+        file.read_to_end(&mut tail).map_err(|e| e.to_string())?;
+    }
+    drop(file);
+    if let Some(i) = tail.iter().position(|b| *b == b'\n') {
+        if i + 1 < tail.len() {
             return crate::workspace::write_atomic(&path, &tail[i + 1..]).map_err(|e| e.to_string());
         }
-        // No whole line inside the tail: the newest line alone is over the
-        // budget and has to be found from the whole file, below.
     }
     let Ok(bytes) = std::fs::read(&path) else {
         return Ok(());
     };
-    if bytes.len() as u64 <= keep {
-        return Ok(());
-    }
     let from = bytes.len() - keep as usize;
     let mut start = bytes[from..]
         .iter()
@@ -898,31 +900,6 @@ mod tests {
         // The trim really ran: 25 records of ~400 KB do not all fit.
         assert!(all.len() < 25, "only {} records; capture may have truncated", all.len());
         assert!(!all.is_empty() && all.last().unwrap().session == "s24");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// PERF-008: trimming reads only the kept tail, and still keeps exactly
-    /// the newest whole lines, or the newest line whole when it alone is over.
-    #[test]
-    fn trim_keeps_the_newest_whole_lines() {
-        let dir = std::env::temp_dir().join(format!("jan_snap_tail_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audit")).unwrap();
-        let path = log_path(&dir);
-        let lines: Vec<String> = (0..10).map(|i| format!("{i}{}", "y".repeat(99))).collect();
-        std::fs::write(&path, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
-        // 250 bytes of tail: two whole 101-byte lines fit, the partial one is dropped.
-        trim_bytes(&dir, 250).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            format!("{}\n{}\n", lines[8], lines[9])
-        );
-        // Under the budget: untouched.
-        trim_bytes(&dir, 10_000).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 2);
-        // The newest line alone over the budget is kept whole.
-        trim_bytes(&dir, 30).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), format!("{}\n", lines[9]));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

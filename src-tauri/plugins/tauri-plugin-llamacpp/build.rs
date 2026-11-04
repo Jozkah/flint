@@ -1174,7 +1174,7 @@ mod engine {
             // directory first, which is where packaging puts the DLLs.
             "windows" => {}
             _ => {
-                for l in ["stdc++", "m", "pthread", "dl", "gomp"] {
+                for l in ["stdc++", "m", "pthread", "dl"] {
                     println!("cargo:rustc-link-lib=dylib={l}");
                 }
                 println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");

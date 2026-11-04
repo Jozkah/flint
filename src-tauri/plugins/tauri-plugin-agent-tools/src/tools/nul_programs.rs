@@ -2,7 +2,7 @@
 //!
 //! On a machine whose `\Device\Null` refuses AppContainers (see
 //! [`super::appcontainer::null_device_admits_sandbox`]), a program that opens
-//! NUL on its own -- Go's toolchain, git -- fails inside the sandbox whatever
+//! NUL on its own -- Go's toolchain, git, ripgrep -- fails inside the sandbox whatever
 //! the command says. Running it only to watch it fail wastes the call and can
 //! half-run a `&&` chain, so a sandboxed `bash` command naming one of them is
 //! not run at all: it is answered with the same null-device refusal a failed
@@ -12,7 +12,7 @@
 //! `[tools].nul_programs` in its agent.toml.
 
 /// Programs that open NUL themselves on every run.
-pub const DEFAULT_NUL_PROGRAMS: &[&str] = &["go", "git"];
+pub const DEFAULT_NUL_PROGRAMS: &[&str] = &["go", "git", "rg"];
 
 /// The first program in `command` that is known to open NUL, as named in
 /// the list (lowercase, no directory or extension). Every segment of a chain

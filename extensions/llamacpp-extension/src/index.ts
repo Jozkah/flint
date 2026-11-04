@@ -54,7 +54,6 @@ import {
   isSafeModelRef,
   legacyAutoUnload,
   modelsMaxFromAutoUnload,
-  createSerialRunner,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -533,8 +532,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private engineVersion?: EngineVersion
   private presetPath?: string
   private engineStartLock: Promise<void> | null = null
-  /** Restarts run one at a time: a second must not stop the engine the first just started. */
-  private runEngineRestart = createSerialRunner()
   private userModelsMax: number = 1
   private loadedChatOrder: string[] = []
   // Models whose `auto` KV cache defaults failed to load and now run f16. Kept
@@ -1604,11 +1601,13 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * a generation is running (the restart would kill it); in that case the new
    * value is picked up at the next start and a warning says so.
    */
-  private restartEngineForEnv(): Promise<void> {
-    return this.runEngineRestart(async () => {
-      // A start already under way finishes first, so the idle check and the
-      // stop below see the engine it produced rather than racing it.
-      await this.engineStartLock?.catch(() => undefined)
+  private async restartEngineForEnv(): Promise<void> {
+    // Hold engineStartLock across the idle check and the stop, so a concurrent
+    // startEngine cannot interleave between them (H01-010).
+    while (this.engineStartLock) {
+      await this.engineStartLock.catch(() => undefined)
+    }
+    const run = (async () => {
       if (!(await this.getEngineInfo())) return // next start reads the new env
       if (!(await engineSlotsIdle())) {
         logger.warn(
@@ -1619,8 +1618,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       await pluginStopEngine()
       this.enginePort = undefined
       this.engineApiKey = undefined
-      await this.startEngine()
+      await this.runStartEngine()
+    })().finally(() => {
+      this.engineStartLock = null
     })
+    this.engineStartLock = run
+    return run
   }
 
   /**

@@ -117,7 +117,7 @@ export function PluginDetailsPane({
           </dl>
           <div>
             <div className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium uppercase text-subtle-foreground">
-              {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
+              {t('common:extensionsManager.enablement.title')}
             </div>
             <EnablementGrid kind="plugin" id={plugin.id} />
             <p className="mt-1.5 text-xs text-muted-foreground">
