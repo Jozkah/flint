@@ -895,6 +895,7 @@ impl CompositeToolInvoker {
                 durable: false,
                 max_turns: None,
                 title: None,
+                continue_from: None,
             };
             let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
             dispatched.push((reviewer.clone(), run));

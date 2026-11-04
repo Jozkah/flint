@@ -1097,6 +1097,7 @@ pub async fn run_durable_subagent(
         durable: true,
         max_turns: spec.max_turns,
         title: None,
+        continue_from: None,
     };
     let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
         .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
