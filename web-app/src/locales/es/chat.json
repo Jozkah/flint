@@ -334,5 +334,8 @@
     "reasoningLoop": "El razonamiento se detuvo tras repetir el mismo texto. Prueba con otro modelo o con un presupuesto de razonamiento menor.",
     "serviceUnavailable": "El servicio de modelos no está listo, o no hay ningún modelo o proveedor seleccionado.",
     "contextUsed": "(Se usaron {{used}} de {{total}} tokens de contexto.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

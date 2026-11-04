@@ -349,5 +349,8 @@
     "reasoningLoop": "Rozumowanie zatrzymało się po powtórzeniu tego samego tekstu. Spróbuj innego modelu lub niższego budżetu rozumowania.",
     "serviceUnavailable": "Usługa modeli nie jest gotowa albo nie wybrano modelu ani dostawcy.",
     "contextUsed": "(Użyto {{used}} z {{total}} tokenów kontekstu.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

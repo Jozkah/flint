@@ -26,7 +26,8 @@ import {
  * starts once every model is settled; cancelling leaves the room as it was.
  */
 export function UnknownWindowDialog() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const windowText = FALLBACK_CONTEXT_WINDOW.toLocaleString(i18n?.language ?? 'en')
   const request = useUnknownWindowPrompt((s) => s.request)
   const answer = useUnknownWindowPrompt((s) => s.answer)
   const [values, setValues] = useState<Record<string, string>>({})
@@ -63,7 +64,7 @@ export function UnknownWindowDialog() {
           <DialogDescription>
             {t('rooms:unknownWindow.description', {
               subject: request.subject,
-              window: FALLBACK_CONTEXT_WINDOW.toLocaleString('en-US'),
+              window: windowText,
             })}
           </DialogDescription>
         </DialogHeader>
@@ -101,7 +102,7 @@ export function UnknownWindowDialog() {
                     onClick={() => setUseDefault((prev) => ({ ...prev, [key]: !prev[key] }))}
                   >
                     {t('rooms:unknownWindow.useDefault', {
-                      window: FALLBACK_CONTEXT_WINDOW.toLocaleString('en-US'),
+                      window: windowText,
                     })}
                   </Button>
                 </div>

@@ -499,7 +499,8 @@
       "waitingSlot": "待機中: ローカルモデルのスロットを待っています"
     },
     "retry": "再試行",
-    "retryFor": "{{name}} を再試行"
+    "retryFor": "{{name}} を再試行",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} 個のファイルを変更",

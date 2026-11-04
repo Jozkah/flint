@@ -76,6 +76,18 @@ describe('useCodeGitOverlays caches', () => {
     expect(loadGitBlame).toHaveBeenCalledTimes(1)
   })
 
+  it('reads blame once when HEAD arrives after mount, under a key without the head', async () => {
+    loadGitHeadFile.mockResolvedValueOnce('the head text')
+    const view = run('once.ts', 3)
+    await waitFor(() => expect(loadGitHeadFile).toHaveBeenCalledTimes(1))
+    // Let the head resolve and the hook render with it.
+    await waitFor(() => expect(loadGitBlame).toHaveBeenCalledTimes(1))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loadGitBlame).toHaveBeenCalledTimes(1)
+    expect([...__testing.blameCache.keys()]).toContain('/r\u0000once.ts\u00003')
+    view.unmount()
+  })
+
   it('a rejected blame is not cached', async () => {
     loadGitBlame.mockRejectedValueOnce(new Error('git busy'))
     const { unmount } = run('bad.ts')

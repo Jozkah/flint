@@ -6,6 +6,7 @@ import {
   type ScopedMemoryRetrieved,
 } from '@/lib/memoryBinding'
 import type { RequestAttribution } from '@/lib/requestAttribution'
+import { formatBytes } from '@/lib/formatBytes'
 
 /**
  * "What JAN is using" for a chat conversation, as data.
@@ -168,9 +169,10 @@ const SCOPE_BY_MEMORY: Record<MemoryView['scope'], ContextScope> = {
 
 function formatSize(bytes?: number): string | undefined {
   if (!bytes || bytes <= 0) return undefined
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return formatBytes(bytes, {
+    maxUnit: 'MB',
+    decimals: (_value, unit) => (unit === 'MB' ? 1 : 0),
+  })
 }
 
 function textOf(content: unknown): string {

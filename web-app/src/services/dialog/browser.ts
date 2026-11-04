@@ -5,6 +5,7 @@
  */
 
 import { toast } from 'sonner'
+import { uiText } from '@/lib/uiText'
 import { uploadFile } from '@/services/uploads/browser'
 import { DefaultDialogService } from './default'
 import { pickServerFolder } from '@/lib/serverFolderPicker'
@@ -39,7 +40,7 @@ export class BrowserDialogService extends DefaultDialogService {
       try {
         paths.push((await uploadFile(file)).path)
       } catch (error) {
-        toast.error(`Could not upload ${file.name}`, {
+        toast.error(uiText('common:browserBuild.uploadFailed', 'Could not upload {{name}}', { name: file.name }), {
           description: error instanceof Error ? error.message : String(error),
         })
       }

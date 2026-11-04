@@ -51,7 +51,7 @@ export function RowMenu({
             <DropdownMenuSeparator key={`sep-${i}`} />
           ) : (
             <DropdownMenuItem
-              key={i}
+              key={typeof item.label === 'string' ? item.label : i}
               disabled={item.disabled}
               variant={item.destructive ? 'destructive' : undefined}
               onSelect={item.onSelect}

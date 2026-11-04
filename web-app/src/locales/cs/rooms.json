@@ -513,7 +513,8 @@
       "waitingSlot": "Ve frontě: čeká na slot místního modelu"
     },
     "retry": "Zkusit znovu",
-    "retryFor": "Zkusit znovu {{name}}"
+    "retryFor": "Zkusit znovu {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} soubor změněn",

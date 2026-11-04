@@ -503,7 +503,8 @@
       "waitingSlot": "Queued: waiting for the local model slot"
     },
     "retry": "Retry",
-    "retryFor": "Retry {{name}}"
+    "retryFor": "Retry {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} file changed",

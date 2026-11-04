@@ -508,7 +508,8 @@
       "waitingSlot": "Đang chờ: đợi khe mô hình cục bộ"
     },
     "retry": "Thử lại",
-    "retryFor": "Thử lại {{name}}"
+    "retryFor": "Thử lại {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} tệp đã thay đổi",

@@ -7,9 +7,11 @@
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { useKeybindings } from '@/hooks/useKeybindings'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ShortcutAction } from '@/lib/shortcuts'
 
 export function ShortcutHint({ action }: { action: ShortcutAction }) {
+  const { t } = useTranslation()
   // Subscribing to the override is what re-renders the hint when it changes.
   useKeybindings((s) => s.overrides[action])
   const spec = useKeybindings.getState().specFor(action)
@@ -21,9 +23,9 @@ export function ShortcutHint({ action }: { action: ShortcutAction }) {
           <PlatformMetaKey />
         </Kbd>
       ) : null}
-      {spec.ctrlKey ? <Kbd className={cls}>Ctrl</Kbd> : null}
+      {spec.ctrlKey ? <Kbd className={cls}>{t('common:shortcutKeys.ctrl')}</Kbd> : null}
       {spec.metaKey ? <Kbd className={cls}>⌘</Kbd> : null}
-      {spec.altKey ? <Kbd className={cls}>Alt</Kbd> : null}
+      {spec.altKey ? <Kbd className={cls}>{t('common:shortcutKeys.alt')}</Kbd> : null}
       {spec.shiftKey ? <Kbd className={cls}>⇧</Kbd> : null}
       <Kbd className={`${cls} uppercase`}>{spec.key}</Kbd>
     </KbdGroup>

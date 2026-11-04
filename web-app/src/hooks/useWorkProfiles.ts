@@ -27,6 +27,8 @@ type WorkProfilesState = {
   setOverride: (id: WorkProfileId, text: string | null) => void
   choose: (sessionId: string, id: WorkProfileId, manual: boolean) => void
   clearManual: (sessionId: string) => void
+  /** Forget a deleted thread's or session's entry, so the map cannot grow forever. */
+  dropScope: (sessionId: string) => void
   /** The prompt block for a session, or undefined when none applies. */
   blockFor: (sessionId: string | undefined) => string | undefined
   textFor: (id: WorkProfileId) => string
@@ -52,6 +54,13 @@ export const useWorkProfiles = create<WorkProfilesState>()(
         set((s) => ({ sessions: { ...s.sessions, [sessionId]: { id, manual } } })),
       clearManual: (sessionId) =>
         set((s) => {
+          const sessions = { ...s.sessions }
+          delete sessions[sessionId]
+          return { sessions }
+        }),
+      dropScope: (sessionId) =>
+        set((s) => {
+          if (!(sessionId in s.sessions)) return s
           const sessions = { ...s.sessions }
           delete sessions[sessionId]
           return { sessions }

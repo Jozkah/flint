@@ -2993,7 +2993,8 @@
     "pdfPagesCut": "Как изображения отправлены первые {{sent}} из {{total}} страниц файла {{name}}",
     "pdfScannedAsImages": "В {{name}} нет текста, поэтому его страницы отправлены как изображения",
     "ingestImageFailed": "Не удалось обработать вложенное изображение",
-    "ingestFailed": "Не удалось проиндексировать вложения"
+    "ingestFailed": "Не удалось проиндексировать вложения",
+    "unknownError": "Unknown error"
   },
   "fileViewer": {
     "openFull": "Открыть полный просмотр",
@@ -3582,5 +3583,25 @@
   "textFormattingToolbar": "Text formatting",
   "gitRepository": "Git repository",
   "enterCustomCliCommand": "Enter custom CLI command",
-  "openAssistantSettings": "Open assistant settings"
+  "openAssistantSettings": "Open assistant settings",
+  "shortcutKeys": {
+    "ctrl": "Ctrl",
+    "alt": "Alt"
+  },
+  "capabilityChips": {
+    "tools": "tools",
+    "vision": "vision",
+    "reasoning": "reasoning",
+    "audio": "audio",
+    "embeddings": "embeddings",
+    "web_search": "web",
+    "web_searchTitle": "web search"
+  },
+  "skillDeleteConfirmTitle": "Delete skill?",
+  "skillDeleteConfirm": "Delete the skill {{name}}? Its file is removed and this cannot be undone.",
+  "browserBuild": {
+    "uploadFailed": "Could not upload {{name}}",
+    "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
+    "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  }
 }

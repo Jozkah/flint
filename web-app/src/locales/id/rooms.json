@@ -499,7 +499,8 @@
       "waitingSlot": "Antre: menunggu slot model lokal"
     },
     "retry": "Coba lagi",
-    "retryFor": "Coba lagi {{name}}"
+    "retryFor": "Coba lagi {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} file berubah",

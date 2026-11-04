@@ -7,6 +7,7 @@ import { browserApi } from '@/services/browserApi'
 import { DefaultUploadsService } from './default'
 import type { UploadResult } from './types'
 import type { Attachment } from '@/types/attachment'
+import { uiText } from '@/lib/uiText'
 
 export type StoredUpload = { id: string; name: string; size: number; path: string }
 
@@ -22,8 +23,11 @@ export async function deleteUpload(id: string): Promise<void> {
   await browserApi<void>(`/api/v1/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-const EMBEDDINGS_UNAVAILABLE =
-  'Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead.'
+const embeddingsUnavailable = () =>
+  uiText(
+    'common:browserBuild.embeddingsUnavailable',
+    'Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead.'
+  )
 
 export class BrowserUploadsService extends DefaultUploadsService {
   // No Tauri command in the browser build: the server stores the file and its
@@ -34,7 +38,7 @@ export class BrowserUploadsService extends DefaultUploadsService {
 
   async ingestFileAttachment(_threadId: string, attachment: Attachment): Promise<UploadResult> {
     void attachment
-    throw new Error(EMBEDDINGS_UNAVAILABLE)
+    throw new Error(embeddingsUnavailable())
   }
 
   async ingestFileAttachmentForProject(
@@ -42,6 +46,6 @@ export class BrowserUploadsService extends DefaultUploadsService {
     attachment: Attachment
   ): Promise<UploadResult> {
     void attachment
-    throw new Error(EMBEDDINGS_UNAVAILABLE)
+    throw new Error(embeddingsUnavailable())
   }
 }

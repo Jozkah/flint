@@ -122,7 +122,7 @@ export function CompareRunPanel({
       try {
         const saved = await invokeCommand<{ path: string } | null>('export_save_file', {
           ext: 'md',
-          suggestedName: exportFileName(`${room.title} comparison`, 'md'),
+          suggestedName: exportFileName(t('rooms:compare.exportName', { title: room.title }), 'md'),
           text: out.markdown,
         })
         if (saved) setNote(t('rooms:compare.saved'))

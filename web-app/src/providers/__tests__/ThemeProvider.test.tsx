@@ -5,12 +5,14 @@ import { useTheme } from '@/hooks/useTheme'
 
 vi.mock('@/hooks/useTheme', () => {
   const useThemeMock = Object.assign(
-    vi.fn(() => ({
-      activeTheme: 'light',
-      isDark: false,
-      setIsDark: vi.fn(),
-      setTheme: vi.fn(),
-    })),
+    vi.fn((select: (s: unknown) => unknown) =>
+      select({
+        activeTheme: 'light',
+        isDark: false,
+        setIsDark: vi.fn(),
+        setTheme: vi.fn(),
+      })
+    ),
     { getState: () => ({ activeTheme: 'light' }) }
   )
   return {
@@ -35,34 +37,37 @@ describe('ThemeProvider', () => {
   })
 
   it('reads activeTheme from store on event', () => {
-    vi.mocked(useTheme).mockReturnValue({
-      activeTheme: 'auto',
-      isDark: false,
-      setIsDark: vi.fn(),
-      setTheme: vi.fn(),
-    })
+    vi.mocked(useTheme).mockImplementation(((select: (s: unknown) => unknown) =>
+      select({
+        activeTheme: 'auto',
+        isDark: false,
+        setIsDark: vi.fn(),
+        setTheme: vi.fn(),
+      })) as never)
     render(<ThemeProvider />)
     expect(useTheme).toHaveBeenCalled()
   })
 
   it('handles light theme correctly', () => {
-    vi.mocked(useTheme).mockReturnValue({
-      activeTheme: 'light',
-      isDark: false,
-      setIsDark: vi.fn(),
-      setTheme: vi.fn(),
-    })
+    vi.mocked(useTheme).mockImplementation(((select: (s: unknown) => unknown) =>
+      select({
+        activeTheme: 'light',
+        isDark: false,
+        setIsDark: vi.fn(),
+        setTheme: vi.fn(),
+      })) as never)
     render(<ThemeProvider />)
     expect(useTheme).toHaveBeenCalled()
   })
 
   it('handles dark theme correctly', () => {
-    vi.mocked(useTheme).mockReturnValue({
-      activeTheme: 'dark',
-      isDark: true,
-      setIsDark: vi.fn(),
-      setTheme: vi.fn(),
-    })
+    vi.mocked(useTheme).mockImplementation(((select: (s: unknown) => unknown) =>
+      select({
+        activeTheme: 'dark',
+        isDark: true,
+        setIsDark: vi.fn(),
+        setTheme: vi.fn(),
+      })) as never)
     render(<ThemeProvider />)
     expect(useTheme).toHaveBeenCalled()
   })

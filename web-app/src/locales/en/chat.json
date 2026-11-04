@@ -319,5 +319,8 @@
     "reasoningLoop": "Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.",
     "serviceUnavailable": "The model service is not ready, or no model or provider is selected.",
     "contextUsed": "(Used {{used}} of {{total}} context tokens.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

@@ -1,5 +1,5 @@
 import { useSkillEditor } from '@/hooks/useSkillEditor'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import {
   FileText,
@@ -29,6 +29,14 @@ import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon } from '@/components/ui/icon'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 /**
  * A skills group is either the global store or one registered project.
@@ -55,13 +63,18 @@ export default function SkillsTab() {
   >({})
   const [loading, setLoading] = useState(false)
 
+  // Only the newest read may set state, and none after unmount (F6m-018).
+  const loadId = useRef(0)
   const refresh = useCallback(async () => {
+    const mine = ++loadId.current
+    const live = () => mine === loadId.current
     setLoading(true)
     try {
       const [projectList, global] = await Promise.all([
         listProjects(),
         listSkills(storeScope),
       ])
+      if (!live()) return
       setProjects(projectList)
       setGlobalSkills(global)
       const perProject = await Promise.all(
@@ -69,19 +82,29 @@ export default function SkillsTab() {
           listSkills(projectScope(p.folder)).catch(() => [] as SkillMeta[])
         )
       )
+      if (!live()) return
       setProjectSkills(
         Object.fromEntries(projectList.map((p, i) => [p.id, perProject[i]]))
       )
     } catch (e) {
-      toast.error(String(e))
+      if (live()) toast.error(String(e))
     } finally {
-      setLoading(false)
+      if (live()) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void refresh()
+    return () => {
+      loadId.current++
+    }
   }, [refresh])
+
+  // A delete waits for this answer: the file goes and there is no undo.
+  const [pendingDelete, setPendingDelete] = useState<{
+    group: GroupKey
+    name: string
+  } | null>(null)
 
   // Editor state: which (group, skill) is open, or a fresh draft.
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null)
@@ -186,7 +209,7 @@ export default function SkillsTab() {
                 variant="ghost"
                 size="icon-sm"
                 className="text-muted-foreground hover:text-destructive pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-coarse:size-11"
-                onClick={() => void handleDelete(group, s.name)}
+                onClick={() => setPendingDelete({ group, name: s.name })}
                 title={t('common:skillDelete')}
                 aria-label={`${t('common:skillDelete')}: ${s.name}`}
               >
@@ -322,8 +345,7 @@ export default function SkillsTab() {
             {enablementTarget && (
               <div>
                 <div className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
-                  {t('common:extensionsManager.enablement.title', undefined) ??
-                    'Enabled on'}
+                  {t('common:extensionsManager.enablement.title')}
                 </div>
                 <EnablementGrid
                   kind={enablementTarget.kind}
@@ -352,6 +374,44 @@ export default function SkillsTab() {
           </FrameBody>
         </Frame>
       )}
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t('common:skillDeleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('common:skillDeleteConfirm', { name: pendingDelete?.name ?? '' })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => setPendingDelete(null)}
+            >
+              {t('common:cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full sm:w-auto"
+              data-testid="skill-delete-confirm"
+              onClick={() => {
+                const target = pendingDelete
+                setPendingDelete(null)
+                if (target) void handleDelete(target.group, target.name)
+              }}
+            >
+              {t('common:delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

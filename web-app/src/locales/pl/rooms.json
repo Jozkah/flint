@@ -513,7 +513,8 @@
       "waitingSlot": "W kolejce: czeka na miejsce modelu lokalnego"
     },
     "retry": "Ponów",
-    "retryFor": "Ponów {{name}}"
+    "retryFor": "Ponów {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "Zmieniono {{count}} plik",

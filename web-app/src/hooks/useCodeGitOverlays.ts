@@ -109,7 +109,7 @@ export function useCodeGitOverlays(input: {
     setBlame(null)
     if (!inlineBlame || !root || !path) return
     let alive = true
-    const key = `${root}\u0000${path}\u0000${head?.length ?? -1}\u0000${savedCount}`
+    const key = `${root}\u0000${path}\u0000${savedCount}`
     let hit = blameCache.get(key)
     if (!hit) {
       // One blame entry per file: a newer save supersedes the old one.

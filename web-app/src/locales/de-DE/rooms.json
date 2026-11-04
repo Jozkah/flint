@@ -503,7 +503,8 @@
       "waitingSlot": "In der Warteschlange: wartet auf den Slot des lokalen Modells"
     },
     "retry": "Erneut versuchen",
-    "retryFor": "{{name}} erneut versuchen"
+    "retryFor": "{{name}} erneut versuchen",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} Datei geändert",

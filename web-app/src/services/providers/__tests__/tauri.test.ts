@@ -136,6 +136,45 @@ describe('TauriProvidersService', () => {
       expect(provider!.models[0].capabilities).toContain('tools')
     })
 
+    it('asks an engine about a model’s tool support once, however often the list is rebuilt', async () => {
+      const mockEngine = {
+        list: vi.fn().mockResolvedValue([{ id: 'm1', name: 'M1', description: '' }]),
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(true),
+        inferenceUrl: 'http://localhost:1337/chat/completions',
+      }
+      vi.mocked(EngineManager.instance).mockReturnValue({
+        engines: new Map([['cached-engine', mockEngine]]),
+      } as any)
+
+      await svc.getProviders()
+      const second = await svc.getProviders()
+      expect(mockEngine.isToolSupported).toHaveBeenCalledTimes(1)
+      const provider = second.find((p: any) => p.provider === 'cached-engine')
+      expect(provider!.models[0].capabilities).toContain('tools')
+    })
+
+    it('asks again about a model that left the list and came back', async () => {
+      const list = vi.fn()
+      const mockEngine = {
+        list,
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(false),
+        inferenceUrl: 'http://localhost:1337/chat/completions',
+      }
+      vi.mocked(EngineManager.instance).mockReturnValue({
+        engines: new Map([['churn-engine', mockEngine]]),
+      } as any)
+
+      list.mockResolvedValueOnce([{ id: 'm1', name: 'M1', description: '' }])
+      await svc.getProviders()
+      list.mockResolvedValueOnce([])
+      await svc.getProviders()
+      list.mockResolvedValueOnce([{ id: 'm1', name: 'M1', description: '' }])
+      await svc.getProviders()
+      expect(mockEngine.isToolSupported).toHaveBeenCalledTimes(2)
+    })
+
     it('adds EMBEDDINGS capability for embedding models', async () => {
       const mockEngine = {
         list: vi.fn().mockResolvedValue([{ id: 'emb', name: 'Emb', description: '', embedding: true }]),

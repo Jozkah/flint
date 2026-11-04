@@ -508,7 +508,8 @@
       "waitingSlot": "En cua: esperant la ranura del model local"
     },
     "retry": "Torna-ho a provar",
-    "retryFor": "Torna a provar {{name}}"
+    "retryFor": "Torna a provar {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} fitxer canviat",

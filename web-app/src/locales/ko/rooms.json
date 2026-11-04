@@ -499,7 +499,8 @@
       "waitingSlot": "대기 중: 로컬 모델 슬롯을 기다리는 중"
     },
     "retry": "다시 시도",
-    "retryFor": "{{name}} 다시 시도"
+    "retryFor": "{{name}} 다시 시도",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "파일 {{count}}개 변경됨",

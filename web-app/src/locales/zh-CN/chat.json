@@ -314,5 +314,8 @@
     "reasoningLoop": "因重复相同文本，推理已停止。请尝试其他模型或降低思考预算。",
     "serviceUnavailable": "模型服务尚未就绪，或未选择模型或提供商。",
     "contextUsed": "（已使用 {{used}} / {{total}} 个上下文 token。）"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

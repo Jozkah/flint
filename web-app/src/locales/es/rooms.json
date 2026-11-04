@@ -508,7 +508,8 @@
       "waitingSlot": "En cola: esperando la ranura del modelo local"
     },
     "retry": "Reintentar",
-    "retryFor": "Reintentar {{name}}"
+    "retryFor": "Reintentar {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} archivo cambiado",
