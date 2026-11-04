@@ -38,10 +38,13 @@ struct ReasoningSplitter {
     /// Feed a streamed token. Returns whatever can now be safely emitted.
     mutating func feed(_ token: String) -> (content: String?, reasoning: String?) {
         buffer += token
+        // Text that preceded an explicit <think> opener; it is content.
+        var leadContent = ""
 
         if !resolved {
             if let r = buffer.range(of: Self.openTag) {
                 // Explicit reasoning opener.
+                leadContent = String(buffer[buffer.startIndex..<r.lowerBound])
                 buffer.removeSubrange(buffer.startIndex..<r.upperBound)
                 inReasoning = true
                 resolved = true
@@ -71,14 +74,14 @@ struct ReasoningSplitter {
                 let reasoning = String(buffer[buffer.startIndex..<r.lowerBound])
                 buffer.removeSubrange(buffer.startIndex..<r.upperBound)
                 inReasoning = false
-                let content = drainSafe()
+                let content = leadContent + drainSafe()
                 return (
                     content.isEmpty ? nil : content,
                     reasoning.isEmpty ? nil : reasoning
                 )
             }
             let chunk = drainSafe()
-            return (nil, chunk.isEmpty ? nil : chunk)
+            return (leadContent.isEmpty ? nil : leadContent, chunk.isEmpty ? nil : chunk)
         }
 
         let chunk = drainSafe()
