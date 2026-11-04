@@ -1,6 +1,3 @@
-use base64::{engine::general_purpose, Engine as _};
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use std::time::Duration;
 #[cfg(feature = "tauri")]
 use std::sync::Arc as TauriArc;
@@ -9,8 +6,6 @@ use tauri::{Emitter, Manager, Runtime, State};
 
 use crate::error::{ErrorCode, LlamacppError, ServerError, ServerResult};
 use crate::state::{LlamacppState, SessionInfo};
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct UnloadResult {
@@ -888,17 +883,6 @@ pub async fn unload_model(state: &LlamacppState, model_id: String) -> ServerResu
         Ok(()) => Ok(UnloadResult { success: true, error: None }),
         Err(e) => Ok(UnloadResult { success: false, error: Some(e) }),
     }
-}
-
-#[cfg_attr(feature = "tauri", tauri::command)]
-pub fn generate_api_key(model_id: String, api_secret: String) -> Result<String, String> {
-    let mut mac = HmacSha256::new_from_slice(api_secret.as_bytes())
-        .map_err(|e| format!("Invalid key length: {}", e))?;
-    mac.update(model_id.as_bytes());
-    let result = mac.finalize();
-    let code_bytes = result.into_bytes();
-    let hash = general_purpose::STANDARD.encode(code_bytes);
-    Ok(hash)
 }
 
 pub async fn ensure_session<S: ProgressSink>(

@@ -78,16 +78,6 @@ export async function ensureSessionReady(
   })
 }
 
-export async function generateApiKey(
-  modelId: string,
-  apiSecret: string
-): Promise<string> {
-  return await invoke('plugin:llamacpp|generate_api_key', {
-    modelId,
-    apiSecret,
-  })
-}
-
 export async function findSessionByModel(
   modelId: string
 ): Promise<SessionInfo | null> {

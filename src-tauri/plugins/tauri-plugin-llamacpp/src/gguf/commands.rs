@@ -97,6 +97,7 @@ pub async fn find_gguf_tensors(path: String, names: Vec<String>) -> Result<Vec<S
 pub async fn get_model_size(path: String) -> Result<u64, String> {
     if crate::gguf::utils::is_remote(&path) {
         // Handle remote URL
+        crate::gguf::utils::check_remote_url(&path)?;
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(60))
