@@ -21,6 +21,7 @@ import type {
   ToolCallWithCancellationResult,
 } from './types'
 import { isRecord } from '@/lib/typeGuards'
+import { uiText } from '@/lib/uiText'
 
 const base = '/api/v1/mcp'
 const server = (name: string) => `${base}/servers/${encodeURIComponent(name)}`
@@ -181,7 +182,10 @@ export class BrowserMCPService extends DefaultMCPService {
 
   async authorizeMCPServer(): Promise<void> {
     throw new Error(
-      'Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.'
+      uiText(
+        'common:browserBuild.mcpSignInNeedsDesktop',
+        'Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.'
+      )
     )
   }
 

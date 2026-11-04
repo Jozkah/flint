@@ -503,7 +503,8 @@
       "waitingSlot": "कतार में: लोकल मॉडल स्लॉट की प्रतीक्षा"
     },
     "retry": "फिर से कोशिश करें",
-    "retryFor": "{{name}} को फिर से आज़माएँ"
+    "retryFor": "{{name}} को फिर से आज़माएँ",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} फ़ाइल बदली",

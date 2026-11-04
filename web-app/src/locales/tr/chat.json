@@ -319,5 +319,8 @@
     "reasoningLoop": "Aynı metin tekrarlandığı için akıl yürütme durduruldu. Farklı bir model veya daha düşük bir düşünme bütçesi deneyin.",
     "serviceUnavailable": "Model hizmeti hazır değil veya hiçbir model ya da sağlayıcı seçilmedi.",
     "contextUsed": "({{total}} bağlam jetonunun {{used}} tanesi kullanıldı.)"
+  },
+  "chainOfThought": {
+    "fallbackTool": "tool"
   }
 }

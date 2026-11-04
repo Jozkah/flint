@@ -50,6 +50,7 @@ export function ModelsTableRow({
   return (
     <div
       data-testid={`models-row-${model.id}`}
+      role="row"
       className={cn(
         TBOX_ROW,
         // Phones: a two-line card (logo + name, then the
@@ -58,12 +59,14 @@ export function ModelsTableRow({
         'motion-safe:animate-rise-in'
       )}
     >
-      <BrandMark
-        logo={modelLogo(model.id, provider.provider)}
-        name={model.name || model.id}
-        size={30}
-      />
-      <div className="flex min-w-0 flex-col gap-0.5 max-sm:basis-[calc(100%-42px)]">
+      <span role="cell" className="flex items-center">
+        <BrandMark
+          logo={modelLogo(model.id, provider.provider)}
+          name={model.name || model.id}
+          size={30}
+        />
+      </span>
+      <div role="cell" className="flex min-w-0 flex-col gap-0.5 max-sm:basis-[calc(100%-42px)]">
         <FadeText
           as="b"
           className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground"
@@ -80,7 +83,7 @@ export function ModelsTableRow({
           className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground"
         />
       </div>
-      <span className="min-w-0">
+      <span role="cell" className="min-w-0">
         {/* The provider, never the quantization: a local id's
             `:Q4_K_M` tag is already in the id under the name. */}
         <Chip className="max-w-full" data-testid="models-provider-cell">
@@ -89,7 +92,7 @@ export function ModelsTableRow({
       </span>
       {/* Always a cell, even with no capabilities, so the
           columns after it stay in place. */}
-      <span className="min-w-0 overflow-hidden" data-slot="caps-cell">
+      <span role="cell" className="min-w-0 overflow-hidden" data-slot="caps-cell">
         <CapabilityChips
           iconOnly
           className="flex-nowrap"
@@ -97,6 +100,7 @@ export function ModelsTableRow({
         />
       </span>
       <span
+        role="cell"
         className={cn(
           'min-w-0 truncate tabular-nums',
           !local && 'text-muted-foreground'
@@ -108,10 +112,10 @@ export function ModelsTableRow({
             : '—'
           : t('engine:table.remote')}
       </span>
-      <span className="min-w-0 truncate tabular-nums">
+      <span role="cell" className="min-w-0 truncate tabular-nums">
         {ctx ? ctx.toLocaleString() : '—'}
       </span>
-      <span className="flex min-w-0 flex-col gap-1">
+      <span role="cell" className="flex min-w-0 flex-col gap-1">
         {speedAvg && maxSpeed > 0 ? (
           <>
             <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
@@ -128,7 +132,7 @@ export function ModelsTableRow({
           <span className="text-muted-foreground">—</span>
         )}
       </span>
-      <span className="min-w-0">
+      <span role="cell" className="min-w-0">
         {local ? (
           loaded ? (
             <Chip tone="ok" live>
@@ -149,6 +153,7 @@ export function ModelsTableRow({
           </Chip>
         )}
       </span>
+      <span role="cell" className="flex items-center justify-end">
       <RowMenu
         label={t('engine:menu.modelActions', { model: model.name || model.id })}
         items={[
@@ -184,6 +189,7 @@ export function ModelsTableRow({
           },
         ]}
       />
+      </span>
     </div>
   )
 }

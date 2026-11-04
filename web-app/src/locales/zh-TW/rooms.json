@@ -499,7 +499,8 @@
       "waitingSlot": "排隊中：等待本機模型槽位"
     },
     "retry": "重試",
-    "retryFor": "重試 {{name}}"
+    "retryFor": "重試 {{name}}",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} 個檔案已變更",

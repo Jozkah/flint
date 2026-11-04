@@ -163,5 +163,13 @@
     "kill": "Encerrar o processo {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} o serviço {{name}} ({{display}}, agora {{status}})"
+  },
+  "referenceAlias": {
+    "noFolder": "no folder is attached, so there is nothing to name",
+    "name": "an alias name is letters, digits, dot, dash or underscore, starting with a letter or digit",
+    "target": "an alias can only name a path inside the attached folder",
+    "lines": "lines are a number or a range such as 12-20, starting at 1",
+    "taken": "@alias:{{name}} already names {{target}}",
+    "unknown": "there is no alias named {{name}} in this folder"
   }
 }

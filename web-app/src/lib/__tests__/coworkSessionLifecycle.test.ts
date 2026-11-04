@@ -3,6 +3,8 @@ import { beginRun, isRunning } from '@/lib/coworkRunner'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { coworkWebSearchScope, useWebSearchChoice } from '@/hooks/useWebSearchChoice'
 
 /**
  * janhq/jan#8905: deleting a session that is running has to stop that run --
@@ -62,6 +64,31 @@ describe('deleting a Cowork session', () => {
     useCoworkRun.getState().finishRun('A', 'run-a', { stoppedBy: 'done' })
     expect(useCoworkRun.getState().liveTurns.A).toBeUndefined()
     expect(useCoworkRun.getState().outcomes.A).toBeUndefined()
+  })
+})
+
+describe('per-session persisted choices', () => {
+  beforeEach(() => {
+    useCoworkSessions.setState({ sessions: [session('A'), session('B')], currentId: 'A' })
+    useCoworkRun.setState({ runs: {}, outcomes: {}, liveTurns: {} })
+    useWorkProfiles.setState({
+      sessions: { A: { id: 'execute', manual: true }, B: { id: 'review', manual: true } },
+    })
+    useWebSearchChoice.setState({
+      byScope: { [coworkWebSearchScope('A')]: true, [coworkWebSearchScope('B')]: false },
+    })
+  })
+
+  it('a delete drops the session’s work profile and web search choice, not the others', () => {
+    deleteCoworkSession('A')
+    expect(Object.keys(useWorkProfiles.getState().sessions)).toEqual(['B'])
+    expect(Object.keys(useWebSearchChoice.getState().byScope)).toEqual([coworkWebSearchScope('B')])
+  })
+
+  it('an archive keeps them for a restore', () => {
+    deleteCoworkSession('A', { keepRecords: true })
+    expect(Object.keys(useWorkProfiles.getState().sessions).sort()).toEqual(['A', 'B'])
+    expect(useWebSearchChoice.getState().byScope[coworkWebSearchScope('A')]).toBe(true)
   })
 })
 

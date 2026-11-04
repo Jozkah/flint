@@ -18,6 +18,8 @@ import {
   notifySessionRestored,
 } from '@/lib/mailboxPresence'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { coworkWebSearchScope, useWebSearchChoice } from '@/hooks/useWebSearchChoice'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { sessionMailbox } from '@/lib/sessionMailbox'
 import { archiveApi, archiveEnabled, trackArchiveWork } from '@/lib/archive'
@@ -70,6 +72,12 @@ export function deleteCoworkSession(
   // Its recorded pull requests and claims; an archived session keeps them
   // for a restore.
   if (!opts?.keepRecords) usePrStatusStore.getState().forgetSession(id)
+  // The persisted per-session maps keep an entry for an archived session (a
+  // restore finds its choices again), but not for a deleted one.
+  if (!opts?.keepRecords) {
+    useWorkProfiles.getState().dropScope(id)
+    useWebSearchChoice.getState().dropScope(coworkWebSearchScope(id))
+  }
   useSessionMessaging.getState().forget(id)
 }
 

@@ -142,11 +142,14 @@ export const WidgetCard = memo(function WidgetCard({
 
   const save = () => {
     const { vars, dark } = readThemeSnapshot()
-    const page = buildStandalonePage(title || 'Widget', normalizeWidgetCode(code), vars, dark)
+    const page = buildStandalonePage(title || t('chat:widget.label'), normalizeWidgetCode(code), vars, dark)
     const url = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = `${(title || 'widget').replace(/[^\w.-]+/g, '-').slice(0, 60)}.html`
+    // A localized label can have no ASCII word characters at all; the file
+    // name then falls back to a plain one rather than a bare dash.
+    const stem = (title || t('chat:widget.label')).replace(/[^\w.-]+/g, '-').slice(0, 60)
+    a.download = `${/\w/.test(stem) ? stem : 'widget'}.html`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -155,7 +158,7 @@ export const WidgetCard = memo(function WidgetCard({
 
   const askToFix = () =>
     sendPrompt(
-      t('chat:widget.fixPrompt', { title: title || 'widget', error: error ?? '' })
+      t('chat:widget.fixPrompt', { title: title || t('chat:widget.label'), error: error ?? '' })
     )
 
   const iconBtn = (

@@ -59,6 +59,9 @@ export type AttachmentProcessingResult = {
   hasEmbeddedDocuments: boolean
 }
 
+/** The internal marker for a failure with no message; shown through i18n. */
+const UNKNOWN_ATTACHMENT_ERROR = 'Unknown error'
+
 const formatAttachmentError = (err: unknown): string => {
   if (!err) return 'Unknown error'
   if (err instanceof Error) return err.message || err.toString()
@@ -126,7 +129,11 @@ export const isMissingFileError = (err: unknown): boolean =>
 /** A readable line for a failure: the message, never a raw JSON object. */
 export const describeAttachmentFailure = (err: unknown): string => {
   const text = formatAttachmentError(err).trim()
-  return text.startsWith('{') || text.startsWith('[') ? 'Unknown error' : text
+  return text.startsWith('{') || text.startsWith('[') || text === UNKNOWN_ATTACHMENT_ERROR
+    ? i18n.t('common:composerChip.unknownError', {
+        defaultValue: UNKNOWN_ATTACHMENT_ERROR,
+      })
+    : text
 }
 
 type ParsePreference = AttachmentProcessingOptions['parsePreference']

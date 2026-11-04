@@ -33,9 +33,9 @@ import { CONTENT_TYPE, isToolPart, type PartEntry } from './types'
 
 // Turn a tool identifier (e.g. "web_search", "exa_search") into a readable
 // label for the streaming step header (e.g. "Web search").
-function humanizeToolName(name: string): string {
+function humanizeToolName(name: string, fallback: string): string {
   const spaced = name.replace(/[_-]+/g, ' ').trim()
-  if (!spaced) return 'tool'
+  if (!spaced) return fallback
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
@@ -299,7 +299,10 @@ export const ChainOfThoughtGroup = memo(
     )
 
     const currentToolLabel = currentStepIsTool
-      ? humanizeToolName(lastMeaningful.part.type.split('-').slice(1).join('-'))
+      ? humanizeToolName(
+          lastMeaningful.part.type.split('-').slice(1).join('-'),
+          t('chat:chainOfThought.fallbackTool')
+        )
       : ''
 
     // While streaming, expand for a tool call -- its card carries the live

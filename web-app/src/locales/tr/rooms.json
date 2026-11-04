@@ -503,7 +503,8 @@
       "waitingSlot": "Sırada: yerel model yuvası bekleniyor"
     },
     "retry": "Yeniden dene",
-    "retryFor": "{{name}} için yeniden dene"
+    "retryFor": "{{name}} için yeniden dene",
+    "exportName": "{{title}} comparison"
   },
   "changes": {
     "summaryOne": "{{count}} dosya değişti",

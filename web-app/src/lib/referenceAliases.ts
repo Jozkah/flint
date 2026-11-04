@@ -22,6 +22,10 @@ import {
   resolveReference,
 } from '@/lib/safeReferences'
 import { lineRangeOf } from '@/lib/path-references'
+import { uiText } from '@/lib/uiText'
+
+const aliasText = (key: string, english: string, values?: Record<string, unknown>) =>
+  uiText(`tools:referenceAlias.${key}`, english, values)
 
 export type ReferenceAlias = {
   name: string
@@ -90,7 +94,7 @@ export const useReferenceAliases = create<AliasState>()(
           return {
             ok: false,
             reason: 'no-folder',
-            message: 'no folder is attached, so there is nothing to name',
+            message: aliasText('noFolder', 'no folder is attached, so there is nothing to name'),
           }
         }
         const name = rawName.trim()
@@ -98,8 +102,10 @@ export const useReferenceAliases = create<AliasState>()(
           return {
             ok: false,
             reason: 'name',
-            message:
-              'an alias name is letters, digits, dot, dash or underscore, starting with a letter or digit',
+            message: aliasText(
+              'name',
+              'an alias name is letters, digits, dot, dash or underscore, starting with a letter or digit'
+            ),
           }
         }
         const target = normalizeReference(rawTarget)
@@ -107,7 +113,7 @@ export const useReferenceAliases = create<AliasState>()(
           return {
             ok: false,
             reason: 'target',
-            message: 'an alias can only name a path inside the attached folder',
+            message: aliasText('target', 'an alias can only name a path inside the attached folder'),
           }
         }
         let stored = target.rel
@@ -117,8 +123,10 @@ export const useReferenceAliases = create<AliasState>()(
             return {
               ok: false,
               reason: 'target',
-              message:
-                'lines are a number or a range such as 12-20, starting at 1',
+              message: aliasText(
+                'lines',
+                'lines are a number or a range such as 12-20, starting at 1'
+              ),
             }
           }
           stored = `${target.rel}:${range.start}-${range.end}`
@@ -129,7 +137,10 @@ export const useReferenceAliases = create<AliasState>()(
           return {
             ok: false,
             reason: 'taken',
-            message: `@alias:${name} already names ${existing.target}`,
+            message: aliasText('taken', '@alias:{{name}} already names {{target}}', {
+              name,
+              target: existing.target,
+            }),
           }
         }
         const alias: ReferenceAlias = {
@@ -152,7 +163,7 @@ export const useReferenceAliases = create<AliasState>()(
           return {
             ok: false,
             reason: 'unknown',
-            message: `there is no alias named ${name} in this folder`,
+            message: aliasText('unknown', 'there is no alias named {{name}} in this folder', { name }),
           }
         }
         set((s) => {

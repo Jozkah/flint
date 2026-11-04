@@ -12,6 +12,9 @@ const matchesZoomKey = (event: KeyboardEvent, spec: ShortcutSpec) => {
   return [spec.key, ...(spec.aliasKeys ?? [])].some((key) => key === event.key)
 }
 
+/** The chat transcript wrapper (ThreadConversation): the only zoomable area. */
+const MESSAGE_ZOOM_SELECTOR = '.message-zoom'
+
 /** Wheel distance that makes one zoom step (a mouse notch is about 100). */
 const WHEEL_STEP = 100
 
@@ -46,6 +49,10 @@ export function useMessageZoom() {
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return
       if (event.deltaY === 0) return
+      // Over the code editor, settings or any other page the gesture is
+      // not a message zoom, and its default must stay (P2F-013).
+      const target = event.target
+      if (!(target instanceof Element) || !target.closest(MESSAGE_ZOOM_SELECTOR)) return
       event.preventDefault()
       // A trackpad pinch sends dozens of tiny deltas; a step per event would
       // jump the whole scale. Deltas add up and one step is taken per notch.

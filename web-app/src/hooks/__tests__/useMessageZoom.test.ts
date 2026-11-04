@@ -38,6 +38,24 @@ const pressKey = (key: string, init: KeyboardEventInit = {}) => {
 
 const zoom = () => useInterfaceSettings.getState().messageZoom
 
+/** A wheel event fired over an element inside (or outside) the chat transcript. */
+const wheelOver = (target: Element, init: WheelEventInit) => {
+  const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init })
+  act(() => {
+    target.dispatchEvent(event)
+  })
+  return event
+}
+
+const transcript = () => {
+  const root = document.createElement('div')
+  root.className = 'message-zoom'
+  const message = document.createElement('p')
+  root.appendChild(message)
+  document.body.appendChild(root)
+  return { root, message }
+}
+
 describe('useMessageZoom', () => {
   beforeEach(() => {
     useInterfaceSettings.getState().resetMessageZoom()
@@ -79,24 +97,33 @@ describe('useMessageZoom', () => {
 
   it('zooms on ctrl + wheel and prevents the page zoom', () => {
     renderHook(() => useMessageZoom())
+    const { root, message } = transcript()
 
-    const up = new WheelEvent('wheel', {
-      deltaY: -120,
-      ctrlKey: true,
-      cancelable: true,
-    })
-    act(() => {
-      window.dispatchEvent(up)
-    })
+    const up = wheelOver(message, { deltaY: -120, ctrlKey: true })
     expect(up.defaultPrevented).toBe(true)
     expect(zoom()).toBe(1.1)
 
-    act(() => {
-      window.dispatchEvent(
-        new WheelEvent('wheel', { deltaY: 120, ctrlKey: true, cancelable: true })
-      )
-    })
+    wheelOver(message, { deltaY: 120, ctrlKey: true })
     expect(zoom()).toBe(1)
+    root.remove()
+  })
+
+  it('leaves ctrl + wheel alone anywhere outside the chat transcript', () => {
+    renderHook(() => useMessageZoom())
+    const elsewhere = document.createElement('div')
+    document.body.appendChild(elsewhere)
+
+    const event = wheelOver(elsewhere, { deltaY: -120, ctrlKey: true })
+    expect(event.defaultPrevented).toBe(false)
+    expect(zoom()).toBe(1)
+
+    const onWindow = new WheelEvent('wheel', { deltaY: -120, ctrlKey: true, cancelable: true })
+    act(() => {
+      window.dispatchEvent(onWindow)
+    })
+    expect(onWindow.defaultPrevented).toBe(false)
+    expect(zoom()).toBe(1)
+    elsewhere.remove()
   })
 
   it('leaves plain scrolling alone', () => {
