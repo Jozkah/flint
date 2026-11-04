@@ -5127,6 +5127,7 @@ auto_compact_window = 9000
         assert_eq!(parse_dispatch_args(&asked).unwrap().continue_from.as_deref(), Some("sub-1"));
     }
 
+    #[cfg(feature = "cli")]
     #[test]
     fn a_continuation_resumes_the_childs_own_conversation_with_the_follow_up_last() {
         keep_transcript("cont-a", &kept(Some("parent-1"), "reviewer"), history());
@@ -5145,6 +5146,7 @@ auto_compact_window = 9000
         assert_eq!(resumed[2]["content"], "and the parser?");
     }
 
+    #[cfg(feature = "cli")]
     #[test]
     fn only_the_dispatching_run_may_continue_a_child_and_only_under_its_own_name() {
         keep_transcript("cont-b", &kept(Some("parent-1"), "reviewer"), history());
@@ -5164,6 +5166,7 @@ auto_compact_window = 9000
         assert!(err.contains("can be continued"), "{err}");
     }
 
+    #[cfg(feature = "cli")]
     #[test]
     fn only_the_last_few_conversations_are_kept() {
         for i in 0..(KEPT_TRANSCRIPTS + 2) {
