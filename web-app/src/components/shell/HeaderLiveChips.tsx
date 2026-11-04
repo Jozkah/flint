@@ -169,7 +169,7 @@ export function HeaderLiveChips() {
                   testId="header-run-row"
                   title={row.title || t('common:newSession')}
                   detail={row.step}
-                  time={formatWait(row.elapsedMs)}
+                  time={formatWait(row.elapsedMs, t)}
                   onOpen={() => openRun(row.sessionId)}
                 />
               ))}
@@ -225,7 +225,7 @@ export function HeaderLiveChips() {
                     testId="header-approval-row"
                     title={row.title || t('common:newThread')}
                     detail={row.tool}
-                    time={row.waitingMs === undefined ? undefined : formatWait(row.waitingMs)}
+                    time={row.waitingMs === undefined ? undefined : formatWait(row.waitingMs, t)}
                     onOpen={() => openApproval(row)}
                     actions={
                       entry && isBrowserTool(row.tool) ? (

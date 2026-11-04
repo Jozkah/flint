@@ -223,6 +223,7 @@
       "notNow": "Şimdi değil",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Bir ifade yazıya dökülemedi"
   }
 }

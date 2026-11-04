@@ -119,8 +119,46 @@ describe('DictationSession', () => {
     speak(rec)
     speak(rec)
     await session.stop()
-    expect(errors).toHaveLength(1)
-    expect(errors[0]).toEqual({ kind: 'transcription', message: 'engine down' })
+    // The first phrase is retried, then reported as lost; the second ends it.
+    expect(errors.map((e) => e.kind)).toEqual(['phrase-dropped', 'transcription'])
+    expect(errors[1]).toEqual({ kind: 'transcription', message: 'engine down' })
+    expect(transcribe).toHaveBeenCalledTimes(4)
+  })
+
+  it('retries a failed phrase once instead of losing it', async () => {
+    const rec = fakeRecorder()
+    const errors: DictationError[] = []
+    const transcribe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('blip'))
+      .mockResolvedValueOnce('kept words')
+    const session = new DictationSession(
+      { recorder: rec, transcribe },
+      { onError: (e) => errors.push(e) }
+    )
+    await session.start()
+    speak(rec)
+    expect(await session.stop()).toBe('kept words')
+    expect(errors).toHaveLength(0)
+  })
+
+  it('reports a phrase that fails twice but keeps dictating', async () => {
+    const rec = fakeRecorder()
+    const errors: DictationError[] = []
+    const transcribe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('bad'))
+      .mockRejectedValueOnce(new Error('bad'))
+      .mockResolvedValueOnce('next phrase')
+    const session = new DictationSession(
+      { recorder: rec, transcribe },
+      { onError: (e) => errors.push(e) }
+    )
+    await session.start()
+    speak(rec)
+    speak(rec)
+    expect(await session.stop()).toBe('next phrase')
+    expect(errors).toEqual([{ kind: 'phrase-dropped', message: 'bad' }])
   })
 
   it('tolerates one failure between good phrases', async () => {
@@ -135,7 +173,6 @@ describe('DictationSession', () => {
       { onError: (e) => errors.push(e) }
     )
     await session.start()
-    speak(rec)
     speak(rec)
     expect(await session.stop()).toBe('fine')
     expect(errors).toHaveLength(0)

@@ -220,6 +220,7 @@
       "notNow": "暂不",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "有一段话未能转写"
   }
 }

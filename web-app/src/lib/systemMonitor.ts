@@ -4,6 +4,7 @@
  * snapshots, and the formatting the page uses for bytes, rates, uptime and
  * temperatures.
  */
+import { formatBytes as sharedFormatBytes } from '@/lib/formatBytes'
 
 export interface CpuDetails {
   name: string
@@ -144,18 +145,13 @@ export function interfaceKind(name: string): InterfaceKind {
   return 'other'
 }
 
-const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-
 /** Binary-prefixed size: 1536 -> "1.5 KB". */
 export function formatBytes(bytes: number, digits = 1): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < UNITS.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${unit === 0 ? Math.round(value) : value.toFixed(digits)} ${UNITS[unit]}`
+  return sharedFormatBytes(bytes, {
+    maxUnit: 'PB',
+    decimals: (_value, unit) => (unit === 'B' ? 0 : digits),
+  })
 }
 
 export function formatRate(bytesPerSecond: number): string {

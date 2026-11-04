@@ -10,6 +10,12 @@ it('replaces plain text tool markup with an honest failure notice', () => {
   expect(hasRawToolCall(text)).toBe(true)
 })
 
+it('uses the translated notice it is given', () => {
+  expect(
+    explainRawToolCall('<tool_call> <function=x> </function></tool_call>', 'Kein Tool lief ($&).')
+  ).toBe('Kein Tool lief ($&).')
+})
+
 it('leaves ordinary text alone', () => {
   expect(explainRawToolCall('Tool finished.')).toBe('Tool finished.')
   expect(hasRawToolCall('Tool finished.')).toBe(false)

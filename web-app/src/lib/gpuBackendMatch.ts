@@ -16,6 +16,10 @@ export type BackendGpuFamily =
   | 'cuda'
   | 'vulkan'
   | 'hip'
+  | 'sycl'
+  | 'opencl'
+  | 'musa'
+  | 'cann'
   | 'metal'
   | 'cpu'
   | 'unknown'
@@ -68,6 +72,10 @@ const FAMILY_MARKERS: [BackendGpuFamily, RegExp][] = [
   ['cuda', /cuda|\bcu\d/i],
   ['vulkan', /vulkan/i],
   ['hip', /\bhip\b|rocm/i],
+  ['sycl', /sycl|oneapi/i],
+  ['opencl', /opencl/i],
+  ['musa', /musa/i],
+  ['cann', /cann/i],
   // The engine names Metal devices `MTL<N>`, so the observed backend is `mtl`.
   ['metal', /\bmtl|metal/i],
 ]
@@ -89,7 +97,11 @@ export function backendGpuFamily(backend: string | undefined): BackendGpuFamily 
   return 'cpu'
 }
 
-/** Vulkan is driver-provided on every modern GPU; CUDA and HIP are vendor-locked. */
+/**
+ * Vulkan is driver-provided on every modern GPU; CUDA and HIP are vendor-locked.
+ * SYCL, OpenCL, MUSA and CANN are vendor-neutral or name vendors this module
+ * does not classify, so the build running at all is the better evidence.
+ */
 export function vendorSupportsFamily(
   vendor: GpuVendor,
   family: BackendGpuFamily
@@ -101,6 +113,10 @@ export function vendorSupportsFamily(
       return vendor === 'amd'
     case 'vulkan':
     case 'metal':
+    case 'sycl':
+    case 'opencl':
+    case 'musa':
+    case 'cann':
       return true
     case 'cpu':
     case 'unknown':

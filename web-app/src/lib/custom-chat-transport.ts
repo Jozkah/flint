@@ -942,6 +942,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private noticeUnknownWindow(threadId: string, modelId: string): void {
     const key = `${threadId}|${modelId}`
     if (this.unknownWindowNoticed.has(key)) return
+    // Bounded: a notice repeated after 100 distinct chats/models is harmless,
+    // a set that grows for the window's whole life is not.
+    if (this.unknownWindowNoticed.size >= 100) this.unknownWindowNoticed.clear()
     this.unknownWindowNoticed.add(key)
     toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }))
   }
@@ -1461,9 +1464,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   protected assertSendable(messages: UIMessage[]): void {
     if (!hasGenuineUserQuery(messages)) {
-      throw new Error(
-        'This conversation has no user message to respond to. Add a message, or regenerate from a turn that includes your question.'
-      )
+      throw new Error(i18n.t('chat:transport.noUserMessage'))
     }
   }
 
@@ -2082,7 +2083,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const effectiveProviderName = providerId
     const provider = useModelProvider.getState().getProviderByName(providerId)
     if (!this.serviceHub || !modelId || !provider) {
-      throw new Error('ServiceHub not initialized or model/provider missing.')
+      throw new Error(i18n.t('chat:transport.serviceUnavailable'))
     }
 
     this.lastUserMessage = extractLatestUserText(options.messages)
@@ -2226,9 +2227,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Stopped while the prompt hooks ran: fail closed rather than answer a
     // prompt no hook has looked at.
     if (ccContext.interrupted) {
-      throw new Error(
-        'The turn was stopped while its prompt hooks ran, so the prompt was not submitted.'
-      )
+      throw new Error(i18n.t('chat:transport.promptHooksStopped'))
     }
     const maxOutputTokens: number | undefined = (() => {
       const raw = inferenceParams.max_output_tokens ?? inferenceParams.max_tokens
@@ -2994,7 +2993,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
         const contextInfo = extractContextInfoFromError(unwrapped)
         if (contextInfo) {
-          return `${baseMessage}\n\n(Used ${contextInfo.nPromptTokens.toLocaleString()} of ${contextInfo.nCtx.toLocaleString()} context tokens.)`
+          return `${baseMessage}\n\n${i18n.t('chat:transport.contextUsed', {
+            used: contextInfo.nPromptTokens.toLocaleString(),
+            total: contextInfo.nCtx.toLocaleString(),
+          })}`
         }
         return baseMessage
       },
@@ -3065,7 +3067,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         transform(chunk, controller) {
           idle?.touch()
           if (chunk.type === 'reasoning-delta' && reasoningGuard.add(chunk.delta)) {
-            const loopError = new Error('Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.')
+            const loopError = new Error(i18n.t('chat:transport.reasoningLoop'))
             endIdle()
             // Stop the request too, as the idle watchdog does: erroring only the
             // downstream stream leaves the model generating the same text on the

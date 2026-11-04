@@ -223,6 +223,7 @@
       "notNow": "Not now",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "A phrase could not be transcribed"
   }
 }

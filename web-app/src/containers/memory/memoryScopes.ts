@@ -1,4 +1,5 @@
 import type { MemoryRecall, MemoryScope } from '@janhq/tauri-plugin-agent-tools-api'
+import { formatBytes as sharedFormatBytes } from '@/lib/formatBytes'
 
 /**
  * The scopes, in the order a user thinks about them: this conversation first,
@@ -39,7 +40,9 @@ export const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
 export const PAGE_SIZE = 50
 
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return sharedFormatBytes(bytes, {
+    maxUnit: 'MB',
+    fallback: '0 B',
+    decimals: (_value, unit) => (unit === 'B' ? 0 : 1),
+  })
 }

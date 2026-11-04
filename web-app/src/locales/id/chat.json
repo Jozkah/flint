@@ -297,5 +297,13 @@
   "messageItem": {
     "generationFailed": "Generation failed",
     "generatedImage": "Generated image"
+  },
+  "rawToolCallNotice": "Panggilan alat dikeluarkan sebagai teks. Tidak ada alat yang dijalankan. Periksa dukungan alat model ini lalu coba lagi.",
+  "transport": {
+    "noUserMessage": "Percakapan ini tidak memiliki pesan pengguna untuk dijawab. Tambahkan pesan, atau buat ulang dari giliran yang menyertakan pertanyaan Anda.",
+    "promptHooksStopped": "Giliran dihentikan saat hook prompt-nya berjalan, sehingga prompt tidak dikirim.",
+    "reasoningLoop": "Penalaran berhenti setelah mengulang teks yang sama. Coba model lain atau anggaran berpikir yang lebih rendah.",
+    "serviceUnavailable": "Layanan model belum siap, atau tidak ada model atau penyedia yang dipilih.",
+    "contextUsed": "({{used}} dari {{total}} token konteks digunakan.)"
   }
 }

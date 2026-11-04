@@ -326,5 +326,13 @@
   "messageItem": {
     "generationFailed": "Generation failed",
     "generatedImage": "Generated image"
+  },
+  "rawToolCallNotice": "A chamada de ferramenta foi emitida como texto. Nenhuma ferramenta foi executada. Verifique o suporte a ferramentas deste modelo e tente novamente.",
+  "transport": {
+    "noUserMessage": "Esta conversa não tem nenhuma mensagem do usuário para responder. Adicione uma mensagem ou regenere a partir de um turno que inclua sua pergunta.",
+    "promptHooksStopped": "O turno foi interrompido enquanto seus hooks de prompt rodavam, então o prompt não foi enviado.",
+    "reasoningLoop": "O raciocínio parou após repetir o mesmo texto. Tente outro modelo ou um orçamento de raciocínio menor.",
+    "serviceUnavailable": "O serviço de modelos não está pronto, ou nenhum modelo ou provedor está selecionado.",
+    "contextUsed": "({{used}} de {{total}} tokens de contexto usados.)"
   }
 }

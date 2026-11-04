@@ -223,6 +223,7 @@
       "notNow": "अभी नहीं",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "एक वाक्यांश को लिखित रूप में नहीं बदला जा सका"
   }
 }

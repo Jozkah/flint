@@ -229,6 +229,7 @@
       "notNow": "Nie teraz",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Nie udało się przepisać jednej frazy"
   }
 }

@@ -326,5 +326,13 @@
   "messageItem": {
     "generationFailed": "Generation failed",
     "generatedImage": "Generated image"
+  },
+  "rawToolCallNotice": "L’appel d’outil a été émis sous forme de texte. Aucun outil n’a été exécuté. Vérifiez la prise en charge des outils par ce modèle et réessayez.",
+  "transport": {
+    "noUserMessage": "Cette conversation ne contient aucun message utilisateur auquel répondre. Ajoutez un message ou régénérez à partir d’un tour qui contient votre question.",
+    "promptHooksStopped": "Le tour a été arrêté pendant l’exécution de ses hooks de prompt, le prompt n’a donc pas été envoyé.",
+    "reasoningLoop": "Le raisonnement s’est arrêté après avoir répété le même texte. Essayez un autre modèle ou un budget de réflexion plus bas.",
+    "serviceUnavailable": "Le service de modèles n’est pas prêt, ou aucun modèle ou fournisseur n’est sélectionné.",
+    "contextUsed": "({{used}} jetons de contexte utilisés sur {{total}}.)"
   }
 }

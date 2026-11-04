@@ -67,9 +67,11 @@ describe('runs pill rows', () => {
     ])
   })
 
-  it('formats waits briefly', () => {
-    expect(formatWait(44_000)).toBe('44 s')
-    expect(formatWait(180_000)).toBe('3 min')
-    expect(formatWait(7_500_000)).toBe('2 h 5 min')
+  it('formats waits briefly through the translator', () => {
+    const t = (key: string, o?: Record<string, unknown>) =>
+      `${o?.count}${key.split('.').pop()}`
+    expect(formatWait(44_000, t)).toBe('44seconds')
+    expect(formatWait(180_000, t)).toBe('3minutes')
+    expect(formatWait(7_500_000, t)).toBe('2hours 5minutes')
   })
 })

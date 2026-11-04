@@ -226,6 +226,7 @@
       "notNow": "Pas maintenant",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Une phrase n’a pas pu être transcrite"
   }
 }

@@ -18,7 +18,8 @@ export type BackfillSession = {
   worktreePath?: string | null
 }
 
-const PR_URL_ALL = /https:\/\/github\.com\/([^/\s"]+)\/([^/\s"]+)\/pull\/(\d+)/g
+/** Any host: GitHub Enterprise serves the same `/owner/repo/pull/N` path. */
+const PR_URL_ALL = /https:\/\/([^/\s"]+)\/([^/\s"]+)\/([^/\s"]+)\/pull\/(\d+)/g
 
 /**
  * The last pull-request URL in `output`. `gh` prints the new pull request's
@@ -53,7 +54,7 @@ export function createdPrNumber(event: EventEnvelope): number | null {
     ranGhPr(tool, text, 'create') || /create_pull_request|pull_request_create/.test(tool)
   if (!isCreate) return null
   const m = lastPrUrl(output)
-  return m ? Number(m[3]) : null
+  return m ? Number(m[4]) : null
 }
 
 /**
@@ -75,9 +76,9 @@ export function sessionPrFromTool(
   if (!m) return null
   const head = /--head[=\s]+"?([^\s"\\]+)/.exec(text)?.[1]
   return {
-    url: `https://github.com/${m[1]}/${m[2]}/pull/${m[3]}`,
-    number: Number(m[3]),
-    repo: `${m[1]}/${m[2]}`,
+    url: `https://${m[1]}/${m[2]}/${m[3]}/pull/${m[4]}`,
+    number: Number(m[4]),
+    repo: `${m[2]}/${m[3]}`,
     ...(head ? { head } : {}),
     at,
   }

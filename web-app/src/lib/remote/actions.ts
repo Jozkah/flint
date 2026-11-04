@@ -43,7 +43,14 @@ export type RemoteActions = {
   chatBusy(id: string): boolean
   /** The desktop composer's new-chat path: create the thread with `model`,
    * hand it the first message and open it. Returns the new id. */
-  createChat(input: { text: string; model?: ModelRef; files?: SubmittedFile[]; docs?: Attachment[] }): Promise<string>
+  createChat(input: {
+    text: string
+    model?: ModelRef
+    /** Applied to the model the chat ends up with, once that is resolved. */
+    reasoning?: ReasoningMode
+    files?: SubmittedFile[]
+    docs?: Attachment[]
+  }): Promise<string>
   setWebSearch(on: boolean): void
   /** The composer's Reasoning Auto/On/Off, for the chat's model. */
   setChatReasoning(chatId: string | null, mode: ReasoningMode, model?: ModelRef): void
@@ -252,10 +259,10 @@ function sendHandlers(ctx: ActionContext): Pick<RemoteHandlers, 'chat.send' | 'c
         if (typeof p.webSearch === 'boolean') a.setWebSearch(p.webSearch)
         const att = await prepare(ctx.device.id, { kind: 'chat', id: isNew ? null : id, model }, p, text)
         if (isNew) {
-          if (reasoning) a.setChatReasoning(null, reasoning, model)
           const newId = await a.createChat({
             text: textWith(text, att),
             model,
+            ...(reasoning ? { reasoning } : {}),
             ...(att.files.length ? { files: att.files } : {}),
             ...(att.docs.length ? { docs: att.docs } : {}),
           })

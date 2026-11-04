@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { resolveInRoot } from '@/lib/coworkPreview'
 import {
   decideDrop,
+  droppedDirectoryNames,
   dragHasFiles,
   DROP_ZONE_CLASS,
   dropLabelKey,
@@ -283,8 +284,10 @@ export function CoworkCodePanel({
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       setDragOver(false)
+      // Read before anything awaits: the items are cleared after the handler.
+      const directories = droppedDirectoryNames(e.dataTransfer)
       const route = (files: File[]) => {
-        const intent = decideDrop('code', files)
+        const intent = decideDrop('code', files, directories)
         if (intent.action === 'open') void openExternalFiles(intent.files)
         else if (intent.action === 'offer-folder') onOfferFolder?.(intent.name)
       }

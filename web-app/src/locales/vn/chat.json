@@ -326,5 +326,13 @@
   "messageItem": {
     "generationFailed": "Generation failed",
     "generatedImage": "Generated image"
+  },
+  "rawToolCallNotice": "Lệnh gọi công cụ được xuất ra dưới dạng văn bản. Không có công cụ nào chạy. Hãy kiểm tra hỗ trợ công cụ của mô hình này rồi thử lại.",
+  "transport": {
+    "noUserMessage": "Cuộc trò chuyện này không có tin nhắn người dùng nào để trả lời. Hãy thêm tin nhắn, hoặc tạo lại từ một lượt có câu hỏi của bạn.",
+    "promptHooksStopped": "Lượt này bị dừng khi các hook prompt đang chạy, nên prompt chưa được gửi.",
+    "reasoningLoop": "Quá trình suy luận đã dừng vì lặp lại cùng một đoạn văn bản. Hãy thử mô hình khác hoặc ngân sách suy nghĩ thấp hơn.",
+    "serviceUnavailable": "Dịch vụ mô hình chưa sẵn sàng, hoặc chưa chọn mô hình hay nhà cung cấp.",
+    "contextUsed": "(Đã dùng {{used}} trên {{total}} token ngữ cảnh.)"
   }
 }

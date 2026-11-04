@@ -28,6 +28,7 @@ const KNOWN: Array<[match: string, price: Pricing]> = [
   ['gpt-4.1', { input: 2, output: 8 }],
   ['gpt-4o-mini', { input: 0.15, output: 0.6 }],
   ['gpt-4o', { input: 2.5, output: 10 }],
+  ['claude-3-haiku', { input: 0.25, output: 1.25 }],
   ['claude-3-5-haiku', { input: 0.8, output: 4 }],
   ['haiku', { input: 1, output: 5 }],
   ['sonnet', { input: 3, output: 15 }],

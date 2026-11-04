@@ -122,6 +122,19 @@ describe('replyCost', () => {
   })
 })
 
+describe('resolvePricing by model generation', () => {
+  it('does not price claude-3-haiku at the current Haiku rate', () => {
+    expect(resolvePricing('anthropic', { id: 'claude-3-haiku-20240307' })).toMatchObject({
+      input: 0.25,
+      output: 1.25,
+    })
+    expect(resolvePricing('anthropic', { id: 'claude-haiku-4-5' })).toMatchObject({
+      input: 1,
+      output: 5,
+    })
+  })
+})
+
 describe('resolvePricing with cache prices', () => {
   it('carries a model’s own cached and write prices', () => {
     expect(

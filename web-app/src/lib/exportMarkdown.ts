@@ -217,9 +217,13 @@ function renderMessage(
   const parts: string[] = [`## ${ROLE_LABEL[m.role]}${when ? ` · ${when}` : ''}`]
 
   if (view === 'verbose' && m.reasoning?.trim()) {
-    parts.push(
-      `<details>\n<summary>Reasoning</summary>\n\n${m.reasoning.trim()}\n\n</details>`
-    )
+    // A blockquote, not <details>: the PDF/PNG renderer shows raw HTML as text.
+    const quoted = m.reasoning
+      .trim()
+      .split('\n')
+      .map((line) => (line ? `> ${line}` : '>'))
+      .join('\n')
+    parts.push(`> **Reasoning**\n>\n${quoted}`)
   }
 
   let text = m.text.trim()

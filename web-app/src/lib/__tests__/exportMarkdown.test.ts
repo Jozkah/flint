@@ -114,7 +114,8 @@ describe('renderMarkdown', () => {
   it('verbose view keeps tool bodies, reasoning and paths', () => {
     const md = renderMarkdown(base, { view: 'verbose' })
     expect(md).toContain('wrote 120 bytes')
-    expect(md).toContain('thinking about it')
+    expect(md).toContain('> thinking about it')
+    expect(md).not.toContain('<details>')
     expect(md).toContain('C:\\\\Users\\\\me\\\\proj\\\\trip.md')
     expect(md).toContain('/home/me/proj/notes.txt')
   })

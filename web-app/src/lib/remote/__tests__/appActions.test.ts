@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   composerFor: vi.fn(),
   waitForComposer: vi.fn(),
   stopFn: vi.fn(),
+  updateProvider: vi.fn(),
   store: (state: unknown) => ({ getState: () => state }),
 }))
 
@@ -29,6 +30,7 @@ vi.mock('@/hooks/useModelProvider', () => ({
     selectedModel: { id: 'm' },
     providers: [],
     getProviderByName: () => ({ models: [{ id: 'm' }] }),
+    updateProvider: h.updateProvider,
   }),
 }))
 vi.mock('@/hooks/useWebSearchConfig', () => ({ useWebSearchConfig: h.store({}) }))
@@ -106,6 +108,20 @@ describe('appActions chat stop', () => {
 
 describe('appActions createChat hand-off', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('applies the phone reasoning toggle to the model the chat really got', async () => {
+    vi.stubGlobal('sessionStorage', { setItem: () => {} })
+    await appActions(vi.fn()).createChat({ text: 'hi', reasoning: 'off' })
+    expect(h.updateProvider).toHaveBeenCalledWith('p', {
+      models: [
+        expect.objectContaining({
+          id: 'm',
+          settings: { reasoning: expect.objectContaining({ controller_props: { value: 'off' } }) },
+        }),
+      ],
+    })
+    vi.unstubAllGlobals()
+  })
 
   it('deletes the new thread and reports unavailable when sessionStorage rejects the write', async () => {
     vi.stubGlobal('sessionStorage', {

@@ -311,5 +311,13 @@
   "messageItem": {
     "generationFailed": "Generation failed",
     "generatedImage": "Generated image"
+  },
+  "rawToolCallNotice": "Araç çağrısı metin olarak üretildi. Hiçbir araç çalışmadı. Bu modelin araç desteğini kontrol edip tekrar deneyin.",
+  "transport": {
+    "noUserMessage": "Bu sohbette yanıtlanacak bir kullanıcı mesajı yok. Bir mesaj ekleyin veya sorunuzu içeren bir turdan yeniden oluşturun.",
+    "promptHooksStopped": "Tur, istem kancaları çalışırken durduruldu; bu yüzden istem gönderilmedi.",
+    "reasoningLoop": "Aynı metin tekrarlandığı için akıl yürütme durduruldu. Farklı bir model veya daha düşük bir düşünme bütçesi deneyin.",
+    "serviceUnavailable": "Model hizmeti hazır değil veya hiçbir model ya da sağlayıcı seçilmedi.",
+    "contextUsed": "({{total}} bağlam jetonunun {{used}} tanesi kullanıldı.)"
   }
 }

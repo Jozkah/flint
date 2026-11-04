@@ -229,6 +229,7 @@
       "notNow": "Не сейчас",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Не удалось расшифровать одну фразу"
   }
 }

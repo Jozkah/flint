@@ -226,6 +226,7 @@
       "notNow": "Để sau",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Không thể chuyển một cụm từ thành văn bản"
   }
 }

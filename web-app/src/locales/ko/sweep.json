@@ -220,6 +220,7 @@
       "notNow": "나중에",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "문구 하나를 받아쓰지 못했습니다"
   }
 }
