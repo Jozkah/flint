@@ -82,18 +82,14 @@ export function ToasterProvider() {
         style: {
           padding: '0.75rem',
           alignItems: 'start',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          MozUserSelect: 'none',
-          msUserSelect: 'none',
         },
         // One neutral surface for every toast. Typed ones say what they are
         // through a semantic icon beside the words, never a coloured slab and
         // never the accent: an error must not look like a selection.
         classNames: {
-          toast: 'toast select-none rounded-lg! shadow-pop! font-sans!',
-          title: 'text-[length:calc(var(--ui-font-base)*0.8125)]! leading-snug! text-foreground! font-medium! select-none',
-          description: 'text-xs! leading-relaxed! text-fg-2! select-none',
+          toast: 'toast rounded-lg! shadow-pop! font-sans!',
+          title: 'text-[length:calc(var(--ui-font-base)*0.8125)]! leading-snug! text-foreground! font-medium!',
+          description: 'text-xs! leading-relaxed! text-fg-2!',
           closeButton:
             'hit-box [--hit-x:-10px] [--hit-y:-10px] bg-card! border-border! text-muted-foreground! hover:text-foreground!',
           actionButton: 'bg-primary! text-primary-foreground!',

@@ -45,6 +45,8 @@ type AppState = {
   liveTokenStats?: LiveTokenStats
   modelLoadProgress?: ModelLoadProgress
   activeModels: string[]
+  /** True once the engine's loaded-model list has been read at least once. */
+  activeModelsSynced: boolean
   cancelToolCall?: () => void
 
   streamingContents: Record<string, ThreadMessage>
@@ -82,6 +84,7 @@ type AppState = {
   updateLiveTokenStats: (stats: LiveTokenStats | undefined) => void
   updateModelLoadProgress: (progress: ModelLoadProgress | undefined) => void
   setActiveModels: (models: string[]) => void
+  markActiveModelsSynced: () => void
   removeActiveModel: (modelId: string) => void
 
   updateThreadStreamingContent: (
@@ -127,6 +130,7 @@ export const useAppState = create<AppState>()((set) => ({
   promptProgress: undefined,
   cancelToolCall: undefined,
   activeModels: [],
+  activeModelsSynced: false,
   streamingContents: {},
   loadingModels: {},
   modelLoadFailures: {},
@@ -236,6 +240,9 @@ export const useAppState = create<AppState>()((set) => ({
     set(() => ({
       activeModels: models,
     }))
+  },
+  markActiveModelsSynced: () => {
+    set(() => ({ activeModelsSynced: true }))
   },
   removeActiveModel: (modelId: string) => {
     set((state) => ({
