@@ -62,11 +62,14 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// The 6-digit number both screens show so the user can see that the phone
-/// asking is the one holding their code. Derived, not random: the phone
-/// computes the same number from the code it scanned.
-pub fn confirmation_number(code: &str) -> String {
-    let digest = Sha256::digest(format!("flint-remote-confirm:{code}").as_bytes());
-    let n = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) % 1_000_000;
+/// asking is the one they are looking at. Random and drawn when a phone
+/// claims the code, so someone who only saw the QR code cannot know it ahead
+/// of time: the phone shows it after claiming, the desktop dialog shows the
+/// same one, and the user compares the two.
+pub fn confirmation_number() -> String {
+    // 32 random bits modulo 10^6: the bias (under 0.03%) is irrelevant for a
+    // number that is compared by eye, not a secret.
+    let n = rand::thread_rng().next_u32() % 1_000_000;
     format!("{n:06}")
 }
 
@@ -354,7 +357,6 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[derive(Debug)]
 struct Pairing {
     code: String,
-    confirm: String,
     expires_at: Instant,
     stage: Stage,
 }
@@ -384,7 +386,6 @@ enum Stage {
 #[serde(rename_all = "camelCase")]
 pub struct PairingStart {
     pub code: String,
-    pub confirm_number: String,
     pub expires_in_ms: u64,
 }
 
@@ -431,16 +432,13 @@ impl PairingBook {
         // 16 bytes: unguessable within five minutes at any rate the limiter
         // lets through, and short enough for a QR code a phone reads easily.
         let code = random_b64(16);
-        let confirm = confirmation_number(&code);
         self.current = Some(Pairing {
             code: code.clone(),
-            confirm: confirm.clone(),
             expires_at: now + PAIRING_TTL,
             stage: Stage::Waiting,
         });
         PairingStart {
             code,
-            confirm_number: confirm,
             expires_in_ms: PAIRING_TTL.as_millis() as u64,
         }
     }
@@ -476,7 +474,7 @@ impl PairingBook {
             request_id: uuid::Uuid::new_v4().to_string(),
             poll_id: random_b64(24),
             device_name: clean_device_name(device_name),
-            confirm_number: p.confirm.clone(),
+            confirm_number: confirmation_number(),
         };
         p.stage = Stage::Claimed {
             request_id: claim.request_id.clone(),

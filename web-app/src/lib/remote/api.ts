@@ -55,7 +55,6 @@ export type RemoteDevice = {
 
 export type RemotePairing = {
   code: string
-  confirmNumber: string
   expiresInMs: number
   url: string
 }

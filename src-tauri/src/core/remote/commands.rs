@@ -466,7 +466,6 @@ pub async fn remote_set_config(
 #[serde(rename_all = "camelCase")]
 pub struct PairingInfo {
     pub code: String,
-    pub confirm_number: String,
     pub expires_in_ms: u64,
     /// For the QR code. The code rides in the fragment, which browsers never
     /// send to a server or put in a Referer.
@@ -508,7 +507,6 @@ pub async fn remote_start_pairing(state: State<'_, RemoteState>) -> Result<Pairi
     Ok(PairingInfo {
         url: pairing_url(&base, &p.code, computer_name().as_deref()),
         code: p.code,
-        confirm_number: p.confirm_number,
         expires_in_ms: p.expires_in_ms,
     })
 }

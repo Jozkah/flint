@@ -5,12 +5,12 @@ import test from 'node:test'
 // F6-001 / RTE-016: the webview's CSP stays as narrow as the code needs.
 //
 // Only what is known safe is pinned here. connect-src still allows `https:`
-// and `http:` because the webview itself fetches user-chosen origins (a remote
-// Flint server in serverConnection.ts / remoteRunner.ts, provider base URLs
-// when the Tauri HTTP plugin is absent, huggingface.co from ModelDefaultsCard,
-// preview file fetches); narrowing it needs a live smoke of each of those and
-// a move to the HTTP plugin first. frame-src keeps `https:` for the browsing
-// pane's iframe mode (a framed page has no IPC).
+// because the webview itself fetches user-chosen origins (huggingface.co from
+// ModelDefaultsCard, preview file fetches); narrowing it needs a live smoke of
+// each of those first. Plain `http:` is gone: provider and MCP traffic goes
+// through the Tauri HTTP plugin, and the extensions' fetches to llama-server
+// and the like stay on loopback (listed explicitly below). frame-src keeps
+// `https:` for the browsing pane's iframe mode (a framed page has no IPC).
 const conf = JSON.parse(
   readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8')
 )
@@ -22,6 +22,14 @@ test('script-src runs only the app bundle', () => {
   assert.ok(t.includes("'self'"), "script-src lost 'self'")
   for (const bad of ['asset:', 'http://asset.localhost', "'unsafe-eval'", "'unsafe-inline'", 'https:', 'http:', 'data:', 'blob:']) {
     assert.ok(!t.includes(bad), `script-src allows ${bad}`)
+  }
+})
+
+test('connect-src has no blanket http: but keeps the loopback hosts', () => {
+  const t = tokens('connect-src')
+  assert.ok(!t.includes('http:'), 'connect-src allows every http origin')
+  for (const need of ['http://localhost:*', 'http://127.0.0.1:*', 'ws://localhost:*', 'ws://127.0.0.1:*']) {
+    assert.ok(t.includes(need), `connect-src lost ${need}`)
   }
 })
 
