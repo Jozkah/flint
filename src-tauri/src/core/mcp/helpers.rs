@@ -319,8 +319,9 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
             let pid = app_state.mcp_server_pids.lock().await.remove(&name);
             // The reconnect below grants the folder again on its spawn; the
             // dead instance's grant must go first or each reconnect adds a
-            // holder that is never withdrawn.
-            super::launch::release_folder_grants(Some(&config), pid);
+            // holder that is never withdrawn. Its process tree goes first of
+            // all, in case the server ignored the closed transport.
+            finish_stopped_instance(Some(&config), pid).await;
         }
 
         // Emit event so frontend shows accurate disconnected status
@@ -1477,6 +1478,24 @@ pub(crate) async fn stop_stdio_child(pid: u32, grace: Duration) -> StdioStop {
     StdioStop::Killed
 }
 
+/// What is left of a server instance whose service was just cancelled outside
+/// the normal stop path (a failed health check, a failed tools listing): give
+/// its child the grace period to leave on its own closed stdin, kill its tree
+/// if it did not, then withdraw its folder grant. Cancelling the service closes
+/// the transport but does not reach a server that ignores that, nor the
+/// grandchildren a sandbox helper started.
+pub(crate) async fn finish_stopped_instance(
+    config: Option<&Value>,
+    pid: Option<u32>,
+) -> Option<StdioStop> {
+    let stop = match pid {
+        Some(pid) => Some(stop_stdio_child(pid, STDIO_EXIT_GRACE).await),
+        None => None,
+    };
+    super::launch::release_folder_grants(config, pid);
+    stop
+}
+
 /// Workspaces whose sandbox holds a folder grant for a server stopping now,
 /// withdrawn once they are down (restart re-grants on the next spawn).
 async fn collect_grant_holders(
@@ -2187,6 +2206,25 @@ mod stdio_stop_tests {
         assert_eq!(outcome, StdioStop::Killed);
         assert!(started.elapsed() >= Duration::from_millis(200));
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    // F3a-013: a dead instance's child is stopped, not just its service.
+    #[tokio::test]
+    async fn a_stopped_instance_whose_child_ignores_the_transport_is_killed() {
+        let mut child = sleeper()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a long-running process");
+        let pid = child.id();
+        drop(child.stdin.take());
+        let reaper = std::thread::spawn(move || child.wait());
+        let outcome = finish_stopped_instance(None, Some(pid)).await;
+        let _ = reaper.join();
+        assert_eq!(outcome, Some(StdioStop::Killed));
+        // A remote server has no child: nothing to stop.
+        assert_eq!(finish_stopped_instance(None, None).await, None);
     }
 
     #[test]

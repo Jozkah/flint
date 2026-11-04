@@ -82,7 +82,7 @@ fn catalog_window(model_id: &str) -> Option<u64> {
     {
         return Some(272_000);
     }
-    if ["gpt-5.1", "gpt-5.2"].iter().any(|b| is_version(model_id, b)) {
+    if ["gpt-5.1", "gpt-5.2", "gpt-5.3"].iter().any(|b| is_version(model_id, b)) {
         return Some(400_000);
     }
     if ["gpt-5.4", "gpt-5.5"].iter().any(|b| is_version(model_id, b)) {
@@ -180,6 +180,8 @@ mod tests {
         assert_eq!(resolve_context_window("o4-mini-2025-04-16", None).tokens, 200_000);
         assert_eq!(resolve_context_window("o3x", None).source, ContextWindowSource::Fallback);
         assert_eq!(resolve_context_window("gpt-5.2", None).tokens, 400_000);
+        assert_eq!(resolve_context_window("gpt-5.3", None).tokens, 400_000);
+        assert_eq!(resolve_context_window("gpt-5.3-2026-02-01", None).tokens, 400_000);
         assert_eq!(
             resolve_context_window("gpt-5.2-codex", None).tokens,
             272_000

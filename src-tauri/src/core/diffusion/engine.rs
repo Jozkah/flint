@@ -55,6 +55,34 @@ fn emit<R: Runtime>(app: &tauri::AppHandle<R>, stage: &'static str, downloaded: 
     );
 }
 
+/// Where a download is kept until it is whole and checked: beside `dest`, with
+/// `.part` added. A failed attempt leaves it so the next one resumes from it.
+fn part_path(dest: &Path) -> PathBuf {
+    let mut name = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".part");
+    dest.with_file_name(name)
+}
+
+/// SHA-256 of the first `len` bytes already in `path`, read from disk so what
+/// is hashed is exactly what is kept.
+async fn hash_prefix(path: &Path, len: u64) -> std::io::Result<Sha256> {
+    use tokio::io::AsyncReadExt;
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    let mut left = len;
+    while left > 0 {
+        let want = buf.len().min(left as usize);
+        let n = file.read(&mut buf[..want]).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        left -= n as u64;
+    }
+    Ok(hasher)
+}
+
 /// Download `asset` to `dest`, checking size and SHA-256 as it arrives.
 async fn download_asset<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -66,52 +94,127 @@ async fn download_asset<R: Runtime>(
         .connect_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Could not create the download client: {e}"))?;
-    let response = client
-        .get(catalog::engine_url(asset))
-        .send()
-        .await
-        .map_err(|e| format!("Could not download the image engine: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "The image engine download answered {}.",
-            response.status()
-        ));
-    }
-    let mut file = tokio::fs::File::create(dest)
-        .await
-        .map_err(|e| format!("Could not create the download file: {e}"))?;
-    let mut hasher = Sha256::new();
-    let mut downloaded: u64 = 0;
-    let mut stream = response.bytes_stream();
     let mut throttle = crate::core::huggingface::ProgressThrottle::new();
-    while let Some(chunk) = tokio::time::timeout(std::time::Duration::from_secs(60), stream.next())
-        .await
-        .map_err(|_| "The image engine download stalled.".to_string())?
-    {
-        let chunk = chunk.map_err(|e| format!("The image engine download was interrupted: {e}"))?;
-        hasher.update(&chunk);
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("Could not write the image engine: {e}"))?;
-        downloaded += chunk.len() as u64;
-        if throttle.should_emit(std::time::Instant::now(), downloaded, Some(asset.size)) {
-            emit(app, "download", downloaded, asset.size);
-        }
-    }
-    file.flush().await.map_err(|e| e.to_string())?;
+    fetch_verified(
+        &client,
+        &catalog::engine_url(asset),
+        asset.size,
+        asset.sha256,
+        dest,
+        |downloaded| {
+            if throttle.should_emit(std::time::Instant::now(), downloaded, Some(asset.size)) {
+                emit(app, "download", downloaded, asset.size);
+            }
+        },
+    )
+    .await?;
     // The last chunks may have been throttled away; end on the true count.
-    emit(app, "download", downloaded, asset.size);
-    if downloaded != asset.size {
+    emit(app, "download", asset.size, asset.size);
+    Ok(())
+}
+
+/// Fetch `url` into `dest` and check it is `size` bytes with SHA-256 `sha256`.
+///
+/// The bytes go to `dest.part`. When an attempt is cut short (a stall, a
+/// dropped connection) the partial file stays and the next call asks the server
+/// for the rest with a `Range` header, so a ~900 MB engine is not fetched again
+/// from zero. A server that ignores the range sends the whole body, and the
+/// download starts over. A finished file that fails its checks is deleted, since
+/// resuming from it could only reproduce the same bytes.
+async fn fetch_verified(
+    client: &reqwest::Client,
+    url: &str,
+    size: u64,
+    sha256: &str,
+    dest: &Path,
+    mut progress: impl FnMut(u64),
+) -> Result<(), String> {
+    let part = part_path(dest);
+    let mut have = match tokio::fs::metadata(&part).await {
+        Ok(m) if m.len() <= size => m.len(),
+        Ok(_) => {
+            // Longer than the whole file: not a prefix of it.
+            let _ = tokio::fs::remove_file(&part).await;
+            0
+        }
+        Err(_) => 0,
+    };
+    let mut hasher = Sha256::new();
+    if have > 0 {
+        hasher = hash_prefix(&part, have)
+            .await
+            .map_err(|e| format!("Could not read the earlier part of the download: {e}"))?;
+    }
+
+    if have < size {
+        let mut request = client.get(url);
+        if have > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={have}-"));
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("Could not download the image engine: {e}"))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err("The earlier part of the download no longer fits; it was discarded, so try again.".to_string());
+        }
+        if !status.is_success() {
+            return Err(format!("The image engine download answered {status}."));
+        }
+        let resumed = have > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+        let mut file = if resumed {
+            tokio::fs::OpenOptions::new().append(true).open(&part).await
+        } else {
+            // A full body: whatever was kept is replaced.
+            have = 0;
+            hasher = Sha256::new();
+            tokio::fs::File::create(&part).await
+        }
+        .map_err(|e| format!("Could not create the download file: {e}"))?;
+
+        let mut downloaded = have;
+        let mut stream = response.bytes_stream();
+        let received: Result<(), String> = async {
+            while let Some(chunk) =
+                tokio::time::timeout(std::time::Duration::from_secs(60), stream.next())
+                    .await
+                    .map_err(|_| "The image engine download stalled.".to_string())?
+            {
+                let chunk =
+                    chunk.map_err(|e| format!("The image engine download was interrupted: {e}"))?;
+                hasher.update(&chunk);
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|e| format!("Could not write the image engine: {e}"))?;
+                downloaded += chunk.len() as u64;
+                progress(downloaded);
+            }
+            Ok(())
+        }
+        .await;
+        // Flushed either way: what reached the disk is what a resume builds on.
+        let flushed = file.flush().await.map_err(|e| e.to_string());
+        received?;
+        flushed?;
+        have = downloaded;
+    }
+
+    if have != size {
+        let _ = tokio::fs::remove_file(&part).await;
         return Err(format!(
-            "The image engine download is {downloaded} bytes, expected {}.",
-            asset.size
+            "The image engine download is {have} bytes, expected {size}."
         ));
     }
     let actual = format!("{:x}", hasher.finalize());
-    if !actual.eq_ignore_ascii_case(asset.sha256) {
+    if !actual.eq_ignore_ascii_case(sha256) {
+        let _ = tokio::fs::remove_file(&part).await;
         return Err("The image engine download failed its checksum.".to_string());
     }
-    Ok(())
+    tokio::fs::rename(&part, dest)
+        .await
+        .map_err(|e| format!("Could not finish the download file: {e}"))
 }
 
 /// Whether the engine's `--help` output says it is the engine.
@@ -330,6 +433,131 @@ mod tests {
         assert!(INSTALL_LOCK.try_lock().is_err(), "a second install must be refused");
         drop(first);
         assert!(INSTALL_LOCK.try_lock().is_ok());
+    }
+
+    /// A one-shot HTTP server for `body`. The first request is cut short after
+    /// `cut_first_at` bytes when set; `honour_range` decides whether a `Range`
+    /// request is answered with the rest or with the whole body. Returns the
+    /// url and the `Range` header of every request seen.
+    async fn serve(
+        body: Vec<u8>,
+        cut_first_at: Option<usize>,
+        honour_range: bool,
+        requests: usize,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/engine.zip", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            for n in 0..requests {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buf = vec![0u8; 8192];
+                let read = socket.read(&mut buf).await.unwrap();
+                let head = String::from_utf8_lossy(&buf[..read]).to_string();
+                let range = head
+                    .lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("range: bytes=").map(str::to_string))
+                    .map(|r| r.trim_end_matches('-').to_string());
+                log.lock().unwrap().push(range.clone());
+                let (status, extra, start) = match (&range, honour_range) {
+                    (Some(from), true) => {
+                        let from: usize = from.parse().unwrap();
+                        (
+                            "206 Partial Content",
+                            format!("Content-Range: bytes {from}-{}/{}\r\n", body.len() - 1, body.len()),
+                            from,
+                        )
+                    }
+                    _ => ("200 OK", String::new(), 0),
+                };
+                let payload = &body[start..];
+                let head = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
+                    payload.len()
+                );
+                socket.write_all(head.as_bytes()).await.unwrap();
+                let send = match (n, cut_first_at) {
+                    (0, Some(cut)) => &payload[..cut],
+                    _ => payload,
+                };
+                socket.write_all(send).await.unwrap();
+                socket.flush().await.unwrap();
+                // Dropping the socket short of Content-Length is the cut.
+            }
+        });
+        (url, seen)
+    }
+
+    fn sample(len: usize) -> (Vec<u8>, String) {
+        let data: Vec<u8> = (0..len).map(|i| (i * 31 % 251) as u8).collect();
+        let sum = format!("{:x}", Sha256::digest(&data));
+        (data, sum)
+    }
+
+    fn client() -> reqwest::Client {
+        reqwest::Client::builder().no_proxy().build().unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_interrupted_download_resumes_from_the_part_file() {
+        let (data, sum) = sample(300_000);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("engine.zip");
+        let (url, seen) = serve(data.clone(), Some(120_000), true, 2).await;
+
+        let first = fetch_verified(&client(), &url, data.len() as u64, &sum, &dest, |_| {}).await;
+        assert!(first.is_err(), "the first attempt was cut short");
+        assert!(!dest.exists());
+        let kept = std::fs::metadata(part_path(&dest)).unwrap().len();
+        assert!(kept > 0 && kept < data.len() as u64, "partial bytes are kept: {kept}");
+
+        fetch_verified(&client(), &url, data.len() as u64, &sum, &dest, |_| {})
+            .await
+            .expect("the second attempt finishes it");
+        assert_eq!(std::fs::read(&dest).unwrap(), data);
+        assert!(!part_path(&dest).exists(), "the part file is renamed into place");
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen[0], None);
+        assert_eq!(seen[1].as_deref(), Some(kept.to_string().as_str()), "asked only for the rest");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_the_range_restarts_the_download() {
+        let (data, sum) = sample(200_000);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("engine.zip");
+        std::fs::write(part_path(&dest), &data[..50_000]).unwrap();
+        let (url, _) = serve(data.clone(), None, false, 1).await;
+
+        fetch_verified(&client(), &url, data.len() as u64, &sum, &dest, |_| {})
+            .await
+            .expect("a full body replaces the part");
+        assert_eq!(std::fs::read(&dest).unwrap(), data);
+    }
+
+    #[tokio::test]
+    async fn a_download_that_fails_its_checksum_leaves_nothing_to_resume() {
+        let (data, _) = sample(100_000);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("engine.zip");
+        let (url, _) = serve(data.clone(), None, true, 1).await;
+
+        let wrong = "0".repeat(64);
+        let err = fetch_verified(&client(), &url, data.len() as u64, &wrong, &dest, |_| {})
+            .await
+            .unwrap_err();
+        assert!(err.contains("checksum"), "{err}");
+        assert!(!dest.exists() && !part_path(&dest).exists());
+    }
+
+    #[test]
+    fn the_part_file_sits_beside_the_archive() {
+        assert_eq!(
+            part_path(Path::new("downloads/sd.zip")),
+            PathBuf::from("downloads/sd.zip.part")
+        );
     }
 
     #[test]

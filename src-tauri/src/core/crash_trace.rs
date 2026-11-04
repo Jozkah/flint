@@ -722,11 +722,52 @@ pub fn traced<R: tauri::Runtime>(
         // call here is a UI stall. An async command returns at once and is
         // not measured by this wrapper.
         let elapsed = started.elapsed();
+        record_dispatch(&command, elapsed);
         if is_slow_dispatch(elapsed) {
             log::warn!("command `{command}` held the dispatch thread for {} ms", elapsed.as_millis());
         }
         handled
     }
+}
+
+/// What the wrapper has seen of one command: how often it ran and the longest
+/// it held the dispatch thread.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DispatchStat {
+    pub count: u64,
+    pub max: std::time::Duration,
+}
+
+/// Distinct command names remembered; a name past this is not tracked.
+const MAX_TRACKED_COMMANDS: usize = 1024;
+
+static DISPATCH_STATS: std::sync::Mutex<Option<std::collections::HashMap<String, DispatchStat>>> =
+    std::sync::Mutex::new(None);
+
+/// Fold one dispatch into the per-command count and maximum. Only the
+/// dispatch call is timed: an async command returns before its work, and a
+/// resolver cannot be wrapped through Tauri's public `Invoke`.
+fn record_dispatch(command: &str, elapsed: std::time::Duration) {
+    let Ok(mut guard) = DISPATCH_STATS.lock() else { return };
+    let stats = guard.get_or_insert_with(Default::default);
+    if let Some(stat) = stats.get_mut(command) {
+        stat.count += 1;
+        stat.max = stat.max.max(elapsed);
+    } else if stats.len() < MAX_TRACKED_COMMANDS {
+        stats.insert(command.to_string(), DispatchStat { count: 1, max: elapsed });
+    }
+}
+
+/// The `n` commands that held the dispatch thread longest, worst first.
+pub fn slowest_dispatches(n: usize) -> Vec<(String, DispatchStat)> {
+    let guard = DISPATCH_STATS.lock().unwrap_or_else(|p| p.into_inner());
+    let mut all: Vec<(String, DispatchStat)> = guard
+        .as_ref()
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), *v)).collect())
+        .unwrap_or_default();
+    all.sort_by(|a, b| b.1.max.cmp(&a.1.max).then_with(|| a.0.cmp(&b.0)));
+    all.truncate(n);
+    all
 }
 
 /// How long a command may hold the dispatch thread before it is reported.
@@ -740,6 +781,22 @@ fn is_slow_dispatch(elapsed: std::time::Duration) -> bool {
 mod tests {
     use super::*;
     use std::fmt::Write as _;
+
+    #[test]
+    fn dispatches_are_counted_with_their_longest_time() {
+        let ms = std::time::Duration::from_millis;
+        record_dispatch("xcut018_slow", ms(30));
+        record_dispatch("xcut018_slow", ms(250));
+        record_dispatch("xcut018_slow", ms(10));
+        record_dispatch("xcut018_fast", ms(1));
+        let all = slowest_dispatches(usize::MAX);
+        let find = |name: &str| all.iter().find(|(n, _)| n == name).map(|(_, s)| *s).unwrap();
+        assert_eq!(find("xcut018_slow"), DispatchStat { count: 3, max: ms(250) });
+        assert_eq!(find("xcut018_fast"), DispatchStat { count: 1, max: ms(1) });
+        let pos = |name: &str| all.iter().position(|(n, _)| n == name).unwrap();
+        assert!(pos("xcut018_slow") < pos("xcut018_fast"), "worst first");
+        assert!(slowest_dispatches(1).len() <= 1);
+    }
 
     /// The trail is process-wide, so the tests that read it take turns.
     static TRAIL: std::sync::Mutex<()> = std::sync::Mutex::new(());
