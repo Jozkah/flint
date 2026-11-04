@@ -4151,6 +4151,7 @@ pub(super) fn build_invoker_for(
         approvals: Default::default(),
         call_log: Default::default(),
         code_mode: false,
+        goal_tool: false,
         run_mode: crate::core::agent::plan::RunMode::Normal,
         #[cfg(feature = "cli")]
         host_tools: crate::core::agent::host_tools::HostToolSet::new(),
