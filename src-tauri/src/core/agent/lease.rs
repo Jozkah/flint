@@ -438,13 +438,15 @@ fn unrefreshed_sessions() -> &'static Mutex<std::collections::HashSet<String>> {
 
 /// Remember that `session` could not refresh its lease in time and stop its run.
 pub fn mark_unrefreshed(session: &str) {
-    if let Ok(mut set) = unrefreshed_sessions().lock() {
-        set.insert(session.to_string());
-    }
+    // Stop first, then publish the flag: whoever sees the flag can rely on the
+    // run already being stopped.
     tauri_plugin_agent_tools::lifecycle::stop_scope(
         &tauri_plugin_agent_tools::lifecycle::Scope::new(session, "", ""),
         tauri_plugin_agent_tools::lifecycle::StopReason::Cancelled,
     );
+    if let Ok(mut set) = unrefreshed_sessions().lock() {
+        set.insert(session.to_string());
+    }
 }
 
 /// Whether `session` stopped because its lease could not be refreshed,
@@ -455,13 +457,15 @@ pub fn take_unrefreshed(session: &str) -> bool {
 
 /// Remember that `session` lost its lease and stop its run.
 pub fn mark_lost(session: &str) {
-    if let Ok(mut set) = lost_sessions().lock() {
-        set.insert(session.to_string());
-    }
+    // Stop first, then publish the flag: whoever sees the flag can rely on the
+    // run already being stopped.
     tauri_plugin_agent_tools::lifecycle::stop_scope(
         &tauri_plugin_agent_tools::lifecycle::Scope::new(session, "", ""),
         tauri_plugin_agent_tools::lifecycle::StopReason::Cancelled,
     );
+    if let Ok(mut set) = lost_sessions().lock() {
+        set.insert(session.to_string());
+    }
 }
 
 /// Whether `session` lost its lease, forgetting it so a later run of the same
