@@ -2305,6 +2305,9 @@ fn main() {
         .spawn(|| {
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
+                // Spawned tasks (subagents, tool calls) run on these workers, not on the
+                // big thread above; the 2 MiB default overflows in a debug build.
+                .thread_stack_size(32 * 1024 * 1024)
                 .build()
                 .expect("a tokio runtime")
                 .block_on(run())
