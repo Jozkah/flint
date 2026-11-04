@@ -993,7 +993,16 @@ async fn download_resumable_to(
             out.flush().await?;
             return Err(AddonError::Cancelled);
         }
-        let chunk = chunk.map_err(net_err)?;
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                // A tokio file buffers writes in the background and a drop does
+                // not wait for them: without this the bytes already received
+                // are lost and the resume starts from a short or empty file.
+                let _ = out.flush().await;
+                return Err(net_err(e));
+            }
+        };
         have += chunk.len() as u64;
         if have > expected {
             drop(out);
