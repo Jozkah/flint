@@ -48,16 +48,29 @@ const LIMIT_KEYS: &[&str] = &[
     "ceiling",
 ];
 
-/// One process-wide lock for every room write. Poison-tolerant: a panic in one
-/// writer must not make every later room write fail.
-static WRITE_LOCK: Mutex<()> = Mutex::new(());
+/// Locks for room writes, one per shard of room directories. A room's writes
+/// are serialised against each other, but a long fsync in one room no longer
+/// holds up every other room (a process-wide lock did). Two rooms that hash to
+/// the same shard merely share a lock; no operation takes two rooms' locks, so
+/// that cannot deadlock. Poison-tolerant: a panic in one writer must not make
+/// every later room write fail.
+const WRITE_SHARDS: usize = 64;
+static WRITE_LOCKS: [Mutex<()>; WRITE_SHARDS] = [const { Mutex::new(()) }; WRITE_SHARDS];
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Removes a room's workspaces (`workspace::remove_all`; tests pass one that fails).
 pub(super) type WorkspaceRemover = fn(&Path, &str) -> Result<(), RoomError>;
 
-fn write_guard() -> MutexGuard<'static, ()> {
-    WRITE_LOCK
+fn write_shard(room_dir: &Path) -> usize {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    room_dir.hash(&mut hasher);
+    (hasher.finish() % WRITE_SHARDS as u64) as usize
+}
+
+/// The write lock for the room in `room_dir`.
+fn write_guard(room_dir: &Path) -> MutexGuard<'static, ()> {
+    WRITE_LOCKS[write_shard(room_dir)]
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -933,7 +946,7 @@ impl JournalIndex {
     }
 }
 
-/// Journal indexes by journal path. Only touched under [`write_guard`].
+/// Journal indexes by journal path. Only touched under [`write_guard`] of the room it indexes.
 fn journal_indexes() -> &'static Mutex<std::collections::HashMap<PathBuf, JournalIndex>> {
     static INDEXES: std::sync::OnceLock<Mutex<std::collections::HashMap<PathBuf, JournalIndex>>> =
         std::sync::OnceLock::new();
@@ -1069,7 +1082,7 @@ impl RoomStore {
         let dir = self.room_dir(&room.id)?;
         let path = dir.join(ROOM_FILE);
 
-        let _guard = write_guard();
+        let _guard = write_guard(&dir);
         let stored_rev = match fs::read(&path) {
             Ok(bytes) => Some(
                 serde_json::from_slice::<StoredRev>(&bytes)
@@ -1127,7 +1140,7 @@ impl RoomStore {
         let dir = self.room_dir(room_id)?;
         validate_record(room_id, &record)?;
 
-        let _guard = write_guard();
+        let _guard = write_guard(&dir);
         if !dir.join(ROOM_FILE).is_file() {
             return Err(RoomError::new(
                 RoomErrorCode::NotFound,
@@ -1135,15 +1148,20 @@ impl RoomStore {
             ));
         }
         let path = dir.join(JOURNAL_FILE);
-        let mut indexes = journal_indexes().lock().unwrap_or_else(|p| p.into_inner());
         // The cached index stands in for a full read while the file is
-        // exactly as the last append left it; anything else scans again.
-        let cached = match fs::metadata(&path) {
-            Ok(meta) => indexes.get(&path).is_some_and(|i| i.fresh_for(&meta)),
-            Err(_) => false,
+        // exactly as the last append left it; anything else scans again. The
+        // map is locked only to take the index out and to put it back, never
+        // across the write and its fsync, or it would serialise every room.
+        let cached = {
+            let mut indexes = journal_indexes().lock().unwrap_or_else(|p| p.into_inner());
+            match fs::metadata(&path) {
+                Ok(meta) if indexes.get(&path).is_some_and(|i| i.fresh_for(&meta)) => {
+                    indexes.remove(&path)
+                }
+                _ => None,
+            }
         };
-        let (mut index, keep_len, current_len, missing_newline) = if cached {
-            let index = indexes.remove(&path).expect("checked above");
+        let (mut index, keep_len, current_len, missing_newline) = if let Some(index) = cached {
             let len = index.len as usize;
             (index, len, len, false)
         } else {
@@ -1164,7 +1182,10 @@ impl RoomStore {
         };
         if let Some(span) = existing {
             let stored = read_record_at(&path, span);
-            indexes.insert(path.clone(), index);
+            journal_indexes()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(path.clone(), index);
             return stored.ok_or_else(|| {
                 RoomError::new(RoomErrorCode::Io, "read journal.jsonl: stored record moved".to_string())
             });
@@ -1209,7 +1230,10 @@ impl RoomStore {
         index.len = meta.len();
         index.modified = meta.modified().ok();
         if index.len == (keep_len + line.len()) as u64 {
-            indexes.insert(path, index);
+            journal_indexes()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(path, index);
         }
         Ok(record)
     }
@@ -1221,7 +1245,7 @@ impl RoomStore {
         let dir = self.room_dir(room_id)?;
         // Workspaces (and the changes waiting in them) are not the journal:
         // only "clear everything", delete and archive remove them.
-        let _guard = write_guard();
+        let _guard = write_guard(&dir);
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
             _ => {
@@ -1257,7 +1281,7 @@ impl RoomStore {
 
     pub(super) fn delete_with(&self, room_id: &str, remove: WorkspaceRemover) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
-        let _guard = write_guard();
+        let _guard = write_guard(&dir);
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => {
@@ -1295,7 +1319,7 @@ impl RoomStore {
 
     pub(super) fn archive_with(&self, data: &Path, room_id: &str, remove: WorkspaceRemover) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
-        let _guard = write_guard();
+        let _guard = write_guard(&dir);
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => {
@@ -1332,5 +1356,39 @@ impl RoomStore {
         )
         .map(|_| ())
         .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("archive room {room_id}: {e}")))
+    }
+}
+
+#[cfg(test)]
+mod write_lock_tests {
+    use super::*;
+
+    // PERF-019: a held write lock must not stop a different room's write.
+    #[test]
+    fn rooms_in_other_shards_write_while_one_room_is_held() {
+        let held = Path::new("rooms/room-held");
+        let other = (0..)
+            .map(|n| PathBuf::from(format!("rooms/room-other-{n}")))
+            .find(|p| write_shard(p) != write_shard(held))
+            .expect("some room hashes elsewhere");
+        let guard = write_guard(held);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _other = write_guard(&other);
+            tx.send(()).unwrap();
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)).is_ok(),
+            "another room's write waited on a room it shares nothing with"
+        );
+        worker.join().unwrap();
+        drop(guard);
+    }
+
+    #[test]
+    fn one_room_always_takes_the_same_lock() {
+        let dir = Path::new("rooms/room-a");
+        assert_eq!(write_shard(dir), write_shard(dir));
+        assert!(write_shard(dir) < WRITE_SHARDS);
     }
 }

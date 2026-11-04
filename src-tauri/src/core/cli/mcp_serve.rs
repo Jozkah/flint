@@ -63,6 +63,11 @@ fn unknown_tool_names(only: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// The line announcing the bearer token, or `None` when the caller chose it.
+fn token_notice(generated: bool, token: &str) -> Option<String> {
+    generated.then(|| format!("token: {token}"))
+}
+
 /// Run the server until the peer disconnects (stdio) or the process is stopped
 /// (http).
 pub async fn cli_mcp_serve(
@@ -92,7 +97,13 @@ pub async fn cli_mcp_serve(
         ServeTransport::Http => {
             let (bound, serve) = http::bind(opts, flags.port, flags.token.clone()).await?;
             println!("url: {}", bound.url());
-            println!("token: {}", bound.token);
+            // Only a token this process made is news. One the caller supplied
+            // is already theirs, so echoing it only copies it into scrollback
+            // and captured output. A made one goes to stderr, apart from the
+            // url a script may capture from stdout.
+            if let Some(notice) = token_notice(flags.token.is_none(), &bound.token) {
+                eprintln!("{notice}");
+            }
             serve.await;
             Ok(())
         }
@@ -102,6 +113,12 @@ pub async fn cli_mcp_serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_token_is_announced_only_when_it_was_generated() {
+        assert_eq!(token_notice(true, "abc").as_deref(), Some("token: abc"));
+        assert_eq!(token_notice(false, "abc"), None, "a supplied token is not echoed");
+    }
 
     #[test]
     fn options_follow_the_flags_and_default_to_read_only() {

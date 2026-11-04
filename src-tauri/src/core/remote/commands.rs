@@ -600,6 +600,33 @@ pub struct UploadedFile {
     pub data_url: Option<String>,
 }
 
+/// The largest media file handed to the window as a data URL: the composer's
+/// own per-attachment limit, above which it rejects the file anyway. Reading
+/// and base64-encoding a 200 MB upload only to have it refused built a ~270 MB
+/// string in Rust and again in the webview. A larger file still comes back with
+/// its `path` and size.
+const MAX_DATA_URL_BYTES: u64 = 20 * 1024 * 1024;
+
+/// `path` as a `data:` URL, or `None` when it is unreadable or over `cap` bytes
+/// (never reading more than `cap + 1` of it).
+fn media_data_url(path: &std::path::Path, mime: &str, cap: u64) -> Option<String> {
+    use base64::Engine;
+    use std::io::Read;
+    let file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() > cap {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(cap + 1).read_to_end(&mut bytes).ok()?;
+    if bytes.len() as u64 > cap {
+        return None;
+    }
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 /// The finished uploads `ids` of `device_id` (only that device's).
 #[tauri::command]
 pub async fn remote_upload_take(
@@ -609,18 +636,12 @@ pub async fn remote_upload_take(
 ) -> Result<Vec<UploadedFile>, String> {
     let ups = state.hub.uploads_finished(&device_id, &ids);
     tauri::async_runtime::spawn_blocking(move || {
-        use base64::Engine;
         ups.into_iter()
             .map(|u| {
                 let mime = u.mime.clone().unwrap_or_default();
                 let media = ["image/", "audio/", "video/"].iter().any(|p| mime.starts_with(p));
                 let data_url = if media {
-                    std::fs::read(&u.path).ok().map(|b| {
-                        format!(
-                            "data:{mime};base64,{}",
-                            base64::engine::general_purpose::STANDARD.encode(b)
-                        )
-                    })
+                    media_data_url(&u.path, &mime, MAX_DATA_URL_BYTES)
                 } else {
                     None
                 };
@@ -648,6 +669,27 @@ pub fn remote_set_preview(state: State<'_, RemoteState>, session_id: Option<Stri
         _ => None,
     };
     state.hub.set_preview(target);
+}
+
+#[cfg(test)]
+mod media_data_url_tests {
+    use super::media_data_url;
+
+    #[test]
+    fn media_under_the_cap_is_a_data_url_and_over_it_is_left_to_its_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = dir.path().join("a.png");
+        std::fs::write(&small, b"abc").unwrap();
+        assert_eq!(
+            media_data_url(&small, "image/png", 10).as_deref(),
+            Some("data:image/png;base64,YWJj")
+        );
+        let big = dir.path().join("b.mp4");
+        std::fs::write(&big, vec![0u8; 11]).unwrap();
+        assert_eq!(media_data_url(&big, "video/mp4", 10), None);
+        assert!(media_data_url(&big, "video/mp4", 11).is_some(), "exactly the cap is kept");
+        assert_eq!(media_data_url(&dir.path().join("missing"), "image/png", 10), None);
+    }
 }
 
 #[cfg(test)]

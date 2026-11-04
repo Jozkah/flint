@@ -306,23 +306,26 @@ pub fn resolve_references_with(
             continue;
         }
 
-        if metadata.len() > MAX_FILE_BYTES {
-            parts.push(format!(
-                "[{}: file too large ({} bytes)]",
-                raw,
-                metadata.len()
-            ));
-            continue;
-        }
-
         let ext = abs
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
 
+        // An image is never read into the prompt, only noted by size, so the
+        // text cap below does not apply to it: a 3 MB screenshot is named, not
+        // refused as "too large".
         if IMAGE_EXTS.contains(&ext.as_str()) {
             parts.push(image_note(raw, &abs));
+            continue;
+        }
+
+        if metadata.len() > MAX_FILE_BYTES {
+            parts.push(format!(
+                "[{}: file too large ({} bytes)]",
+                raw,
+                metadata.len()
+            ));
             continue;
         }
 
@@ -505,6 +508,19 @@ mod tests {
 
         let cleaned = strip_references("no refs here");
         assert_eq!(cleaned, "no refs here");
+    }
+
+    #[test]
+    fn a_large_image_is_noted_not_refused_as_too_large() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let size = MAX_FILE_BYTES as usize + 10;
+        std::fs::write(root.join("shot.png"), vec![0u8; size]).unwrap();
+        std::fs::write(root.join("big.txt"), vec![b'a'; size]).unwrap();
+
+        let (_, block) = resolve_references("see @shot.png and @big.txt", root);
+        assert!(block.contains(&format!("(image: image/png, {size} bytes)")), "{block}");
+        assert!(block.contains("file too large"), "text files keep the cap: {block}");
     }
 
     #[test]
