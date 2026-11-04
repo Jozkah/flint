@@ -31,8 +31,9 @@ printf '#!/bin/bash\\ntouch appimagetool-ran\\n' > "$out"
 
 // The stub download is not the pinned release, so its SHA-256 check is stubbed.
 // A shell function, not a file: executing a just-written file can fail with
-// ETXTBSY when another test process forks at the same moment.
-const SHA256SUM_STUB = 'sha256sum() { return 0; }'
+// ETXTBSY when another test process forks at the same moment. It reads stdin so
+// the `echo` feeding it is not killed by SIGPIPE under pipefail.
+const SHA256SUM_STUB = 'sha256sum() { cat > /dev/null; }'
 
 let dir = ''
 afterEach(() => {
