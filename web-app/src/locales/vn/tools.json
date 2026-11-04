@@ -158,7 +158,7 @@
     "projectFolder": "thư mục dự án",
     "reveal": "Hiển thị {{path}} trong Explorer",
     "open": "Mở {{path}} bằng ứng dụng mặc định",
-    "build": "Chạy `{{command}}` trong {{where}}, bên ngoài sandbox (nó chạy các tập lệnh build riêng của dự án)",
+    "build": "Chạy `{{command}}` trong {{where}}, bên ngoài sandbox (nó chạy các tập lệnh build riêng của dự án) Các đối số của nó có thể trỏ bản build tới các thư mục khác.",
     "noProcess": "không có tiến trình nào với số đó đang chạy",
     "kill": "Kết thúc tiến trình {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

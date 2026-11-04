@@ -158,7 +158,7 @@
     "projectFolder": "la cartella del progetto",
     "reveal": "Mostra {{path}} in Esplora file",
     "open": "Apri {{path}} con la sua app predefinita",
-    "build": "Esegui `{{command}}` in {{where}}, fuori dalla sandbox (esegue gli script di build del progetto)",
+    "build": "Esegui `{{command}}` in {{where}}, fuori dalla sandbox (esegue gli script di build del progetto) I suoi argomenti possono puntare la build ad altre cartelle.",
     "noProcess": "nessun processo con quel numero è in esecuzione",
     "kill": "Termina il processo {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

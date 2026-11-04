@@ -158,7 +158,7 @@
     "projectFolder": "專案資料夾",
     "reveal": "在檔案總管中顯示 {{path}}",
     "open": "使用預設應用程式開啟 {{path}}",
-    "build": "在沙箱之外於{{where}}中執行 `{{command}}`（它會執行專案自己的建置指令碼）",
+    "build": "在沙箱之外於{{where}}中執行 `{{command}}`（它會執行專案自己的建置指令碼）其參數可以讓建置指向其他資料夾。",
     "noProcess": "沒有使用該編號的處理程序正在執行",
     "kill": "結束處理程序 {{pid}}：{{who}}",
     "service": "{{verb}} service {{name}}",

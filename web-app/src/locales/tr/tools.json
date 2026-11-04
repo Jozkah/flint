@@ -158,7 +158,7 @@
     "projectFolder": "proje klasörü",
     "reveal": "{{path}} yolunu Gezgin'de göster",
     "open": "{{path}} yolunu varsayılan uygulamasıyla aç",
-    "build": "`{{command}}` komutunu {{where}} içinde, korumalı alanın dışında çalıştır (projenin kendi derleme betiklerini çalıştırır)",
+    "build": "`{{command}}` komutunu {{where}} içinde, korumalı alanın dışında çalıştır (projenin kendi derleme betiklerini çalıştırır) Argümanları derlemeyi başka klasörlere yönlendirebilir.",
     "noProcess": "bu numaralı işlem çalışmıyor",
     "kill": "{{pid}} işlemini sonlandır: {{who}}",
     "service": "{{verb}} service {{name}}",

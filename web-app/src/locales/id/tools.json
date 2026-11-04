@@ -158,7 +158,7 @@
     "projectFolder": "folder proyek",
     "reveal": "Tampilkan {{path}} di Explorer",
     "open": "Buka {{path}} dengan aplikasi default-nya",
-    "build": "Jalankan `{{command}}` di {{where}}, di luar sandbox (menjalankan skrip build milik proyek)",
+    "build": "Jalankan `{{command}}` di {{where}}, di luar sandbox (menjalankan skrip build milik proyek) Argumennya dapat mengarahkan build ke folder lain.",
     "noProcess": "tidak ada proses dengan nomor itu yang berjalan",
     "kill": "Akhiri proses {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

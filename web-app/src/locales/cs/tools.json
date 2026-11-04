@@ -158,7 +158,7 @@
     "projectFolder": "složce projektu",
     "reveal": "Zobrazit {{path}} v Průzkumníku",
     "open": "Otevřít {{path}} ve výchozí aplikaci",
-    "build": "Spustit `{{command}}` v {{where}}, mimo sandbox (spouští vlastní buildovací skripty projektu)",
+    "build": "Spustit `{{command}}` v {{where}}, mimo sandbox (spouští vlastní buildovací skripty projektu) Jeho argumenty mohou nasměrovat build do jiných složek.",
     "noProcess": "žádný proces s tímto číslem neběží",
     "kill": "Ukončit proces {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
