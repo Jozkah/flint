@@ -54,6 +54,7 @@ import {
   isSafeModelRef,
   legacyAutoUnload,
   modelsMaxFromAutoUnload,
+  createSerialRunner,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -532,6 +533,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private engineVersion?: EngineVersion
   private presetPath?: string
   private engineStartLock: Promise<void> | null = null
+  /** Restarts run one at a time: a second must not stop the engine the first just started. */
+  private runEngineRestart = createSerialRunner()
   private userModelsMax: number = 1
   private loadedChatOrder: string[] = []
   // Models whose `auto` KV cache defaults failed to load and now run f16. Kept
@@ -1601,18 +1604,23 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * a generation is running (the restart would kill it); in that case the new
    * value is picked up at the next start and a warning says so.
    */
-  private async restartEngineForEnv(): Promise<void> {
-    if (!(await this.getEngineInfo())) return // next start reads the new env
-    if (!(await engineSlotsIdle())) {
-      logger.warn(
-        'Environment variables changed while a model is generating; the engine will use them after its next restart.'
-      )
-      return
-    }
-    await pluginStopEngine()
-    this.enginePort = undefined
-    this.engineApiKey = undefined
-    await this.startEngine()
+  private restartEngineForEnv(): Promise<void> {
+    return this.runEngineRestart(async () => {
+      // A start already under way finishes first, so the idle check and the
+      // stop below see the engine it produced rather than racing it.
+      await this.engineStartLock?.catch(() => undefined)
+      if (!(await this.getEngineInfo())) return // next start reads the new env
+      if (!(await engineSlotsIdle())) {
+        logger.warn(
+          'Environment variables changed while a model is generating; the engine will use them after its next restart.'
+        )
+        return
+      }
+      await pluginStopEngine()
+      this.enginePort = undefined
+      this.engineApiKey = undefined
+      await this.startEngine()
+    })
   }
 
   /**

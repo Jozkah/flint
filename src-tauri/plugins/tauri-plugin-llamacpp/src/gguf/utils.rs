@@ -24,6 +24,64 @@ pub fn is_remote(path: &str) -> bool {
     path.starts_with("http://") || path.starts_with("https://")
 }
 
+/// Whether the host of `url` is an address that is never a model server: the
+/// link-local range (cloud metadata endpoints live at 169.254.169.254), the
+/// unspecified address, multicast or broadcast. Loopback and LAN addresses
+/// stay allowed (a local model server is a use of this), and so does any host
+/// name; this only shuts the literal addresses a webview-supplied URL has no
+/// business reaching (O08-019).
+pub(crate) fn is_forbidden_remote_host(url: &reqwest::Url) -> bool {
+    use std::net::IpAddr;
+    let Some(host) = url.host_str() else {
+        return true;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    let Ok(ip) = host.parse::<IpAddr>() else {
+        return false;
+    };
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        v4 => v4,
+    };
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_link_local() || v4.is_unspecified() || v4.is_multicast() || v4.is_broadcast()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_unspecified() || v6.is_multicast() || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Parses `path` as an http(s) URL a remote gguf fetch may use.
+pub(crate) fn check_remote_url(path: &str) -> Result<reqwest::Url, String> {
+    let url = reqwest::Url::parse(path).map_err(|e| format!("Invalid model URL: {e}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Only http and https model URLs can be read".to_string());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("A model URL cannot carry credentials".to_string());
+    }
+    if is_forbidden_remote_host(&url) {
+        return Err("That model URL points at an address that is not a model server".to_string());
+    }
+    Ok(url)
+}
+
+/// The same check on every redirect hop, so a public URL cannot bounce the
+/// fetch onto an address the first check refused.
+pub(crate) fn remote_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 5 {
+            attempt.error("too many redirects")
+        } else if is_forbidden_remote_host(attempt.url()) {
+            attempt.error("redirected to an address that is not a model server")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 /// Runs a parse over a gguf, local or remote.
 ///
 /// A remote file is fetched in range chunks and the parse retried after each
@@ -36,8 +94,10 @@ where
     F: Fn(&mut (dyn ReadSeek + '_)) -> std::io::Result<T>,
 {
     if is_remote(path) {
+        check_remote_url(path)?;
         // Remote: read in growing chunks until successful
         let mut builder = reqwest::Client::builder()
+            .redirect(remote_redirect_policy())
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(120));
         // A loopback server is never behind the user's proxy. Honouring an
@@ -568,7 +628,36 @@ fn parse_head_count(s: &str) -> Option<u64> {
 
 #[cfg(test)]
 mod remote_scheme_tests {
-    use super::is_remote;
+    use super::{check_remote_url, is_remote};
+
+    #[test]
+    fn link_local_and_other_non_server_addresses_are_refused() {
+        for bad in [
+            "http://169.254.169.254/latest/meta-data/",
+            "https://169.254.1.1/x.gguf",
+            "http://[fe80::1]/x.gguf",
+            "http://[::ffff:169.254.169.254]/x.gguf",
+            "http://0.0.0.0/x.gguf",
+            "http://224.0.0.1/x.gguf",
+            "http://user:pw@huggingface.co/x.gguf",
+            "ftp://huggingface.co/x.gguf",
+        ] {
+            assert!(check_remote_url(bad).is_err(), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn public_loopback_and_lan_model_servers_stay_allowed() {
+        for ok in [
+            "https://huggingface.co/x/resolve/main/y.gguf",
+            "http://127.0.0.1:8080/y.gguf",
+            "http://localhost:8080/y.gguf",
+            "http://[::1]:8080/y.gguf",
+            "http://192.168.1.20:8000/y.gguf",
+        ] {
+            assert!(check_remote_url(ok).is_ok(), "{ok} should be allowed");
+        }
+    }
 
     #[test]
     fn both_http_schemes_are_remote_and_paths_are_not() {

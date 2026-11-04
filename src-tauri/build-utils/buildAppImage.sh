@@ -19,8 +19,21 @@ RELEASE_CHANNEL=${RELEASE_CHANNEL:-"stable"}
 # so it needs its own copy of the fallback.
 export APPIMAGE_EXTRACT_AND_RUN=1
 
+# A release tag and its SHA-256, not the moving `continuous` build: this binary
+# runs in the release job and repackages the shipped AppImage, so a changed or
+# swapped download must stop the build instead of being run (F6-012).
+APPIMAGETOOL_VER="1.9.1"
+case "$ARCH" in
+  x86_64)  APPIMAGETOOL_ASSET="x86_64";  APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0" ;;
+  aarch64) APPIMAGETOOL_ASSET="aarch64"; APPIMAGETOOL_SHA256="f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158" ;;
+  armhf)   APPIMAGETOOL_ASSET="armhf";   APPIMAGETOOL_SHA256="42b61cba5495d8aaf418a5c9a015a49b85ad92efabcbd3c341f1540440e4e23d" ;;
+  i386)    APPIMAGETOOL_ASSET="i686";    APPIMAGETOOL_SHA256="7ad9ff47c203aae0149b18f6df9e3018b2e2f470ea644a0413e3ded39e9e3bdb" ;;
+  *) echo "No pinned appimagetool for architecture $ARCH."; exit 1 ;;
+esac
+
 mkdir -p ./.cache/build-tools
-wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage -O "${APPIMAGETOOL}" || { echo "Failed to download appimagetool."; exit 1; }
+wget "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VER}/appimagetool-${APPIMAGETOOL_ASSET}.AppImage" -O "${APPIMAGETOOL}" || { echo "Failed to download appimagetool."; exit 1; }
+echo "${APPIMAGETOOL_SHA256}  ${APPIMAGETOOL}" | sha256sum -c - || { echo "appimagetool does not match its pinned SHA-256; refusing to run it."; rm -f "${APPIMAGETOOL}"; exit 1; }
 chmod +x "${APPIMAGETOOL}"
 
 if [ "${RELEASE_CHANNEL}" != "stable" ]; then

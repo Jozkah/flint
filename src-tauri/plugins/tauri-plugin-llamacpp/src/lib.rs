@@ -50,7 +50,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             engine::addon_commands::engine_addon_remove,
             engine::addon_commands::engine_addon_verify,
             engine::addon_commands::engine_addon_restart_pending,
-            commands::generate_api_key,
             commands::ensure_session_ready,
             commands::find_session_by_model,
             commands::get_loaded_models,

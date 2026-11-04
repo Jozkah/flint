@@ -474,8 +474,14 @@ jobs:
 
   publish-nightly:
     name: Publish nightly prerelease
-    if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'
-    needs: [prepare, build, upload-release]
+    # The add-on is best effort (a failed pack leaves the app on Vulkan), so its
+    # result does not gate the release, but publishing waits for it to finish:
+    # otherwise the release goes public while the add-on is still uploading.
+    if: >-
+      always() && github.event_name == 'schedule'
+      && needs.prepare.outputs.skip != 'true'
+      && needs.upload-release.result == 'success'
+    needs: [prepare, build, upload-release, engine-addon]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

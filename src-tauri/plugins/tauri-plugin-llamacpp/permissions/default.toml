@@ -8,7 +8,6 @@ permissions = [
     "allow-load-llama-model",
     "allow-unload-llama-model",
     "allow-cancel-model-load",
-    "allow-generate-api-key",
     "allow-ensure-session-ready",
     "allow-find-session-by-model",
     "allow-get-loaded-models",

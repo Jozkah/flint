@@ -1740,3 +1740,35 @@ describe('isSafePresetSectionId', () => {
       expect(isSafePresetSectionId(ok)).toBe(true)
   })
 })
+
+// ENG-015 / O01-008: `#` and `;` start a comment in the preset and a value
+// cannot be quoted, so a path holding either must not be written truncated.
+describe('generatePreset paths with comment characters', () => {
+  it('leaves out a model whose path holds # or ;', async () => {
+    setupModel('ok', {})
+    modelYamls['/p/models/bad/model.yml'] = {
+      model_path: 'models #2/bad/model.gguf',
+    }
+    modelYamls['/p/models/semi/model.yml'] = { model_path: 'a;b/model.gguf' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await generatePreset('/p', '/jan', CONFIG)
+    warn.mockRestore()
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('[ok]')
+    expect(ini).toContain('model = /jan/models/ok/model.gguf')
+    expect(ini).not.toContain('[bad]')
+    expect(ini).not.toContain('[semi]')
+    expect(ini).not.toContain('#2')
+    expect(ini).not.toContain('a;b')
+  })
+
+  it('keeps the model but drops an mmproj whose path holds #', async () => {
+    setupModel('vis', { mmproj_path: 'models/vis/mm#1.gguf' })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await generatePreset('/p', '/jan', CONFIG)
+    warn.mockRestore()
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('model = /jan/models/vis/model.gguf')
+    expect(ini).not.toContain('mmproj')
+  })
+})

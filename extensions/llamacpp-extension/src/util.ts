@@ -511,3 +511,16 @@ export function legacyAutoUnload(
 export function modelsMaxFromAutoUnload(old: boolean): string {
   return old ? '1' : '0'
 }
+
+/**
+ * Runs async jobs one at a time, in the order they were queued. A job that
+ * throws does not stop the ones behind it; its error goes to its own caller.
+ */
+export function createSerialRunner(): <T>(job: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve()
+  return <T>(job: () => Promise<T>): Promise<T> => {
+    const run = tail.then(job, job)
+    tail = run.catch(() => undefined)
+    return run
+  }
+}

@@ -119,6 +119,12 @@ pub fn write_spec(data_folder: &Path, spec: &ChildSpec) -> Result<PathBuf, Harne
     Ok(path)
 }
 
+/// Remove a spec once its child is over: it holds the whole brief and is
+/// read only at start-up, so a terminal job has no use for it. Best effort.
+pub fn discard_spec(data_folder: &Path, dispatch_id: &str) {
+    let _ = std::fs::remove_file(spec_path(data_folder, dispatch_id));
+}
+
 /// Read a spec back, refusing anything that is not exactly one.
 pub fn read_spec(path: &Path) -> Result<ChildSpec, HarnessError> {
     let text = std::fs::read_to_string(path).map_err(|e| {
@@ -312,10 +318,12 @@ pub async fn await_child(
             // The child's words re-enter the parent's context: what imitates
             // the harness or the chat protocol is neutralized on the way.
             JobState::Completed => {
+                discard_spec(data_folder, &record.invocation);
                 return tauri_plugin_agent_tools::worker::output(data_folder, owner, run_id, 256 * 1024)
                     .map(|out| tauri_plugin_agent_tools::control_tags::screen(&out));
             }
             other => {
+                discard_spec(data_folder, &record.invocation);
                 let tail = tauri_plugin_agent_tools::worker::output(data_folder, owner, run_id, 4 * 1024).unwrap_or_default();
                 let tail = tauri_plugin_agent_tools::control_tags::neutralize(&tail).0;
                 return Err(HarnessError::new(
@@ -387,6 +395,16 @@ mod tests {
         assert_eq!(env, vec![("JAN_DATA_FOLDER", dir.path().to_string_lossy().to_string())]);
         let other: Vec<String> = ["cli", "run", "--spec", "x"].map(String::from).to_vec();
         assert!(crate::core::cli::durable_subagent_env_for(&other).is_empty());
+    }
+
+    #[test]
+    fn a_finished_childs_spec_is_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_spec(dir.path(), &spec(dir.path())).unwrap();
+        assert!(path.exists());
+        discard_spec(dir.path(), "sub-reviewer-1");
+        assert!(!path.exists());
+        discard_spec(dir.path(), "sub-reviewer-1");
     }
 
     #[test]

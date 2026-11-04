@@ -25,7 +25,6 @@ const COMMANDS: &[&str] = &[
     "load_llama_model",
     "unload_llama_model",
     "cancel_model_load",
-    "generate_api_key",
     "ensure_session_ready",
     "find_session_by_model",
     "get_loaded_models",
@@ -1175,7 +1174,10 @@ mod engine {
             // directory first, which is where packaging puts the DLLs.
             "windows" => {}
             _ => {
-                for l in ["stdc++", "m", "pthread", "dl", "gomp"] {
+                // No `gomp`: ggml is built with GGML_OPENMP=OFF, so nothing
+                // references OpenMP, and linking it would add a libgomp.so.1
+                // requirement on machines that do not have it (O08-020).
+                for l in ["stdc++", "m", "pthread", "dl"] {
                     println!("cargo:rustc-link-lib=dylib={l}");
                 }
                 println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
