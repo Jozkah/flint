@@ -1,0 +1,69 @@
+{
+  "name": "apply_patch_multi_file",
+  "description": "One apply_patch call adds, updates, moves and deletes files together; the model is told what changed.",
+  "files": {
+    "a.txt": "one\ntwo\n",
+    "old.txt": "gone\n",
+    "m.txt": "x\ny\n",
+    "keep.txt": "untouched\n"
+  },
+  "task": "Add notes/new.txt, change a.txt, rename m.txt and delete old.txt.",
+  "model": [
+    {
+      "calls": [
+        {
+          "id": "r0",
+          "name": "read",
+          "args": {
+            "path": "a.txt"
+          }
+        },
+        {
+          "id": "r1",
+          "name": "read",
+          "args": {
+            "path": "m.txt"
+          }
+        },
+        {
+          "id": "r2",
+          "name": "read",
+          "args": {
+            "path": "old.txt"
+          }
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "id": "p1",
+          "name": "apply_patch",
+          "args": {
+            "patch": "*** Begin Patch\n*** Add File: notes/new.txt\n+hello\n*** Update File: a.txt\n@@\n one\n-two\n+TWO\n*** Update File: m.txt\n*** Move to: moved.txt\n@@\n-y\n+Y\n*** Delete File: old.txt\n*** End Patch\n"
+          }
+        }
+      ]
+    },
+    {
+      "say": "Patched four files."
+    }
+  ],
+  "expect": {
+    "requests": 3,
+    "tool_results": [
+      {
+        "call": "p1",
+        "contains": "Applied patch"
+      }
+    ],
+    "files": {
+      "notes/new.txt": "hello\n",
+      "a.txt": "one\nTWO\n",
+      "moved.txt": "x\nY\n"
+    },
+    "unchanged": [
+      "keep.txt"
+    ]
+  }
+}

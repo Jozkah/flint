@@ -42,6 +42,8 @@ mod messages;
 #[allow(unused_imports)]
 use messages::*;
 
+mod apply_patch;
+
 mod files;
 #[allow(unused_imports)]
 use files::*;
@@ -477,6 +479,7 @@ pub(crate) async fn execute_text(
             }
             out
         }
+        "apply_patch" => apply_patch::apply_patch(args, ctx).await,
         "bash" => {
             // A tree-changing git command while another live session shares
             // this folder is held, same as the `git` tool.
@@ -735,6 +738,7 @@ pub async fn preview_diff(
             let d = render_edit_diff(edits, &prior);
             (!d.is_empty()).then_some(d)
         }
+        "apply_patch" => apply_patch::preview(args).filter(|d| !d.is_empty()),
         "write" => {
             let prior = match arg_str(args, "path") {
                 Some(p) => tokio::fs::read_to_string(resolve_path(project_root, scratch, p))
@@ -780,7 +784,7 @@ pub async fn secret_findings(
     args: &serde_json::Value,
     ctx: &ToolContext<'_>,
 ) -> Vec<crate::secrets::SecretFinding> {
-    if !matches!(tool.name, "write" | "edit") {
+    if !matches!(tool.name, "write" | "edit" | "apply_patch") {
         return Vec::new();
     }
     match preview_diff(tool, args, ctx).await {

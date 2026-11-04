@@ -44,6 +44,8 @@ const FIXTURES: &[(&str, &str)] = &[
     ("batch_order.json", include_str!("scenarios/batch_order.json")),
     ("repeat_reminder.json", include_str!("scenarios/repeat_reminder.json")),
     ("empty_glob.json", include_str!("scenarios/empty_glob.json")),
+    ("apply_patch_multi_file.json", include_str!("scenarios/apply_patch_multi_file.json")),
+    ("apply_patch_refused_whole.json", include_str!("scenarios/apply_patch_refused_whole.json")),
 ];
 
 /// A model that answers from the script and records what it was shown.

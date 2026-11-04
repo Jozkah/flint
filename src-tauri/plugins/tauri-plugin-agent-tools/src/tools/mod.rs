@@ -31,6 +31,7 @@ pub mod docker_tool;
 pub mod host_read;
 pub mod local_http;
 pub mod handlers;
+pub mod patch_format;
 pub(crate) mod nofollow;
 pub mod syntax_check;
 pub mod host_tools;
@@ -668,6 +669,14 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Write,
         path_args: &["path"],
     },
+    // Several files in one patch. `path_args` is empty because the paths are
+    // inside the patch text: the loop's gate (`gate_builtin`) parses it and
+    // decides on every path it touches, as `write`/`edit`, before anything runs.
+    BuiltinTool {
+        name: "apply_patch",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     BuiltinTool {
         name: "bash",
         capability: Capability::Exec,
@@ -1145,7 +1154,8 @@ mod tests {
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
         // + ocr, text out of an image or PDF with the OS engine.
-        assert_eq!(BUILTIN_TOOLS.len(), 58);
+        // + apply_patch, a multi-file patch gated path by path.
+        assert_eq!(BUILTIN_TOOLS.len(), 59);
     }
 
     #[test]

@@ -1,0 +1,49 @@
+{
+  "name": "apply_patch_refused_whole",
+  "description": "A patch that touches one forbidden path (a secret file) is refused whole: the permitted edit in the same patch is not applied either.",
+  "files": {
+    "a.txt": "one\ntwo\n",
+    ".env": "TOKEN=placeholder\n"
+  },
+  "task": "Change a.txt and .env together.",
+  "model": [
+    {
+      "calls": [
+        {
+          "id": "r0",
+          "name": "read",
+          "args": {
+            "path": "a.txt"
+          }
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "id": "p1",
+          "name": "apply_patch",
+          "args": {
+            "patch": "*** Begin Patch\n*** Update File: a.txt\n@@\n-two\n+TWO\n*** Update File: .env\n@@\n-TOKEN=placeholder\n+TOKEN=other\n*** End Patch\n"
+          }
+        }
+      ]
+    },
+    {
+      "say": "The patch was refused."
+    }
+  ],
+  "expect": {
+    "requests": 3,
+    "tool_results": [
+      {
+        "call": "p1",
+        "contains": "Nothing was changed"
+      }
+    ],
+    "unchanged": [
+      "a.txt",
+      ".env"
+    ]
+  }
+}
