@@ -428,6 +428,7 @@ mod tests {
             durable: true,
             max_turns: None,
             title: None,
+            continue_from: None,
         }
     }
 

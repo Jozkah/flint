@@ -909,6 +909,10 @@ pub struct SubagentRequest {
     /// A short name for this errand (3-6 words), shown on its row. Never part
     /// of the brief the child reads.
     pub title: Option<String>,
+    /// Continue a finished subagent of this run instead of starting a fresh
+    /// one: the child resumes from its own conversation, with `description` as
+    /// the follow-up message. See [`take_continuation`].
+    pub continue_from: Option<String>,
 }
 
 /// Longest a title is kept, in characters.
@@ -2033,6 +2037,7 @@ async fn run_subagent(
     events: tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
     run_id: String,
     max_turns: Option<u32>,
+    record: TranscriptMeta,
 ) -> Result<String, SubagentError> {
     use crate::core::agent::events::StreamEvent;
     use crate::core::agent::r#loop::run_orchestration_streamed;
@@ -2084,7 +2089,12 @@ async fn run_subagent(
         // What the child said, kept (bounded) so a run that ends without an
         // answer can still hand its last words to the parent.
         let mut said = String::new();
+        // The child's conversation as of its last update, kept for a follow-up.
+        let mut conversation: Vec<serde_json::Value> = Vec::new();
         while let Some(ev) = child_rx.recv().await {
+            if let StreamEvent::MessagesUpdated { messages } = &ev {
+                conversation = messages.clone();
+            }
             if let StreamEvent::Token { text } = &ev {
                 said.push_str(text);
                 if said.len() > PARTIAL_KEEP_BYTES * 2 {
@@ -2103,12 +2113,12 @@ async fn run_subagent(
                 });
             }
         }
-        said
+        (said, conversation)
     });
 
     let result = run_orchestration_streamed(&child_tx, &body, &child_args).await;
     drop(child_tx);
-    let said = forwarder.await.unwrap_or_default();
+    let (said, conversation) = forwarder.await.unwrap_or_default();
 
     let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
     let _ = events.send(StreamEvent::SubagentFinished {
@@ -2124,7 +2134,20 @@ async fn run_subagent(
     });
 
     match result {
-        Ok(completion) => Ok(child_answer_for_parent(&completion, &run_id)),
+        Ok(completion) => {
+            // The final answer may not be in the last update; a follow-up has
+            // to resume after it, not before it.
+            let mut conversation = conversation;
+            let answer = final_assistant_text(&completion);
+            let ends_with_answer = conversation
+                .last()
+                .is_some_and(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"));
+            if !ends_with_answer && !answer.trim().is_empty() {
+                conversation.push(serde_json::json!({ "role": "assistant", "content": answer }));
+            }
+            keep_transcript(&run_id, &record, conversation);
+            Ok(child_answer_for_parent(&completion, &run_id))
+        }
         Err(message) => {
             let text = child_failure_text(message.kind(), message.message(), effective_child_turns(max_turns));
             Err(SubagentError::Upstream(with_partial_output(text, &said)))
@@ -2341,6 +2364,91 @@ fn build_child_args(
     child
 }
 
+/// How many finished children's conversations are kept per conversation for a
+/// follow-up.
+const KEPT_TRANSCRIPTS: usize = 8;
+
+/// Who a child answered to, and what it was asked, kept with its conversation.
+#[derive(Clone)]
+pub(crate) struct TranscriptMeta {
+    request: SubagentRequest,
+    parent_run: Option<String>,
+    session: Option<String>,
+}
+
+struct Transcript {
+    run_id: String,
+    meta: TranscriptMeta,
+    messages: Vec<serde_json::Value>,
+}
+
+static TRANSCRIPTS: std::sync::Mutex<Vec<Transcript>> = std::sync::Mutex::new(Vec::new());
+
+/// Keep a finished child's conversation so its parent can continue it. The
+/// child's system prompt is not kept: a continuation gets the definition's
+/// current one, as any dispatch does.
+fn keep_transcript(run_id: &str, meta: &TranscriptMeta, messages: Vec<serde_json::Value>) {
+    if messages.is_empty() {
+        return;
+    }
+    if let Ok(mut all) = TRANSCRIPTS.lock() {
+        all.retain(|t| t.run_id != run_id);
+        all.push(Transcript { run_id: run_id.to_string(), meta: meta.clone(), messages });
+        // The cap is per conversation, so one run's children never push out
+        // another's.
+        let same = |t: &Transcript| t.meta.parent_run == meta.parent_run && t.meta.session == meta.session;
+        while all.iter().filter(|t| same(t)).count() > KEPT_TRANSCRIPTS {
+            if let Some(oldest) = all.iter().position(|t| same(t)) {
+                all.remove(oldest);
+            }
+        }
+    }
+}
+
+/// The request and conversation to continue `old_run` with, or why it cannot be.
+///
+/// Only the run that dispatched a child may continue it (same parent run and
+/// session), so one conversation cannot read another's subagent history. The
+/// rebuilt request then goes through [`authorize_spawn`] like any dispatch:
+/// the nesting limit (`max_subagent_depth`), the spawn allowlist and the
+/// permission intersection all apply again, and the follow-up child sits one
+/// level below the caller exactly as a fresh one would.
+fn take_continuation(
+    old_run: &str,
+    req: &SubagentRequest,
+    parent_args: &crate::core::agent::r#loop::OrchestrationArgs,
+) -> Result<(SubagentRequest, Vec<serde_json::Value>), SubagentError> {
+    let unknown = || {
+        SubagentError::Upstream(format!(
+            "no finished subagent '{old_run}' of yours can be continued. Only a subagent you \
+             dispatched yourself and that finished successfully can be, and only the last \
+             {KEPT_TRANSCRIPTS} are kept. Dispatch a new one instead."
+        ))
+    };
+    let found = TRANSCRIPTS
+        .lock()
+        .ok()
+        .and_then(|all| all.iter().find(|t| t.run_id == old_run).map(|t| (t.meta.clone(), t.messages.clone())));
+    let Some((meta, messages)) = found else {
+        return Err(unknown());
+    };
+    if meta.parent_run != parent_args.run_id || meta.session != parent_args.session_id {
+        return Err(unknown());
+    }
+    if req.subagent_name != meta.request.subagent_name {
+        return Err(SubagentError::Upstream(format!(
+            "'{old_run}' was subagent '{}', not '{}'. Repeat its subagent_name to continue it.",
+            meta.request.subagent_name, req.subagent_name
+        )));
+    }
+    let mut rebuilt = meta.request;
+    rebuilt.description = req.description.clone();
+    rebuilt.title = req.title.clone().or(rebuilt.title);
+    rebuilt.max_turns = req.max_turns.or(rebuilt.max_turns);
+    rebuilt.continue_from = None;
+    Ok((rebuilt, messages))
+}
+
 /// Resolve and start a subagent on a background task, returning its `run_id`
 /// immediately (non-blocking). The caller collects the result later with
 /// [`await_subagent`]. Registered in `bg` so the parent run can abort it on
@@ -2361,6 +2469,28 @@ pub(crate) fn spawn_subagent(
 ) -> Result<String, SubagentError> {
     use crate::core::agent::events::StreamEvent;
     use std::sync::atomic::Ordering;
+
+    let mut req = req;
+    let mut parent = std::borrow::Cow::Borrowed(parent);
+    if let Some(old_run) = req.continue_from.clone() {
+        if req.durable || req.fork_context {
+            return Err(SubagentError::Upstream(
+                "continue_run_id cannot be combined with durable or fork_context".to_string(),
+            ));
+        }
+        // Its work lives in a checkout of its own, which a new run would not
+        // be in: continuing there would edit the wrong tree.
+        if bg.checkouts.lock().map(|m| m.contains_key(&old_run)).unwrap_or(false) {
+            return Err(SubagentError::Upstream(format!(
+                "'{old_run}' worked in a checkout of its own, so it cannot be continued. Dispatch a \
+                 new subagent for the follow-up."
+            )));
+        }
+        let (rebuilt, messages) = take_continuation(&old_run, &req, parent_args)?;
+        req = rebuilt;
+        parent.to_mut().conversation = Some(messages);
+    }
+    let parent: &ParentRun = &parent;
 
     let (policy, resolved) = authorize_spawn(parent_args, &req)?;
 
@@ -2423,6 +2553,7 @@ pub(crate) fn spawn_subagent(
         });
     }
 
+    let parent_args_for_record = (parent_args.run_id.clone(), parent_args.session_id.clone());
     let parent_args = build_child_args(parent_args, checkout.as_ref());
     let task_events = events.clone();
     let entry_events = events.clone();
@@ -2452,6 +2583,11 @@ pub(crate) fn spawn_subagent(
     // watching. With the lock held across both, a teardown either finds the
     // entry or runs before the child exists.
     let mut registry_guard = bg.inner.lock().unwrap();
+    let record = TranscriptMeta {
+        request: SubagentRequest { description: description.clone(), ..req.clone() },
+        parent_run: parent_args_for_record.0,
+        session: parent_args_for_record.1,
+    };
     let handle = tokio::spawn(run_child(ChildTask {
         admitted,
         semaphore,
@@ -2471,6 +2607,7 @@ pub(crate) fn spawn_subagent(
         checkout,
         run_id_task_failed,
         failure_name,
+        record,
         tx,
     }));
 
@@ -2511,6 +2648,7 @@ struct ChildTask {
     checkout: Option<ChildCheckout>,
     run_id_task_failed: String,
     failure_name: String,
+    record: TranscriptMeta,
     tx: tokio::sync::oneshot::Sender<Result<String, SubagentError>>,
 }
 
@@ -2537,6 +2675,7 @@ async fn run_child(task: ChildTask) {
         checkout,
         run_id_task_failed,
         failure_name,
+        record,
         tx,
     } = task;
     // Registered for the life of the child so a scope-wide stop finds it.
@@ -2579,6 +2718,7 @@ async fn run_child(task: ChildTask) {
             task_events.clone(),
             run_id_task.clone(),
             max_turns,
+            record.clone(),
         )
     };
     let work = async {
@@ -2878,7 +3018,8 @@ pub fn subagent_tool_schemas(
                         "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." },
                         "durable": { "type": "boolean", "description": "Whether the subagent runs as a job of its own that keeps running if this app or process exits, and can be awaited, listed or cancelled later by its run_id -- including after a restart. Default: false, a background task inside this run. Pass true for long work that should survive an interruption. It cannot fork this conversation." },
                         "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." },
-                        "max_turns": { "type": "integer", "minimum": 1, "description": "Most model turns the subagent may take before it is stopped without an answer. Default 60; raise it only for genuinely long work." }
+                        "max_turns": { "type": "integer", "minimum": 1, "description": "Most model turns the subagent may take before it is stopped without an answer. Default 60; raise it only for genuinely long work." },
+                        "continue_run_id": { "type": "string", "description": "The run_id of a subagent of yours that already finished, to send it a follow-up instead of starting over: it resumes with its own earlier conversation, and `description` is your next message to it. Repeat its subagent_name. Only a subagent you dispatched yourself, that did not work in a checkout of its own, and whose conversation is still kept (the last 8) can be continued. The follow-up runs as a new subagent with a new run_id." }
                     },
                     "required": ["subagent_name", "description"]
                 }
@@ -3022,6 +3163,12 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .and_then(|v| v.as_u64())
             .filter(|n| *n > 0)
             .map(|n| n.min(u64::from(u32::MAX)) as u32),
+        continue_from: args
+            .get("continue_run_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
     })
 }
 
@@ -4254,6 +4401,7 @@ allowed_tools = [\"read\"]
             isolate: None,
             max_turns: None,
             title: None,
+            continue_from: None,
         }
     }
 
@@ -4442,6 +4590,7 @@ auto_compact_window = 9000
             durable: false,
             max_turns: None,
             title: None,
+            continue_from: None,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");
@@ -4949,6 +5098,143 @@ auto_compact_window = 9000
         assert_eq!(rooted.project_root, Some(PathBuf::from("/work/checkout")));
         // Nothing else about the parent changes.
         assert_eq!(rooted.subagents_enabled, parent.subagents_enabled);
+    }
+
+    // ── continuing a finished subagent ─────────────────────────────────────
+
+    fn kept(parent_run: Option<&str>, name: &str) -> TranscriptMeta {
+        TranscriptMeta {
+            request: req(name, None),
+            parent_run: parent_run.map(str::to_string),
+            session: None,
+        }
+    }
+
+    fn history() -> Vec<serde_json::Value> {
+        vec![
+            serde_json::json!({ "role": "user", "content": "map the lexer" }),
+            serde_json::json!({ "role": "assistant", "content": "it has three states" }),
+        ]
+    }
+
+    #[test]
+    fn dispatch_args_carry_continue_run_id_and_ignore_blank() {
+        let base = serde_json::json!({ "subagent_name": "s", "description": "d" });
+        assert_eq!(parse_dispatch_args(&base).unwrap().continue_from, None);
+        let blank = serde_json::json!({ "subagent_name": "s", "description": "d", "continue_run_id": "  " });
+        assert_eq!(parse_dispatch_args(&blank).unwrap().continue_from, None);
+        let asked = serde_json::json!({ "subagent_name": "s", "description": "d", "continue_run_id": " sub-1 " });
+        assert_eq!(parse_dispatch_args(&asked).unwrap().continue_from.as_deref(), Some("sub-1"));
+    }
+
+    #[test]
+    fn a_continuation_resumes_the_childs_own_conversation_with_the_follow_up_last() {
+        keep_transcript("cont-a", &kept(Some("parent-1"), "reviewer"), history());
+        let mut args = max_par_args(&std::env::temp_dir());
+        args.run_id = Some("parent-1".to_string());
+        let mut ask = req("reviewer", None);
+        ask.description = "and the parser?".to_string();
+        ask.continue_from = Some("cont-a".to_string());
+        let (rebuilt, messages) = take_continuation("cont-a", &ask, &args).unwrap();
+        assert_eq!(rebuilt.description, "and the parser?");
+        assert_eq!(rebuilt.continue_from, None);
+        let resumed = forked_history(&messages, &rebuilt.description);
+        assert_eq!(resumed.len(), 3, "{resumed:#?}");
+        assert_eq!(resumed[0]["content"], "map the lexer");
+        assert_eq!(resumed[1]["content"], "it has three states");
+        assert_eq!(resumed[2]["content"], "and the parser?");
+    }
+
+    #[test]
+    fn only_the_dispatching_run_may_continue_a_child_and_only_under_its_own_name() {
+        keep_transcript("cont-b", &kept(Some("parent-1"), "reviewer"), history());
+        let mut ask = req("reviewer", None);
+        ask.continue_from = Some("cont-b".to_string());
+        let mut other = max_par_args(&std::env::temp_dir());
+        other.run_id = Some("parent-2".to_string());
+        let err = take_continuation("cont-b", &ask, &other).unwrap_err().to_string();
+        assert!(err.contains("can be continued"), "{err}");
+        let mut mine = other.clone();
+        mine.run_id = Some("parent-1".to_string());
+        let mut wrong_name = ask.clone();
+        wrong_name.subagent_name = "explorer".to_string();
+        let err = take_continuation("cont-b", &wrong_name, &mine).unwrap_err().to_string();
+        assert!(err.contains("not 'explorer'"), "{err}");
+        let err = take_continuation("cont-missing", &ask, &mine).unwrap_err().to_string();
+        assert!(err.contains("can be continued"), "{err}");
+    }
+
+    #[test]
+    fn only_the_last_few_conversations_are_kept() {
+        for i in 0..(KEPT_TRANSCRIPTS + 2) {
+            keep_transcript(&format!("cont-cap-{i}"), &kept(Some("cap-parent"), "reviewer"), history());
+        }
+        let mut args = max_par_args(&std::env::temp_dir());
+        args.run_id = Some("cap-parent".to_string());
+        let mut ask = req("reviewer", None);
+        ask.continue_from = Some("cont-cap-0".to_string());
+        assert!(take_continuation("cont-cap-0", &ask, &args).is_err(), "the oldest was dropped");
+        let newest = format!("cont-cap-{}", KEPT_TRANSCRIPTS + 1);
+        assert!(take_continuation(&newest, &ask, &args).is_ok());
+    }
+
+    /// A continuation is a dispatch: the nesting limit still decides, and it
+    /// is refused before anything starts.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn a_continuation_obeys_the_depth_limit_and_its_other_refusals() {
+        let root = unique_root("cont-depth");
+        std::fs::create_dir_all(&root).unwrap();
+        let reg_root = project_subagents_dir(&root);
+        std::fs::create_dir_all(&reg_root).unwrap();
+        std::fs::write(
+            reg_root.join("reviewer.md"),
+            "---\nname: reviewer\ndescription: reviews\n---\nYou review.\n",
+        )
+        .unwrap();
+        keep_transcript("cont-d", &kept(Some("parent-d"), "reviewer"), history());
+        let bg = Arc::new(BackgroundSubagents::new(1));
+        let (events, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut ask = req("reviewer", None);
+        ask.continue_from = Some("cont-d".to_string());
+
+        // At the cap: refused with the depth reason, though the transcript is fine.
+        let mut capped = max_par_args(&root);
+        capped.run_id = Some("parent-d".to_string());
+        capped.subagents_enabled = false;
+        capped.subagent_depth = 1;
+        let err = spawn_subagent(&bg, &capped, ask.clone(), &parent_run(), &events).unwrap_err().to_string();
+        assert!(err.contains("level(s) deep") && err.contains("at most"), "{err}");
+
+        // Not combinable with durable or fork_context.
+        let mut ok_args = max_par_args(&root);
+        ok_args.run_id = Some("parent-d".to_string());
+        let mut durable = ask.clone();
+        durable.durable = true;
+        assert!(spawn_subagent(&bg, &ok_args, durable, &parent_run(), &events).is_err());
+        let mut forked = ask.clone();
+        forked.fork_context = true;
+        assert!(spawn_subagent(&bg, &ok_args, forked, &parent_run(), &events).is_err());
+
+        // A child that worked in a checkout of its own is not continued.
+        bg.checkouts.lock().unwrap().insert(
+            "cont-d".to_string(),
+            ChildCheckout {
+                path: "/x".into(),
+                branch: "b".into(),
+                parent_session: "s".into(),
+                task_id: "t".into(),
+                data_folder: "d".into(),
+            },
+        );
+        let err = spawn_subagent(&bg, &ok_args, ask.clone(), &parent_run(), &events).unwrap_err().to_string();
+        assert!(err.contains("checkout of its own"), "{err}");
+        bg.checkouts.lock().unwrap().clear();
+
+        // Within the limit it starts, as a new run.
+        let new_run = spawn_subagent(&bg, &ok_args, ask, &parent_run(), &events).unwrap();
+        assert_ne!(new_run, "cont-d");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Minimal run args for queue tests: empty providers (so dispatched
