@@ -524,6 +524,27 @@ export function isSafePresetSectionId(id: string): boolean {
   return !/[[\];#=\r\n]/.test(id)
 }
 
+/**
+ * llama.cpp's preset reader treats `#` and `;` as the start of a comment, and
+ * a value cannot be quoted, so a path holding either would be silently cut
+ * short. Such a path cannot be written; callers leave the line out (and say so)
+ * instead of handing the engine a truncated one.
+ */
+export function hasIniCommentChar(v: string): boolean {
+  return /[#;]/.test(v)
+}
+
+/** `key = path`, or null (with a warning) when the path cannot survive the ini. */
+function iniPathLine(key: string, path: string): string | null {
+  if (hasIniCommentChar(path)) {
+    console.warn(
+      `[llamacpp] ${key} was left out of the preset: its path contains '#' or ';', which the preset format reads as a comment: ${path}`
+    )
+    return null
+  }
+  return `${key} = ${escapeIniValue(path)}`
+}
+
 function escapeIniValue(v: string): string {
   // INI values for llama-server are read as strings; trim surrounding whitespace
   // and strip stray newlines that would break parsing.
@@ -949,7 +970,8 @@ export async function generatePreset(
   // knows which directory to keep clear and can still erase a deleted thread's
   // state; the *budget* is what decides whether anything is written. The C++ arg
   // handler throws if the directory is missing -- the worker creates it first.
-  lines.push(`slot-save-path = ${escapeIniValue(threadCacheDir(providerPath))}`)
+  const slotSaveLine = iniPathLine('slot-save-path', threadCacheDir(providerPath))
+  if (slotSaveLine) lines.push(slotSaveLine)
   // cache-reuse default = 0 (disabled)
   if (
     typeof config.cache_reuse === 'number' &&
@@ -1015,12 +1037,18 @@ export async function generatePreset(
 
     const modelAbs = await joinPath([janDataFolderPath, mc.model_path])
 
+    // A model whose path cannot be written is left out entirely: a truncated
+    // `model =` line would load the wrong file or fail with a confusing error.
+    const modelLine = iniPathLine('model', modelAbs)
+    if (!modelLine) continue
+
     lines.push(`[${modelId}]`)
-    lines.push(`model = ${escapeIniValue(modelAbs)}`)
+    lines.push(modelLine)
 
     if (mc.mmproj_path) {
       const mmprojAbs = await joinPath([janDataFolderPath, mc.mmproj_path])
-      lines.push(`mmproj = ${escapeIniValue(mmprojAbs)}`)
+      const mmprojLine = iniPathLine('mmproj', mmprojAbs)
+      if (mmprojLine) lines.push(mmprojLine)
     }
 
     // A template body cannot survive the ini: values have no line
@@ -1033,7 +1061,8 @@ export async function generatePreset(
     if (chatTemplate.length > 0) {
       const templateFile = await existingFilePath(chatTemplate)
       if (templateFile) {
-        lines.push(`chat-template-file = ${escapeIniValue(templateFile)}`)
+        const line = iniPathLine('chat-template-file', templateFile)
+        if (line) lines.push(line)
       } else if (BUILTIN_TEMPLATE_NAME_RE.test(chatTemplate)) {
         lines.push(`chat-template = ${chatTemplate}`)
       } else {
@@ -1043,7 +1072,8 @@ export async function generatePreset(
           'chat_template.jinja',
         ])
         await fs.writeFileSync(templatePath, chatTemplate)
-        lines.push(`chat-template-file = ${escapeIniValue(templatePath)}`)
+        const line = iniPathLine('chat-template-file', templatePath)
+        if (line) lines.push(line)
       }
     }
 
@@ -1053,11 +1083,13 @@ export async function generatePreset(
     if (grammar.length > 0) {
       const grammarFile = await existingFilePath(grammar)
       if (grammarFile) {
-        lines.push(`grammar-file = ${escapeIniValue(grammarFile)}`)
+        const line = iniPathLine('grammar-file', grammarFile)
+        if (line) lines.push(line)
       } else {
         const grammarPath = await joinPath([modelsDir, modelId, 'grammar.gbnf'])
         await fs.writeFileSync(grammarPath, grammar)
-        lines.push(`grammar-file = ${escapeIniValue(grammarPath)}`)
+        const line = iniPathLine('grammar-file', grammarPath)
+        if (line) lines.push(line)
       }
     }
 
@@ -1261,7 +1293,8 @@ export async function generatePreset(
       }
       if (hasMtpModel) {
         const mtpAbs = await joinPath([janDataFolderPath, mc.mtp_model_path!])
-        lines.push(`spec-draft-model = ${escapeIniValue(mtpAbs)}`)
+        const line = iniPathLine('spec-draft-model', mtpAbs)
+        if (line) lines.push(line)
       }
       if (
         typeof mc.spec_draft_n_max === 'number' &&

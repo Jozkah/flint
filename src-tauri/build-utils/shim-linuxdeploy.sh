@@ -28,7 +28,16 @@ mkdir -p "$XDG_CACHE_HOME/tauri"
 if [ ! -f "$LINUXDEPLOY" ]; then
   GLOB_PATTERN="$XDG_CACHE_HOME/tauri/linuxdeploy-*-${ARCH}.AppImage"
   rm -f $GLOB_PATTERN
+  case "$ARCH" in
+    x86_64)  LINUXDEPLOY_SHA256="c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d" ;;
+    aarch64) LINUXDEPLOY_SHA256="620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff" ;;
+    armhf)   LINUXDEPLOY_SHA256="e359161979fa4bee50b92ce7102fb510299caebf34f711d983fba7a8f4bb1c2e" ;;
+    i386)    LINUXDEPLOY_SHA256="a2a88d142aac42db779483ca07c10dbf318b27f514691107fc88a202faae17b5" ;;
+    *) echo "No pinned linuxdeploy for architecture $ARCH." >&2; exit 1 ;;
+  esac
   wget "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY_VER/linuxdeploy-${ARCH}.AppImage" -O "$LINUXDEPLOY"
+  # Checked before it is made executable, so a changed download never runs.
+  echo "${LINUXDEPLOY_SHA256}  ${LINUXDEPLOY}" | sha256sum -c - || { echo "linuxdeploy does not match its pinned SHA-256; refusing to run it." >&2; rm -f "$LINUXDEPLOY"; exit 1; }
   chmod a+x "$LINUXDEPLOY"
 fi
 

@@ -15,6 +15,7 @@ import {
   isSafeModelRef,
   legacyAutoUnload,
   modelsMaxFromAutoUnload,
+  createSerialRunner,
 } from './util'
 import { getBackendSecret, getBackendSetting } from './backend-settings'
 
@@ -926,5 +927,35 @@ describe('auto_unload migration helpers', () => {
   it('fresh_install_marks_done_no_change', () => {
     expect(legacyAutoUnload([])).toBeUndefined()
     expect(legacyAutoUnload([{ key: 'models_max' }])).toBeUndefined()
+  })
+})
+
+describe('createSerialRunner', () => {
+  it('never overlaps two jobs and keeps their order', async () => {
+    const run = createSerialRunner()
+    const log: string[] = []
+    let active = 0
+    const job = (name: string, ms: number) => async () => {
+      active++
+      expect(active).toBe(1)
+      log.push(`start ${name}`)
+      await new Promise((r) => setTimeout(r, ms))
+      log.push(`end ${name}`)
+      active--
+      return name
+    }
+    const results = await Promise.all([run(job('a', 20)), run(job('b', 1))])
+    expect(results).toEqual(['a', 'b'])
+    expect(log).toEqual(['start a', 'end a', 'start b', 'end b'])
+  })
+
+  it('keeps going after a job fails and reports the error to its caller only', async () => {
+    const run = createSerialRunner()
+    const failing = run(async () => {
+      throw new Error('boom')
+    })
+    const next = run(async () => 'ok')
+    await expect(failing).rejects.toThrow('boom')
+    await expect(next).resolves.toBe('ok')
   })
 })

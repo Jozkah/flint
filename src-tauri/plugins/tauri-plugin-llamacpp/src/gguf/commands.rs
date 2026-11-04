@@ -99,6 +99,7 @@ pub async fn get_model_size(path: String) -> Result<u64, String> {
         // Handle remote URL
         crate::gguf::utils::check_remote_url(&path)?;
         let client = reqwest::Client::builder()
+            .redirect(crate::gguf::utils::remote_redirect_policy())
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(60))
             .build()
@@ -257,10 +258,11 @@ pub async fn is_model_supported(
             .size
     };
 
-    // Multimodal projector lives next to model.gguf as mmproj.gguf and is
+    // Multimodal projector lives next to the model (`mmproj*.gguf`) and is
     // loaded into the same device alongside the weights + KV cache. Only
-    // inspected for local paths — remote URLs route through the importer
-    // and won't hit this branch with the final on-disk layout.
+    // inspected for local paths: for a remote URL the projector is a separate
+    // file nothing here probes, so a remote estimate EXCLUDES it and can rate a
+    // vision model more kindly than the imported one will fit (ENG-045).
     let mmproj_size: u64 = if crate::gguf::utils::is_remote(&path) {
         0
     } else {
