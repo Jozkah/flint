@@ -614,7 +614,9 @@ mod tests {
         other.token = "someone-else".into();
         std::fs::write(path(dir.path()), serde_json::to_vec(&other).unwrap()).unwrap();
         for _ in 0..200 {
-            if take_lost_peek(session) {
+            // `mark_lost` records the loss first and stops the run second, so
+            // wait for both: the stop is the later of the two.
+            if take_lost_peek(session) && token.is_stopped() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(10));
