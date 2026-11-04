@@ -29,6 +29,11 @@ done
 printf '#!/bin/bash\\ntouch appimagetool-ran\\n' > "$out"
 `
 
+// The stub download is not the pinned release, so its SHA-256 check is stubbed.
+const SHA256SUM_STUB = `#!/bin/bash
+exit 0
+`
+
 let dir = ''
 afterEach(() => {
   if (dir) rmSync(dir, { recursive: true, force: true })
@@ -40,6 +45,7 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
     dir = mkdtempSync(join(tmpdir(), 'appimage-'))
     mkdirSync(join(dir, 'stub'))
     writeFileSync(join(dir, 'stub', 'wget'), WGET_STUB, { mode: 0o755 })
+    writeFileSync(join(dir, 'stub', 'sha256sum'), SHA256SUM_STUB, { mode: 0o755 })
     // An AppDir and a tauri-built AppImage exist; the bun binary does not.
     mkdirSync(join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppDir/usr/bin'), {
       recursive: true,
@@ -63,6 +69,7 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
     dir = mkdtempSync(join(tmpdir(), 'appimage-'))
     mkdirSync(join(dir, 'stub'))
     writeFileSync(join(dir, 'stub', 'wget'), WGET_STUB, { mode: 0o755 })
+    writeFileSync(join(dir, 'stub', 'sha256sum'), SHA256SUM_STUB, { mode: 0o755 })
     const appDir = join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppDir')
     mkdirSync(join(appDir, 'usr/bin'), { recursive: true })
     mkdirSync(join(appDir, 'usr/lib'), { recursive: true })
