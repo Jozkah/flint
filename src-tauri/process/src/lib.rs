@@ -58,7 +58,9 @@ pub const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 /// a `Command`.
 #[cfg(windows)]
 pub const BACKGROUND_FLAGS: u32 = CREATE_NO_WINDOW;
-/// [`BACKGROUND_FLAGS`] plus its own process group.
+/// [`BACKGROUND_FLAGS`] plus its own process group. The group shields the
+/// child from the parent's Ctrl-C; it does not make `kill` take descendants
+/// with it (that needs `proc::kill_tree`).
 #[cfg(windows)]
 pub const BACKGROUND_GROUP_FLAGS: u32 = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
 
@@ -73,9 +75,13 @@ pub trait CommandConsole {
     fn background(&mut self) -> &mut Self;
 
     /// [`background`](Self::background), and the child leads its own process
-    /// group so it can be stopped as a tree and so a Ctrl-C aimed at the
-    /// parent does not reach it. This is what a long-lived worker, a job
-    /// supervisor, a shell the agent drives, or an LSP server wants.
+    /// group so a Ctrl-C aimed at the parent does not reach it. On Unix the
+    /// group is also what lets the whole tree be signalled. On Windows it is
+    /// not: `CREATE_NEW_PROCESS_GROUP` only affects console Ctrl events, and
+    /// `Child::kill` terminates the root process alone, so stopping the tree
+    /// there takes `proc::kill_tree` (agent-tools), not the group. This is
+    /// what a long-lived worker, a job supervisor, a shell the agent drives,
+    /// or an LSP server wants.
     ///
     /// This is also the right flag set for a process that must outlive the
     /// app. `DETACHED_PROCESS` is the wrong tool for that on Windows: the
@@ -156,7 +162,11 @@ impl CommandConsole for TokioCommand {
 /// re-runs the test binary as a *detached* process -- the same console-less
 /// situation the desktop app is in -- and runs the case there, while the outer
 /// test polls for console windows owned by that process tree.
-#[cfg(windows)]
+///
+/// Test tooling only: compiled for this crate's own tests and for other
+/// crates that enable the `console-watch` feature in their dev-dependencies,
+/// so the shipped app does not carry it.
+#[cfg(all(windows, any(test, feature = "console-watch")))]
 pub mod console_watch {
     use std::collections::HashSet;
     use std::process::{Command, Stdio};
@@ -225,11 +235,17 @@ pub mod console_watch {
     /// The pids of `root` and everything under it, right now.
     pub fn process_tree(root: u32) -> HashSet<u32> {
         let parent_of: Vec<(u32, u32)> = snapshot().into_iter().map(|(p, pp, _)| (p, pp)).collect();
+        tree_of(&parent_of, root, |_| true)
+    }
+
+    /// `root` plus every process reachable from it through `parent_of`
+    /// `(pid, parent pid)` pairs, counting only those `accept` allows.
+    fn tree_of(parent_of: &[(u32, u32)], root: u32, accept: impl Fn(u32) -> bool) -> HashSet<u32> {
         let mut tree = HashSet::from([root]);
         loop {
             let before = tree.len();
-            for (pid, ppid) in &parent_of {
-                if tree.contains(ppid) {
+            for (pid, ppid) in parent_of {
+                if tree.contains(ppid) && !tree.contains(pid) && accept(*pid) {
                     tree.insert(*pid);
                 }
             }
@@ -297,18 +313,7 @@ pub mod console_watch {
             _ => false,
         };
         let parent_of: Vec<(u32, u32)> = procs.iter().map(|(p, pp, _)| (*p, *pp)).collect();
-        let mut tree = HashSet::from([root]);
-        loop {
-            let before = tree.len();
-            for (pid, ppid) in &parent_of {
-                if tree.contains(ppid) && !tree.contains(pid) && !older(*pid) {
-                    tree.insert(*pid);
-                }
-            }
-            if tree.len() == before {
-                break;
-            }
-        }
+        let tree = tree_of(&parent_of, root, |pid| !older(pid));
         let name_of = |pid: u32| procs.iter().find(|(p, _, _)| *p == pid).map(|(_, _, n)| n.clone());
         visible_console_windows()
             .into_iter()

@@ -460,11 +460,11 @@ async fn remove_mcp_server_entry(state: &AppState, server_name: &str) -> bool {
     };
     log::warn!("Removing MCP server {server_name} from connected servers");
     let _ = service.cancel().await;
-    // Its pid and folder grant go with it: the health monitor's reconnect
-    // spawns (and grants) a fresh instance.
+    // Its pid, process tree and folder grant go with it: the health monitor's
+    // reconnect spawns (and grants) a fresh instance.
     let pid = state.mcp_server_pids.lock().await.remove(server_name);
     let config = state.mcp_active_servers.lock().await.get(server_name).cloned();
-    super::launch::release_folder_grants(config.as_ref(), pid);
+    super::helpers::finish_stopped_instance(config.as_ref(), pid).await;
     true
 }
 

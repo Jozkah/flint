@@ -49,6 +49,9 @@ pub enum ShiftEnter {
     /// No protocol support, but `keybindings.json` can send an arbitrary
     /// sequence to the integrated terminal.
     VsCodeBinding,
+    /// No protocol support, but `alacritty.toml` can bind the key; the file is
+    /// TOML, so it is edited structurally rather than appended to.
+    AlacrittyBinding,
     /// Configurable, but not by us. Carries the steps.
     Manual(&'static str, &'static [&'static str]),
     /// No per-key sequence configuration exists at all.
@@ -68,8 +71,10 @@ pub enum OptionAsAlt {
         /// Candidate paths relative to `$HOME`, most conventional first.
         files: &'static [&'static str],
     },
-    /// Reachable only through the app's own settings, or held in a file whose
-    /// structure makes a blind append unsafe. Carries the step verbatim.
+    /// `window.option_as_alt` in `alacritty.toml`, set by a structural edit
+    /// because a blind append would land in whichever section came last.
+    AlacrittyToml,
+    /// Reachable only through the app's own settings. Carries the step verbatim.
     ByHand(&'static str),
     /// `Option` already arrives as `ALT`, or the platform has no `Option` key.
     NotNeeded,
@@ -100,6 +105,9 @@ pub enum Outcome {
 /// The sequence a terminal must send for `Shift+Enter`: `ESC` then carriage
 /// return, which crossterm decodes as `Enter` with `ALT`.
 pub const NEWLINE_SEQUENCE: &str = "\\u001b\\r";
+
+/// [`NEWLINE_SEQUENCE`] as the characters themselves, for a TOML string value.
+const NEWLINE_CHARS: &str = "\u{1b}\r";
 
 /// Identify the host terminal from the environment. `get` is injected so the
 /// mapping can be tested without touching the process environment.
@@ -156,6 +164,7 @@ const VTE_STEPS: &[&str] = &[
     "or switch to kitty, Ghostty, WezTerm or foot",
 ];
 
+/// What to do by hand when `alacritty.toml` cannot be edited for us.
 const ALACRITTY_STEPS: &[&str] = &[
     "Alacritty 0.14 and later need nothing; check with `alacritty --version`",
     "otherwise add under [[keyboard.bindings]] in alacritty.toml: key = \"Return\", mods = \"Shift\", chars = \"\\u001B\\r\"",
@@ -175,7 +184,7 @@ pub fn shift_enter(kind: Kind) -> ShiftEnter {
         Kind::ITerm2 => ShiftEnter::Works("iTerm2 3.5+"),
         Kind::WindowsTerminal => ShiftEnter::Works("Windows Terminal"),
         Kind::VsCode => ShiftEnter::VsCodeBinding,
-        Kind::Alacritty => ShiftEnter::Manual("Alacritty", ALACRITTY_STEPS),
+        Kind::Alacritty => ShiftEnter::AlacrittyBinding,
         Kind::AppleTerminal => ShiftEnter::Hopeless(
             "Terminal.app has no per-key sequence setting and no CSI-u support",
             APPLE_TERMINAL_STEPS,
@@ -192,8 +201,7 @@ pub fn shift_enter(kind: Kind) -> ShiftEnter {
 ///
 /// Only the terminals whose setting is documented are named. kitty and Ghostty
 /// keep theirs in a plain-text config, so those can be written; Alacritty's
-/// lives inside a TOML table, where a blind append would land in whichever
-/// section happened to be last.
+/// lives inside a TOML table, so it is set through a TOML editor instead.
 pub fn option_as_alt(kind: Kind) -> OptionAsAlt {
     match kind {
         Kind::Kitty => OptionAsAlt::Config {
@@ -218,9 +226,7 @@ pub fn option_as_alt(kind: Kind) -> OptionAsAlt {
         Kind::VsCode => {
             OptionAsAlt::ByHand("settings.json: set \"terminal.integrated.macOptionIsMeta\": true")
         }
-        Kind::Alacritty => {
-            OptionAsAlt::ByHand("alacritty.toml: set option_as_alt = \"Both\" under [window]")
-        }
+        Kind::Alacritty => OptionAsAlt::AlacrittyToml,
         _ => OptionAsAlt::NotNeeded,
     }
 }
@@ -434,6 +440,146 @@ fn configure_lines(path: PathBuf, settings: &[(&str, &str)], detail: &str) -> Ou
     }
 }
 
+/// Where Alacritty looks for `alacritty.toml`, most conventional first. The
+/// first that exists is edited; with none, the first is created.
+fn alacritty_config_paths(
+    home: &Path,
+    appdata: Option<&Path>,
+    get: &impl Fn(&str) -> Option<String>,
+) -> Vec<PathBuf> {
+    let xdg = get("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let mut paths = Vec::new();
+    if let Some(appdata) = appdata {
+        paths.push(appdata.join("alacritty/alacritty.toml"));
+    }
+    paths.push(xdg.join("alacritty/alacritty.toml"));
+    paths.push(xdg.join("alacritty.toml"));
+    paths.push(home.join(".config/alacritty/alacritty.toml"));
+    paths.push(home.join(".alacritty.toml"));
+    paths
+}
+
+/// True when `[[keyboard.bindings]]` already binds `Shift+Return`, whatever it
+/// sends: a second rule on the same key would leave two fighting over it.
+fn alacritty_binds_shift_enter(doc: &toml_edit::DocumentMut) -> bool {
+    fn is_shift_enter(t: &dyn toml_edit::TableLike) -> bool {
+        let is = |name: &str, want: &[&str]| {
+            t.get(name)
+                .and_then(|v| v.as_str())
+                .is_some_and(|v| want.iter().any(|w| v.eq_ignore_ascii_case(w)))
+        };
+        is("key", &["Return", "Enter"]) && is("mods", &["Shift"])
+    }
+    let Some(bindings) = doc
+        .get("keyboard")
+        .and_then(|k| k.as_table_like())
+        .and_then(|k| k.get("bindings"))
+    else {
+        return false;
+    };
+    if let Some(tables) = bindings.as_array_of_tables() {
+        tables.iter().any(|t| is_shift_enter(t))
+    } else if let Some(array) = bindings.as_array() {
+        array
+            .iter()
+            .any(|v| v.as_inline_table().is_some_and(|t| is_shift_enter(t)))
+    } else {
+        false
+    }
+}
+
+/// An implicit (header-less) empty table for `name`, unless one is there.
+fn ensure_table(doc: &mut toml_edit::DocumentMut, name: &str) {
+    if doc.get(name).is_none() {
+        let mut table = toml_edit::Table::new();
+        table.set_implicit(true);
+        doc[name] = toml_edit::Item::Table(table);
+    }
+}
+
+/// Add the `Shift+Enter` binding and/or `window.option_as_alt` to an
+/// `alacritty.toml`, returning its new contents. `None` means everything asked
+/// for is already there. Comments and layout are kept (`toml_edit`); a file
+/// that does not parse, or has these keys of an unexpected shape, is an error
+/// so it is reported as a manual step rather than rewritten.
+fn edit_alacritty(current: &str, binding: bool, option_alt: bool) -> Result<Option<String>, String> {
+    use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
+    let mut doc: DocumentMut = current.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let mut changed = false;
+
+    if binding && !alacritty_binds_shift_enter(&doc) {
+        let mut entry = Table::new();
+        entry["key"] = value("Return");
+        entry["mods"] = value("Shift");
+        entry["chars"] = value(NEWLINE_CHARS);
+        ensure_table(&mut doc, "keyboard");
+        let keyboard = doc["keyboard"]
+            .as_table_like_mut()
+            .ok_or("[keyboard] is not a table")?;
+        if !keyboard.contains_key("bindings") {
+            keyboard.insert("bindings", Item::ArrayOfTables(ArrayOfTables::new()));
+        }
+        let bindings = keyboard.get_mut("bindings").ok_or("keyboard.bindings vanished")?;
+        if let Some(tables) = bindings.as_array_of_tables_mut() {
+            tables.push(entry);
+        } else if let Some(array) = bindings.as_array_mut() {
+            array.push(entry.into_inline_table());
+        } else {
+            return Err("keyboard.bindings is not a list".to_string());
+        }
+        changed = true;
+    }
+
+    if option_alt {
+        let already = match doc.get("window") {
+            None => false,
+            Some(w) => w
+                .as_table_like()
+                .ok_or("[window] is not a table")?
+                .contains_key("option_as_alt"),
+        };
+        if !already {
+            ensure_table(&mut doc, "window");
+            let window = doc["window"].as_table_like_mut().ok_or("[window] is not a table")?;
+            window.insert("option_as_alt", value("Both"));
+            changed = true;
+        }
+    }
+
+    Ok(changed.then(|| doc.to_string()))
+}
+
+fn configure_alacritty(
+    home: &Path,
+    appdata: Option<&Path>,
+    get: &impl Fn(&str) -> Option<String>,
+    binding: bool,
+    option_alt: bool,
+) -> Outcome {
+    let path = preferred_path(&alacritty_config_paths(home, appdata, get));
+    let current = match read_config(&path) {
+        Ok(s) => s,
+        Err(error) => return Outcome::Failed { path, error },
+    };
+    match edit_alacritty(&current, binding, option_alt) {
+        Ok(None) => Outcome::AlreadyDone(path),
+        Ok(Some(next)) => match write_atomic(&path, &next) {
+            Ok(()) => Outcome::Wrote {
+                path,
+                detail: "Shift+Enter now sends ESC+CR and Option arrives as Alt (restart Alacritty if it does not reload)".to_string(),
+            },
+            Err(error) => Outcome::Failed { path, error },
+        },
+        Err(error) => Outcome::Manual {
+            title: format!("{} could not be edited: {error}", path.display()),
+            steps: ALACRITTY_STEPS.iter().map(|s| s.to_string()).collect(),
+        },
+    }
+}
+
 fn configure_vscode(home: &Path, appdata: Option<&Path>) -> Outcome {
     let path = preferred_vscode_path(&vscode_keybinding_paths(home, appdata));
     let current = match read_config(&path) {
@@ -494,11 +640,15 @@ pub fn apply(home: &Path, macos: bool, get: impl Fn(&str) -> Option<String>) -> 
     let appdata = get("APPDATA").filter(|v| !v.is_empty()).map(PathBuf::from);
     let kind = identify(&get);
 
+    let mut alacritty_binding = false;
+    let mut alacritty_alt = false;
     match shift_enter(kind) {
         ShiftEnter::Works(name) => outcomes.push(Outcome::Works(format!(
             "Shift+Enter already works -- {name} reports modifiers"
         ))),
         ShiftEnter::VsCodeBinding => outcomes.push(configure_vscode(home, appdata.as_deref())),
+        // One file holds both Alacritty halves, so it is written once below.
+        ShiftEnter::AlacrittyBinding => alacritty_binding = true,
         ShiftEnter::Manual(name, steps) => outcomes.push(Outcome::Manual {
             title: format!("{name} needs one line of config for Shift+Enter"),
             steps: steps.iter().map(|s| s.to_string()).collect(),
@@ -530,12 +680,23 @@ pub fn apply(home: &Path, macos: bool, get: impl Fn(&str) -> Option<String>) -> 
                     ));
                 }
             }
+            OptionAsAlt::AlacrittyToml => alacritty_alt = true,
             OptionAsAlt::ByHand(step) => outcomes.push(Outcome::Manual {
                 title: "Option+Delete needs Option delivered as Alt".to_string(),
                 steps: vec![step.to_string()],
             }),
             OptionAsAlt::NotNeeded => {}
         }
+    }
+
+    if alacritty_binding || alacritty_alt {
+        outcomes.push(configure_alacritty(
+            home,
+            appdata.as_deref(),
+            &get,
+            alacritty_binding,
+            alacritty_alt,
+        ));
     }
 
     if in_tmux(&get) {
@@ -658,7 +819,7 @@ mod tests {
         ));
         assert!(matches!(
             shift_enter(identify(env(&[("TERM", "alacritty")]))),
-            ShiftEnter::Manual(..)
+            ShiftEnter::AlacrittyBinding
         ));
         assert_eq!(
             shift_enter(identify(env(&[("TERM", "xterm-256color")]))),
@@ -707,15 +868,79 @@ mod tests {
                 "{kind:?} defaults Option to composition, and it is writable"
             );
         }
-        // A TOML table is not safe to blind-append to, so Alacritty is by hand.
-        assert!(matches!(
-            option_as_alt(Kind::Alacritty),
-            OptionAsAlt::ByHand(_)
-        ));
+        // A TOML table is not safe to blind-append to, so Alacritty is edited
+        // structurally.
+        assert_eq!(option_as_alt(Kind::Alacritty), OptionAsAlt::AlacrittyToml);
         // Terminals with no documented setting are left alone rather than
         // guessed at.
         assert_eq!(option_as_alt(Kind::Vte), OptionAsAlt::NotNeeded);
         assert_eq!(option_as_alt(Kind::Foot), OptionAsAlt::NotNeeded);
+    }
+
+    #[test]
+    fn alacritty_binding_and_option_are_added_to_an_empty_file() {
+        let out = edit_alacritty("", true, true).unwrap().expect("changed");
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        let binding = doc["keyboard"]["bindings"].as_array_of_tables().unwrap().get(0).unwrap();
+        assert_eq!(binding["key"].as_str(), Some("Return"));
+        assert_eq!(binding["mods"].as_str(), Some("Shift"));
+        assert_eq!(binding["chars"].as_str(), Some("\u{1b}\r"));
+        assert_eq!(doc["window"]["option_as_alt"].as_str(), Some("Both"));
+        // Idempotent: a second run has nothing to do.
+        assert_eq!(edit_alacritty(&out, true, true).unwrap(), None);
+    }
+
+    /// A user's comments, other sections and their own bindings survive, and
+    /// the new entry lands under `keyboard`, not in whatever section was last.
+    #[test]
+    fn alacritty_edit_keeps_what_the_user_wrote() {
+        let current = "# my config\n[font]\nsize = 12 # big\n\n[[keyboard.bindings]]\nkey = \"K\"\nmods = \"Command\"\nchars = \"x\"\n\n[colors.primary]\nbackground = \"#000000\"\n";
+        let out = edit_alacritty(current, true, false).unwrap().expect("changed");
+        assert!(out.contains("# my config") && out.contains("size = 12 # big"), "{out}");
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        let bindings = doc["keyboard"]["bindings"].as_array_of_tables().unwrap();
+        assert_eq!(bindings.len(), 2, "their binding stays, ours is added: {out}");
+        assert_eq!(doc["colors"]["primary"]["background"].as_str(), Some("#000000"));
+        assert!(doc.get("window").is_none(), "option_as_alt was not asked for");
+    }
+
+    #[test]
+    fn an_existing_alacritty_binding_or_option_setting_is_left_alone() {
+        let bound = "[[keyboard.bindings]]\nkey = \"Return\"\nmods = \"Shift\"\nchars = \"\\n\"\n\n[window]\noption_as_alt = \"OnlyLeft\"\n";
+        assert_eq!(edit_alacritty(bound, true, true).unwrap(), None);
+        let inline = "keyboard.bindings = [{ key = \"Return\", mods = \"Shift\", chars = \"\\n\" }]\n";
+        assert_eq!(edit_alacritty(inline, true, false).unwrap(), None);
+    }
+
+    #[test]
+    fn an_inline_alacritty_binding_list_is_appended_to() {
+        let current = "keyboard.bindings = [{ key = \"K\", mods = \"Command\", chars = \"x\" }]\n";
+        let out = edit_alacritty(current, true, false).unwrap().expect("changed");
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        assert_eq!(doc["keyboard"]["bindings"].as_array().unwrap().len(), 2, "{out}");
+    }
+
+    #[test]
+    fn an_unparseable_alacritty_file_is_reported_not_rewritten() {
+        assert!(edit_alacritty("[window\nbroken", true, true).is_err());
+        assert!(edit_alacritty("keyboard = 3\n", true, false).is_err());
+    }
+
+    #[test]
+    fn apply_writes_alacritty_once_for_both_halves() {
+        let dir = tempfile::tempdir().unwrap();
+        let outcomes = apply(dir.path(), true, env(&[("TERM", "alacritty")]));
+        assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+        let Outcome::Wrote { path, .. } = &outcomes[0] else {
+            panic!("expected a write: {outcomes:?}");
+        };
+        assert!(path.ends_with("alacritty/alacritty.toml"), "{path:?}");
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("option_as_alt") && text.contains("[[keyboard.bindings]]"), "{text}");
+        assert!(matches!(
+            apply(dir.path(), true, env(&[("TERM", "alacritty")]))[0],
+            Outcome::AlreadyDone(_)
+        ));
     }
 
     #[test]

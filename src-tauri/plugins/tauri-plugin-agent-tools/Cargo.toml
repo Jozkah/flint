@@ -96,6 +96,7 @@ windows-sys = { version = "0.60.2", features = [
 ashpd = { version = "=0.11.1", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
+jan-process = { path = "../../process", features = ["console-watch"] }
 # `start_paused` tests need the virtual clock; production builds do not.
 tokio = { version = "1", features = ["test-util"] }
 

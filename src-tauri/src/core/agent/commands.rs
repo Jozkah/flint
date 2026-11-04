@@ -235,6 +235,34 @@ pub async fn agent_skill_read(project: String, name: String) -> Result<String, S
     skills::read_raw(&workspace::project_store(&root), &name).map_err(ui_error)
 }
 
+/// Whether a command may scaffold `.jan/agent` in `root`. The renderer names
+/// the folder, so without this a buggy or compromised page could plant skills
+/// and an `agent.toml` in any directory, including a repo the user opens later
+/// under an earlier trust grant. A folder that is already scaffolded gains
+/// nothing from a write, a registered project is one the user added, and a
+/// trusted folder is one the user vouched for.
+fn project_scope_allowed(scaffolded: bool, registered: bool, trusted: bool) -> bool {
+    scaffolded || registered || trusted
+}
+
+/// [`ensure_project`] for the commands that take `project` from the caller:
+/// refuses to create `.jan/agent` in a folder that is neither registered nor
+/// trusted (nor already scaffolded).
+fn ensure_scoped_project(root: &std::path::Path) -> Result<(), String> {
+    let scaffolded = root.join(".jan").join("agent").is_dir();
+    if !project_scope_allowed(
+        scaffolded,
+        crate::core::agent::projects_registry::resolve_project_id(root).is_some(),
+        tauri_plugin_agent_tools::folder_trust::is_trusted(root),
+    ) {
+        return Err(format!(
+            "{} is not a registered or trusted project; open it as a project and trust it first",
+            root.display()
+        ));
+    }
+    ensure_project(root).map(|_| ())
+}
+
 /// Create or overwrite a skill. New skills are written as `<name>/SKILL.md`;
 /// existing ones keep their on-disk form. `name` is sanitized (no path escape).
 #[tauri::command]
@@ -244,7 +272,7 @@ pub async fn agent_skill_write(
     content: String,
 ) -> Result<(), String> {
     let root = std::path::PathBuf::from(&project);
-    ensure_project(&root)?;
+    ensure_scoped_project(&root)?;
     skills::write(&workspace::project_store(&root), &name, &content).map_err(ui_error)
 }
 
@@ -266,7 +294,7 @@ pub async fn agent_skill_hub_list() -> Result<Vec<skill_hub::HubSkill>, String> 
 #[tauri::command]
 pub async fn agent_skill_hub_import(project: String, name: String) -> Result<(), String> {
     let root = std::path::PathBuf::from(&project);
-    ensure_project(&root)?;
+    ensure_scoped_project(&root)?;
     skill_hub::import(&root, &name).await.map_err(ui_error)
 }
 
@@ -285,7 +313,7 @@ pub async fn agent_skill_enabled_get(project: String) -> Result<Vec<String>, Str
 #[tauri::command]
 pub async fn agent_skill_enabled_set(project: String, enabled: Vec<String>) -> Result<(), String> {
     let root = std::path::PathBuf::from(&project);
-    ensure_project(&root)?;
+    ensure_scoped_project(&root)?;
     set_skills_enabled_in_agent_toml(&agent_toml_path(&root), &enabled).map_err(ui_error)
 }
 
@@ -1067,6 +1095,29 @@ fn is_under_root(path: &std::path::Path, root: &std::path::Path) -> bool {
         && !path
             .components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+#[cfg(test)]
+mod project_scope_tests {
+    use super::*;
+
+    #[test]
+    fn an_unknown_untrusted_folder_is_refused() {
+        assert!(!project_scope_allowed(false, false, false));
+        assert!(project_scope_allowed(true, false, false));
+        assert!(project_scope_allowed(false, true, false));
+        assert!(project_scope_allowed(false, false, true));
+    }
+
+    // Unit tests trust every folder by default, so this checks the wiring:
+    // an allowed folder is scaffolded, and a missing one is still an error.
+    #[test]
+    fn an_allowed_folder_is_scaffolded() {
+        let dir = tempfile::tempdir().unwrap();
+        ensure_scoped_project(dir.path()).unwrap();
+        assert!(dir.path().join(".jan").join("agent").join("agent.toml").is_file());
+        assert!(ensure_scoped_project(&dir.path().join("missing")).is_err());
+    }
 }
 
 #[cfg(test)]

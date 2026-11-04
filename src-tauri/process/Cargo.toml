@@ -5,6 +5,10 @@ license = "Apache-2.0"
 edition = "2021"
 description = "One place that decides whether a child process gets a console window: background helpers stay hidden, user terminals stay visible"
 
+[features]
+# The console-window watcher other crates' tests use; off in the shipped app.
+console-watch = []
+
 [dependencies]
 tokio = { version = "1", features = ["process"] }
 

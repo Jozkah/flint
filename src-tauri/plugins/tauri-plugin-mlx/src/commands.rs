@@ -72,11 +72,72 @@ fn port_in_use(port: u16) -> ServerError {
     .into()
 }
 
+/// Whether a failed launch died because its port was already taken. The port
+/// is probed by binding and releasing it, so another process can claim it
+/// before the server binds; the server then exits with one of these messages.
+fn is_address_in_use(err: &ServerError) -> bool {
+    let ServerError::Mlx(e) = err else {
+        return false;
+    };
+    let text = format!("{} {}", e.message, e.details.as_deref().unwrap_or("")).to_lowercase();
+    text.contains("address already in use")
+        || text.contains("address in use")
+        || text.contains("eaddrinuse")
+        || text.contains("errno 48")
+        || text.contains("only one usage of each socket address")
+}
+
+/// Launches tried when the caller leaves the port to us (`port == 0`).
+const PORT_PICK_ATTEMPTS: u32 = 3;
+
 /// Core model-loading logic, decoupled from Tauri AppHandle.
 /// `binary_path` must point to the mlx-server executable.
 /// `process_map_arc` is the shared session map from MlxState.
+///
+/// With `port == 0` a launch that loses its port to another process (the
+/// address-in-use exit) is retried on a freshly picked port. An explicit port
+/// is the caller's choice and is not retried.
 #[allow(clippy::too_many_arguments)]
 pub async fn load_mlx_model_impl(
+    process_map_arc: Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
+    binary_path: &Path,
+    model_id: String,
+    model_path: String,
+    port: u16,
+    config: MlxConfig,
+    envs: HashMap<String, String>,
+    is_embedding: bool,
+    timeout: u64,
+) -> ServerResult<SessionInfo> {
+    let attempts = if port == 0 { PORT_PICK_ATTEMPTS } else { 1 };
+    let mut attempt = 1;
+    loop {
+        let result = launch_mlx_model_once(
+            process_map_arc.clone(),
+            binary_path,
+            model_id.clone(),
+            model_path.clone(),
+            port,
+            config.clone(),
+            envs.clone(),
+            is_embedding,
+            timeout,
+        )
+        .await;
+        match result {
+            Err(e) if attempt < attempts && is_address_in_use(&e) => {
+                log::warn!(
+                    "MLX server lost its port to another process; retrying on a new port ({attempt}/{attempts})"
+                );
+                attempt += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn launch_mlx_model_once(
     process_map_arc: Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
     binary_path: &Path,
     model_id: String,
@@ -634,6 +695,18 @@ mod tests {
         let result = unload_mlx_model_impl(map, 4242).await;
         assert!(!result.success);
         assert!(result.error.as_deref().unwrap_or("").contains("4242"));
+    }
+
+    #[test]
+    fn address_in_use_exits_are_recognised() {
+        let in_use = |stderr: &str| is_address_in_use(&MlxError::from_stderr(stderr).into());
+        assert!(in_use("OSError: [Errno 48] Address already in use"));
+        assert!(in_use("bind: Address already in use"));
+        assert!(in_use("Error: EADDRINUSE 127.0.0.1:50000"));
+        assert!(!in_use("Out of memory"));
+        assert!(!in_use("something else broke"));
+        let io: ServerError = std::io::Error::other("Address already in use").into();
+        assert!(!is_address_in_use(&io), "only a server exit is retried");
     }
 
     // #71: two in-flight loads cannot hold the same port.

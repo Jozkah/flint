@@ -338,6 +338,7 @@ default-features = false
 features = ["protocol-asset", "macos-private-api", "test", "unstable"]
 
 [dev-dependencies]
+jan-process = { path = "./process", features = ["console-watch"] }
 tauri-plugin-agent-tools = { path = "./plugins/tauri-plugin-agent-tools", default-features = false, features = ["test-default-trusted"] }
 
 [target.'cfg(unix)'.dependencies]
