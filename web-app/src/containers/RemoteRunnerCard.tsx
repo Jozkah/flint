@@ -4,6 +4,14 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Card } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { route } from '@/constants/routes'
 import {
   allowedAccess,
@@ -265,11 +273,10 @@ export function SessionRow({
     }
   }
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const remove = () => {
-    const ok = window.confirm(
-      t('integrations:remoteRunner.deleteConfirm', { title: session.title })
-    )
-    if (ok) void run(() => deleteRun(session.id))
+    setConfirmingDelete(false)
+    void run(() => deleteRun(session.id))
   }
 
   return (
@@ -351,12 +358,35 @@ export function SessionRow({
           size="sm"
           variant="outline"
           disabled={busy}
-          onClick={remove}
+          onClick={() => setConfirmingDelete(true)}
           data-testid="remote-session-delete"
         >
           {t('integrations:remoteRunner.delete')}
         </Button>
       </div>
+      <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('integrations:remoteRunner.delete')}</DialogTitle>
+            <DialogDescription>
+              {t('integrations:remoteRunner.deleteConfirm', { title: session.title })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmingDelete(false)}>
+              {t('common:cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={remove}
+              data-testid="remote-session-delete-confirm"
+            >
+              {t('integrations:remoteRunner.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   )
 }

@@ -9444,3 +9444,87 @@ async fn gate_order_destructive_bash_under_auto_approve_is_asked_with_its_reason
     assert!(out[0].content.contains("plan_mode_read_only"), "{}", out[0].content);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `apply_patch` names its files inside the patch, so the gate judges every
+/// one: a single forbidden path refuses the whole patch before anything runs.
+mod apply_patch_gate {
+    use super::*;
+    use super::super::composite::Gated;
+    use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
+    use tauri_plugin_agent_tools::tools::{gate::{Decision, PromptKind}, lookup};
+
+    fn invoker(root: &std::path::Path, permissions: ToolPermissions) -> CompositeToolInvoker {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        build_invoker_for(
+            root.to_path_buf(),
+            tx,
+            Arc::new(Mutex::new(HashMap::new())),
+            permissions,
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        )
+    }
+
+    fn patch(body: &str) -> serde_json::Value {
+        json!({ "patch": format!("*** Begin Patch\n{body}*** End Patch\n") })
+    }
+
+    async fn gate(inv: &CompositeToolInvoker, args: &serde_json::Value) -> Gated {
+        inv.gate_builtin(lookup("apply_patch").unwrap(), "apply_patch", args, None).await
+    }
+
+    #[tokio::test]
+    async fn one_forbidden_path_refuses_the_whole_patch() {
+        let root = unique_project_root();
+        let inv = invoker(&root, ToolPermissions::allow_all());
+        let args = patch("*** Add File: ok.txt\n+x\n*** Add File: .env\n+TOKEN=1\n");
+        match gate(&inv, &args).await {
+            Gated::Refused(msg) => {
+                assert!(msg.contains(".env") && msg.contains("Nothing was changed"), "{msg}");
+            }
+            Gated::Decided { decision, .. } => panic!("expected a refusal, got {decision:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_deny_rule_on_write_binds_every_added_file_and_one_on_edit_every_update() {
+        let root = unique_project_root();
+        let deny_write = ToolPermissions::new(PermissionDefault::Allow, &[], &["write(secret/**)".into()], &[]);
+        let inv = invoker(&root, deny_write);
+        let args = patch("*** Update File: a.txt\n@@\n-a\n+b\n*** Add File: secret/k.txt\n+x\n");
+        assert!(matches!(gate(&inv, &args).await, Gated::Refused(m) if m.contains("secret/k.txt")));
+        let deny_edit = ToolPermissions::new(PermissionDefault::Allow, &[], &["edit(src/**)".into()], &[]);
+        let inv = invoker(&root, deny_edit);
+        let args = patch("*** Update File: src/a.rs\n@@\n-a\n+b\n");
+        assert!(matches!(gate(&inv, &args).await, Gated::Refused(m) if m.contains("src/a.rs")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_move_is_judged_at_both_ends_and_a_bad_patch_is_refused() {
+        let root = unique_project_root();
+        let inv = invoker(&root, ToolPermissions::allow_all());
+        let args = patch("*** Update File: a.txt\n*** Move to: .git/config\n@@\n-a\n+b\n");
+        assert!(matches!(gate(&inv, &args).await, Gated::Refused(m) if m.contains(".git/config")));
+        let bad = json!({ "patch": "not a patch" });
+        assert!(matches!(gate(&inv, &bad).await, Gated::Refused(m) if m.contains("bad patch")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_escape_in_one_file_makes_the_whole_patch_a_prompt() {
+        let root = unique_project_root();
+        let inv = invoker(&root, ToolPermissions::new(PermissionDefault::Allow, &[], &[], &[]));
+        let outside = std::env::temp_dir().join("apply-patch-outside.txt");
+        let args = patch(&format!(
+            "*** Add File: in.txt\n+x\n*** Add File: {}\n+y\n",
+            outside.display().to_string().replace('\\', "/")
+        ));
+        match gate(&inv, &args).await {
+            Gated::Decided { decision: Decision::Prompt(PromptKind::WriteEscape), .. } => {}
+            Gated::Decided { decision, .. } => panic!("expected WriteEscape, got {decision:?}"),
+            Gated::Refused(m) => panic!("unexpected refusal: {m}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

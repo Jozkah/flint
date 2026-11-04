@@ -23,10 +23,10 @@ import { errorText } from '@/lib/errorText'
 import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
 import {
-  guardServerStart,
   MODEL_LOAD_WATCHDOG_MS,
   withTimeout,
 } from '@/lib/utils'
+import { serverModelsFromActive, startLocalApiServer } from '@/lib/localApiServer'
 import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
@@ -673,21 +673,17 @@ export function useLocalApiAutoStart(serviceHub: ServiceHub) {
             }
           }
 
-          return guardServerStart(
-            window.core?.api?.startServer({
-              host: serverHost,
-              port: serverPort,
-              prefix: apiPrefix,
+          return startLocalApiServer({
+              serverHost,
+              serverPort,
+              apiPrefix,
               apiKey,
               trustedHosts,
-              isCorsEnabled: corsEnabled,
-              isVerboseEnabled: verboseLogs,
-              proxyTimeout: proxyTimeout,
-              // Omitted, the backend reads it as false and silently turns off
-              // the setting the user enabled (#156).
+              corsEnabled,
+              verboseLogs,
+              proxyTimeout,
               enableServerToolExecution,
             })
-          )
             .then(async (actualPort: number | undefined) => {
               // Track the port actually bound (mobile port 0, or a fallback)
               // without overwriting the user's configured port.
@@ -696,11 +692,10 @@ export function useLocalApiAutoStart(serviceHub: ServiceHub) {
               // Persist whichever models are actually running so next startup can restore them
               const activeModels = await serviceHub.models().getActiveModels().catch(() => [] as string[])
               if (activeModels.length > 0) {
-                const allProviders = useModelProvider.getState().providers
-                const serverModels = activeModels.flatMap((id) => {
-                  const p = allProviders.find((p) => p?.models?.some((m: { id: string }) => m.id === id))
-                  return p ? [{ model: id, provider: p.provider }] : []
-                })
+                const serverModels = serverModelsFromActive(
+                  activeModels,
+                  useModelProvider.getState().providers
+                )
                 if (serverModels.length > 0) setLastServerModels(serverModels)
               }
             })

@@ -60,31 +60,25 @@ function isAppOrigin(url: string): boolean {
   }
 }
 
-/** Browser-tab style label: the site's icon and the page's title. */
+/**
+ * Browser-tab style label: a generic globe and the page's title. The site's own
+ * favicon is not fetched, so showing a URL here makes no request of its own to
+ * that origin.
+ */
 function PageTab({ url, title }: { url: string; title: string }) {
-  const [iconFailed, setIconFailed] = useState(false)
-  let origin = ''
   let host = url
   try {
-    const u = new URL(url)
-    origin = u.origin
-    host = u.host
+    host = new URL(url).host
   } catch {
     // keep the raw url as the label
   }
-  useEffect(() => setIconFailed(false), [origin])
   return (
     <>
-      {origin && !iconFailed ? (
-        <img
-          src={`${origin}/favicon.ico`}
-          alt=""
-          className="size-4 shrink-0"
-          onError={() => setIconFailed(true)}
-        />
-      ) : (
-        <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      )}
+      <Globe
+        className="size-4 shrink-0 text-muted-foreground"
+        aria-hidden
+        data-testid="page-tab-icon"
+      />
       <span className="truncate">{title || host}</span>
     </>
   )

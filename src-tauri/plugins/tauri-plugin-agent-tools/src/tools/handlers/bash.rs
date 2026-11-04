@@ -81,6 +81,17 @@ pub(super) async fn bash_job_action(args: &serde_json::Value, ctx: &ToolContext<
             out
         }
         ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
+        ("write", Some(job_id)) => {
+            let input = arg_str(args, "input").unwrap_or("");
+            let close = arg_bool(args, "close");
+            if input.is_empty() && !close {
+                return "ERROR: \"write\" needs a non-empty \"input\" (or \"close\": true to                         end the command's input)"
+                    .to_string();
+            }
+            match write_bash_job(job_id, owner, input, close).await {
+                Ok(text) | Err(text) => text,
+            }
+        }
         ("cancel", Some(job_id)) => {
             let out = bash_job_cancel_text(job_id, owner);
             if out.starts_with("Stopped job") {
@@ -96,10 +107,10 @@ pub(super) async fn bash_job_action(args: &serde_json::Value, ctx: &ToolContext<
             out
         }
         ("list", _) => bash_job_list_text(owner),
-        (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
+        (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel" | "write") => {
             format!(
-                "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\" or \
-                 \"cancel\" with a job_id."
+                "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\", \"cancel\" \
+                 or \"write\" with a job_id."
             )
         }
         _ => "ERROR: missing required argument 'command' (or 'job_id' to collect a \
@@ -139,6 +150,11 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
         return bash_job_action(args, ctx).await;
     };
     let (background, timeout_secs) = bash_timeout(args);
+    let interactive = arg_bool(args, "interactive");
+    if interactive && !background {
+        return "ERROR: \"interactive\" needs \"background\": true: a foreground command has no                 job_id to write to."
+            .to_string();
+    }
 
     let roots = AnchoredRoots::from_ctx(ctx);
     let root = roots.root.as_path();
@@ -171,18 +187,27 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
     } else {
         None
     };
-    let (child, shell, fallback_note) = match spawn_with_fallback(
+    let (mut child, shell, fallback_note) = match spawn_with_fallback(
         ctx.sandbox,
         &policy,
         shell,
         command,
         &start,
         sandbox_tmp.as_deref(),
+        interactive,
     )
     .await
     {
         Ok(spawned) => spawned,
         Err(text) => return text,
+    };
+    let job_stdin: Option<JobStdin> = if interactive {
+        child
+            .stdin
+            .take()
+            .map(|pipe| std::sync::Arc::new(tokio::sync::Mutex::new(Some(pipe))))
+    } else {
+        None
     };
     let pid = child.id();
     // Owned by the call's cancellation token, so a Stop (or an outer timeout)
@@ -283,7 +308,16 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
             // for it -- see the `background` argument. A command the model
             // did not ask to background does not get to survive its deadline.
             if background {
-                return register_background_job(ctx, command, pid, rx, tail, job_started, timeout_secs);
+                return register_background_job(
+                    ctx,
+                    command,
+                    pid,
+                    rx,
+                    tail,
+                    job_started,
+                    timeout_secs,
+                    job_stdin,
+                );
             }
             terminate_on_timeout(
                 command,

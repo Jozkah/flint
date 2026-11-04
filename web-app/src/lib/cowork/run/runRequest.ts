@@ -191,7 +191,8 @@ export type RunRequestEnv = {
   sessionIdRef: MutableRefObject<string | null>
   setAdvertisedToolCount: Dispatch<SetStateAction<number | null>>
   setAdvertisedToolNames: Dispatch<SetStateAction<string[]>>
-  setCompacting: Dispatch<SetStateAction<boolean>>
+  /** Marks one session as compacting; keyed so panes never share the flag. */
+  setCompacting: (sid: string, on: boolean) => void
   setPendingFolder: Dispatch<SetStateAction<Record<string, string>>>
   setRunContext: Dispatch<SetStateAction<ContextAccounting | null>>
   subagentDefs: SubagentDefinition[]
@@ -1109,7 +1110,7 @@ export async function runCoworkRequest(
     setLearnedWindow: (tokens) => {
       rs.learnedWindow = tokens
     },
-    setCompacting,
+    setCompacting: (on) => setCompacting(sid, on),
     pushLive: (turns) => pushLive(turns),
   })
   if (sid === sessionIdRef.current) setRunContext(measured)

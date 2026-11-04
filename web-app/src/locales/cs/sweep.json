@@ -102,6 +102,7 @@
     "newest": "Nejnovější",
     "noMatching": "Žádné odpovídající modely",
     "noMatchingHint": "Zkuste širší hledání nebo odeberte některý z filtrů.",
+    "filesFailed": "Varianty tohoto repozitáře se nepodařilo načíst.",
     "noVariants": "V tomto repozitáři nebyly nalezeny žádné stažitelné varianty GGUF.",
     "onThisMac": "Na tomto Macu",
     "onlyFit": "Jen vhodné modely",
@@ -134,7 +135,9 @@
     "shards_one": "{{count}} shard",
     "shards_few": "{{count}} shards",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Importujte soubor modelu GGUF a přidejte ho do své kolekce. Zapněte multimodální podporu pro připojení mmproj pro vstup obrazu nebo zvuku, případně podporu konceptových modelů pro spekulativní dekódování. Embeddingové modely se rozpoznají automaticky.",

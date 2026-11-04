@@ -5,6 +5,7 @@ import {
   useState,
 } from 'react'
 import { toast } from 'sonner'
+import { withCompacting } from '@/lib/cowork/run/compactingSet'
 import { useCoworkSessions, startPaneSession } from '@/hooks/useCoworkSessions'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import type { AskAnswer, Usage } from '@/types/coworkSession'
@@ -70,7 +71,15 @@ export function useCoworkRunActions({
    * every later request sends the compacted history. Works whether or not
    * Auto Compact is on; that switch only decides whether it happens by itself.
    */
-  const [compacting, setCompacting] = useState(false)
+  // Keyed by session id: with split panes a compaction in one session must
+  // neither show in another nor be cleared by another's run ending.
+  const [compactingIds, setCompactingIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const setCompacting = useCallback((id: string, on: boolean) => {
+    setCompactingIds((current) => withCompacting(current, id, on))
+  }, [])
+  const compacting = !!session?.id && compactingIds.has(session.id)
   const compactNow = async (opts: { thenContinue?: boolean } = {}) => {
     const sid = session?.id
     if (!sid || running || compacting || !selectedModel) return
@@ -84,7 +93,7 @@ export function useCoworkRunActions({
     } catch {
       // Defaults: a manual compaction was asked for either way.
     }
-    setCompacting(true)
+    setCompacting(sid, true)
     const snapshot = cur.messages
     try {
       const summarizer = manualSummarizer({
@@ -182,7 +191,7 @@ export function useCoworkRunActions({
       // From the stop card: the run stopped for room, so it resumes on it.
       if (opts.thenContinue) void runRequestRef.current('Continue.', undefined, true)
     } finally {
-      setCompacting(false)
+      setCompacting(sid, false)
     }
   }
   const compactNowRef = useRef(compactNow)

@@ -170,12 +170,13 @@ pub(super) async fn spawn_with_fallback(
     command: &str,
     start: &Path,
     sandbox_tmp: Option<&Path>,
+    keep_stdin: bool,
 ) -> Result<(tokio::process::Child, proc::ShellConfig, Option<String>), String> {
-    match proc::spawn(&shell, command, start, sandbox_tmp).await {
+    match proc::spawn_with_stdin(&shell, command, start, sandbox_tmp, keep_stdin).await {
         Ok(c) => Ok((c, shell, None)),
         Err(e) if sandboxed && shell.flavor == proc::ShellFlavor::Posix => {
             match jail::select_native_fallback(policy, command) {
-                Some(native) => match proc::spawn(&native, command, start, sandbox_tmp).await {
+                Some(native) => match proc::spawn_with_stdin(&native, command, start, sandbox_tmp, keep_stdin).await {
                     Ok(c) => {
                         let note = native_fallback_note(&e.to_string(), native.description);
                         Ok((c, native, Some(note)))

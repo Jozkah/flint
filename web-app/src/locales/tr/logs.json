@@ -1,4 +1,5 @@
 {
+  "readFailed": "Günlük okunamadı: {{message}}",
   "noLogs": "Günlük bulunamadı",
   "noMatch": "Filtreyle eşleşen satır yok",
   "title": "Günlükler",

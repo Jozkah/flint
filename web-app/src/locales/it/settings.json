@@ -1354,7 +1354,9 @@
     "confirmBody": "Viene scritta esattamente la voce qui sotto nel tuo account utente, e nient'altro. Non servono diritti di amministratore.",
     "confirmUndo": "Disattivando l'interruttore questa voce viene rimossa.",
     "confirm": "Aggiungi voce",
-    "failed": "Impossibile modificare la voce di avvio"
+    "failed": "Impossibile modificare la voce di avvio",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Voci della barra laterale",

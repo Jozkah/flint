@@ -1,4 +1,5 @@
 {
+  "readFailed": "无法读取日志：{{message}}",
   "noLogs": "无可用日志",
   "noMatch": "没有匹配筛选条件的行",
   "title": "日志",

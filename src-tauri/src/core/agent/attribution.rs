@@ -280,7 +280,17 @@ pub fn report(
     root: Option<&Path>,
 ) -> Result<Attribution, crate::core::agent::spend::SpendError> {
     let cutoff = crate::core::agent::spend::since(period)?;
-    let envelopes = event_log::read_all_sessions(data_folder);
+    // A session last written before the window holds nothing inside it, so it
+    // is not read at all. A day of slack covers a clock that disagrees with the
+    // file's modified time; `attribute` still filters every event by its own
+    // timestamp.
+    let written_since = cutoff.as_deref().and_then(|c| {
+        let at = chrono::DateTime::parse_from_rfc3339(c).ok()?;
+        let at = std::time::UNIX_EPOCH
+            .checked_add(std::time::Duration::from_secs(u64::try_from(at.timestamp()).ok()?))?;
+        at.checked_sub(std::time::Duration::from_secs(24 * 3600))
+    });
+    let envelopes = event_log::read_sessions_modified_since(data_folder, written_since);
     Ok(attribute(&envelopes, &Configured::load(data_folder, root), cutoff.as_deref()))
 }
 

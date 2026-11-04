@@ -96,6 +96,7 @@
     "newest": "新着順",
     "noMatching": "一致するモデルがありません",
     "noMatchingHint": "検索範囲を広げるか、フィルターを 1 つ外してみてください。",
+    "filesFailed": "このリポジトリのバリアントを読み込めませんでした。",
     "noVariants": "このリポジトリにダウンロード可能な GGUF バリアントは見つかりませんでした。",
     "onThisMac": "この Mac 向け",
     "onlyFit": "適合するモデルのみ",
@@ -125,7 +126,9 @@
     "searchPlaceholderShort": "検索または URL を貼り付け…",
     "resultLimit": "表示件数",
     "recommendedHere": "このコンピューターへのおすすめ",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "GGUF モデルファイルをインポートしてコレクションに追加します。画像や音声入力用の mmproj を添付するにはマルチモーダル対応を、投機的デコード用にはドラフトモデル対応を有効にしてください。埋め込みモデルは自動で検出されます。",

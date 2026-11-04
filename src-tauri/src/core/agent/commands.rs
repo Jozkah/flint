@@ -89,12 +89,16 @@ pub async fn get_usage_attribution(
     project: Option<String>,
 ) -> Result<crate::core::agent::attribution::Attribution, String> {
     let data = get_jan_data_folder_path(app);
-    crate::core::agent::attribution::report(
-        &data,
-        since.as_deref(),
-        project.as_deref().map(std::path::Path::new),
-    )
-    .map_err(|e| e.message)
+    // Parses every session log on disk: not on the async runtime.
+    blocking(move || {
+        crate::core::agent::attribution::report(
+            &data,
+            since.as_deref(),
+            project.as_deref().map(std::path::Path::new),
+        )
+        .map_err(|e| e.message)
+    })
+    .await?
 }
 
 /// The effective compaction policy (AH-076): defaults, the user's file, then
@@ -680,14 +684,17 @@ pub async fn agent_git_status(
     project: String,
     scope: String,
 ) -> Result<Option<git::GitStatus>, String> {
-    let path = std::path::Path::new(&project);
-    // A non-repo folder is a normal state, not a failure to surface.
-    if git::repo_root(path).is_none() {
-        return Ok(None);
-    }
-    git::status(path, git::DiffScope::parse(&scope))
-        .map(Some)
-        .map_err(ui_error)
+    blocking(move || {
+        let path = std::path::Path::new(&project);
+        // A non-repo folder is a normal state, not a failure to surface.
+        if git::repo_root(path).is_none() {
+            return Ok(None);
+        }
+        git::status(path, git::DiffScope::parse(&scope))
+            .map(Some)
+            .map_err(ui_error)
+    })
+    .await?
 }
 
 /// Read-only unified diff for a single file under `scope`, loaded lazily when a
@@ -699,20 +706,23 @@ pub async fn agent_git_file_diff(
     path: String,
     scope: String,
 ) -> Result<git::GitFileDiff, String> {
-    git::file_diff(
-        std::path::Path::new(&project),
-        &path,
-        git::DiffScope::parse(&scope),
-        MAX_FILE_DIFF_BYTES,
-    )
-    .map_err(ui_error)
+    blocking(move || {
+        git::file_diff(
+            std::path::Path::new(&project),
+            &path,
+            git::DiffScope::parse(&scope),
+            MAX_FILE_DIFF_BYTES,
+        )
+        .map_err(ui_error)
+    })
+    .await?
 }
 
 /// A file's committed bytes at HEAD, for the Code panel's change gutter.
 /// Read-only; `None` when there is nothing committed to compare with.
 #[tauri::command]
 pub async fn agent_git_head_file(project: String, path: String) -> Result<Option<String>, String> {
-    git::head_file(std::path::Path::new(&project), &path).map_err(ui_error)
+    blocking(move || git::head_file(std::path::Path::new(&project), &path).map_err(ui_error)).await?
 }
 
 /// What the Code panel's inline blame needs: `git blame --porcelain` output
@@ -726,11 +736,14 @@ pub struct GitBlameDto {
 
 #[tauri::command]
 pub async fn agent_git_blame(project: String, path: String) -> Result<GitBlameDto, String> {
-    let dir = std::path::Path::new(&project);
-    Ok(GitBlameDto {
-        porcelain: git::blame(dir, &path).map_err(ui_error)?,
-        web_url: git::github_web_url(dir),
+    blocking(move || {
+        let dir = std::path::Path::new(&project);
+        Ok(GitBlameDto {
+            porcelain: git::blame(dir, &path).map_err(ui_error)?,
+            web_url: git::github_web_url(dir),
+        })
     })
+    .await?
 }
 
 /// The pull request a commit belongs to, via `gh`. `None` when `gh` is
@@ -743,8 +756,13 @@ pub struct GitPrDto {
 
 #[tauri::command]
 pub async fn agent_git_pr_for_commit(project: String, sha: String) -> Option<GitPrDto> {
-    git::pr_for_commit(std::path::Path::new(&project), &sha)
-        .map(|(number, url)| GitPrDto { number, url })
+    blocking(move || {
+        git::pr_for_commit(std::path::Path::new(&project), &sha)
+            .map(|(number, url)| GitPrDto { number, url })
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// A saved subagent definition, for the `task` tool's advertised name list and
@@ -1146,9 +1164,15 @@ pub fn discard_for_purge(
 /// that leads out of it is outside. Roots that are not absolute are ignored;
 /// with none left the scope is unknown and every absolute path is outside.
 #[tauri::command]
-pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
-    let scope = crate::core::agent::destructive::Scope::new(roots.iter());
-    crate::core::agent::destructive::forced_prompt_reason(&command, &scope)
+pub async fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
+    // Canonicalises every root and target: disk work, so not on the main thread.
+    blocking(move || {
+        let scope = crate::core::agent::destructive::Scope::new(roots.iter());
+        crate::core::agent::destructive::forced_prompt_reason(&command, &scope)
+    })
+    .await
+    // A check that did not finish is not a clean bill: ask.
+    .unwrap_or_else(|_| Some("the command could not be checked".to_string()))
 }
 
 /// What a worktree holds that removing it would destroy.
@@ -1172,7 +1196,7 @@ pub async fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> 
 /// works end to end; the editor/terminal/diff tools require a live window and
 /// are served by the desktop window layer's own UI implementation.
 #[tauri::command]
-pub fn agent_desktop_bridge<R: tauri::Runtime>(
+pub async fn agent_desktop_bridge<R: tauri::Runtime>(
     window: tauri::Window<R>,
     data_folder: String,
     session_id: String,
@@ -1181,25 +1205,37 @@ pub fn agent_desktop_bridge<R: tauri::Runtime>(
     tool: String,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    let window_id = window.label().to_string();
+    // Reads and rewrites the settings file and resolves workspace paths:
+    // disk work, so not on the main thread.
+    blocking(move || {
+        desktop_bridge_dispatch(window_id, data_folder, session_id, conversation_id, workspace, tool, args)
+    })
+    .await?
+}
+
+fn desktop_bridge_dispatch(
+    window_id: String,
+    data_folder: String,
+    session_id: String,
+    conversation_id: String,
+    workspace: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, String> {
     use crate::core::agent::desktop_bridge::{DesktopBridge, FileSettingsUi, RequestContext};
-    let settings_path = std::path::Path::new(&data_folder)
-        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
-    // The app's own settings file belongs to settings_store, which rewrites
-    // it whole from memory; writing it directly lost one writer's keys
-    // (#240). Any other folder has no in-process owner and is written as a
-    // file.
-    let app_settings = crate::core::app::commands::resolve_jan_data_folder()
-        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
-    let ui = if settings_path == app_settings {
-        FileSettingsUi::app_store()
-    } else {
-        FileSettingsUi::new(settings_path)
-    };
+    // The settings target is always the app's own store. `data_folder` comes
+    // from the webview, and honouring it wrote a settings file into whatever
+    // directory a confused or compromised caller named, so it is accepted for
+    // compatibility and not used. The store owns the file and rewrites it
+    // whole from memory; writing it directly lost one writer's keys (#240).
+    let _ = &data_folder;
+    let ui = FileSettingsUi::app_store();
     // One diff-id registry for the process: an id issued by one call is
     // accepted by a later call of the same session, and by nobody else.
     let mut bridge = DesktopBridge::with_registry(ui, crate::core::agent::desktop_bridge::shared_diff_registry());
     let ctx = RequestContext {
-        window_id: window.label().to_string(),
+        window_id,
         workspace_root: std::path::PathBuf::from(&workspace),
         conversation_id,
         session_id,
@@ -2993,8 +3029,9 @@ pub fn agent_events_export_cancel(token: String) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct EventsPage {
     pub events: Vec<tauri_plugin_agent_tools::event_log::Envelope>,
-    /// The highest `seq` in the session's log, so a caller polling with
-    /// `after_seq` knows whether it has caught up.
+    /// The `seq` of the last event in this page (`after_seq` when there is
+    /// none), the cursor to poll with next. A truncated page's cursor is its
+    /// own last event, never the log's end, so it skips nothing.
     pub last_seq: u64,
     /// More events after `after_seq` than `limit` allowed.
     pub truncated: bool,
@@ -3016,17 +3053,19 @@ pub async fn agent_events_list(
     }
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
-        let all = tauri_plugin_agent_tools::event_log::read_session(&data_folder, &session)
-            .map_err(|e| e.message())?;
-        let last_seq = all.last().map_or(0, |e| e.seq);
         let after = after_seq.unwrap_or(0);
         let cap = limit.unwrap_or(5000).clamp(1, 5000);
-        let newer: Vec<_> = all.into_iter().filter(|e| e.seq > after).collect();
-        let truncated = newer.len() > cap;
+        let page = tauri_plugin_agent_tools::event_log::read_session_after(
+            &data_folder,
+            &session,
+            after,
+            cap,
+        )
+        .map_err(|e| e.message())?;
         Ok(EventsPage {
-            events: newer.into_iter().take(cap).collect(),
-            last_seq,
-            truncated,
+            events: page.events,
+            last_seq: page.cursor,
+            truncated: page.truncated,
         })
     })
     .await
@@ -3215,12 +3254,17 @@ pub async fn session_export_save(
         return Ok(None);
     };
     let body = serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?;
-    let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, &body).map_err(|e| format!("could not write the export: {e}"))?;
-    std::fs::rename(&temp, &path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        format!("could not write the export: {e}")
-    })?;
+    // A possibly large bundle: written off the async runtime.
+    let target = path.clone();
+    blocking(move || {
+        let temp = target.with_extension("json.tmp");
+        std::fs::write(&temp, &body).map_err(|e| format!("could not write the export: {e}"))?;
+        std::fs::rename(&temp, &target).map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            format!("could not write the export: {e}")
+        })
+    })
+    .await??;
     Ok(Some(SessionExportReport {
         path: path.to_string_lossy().to_string(),
         redactions,
@@ -3258,12 +3302,17 @@ pub async fn session_handoff_save(
         return Ok(None);
     };
     let body = serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?;
-    let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, &body).map_err(|e| format!("could not write the handoff: {e}"))?;
-    std::fs::rename(&temp, &path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        format!("could not write the handoff: {e}")
-    })?;
+    // A possibly large bundle: written off the async runtime.
+    let target = path.clone();
+    blocking(move || {
+        let temp = target.with_extension("json.tmp");
+        std::fs::write(&temp, &body).map_err(|e| format!("could not write the handoff: {e}"))?;
+        std::fs::rename(&temp, &target).map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            format!("could not write the handoff: {e}")
+        })
+    })
+    .await??;
     Ok(Some(SessionExportReport {
         path: path.to_string_lossy().to_string(),
         redactions,

@@ -55,6 +55,8 @@ vi.mock('@/lib/autostart', () => ({
   autostartSet: (e: boolean, m?: boolean) => set(e, m),
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+const desktop = vi.hoisted(() => ({ on: true }))
+vi.mock('@/lib/platform/utils', () => ({ isPlatformTauri: () => desktop.on }))
 
 describe('StartupItems', () => {
   beforeEach(() => {
@@ -100,9 +102,20 @@ describe('StartupItems', () => {
   })
 
   it('renders nothing outside the desktop app', async () => {
+    desktop.on = false
     get.mockRejectedValue(new Error('no tauri'))
     const { container } = render(<StartupItems />)
     await waitFor(() => expect(get).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
+    desktop.on = true
+  })
+
+  it('shows an error with a retry when the setting cannot be read', async () => {
+    get.mockRejectedValueOnce(new Error('boom'))
+    render(<StartupItems />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not read the startup setting.')
+    get.mockResolvedValue(off)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByTestId('startup-status')).toBeInTheDocument())
   })
 })

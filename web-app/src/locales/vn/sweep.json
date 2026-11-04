@@ -100,6 +100,7 @@
     "newest": "Mới nhất",
     "noMatching": "Không có mô hình phù hợp",
     "noMatchingHint": "Hãy thử tìm kiếm rộng hơn hoặc bỏ bớt một bộ lọc.",
+    "filesFailed": "Không thể tải các biến thể của kho lưu trữ này.",
     "noVariants": "Không tìm thấy biến thể GGUF nào có thể tải xuống trong kho lưu trữ này.",
     "onThisMac": "Trên máy Mac này",
     "onlyFit": "Chỉ mô hình phù hợp",
@@ -131,7 +132,9 @@
     "recommendedHere": "Được khuyến nghị cho máy tính này",
     "shards_one": "{{count}} shard",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Nhập một tệp mô hình GGUF để thêm vào bộ sưu tập của bạn. Bật hỗ trợ đa phương thức để đính kèm mmproj cho đầu vào hình ảnh hoặc âm thanh, hoặc bật hỗ trợ mô hình nháp cho giải mã suy đoán. Mô hình embedding được nhận diện tự động.",

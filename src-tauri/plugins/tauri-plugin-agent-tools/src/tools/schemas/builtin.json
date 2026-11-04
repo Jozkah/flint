@@ -412,6 +412,23 @@
   {
     "type": "function",
     "function": {
+      "name": "apply_patch",
+      "description": "Change several files at once with one patch, all or nothing: if any part cannot apply, no file is touched. Use it when one change spans files (an add, an edit and a delete together); for a single file prefer `edit`. Files you update or delete must have been read first. Format:\n*** Begin Patch\n*** Add File: path\n+every line of the new file starts with +\n*** Update File: path\n*** Move to: new/path   (optional rename)\n@@ optional line to find, e.g. a function signature\n context line (one space)\n-line to remove\n+line to add\n*** Delete File: path\n*** End Patch\nA section's context and removed lines must match the file exactly; include 2-3 context lines around each change. Each file appears once. Example changing line `two` to `TWO` in a.txt, adding b.txt and deleting c.txt:\n*** Begin Patch\n*** Update File: a.txt\n@@\n one\n-two\n+TWO\n three\n*** Add File: b.txt\n+hello\n*** Delete File: c.txt\n*** End Patch\nA changed line is one `-` line followed by one `+` line; the `-` text is the old line exactly as it is in the file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patch": {
+            "type": "string",
+            "description": "The whole patch text, from `*** Begin Patch` to `*** End Patch`. Paths are relative to your working folder."
+          }
+        },
+        "required": ["patch"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "bash",
       "description": "",
       "parameters": {
@@ -445,9 +462,22 @@
               "await",
               "status",
               "cancel",
+              "write",
               "list"
             ],
-            "description": "What to do with background commands when no command is given. Default with a job_id: await."
+            "description": "What to do with background commands when no command is given. Default with a job_id: await. `write` sends `input` to an `interactive` job's stdin."
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "With `background: true`: keep the command's stdin open so you can send it text later with `action: \"write\"` (a REPL, an installer prompt, a program that asks questions). Without it stdin is empty and a command that reads it sees end-of-file."
+          },
+          "input": {
+            "type": "string",
+            "description": "For `action: \"write\"`: the text to send to the job's stdin, exactly as given (include a trailing newline to submit a line). At most 64 KiB."
+          },
+          "close": {
+            "type": "boolean",
+            "description": "For `action: \"write\"`: close the job's stdin after writing, so the command sees end-of-file. `input` may be empty."
           }
         },
         "required": []

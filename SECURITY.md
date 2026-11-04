@@ -33,6 +33,8 @@ welcome for:
   without the user's approval,
 - leaks of API keys or other secrets stored by the app.
 
+What the app assumes about its own windows, and what a compromised renderer can reach, is written down in [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md).
+
 ## PowerShell scripts always ask
 
 The agent's shell scan can prove some POSIX commands safe, but it does not try to prove PowerShell scripts safe: a script that is not a plain, single read-only command asks for approval even in the mode that lets tasks work inside their own folder.

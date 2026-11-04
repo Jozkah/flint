@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { findSiblingMmproj, firstGgufShard } from '@/lib/siblingMmproj'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { normalizeAppError } from '@/utils/appError'
@@ -145,6 +145,34 @@ function findTokenizerMismatch(
     return `vocab size ${draft.vocabSize} differs from the main model's vocab size ${main.vocabSize} by more than ${SPEC_VOCAB_MAX_SIZE_DIFFERENCE} tokens`
   }
   return null
+}
+
+/**
+ * Why a speculative-decoding draft file cannot be used, or null when it can.
+ * The tokenizer cross-check needs the main model's info; with none yet it is
+ * left to the re-check that runs once the model is known.
+ */
+function draftValidationFailure(
+  result: {
+    isValid: boolean
+    error?: string
+    metadata?: { metadata?: Record<string, string> }
+  },
+  mainInfo: TokenizerInfo | null,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string | null {
+  if (result.metadata?.metadata?.['general.architecture'] === 'clip') {
+    return t('sweep:llamaImport.draftClip')
+  }
+  if (!result.isValid) {
+    return result.error || t('sweep:llamaImport.draftValidationFailed')
+  }
+  if (!mainInfo) return null
+  const mismatch = findTokenizerMismatch(
+    mainInfo,
+    extractTokenizerInfo(result.metadata?.metadata)
+  )
+  return mismatch ? t('sweep:llamaImport.draftMismatch', { mismatch }) : null
 }
 
 function detectEmbeddingFromMetadata(
@@ -321,26 +349,12 @@ export const ImportLlamacppModelDialog = ({
           // compatibility (not architecture name; see findTokenizerMismatch).
           if (typeof serviceHub.models().validateGgufFile === 'function') {
             const result = await serviceHub.models().validateGgufFile(filePath)
-            const architecture =
-              result.metadata?.metadata?.['general.architecture']
-
-            if (architecture === 'clip') {
-              setDraftValidationError(t('sweep:llamaImport.draftClip'))
-            } else if (!result.isValid) {
-              setDraftValidationError(
-                result.error || t('sweep:llamaImport.draftValidationFailed')
-              )
-            } else if (modelTokenizerInfo) {
-              const mismatch = findTokenizerMismatch(
-                modelTokenizerInfo,
-                extractTokenizerInfo(result.metadata?.metadata)
-              )
-              if (mismatch) {
-                setDraftValidationError(
-                  t('sweep:llamaImport.draftMismatch', { mismatch })
-                )
-              }
-            }
+            const failure = draftValidationFailure(
+              result,
+              modelTokenizerInfo,
+              t
+            )
+            if (failure) setDraftValidationError(failure)
           }
         }
       } catch (error) {
@@ -393,6 +407,21 @@ export const ImportLlamacppModelDialog = ({
     },
     [validateGgufFile]
   )
+
+  // The draft was checked against whichever main model was known when it was
+  // chosen. When the main model's tokenizer becomes known or changes, check the
+  // draft again, so picking the draft first or swapping the model afterwards
+  // does not let an incompatible pair through. The draft picked after the model
+  // is validated by its own handler, so this runs only on a model change.
+  const draftFileRef = useRef(draftFile)
+  draftFileRef.current = draftFile
+  const validateDraftRef = useRef(validateDraftFile)
+  validateDraftRef.current = validateDraftFile
+  useEffect(() => {
+    const draft = draftFileRef.current
+    if (!modelTokenizerInfo || !draft) return
+    void validateDraftRef.current(draft)
+  }, [modelTokenizerInfo])
 
   // Use a model file chosen by path, whether picked in a dialog or found by the
   // scan. The temporary name is replaced by the one in the file's metadata.

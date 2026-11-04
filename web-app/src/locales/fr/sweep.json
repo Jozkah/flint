@@ -100,6 +100,7 @@
     "newest": "Les plus récents",
     "noMatching": "Aucun modèle correspondant",
     "noMatchingHint": "Élargissez la recherche ou retirez un des filtres.",
+    "filesFailed": "Impossible de charger les variantes de ce dépôt.",
     "noVariants": "Aucune variante GGUF téléchargeable n’a été trouvée dans ce dépôt.",
     "onThisMac": "Sur ce Mac",
     "onlyFit": "Uniquement les modèles compatibles",
@@ -131,7 +132,9 @@
     "recommendedHere": "Recommandé pour cet ordinateur",
     "shards_one": "{{count}} shard",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Importez un fichier de modèle GGUF pour l’ajouter à votre collection. Activez la prise en charge multimodale pour joindre un mmproj (entrée image ou audio), ou celle des modèles brouillons pour le décodage spéculatif. Les modèles d’embedding sont détectés automatiquement.",

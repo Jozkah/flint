@@ -96,6 +96,7 @@
     "newest": "Terbaru",
     "noMatching": "Tidak ada model yang cocok",
     "noMatchingHint": "Coba pencarian yang lebih luas atau hapus salah satu filter.",
+    "filesFailed": "Varian repositori ini tidak dapat dimuat.",
     "noVariants": "Tidak ada varian GGUF yang dapat diunduh di repositori ini.",
     "onThisMac": "Di Mac ini",
     "onlyFit": "Hanya model yang cocok",
@@ -125,7 +126,9 @@
     "searchPlaceholderShort": "Cari atau tempel URL…",
     "resultLimit": "Tampilkan",
     "recommendedHere": "Direkomendasikan untuk komputer ini",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Impor file model GGUF untuk menambahkannya ke koleksi Anda. Aktifkan dukungan multimodal untuk melampirkan mmproj bagi input gambar atau audio, atau dukungan model draf untuk speculative decoding. Model embedding terdeteksi otomatis.",

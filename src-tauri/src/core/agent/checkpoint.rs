@@ -205,10 +205,17 @@ const MANIFEST_DIR: &str = "flint-agent-checkpoints";
 /// Where older builds wrote manifests; still read so their checkpoints verify.
 const LEGACY_MANIFEST_DIR: &str = "jan-agent-checkpoints";
 
-fn manifest_in(root: &Path, sha: &str, dir: &str) -> Result<PathBuf, String> {
+/// Refuse anything that is not a bare hex object id, so an id that came over
+/// IPC can never reach the VCS as an option (`--output=...`).
+fn require_commit_id(sha: &str) -> Result<(), String> {
     if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("{sha:?} is not a commit id"));
     }
+    Ok(())
+}
+
+fn manifest_in(root: &Path, sha: &str, dir: &str) -> Result<PathBuf, String> {
+    require_commit_id(sha)?;
     Ok(git::common_git_dir(root)?.join(dir).join(format!("{sha}.json")))
 }
 
@@ -263,9 +270,21 @@ fn same_path(a: &str, b: &str) -> bool {
     }
 }
 
+/// Refuse an id that is not a git object name: 4 to 64 hex digits. Ids come
+/// from the renderer over IPC and are handed to git as arguments, where a
+/// value like `--output=<file>` would be read as an option.
+fn require_object_id(what: &str, id: &str) -> Result<(), String> {
+    if (4..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err(format!("the {what} is not a commit id, so nothing was used or changed"))
+    }
+}
+
 /// Check that `checkpoint` is the snapshot it claims to be (see the module
 /// docs). Read-only. The error says what failed and that nothing was touched.
 pub fn verify(checkpoint: &Checkpoint) -> Result<Integrity, String> {
+    require_object_id("checkpoint id", &checkpoint.sha)?;
     let refuse = |why: String| {
         format!(
             "checkpoint {} was not used: {why}. The snapshot is corrupt or its record was \
@@ -275,6 +294,7 @@ pub fn verify(checkpoint: &Checkpoint) -> Result<Integrity, String> {
     };
     let root = PathBuf::from(&checkpoint.root);
     let sha = checkpoint.sha.as_str();
+    require_commit_id(sha).map_err(refuse)?;
     match git::object_kind(&root, sha) {
         Ok(kind) if kind == "commit" => {}
         Ok(kind) => return Err(refuse(format!("it names a {kind}, not a snapshot commit"))),
@@ -404,7 +424,9 @@ pub enum RewindPlan {
 /// A restore plan names what it would touch, so a confirmation can show the
 /// scope instead of asking someone to agree to an unnamed overwrite.
 pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String> {
+    require_object_id("latest checkpoint id", latest)?;
     verify(checkpoint)?;
+    require_commit_id(latest)?;
     if checkpoint.destination.may_hard_restore() {
         let root = PathBuf::from(&checkpoint.root);
         let files = git::changed_since(&root, &checkpoint.sha)?;
@@ -485,9 +507,17 @@ pub fn restore(checkpoint: &Checkpoint, latest: &str, guard: &RestoreGuard) -> R
                 .to_string(),
         );
     }
+    require_object_id("latest checkpoint id", latest)?;
+    if let Some(safety) = guard.safety.as_deref() {
+        require_object_id("safety checkpoint id", safety)?;
+    }
     // Before anything is compared or written: a checkpoint that is not the
     // snapshot it claims to be is never restored from.
     verify(checkpoint)?;
+    require_commit_id(latest)?;
+    if let Some(safety) = guard.safety.as_deref() {
+        require_commit_id(safety)?;
+    }
     let root = PathBuf::from(&checkpoint.root);
     require_top_level(&root)?;
 
@@ -815,6 +845,26 @@ mod tests {
                 false
             }
         }
+    }
+
+    /// CAGA-024: ids that are not hex never reach git as arguments.
+    #[test]
+    fn option_like_ids_are_refused_before_git_runs() {
+        let (_dir, root) = repo();
+        let bad = |sha: &str| Checkpoint {
+            sha: sha.to_string(),
+            label: "x".to_string(),
+            destination: Destination::Managed,
+            root: root.to_string_lossy().to_string(),
+        };
+        for id in ["--output=evil", "--batch", "", "abc", "zzzzzzzz", &"a".repeat(65)] {
+            let e = verify(&bad(id)).unwrap_err();
+            assert!(e.contains("not a commit id"), "{id}: {e}");
+        }
+        let ok = bad(&"a".repeat(40));
+        assert!(plan(&ok, "--output=evil").unwrap_err().contains("not a commit id"));
+        let guard = RestoreGuard { safety: Some("--x".into()), allow_overwrite: vec![] };
+        assert!(restore(&ok, &"a".repeat(40), &guard).unwrap_err().contains("not a commit id"));
     }
 
     #[test]

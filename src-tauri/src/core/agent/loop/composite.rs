@@ -2914,6 +2914,80 @@ impl CompositeToolInvoker {
         Ok(out)
     }
 
+    /// The gate's answer for an `apply_patch` call: `tool_level` (deny and ask
+    /// rules on the tool itself) combined with the answer for every path the
+    /// patch touches, asked as the `write` or `edit` the file change amounts
+    /// to, so every rule, the write roots, the secret-file, hidden-state and
+    /// git-internals floors and the read-first rule apply exactly as they
+    /// would to the separate calls. The strictest answer wins and any refusal
+    /// is the refusal of the whole patch: nothing is applied.
+    fn patch_decision(
+        &self,
+        args: &serde_json::Value,
+        snapshot: &tauri_plugin_agent_tools::tools::gate::SessionGrants,
+        tool_level: tauri_plugin_agent_tools::tools::gate::Decision,
+    ) -> Result<tauri_plugin_agent_tools::tools::gate::Decision, String> {
+        use tauri_plugin_agent_tools::tools::{
+            gate::{resolve_decision, Decision, PromptKind},
+            lookup,
+            patch_format::{self, Touch},
+        };
+        let text = args.get("patch").and_then(|v| v.as_str()).unwrap_or_default();
+        let hunks = patch_format::parse(text)
+            .map_err(|e| format!("ERROR: bad patch: {e}. Nothing was changed."))?;
+        let network = NetworkPolicy {
+            allowed: self.allow_network,
+            allow_domains: self.allow_domains.clone(),
+            deny_domains: self.deny_domains.clone(),
+        };
+        // Strictest first; a refusal ends it.
+        let rank = |d: &Decision| match d {
+            Decision::Allow => 0,
+            Decision::Prompt(PromptKind::Write) => 1,
+            Decision::Prompt(PromptKind::Exec) => 2,
+            Decision::Prompt(PromptKind::Ask) => 3,
+            Decision::Prompt(PromptKind::WriteEscape | PromptKind::ReadEscape) => 4,
+            Decision::Prompt(PromptKind::Secret) => 5,
+            Decision::HardDeny(_) => 6,
+        };
+        let mut strictest = tool_level;
+        if let Decision::HardDeny(reason) = strictest {
+            return Err(hard_deny_msg("apply_patch", reason, &self.project_root));
+        }
+        for (path, touch) in patch_format::touched(&hunks) {
+            let (tool_name, label) = match touch {
+                Touch::Update | Touch::MoveFrom => ("edit", "change"),
+                Touch::Add | Touch::MoveTo | Touch::Delete => ("write", "write"),
+            };
+            let path_tool = lookup(tool_name)
+                .ok_or_else(|| format!("ERROR: apply_patch cannot judge {path}: no `{tool_name}` tool."))?;
+            let one = serde_json::json!({ "path": path });
+            let decision = resolve_decision(
+                path_tool,
+                &one,
+                &self.project_root,
+                Some(self.scratch_root.as_path()),
+                &[],
+                &self.permissions,
+                snapshot,
+                self.sandbox,
+                &network,
+                &self.subject,
+            );
+            if let Decision::HardDeny(reason) = decision {
+                return Err(format!(
+                    "ERROR: apply_patch refused: it would {label} {path}. {} Nothing was changed; fix or drop that file and send the patch again.",
+                    hard_deny_msg(tool_name, reason, &self.project_root)
+                        .trim_start_matches("ERROR: ")
+                ));
+            }
+            if rank(&decision) > rank(&strictest) {
+                strictest = decision;
+            }
+        }
+        Ok(strictest)
+    }
+
     /// Every check a built-in call passes before it runs or is put to the
     /// person, in its fixed order: Plan mode, the gate (`resolve_decision`),
     /// the autonomous classifier, the destructive-command check, the judge,
@@ -2967,6 +3041,17 @@ impl CompositeToolInvoker {
             // its parent something and withhold it from the child.
             &self.subject,
         );
+        // A patch names its files inside its text, so the decision above only
+        // knows the tool. Every file it touches is judged too, and one refusal
+        // refuses the whole patch.
+        let decision = if name == "apply_patch" {
+            match self.patch_decision(args, &snapshot, decision) {
+                Ok(d) => d,
+                Err(refused) => return Gated::Refused(refused),
+            }
+        } else {
+            decision
+        };
         // Autonomous-mode safety classifier (findings F1), consulted only
         // for the write/exec calls auto-approval would otherwise wave
         // through, and only when a project opted in with `[auto_mode]`. It
@@ -3036,7 +3121,12 @@ impl CompositeToolInvoker {
         // after every deny, `[[tool_rules]]` and the judge, and only turns an
         // ordinary prompt into an allow: asked-every-time calls and
         // destructive commands are out of its reach.
-        let decision = if matches!(decision, Decision::Prompt(_)) && destructive.is_none() {
+        let decision = if matches!(decision, Decision::Prompt(_))
+            && destructive.is_none()
+            // A saved rule covers a folder or a command prefix, not a patch
+            // whose files are only in its text.
+            && name != "apply_patch"
+        {
             match self.record_to.as_deref() {
                 Some(data) => tauri_plugin_agent_tools::scoped_rules::upgrade(
                     decision,
@@ -3055,7 +3145,7 @@ impl CompositeToolInvoker {
         // can answer for this one write. Applied after saved rules and
         // session grants so neither can answer it, and never for a call
         // the gate already refused.
-        let secret_findings = if matches!(tool.name, "write" | "edit")
+        let secret_findings = if matches!(tool.name, "write" | "edit" | "apply_patch")
             && !matches!(decision, Decision::HardDeny(_))
         {
             secret_findings(tool, args, &self.tool_context()).await

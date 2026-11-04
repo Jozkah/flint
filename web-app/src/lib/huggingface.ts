@@ -45,18 +45,50 @@ type NativeResponse = {
   body: string
 }
 
+/**
+ * Settles with `promise`, or rejects with an AbortError as soon as `signal`
+ * aborts. The native request cannot be cancelled, so it runs to its end, but
+ * a superseded caller stops waiting on it.
+ */
+export function raceAbort<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (!signal) return promise
+  const abortError = () => new DOMException('Aborted', 'AbortError')
+  if (signal.aborted) {
+    promise.catch(() => {})
+    return Promise.reject(abortError())
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (err) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(err)
+      }
+    )
+  })
+}
+
 async function call<T>(
   action: 'search' | 'files' | 'readme' | 'gguf-header' | 'download' | 'cancel',
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<T> {
-  const response = await invoke<NativeResponse>('provider_http_request', {
+  const response = await raceAbort(invoke<NativeResponse>('provider_http_request', {
     request: {
       url: `flint://huggingface/${action}`,
       method: 'POST',
       headers: {},
       body: JSON.stringify(payload),
     },
-  })
+  }), signal)
   if (response.status < 200 || response.status >= 300) {
     throw new Error(response.statusText || `Hugging Face request failed (${response.status})`)
   }
@@ -67,9 +99,10 @@ export async function searchHuggingFaceModels(
   query: string,
   token?: string,
   format: HuggingFaceFormat = 'gguf',
-  limit?: number
+  limit?: number,
+  signal?: AbortSignal
 ): Promise<HuggingFaceModel[]> {
-  return call<HuggingFaceModel[]>('search', { query, token, format, limit })
+  return call<HuggingFaceModel[]>('search', { query, token, format, limit }, signal)
 }
 
 /**
@@ -81,17 +114,18 @@ export async function searchHuggingFaceModelsByWords(
   query: string,
   token?: string,
   format: HuggingFaceFormat = 'gguf',
-  limit?: number
+  limit?: number,
+  signal?: AbortSignal
 ): Promise<HuggingFaceModel[]> {
   const [typed, ...variants] = searchVariants(query)
-  const first = searchHuggingFaceModels(typed, token, format, limit)
+  const first = searchHuggingFaceModels(typed, token, format, limit, signal)
   // `first` is awaited only after the variants settle; without this a fast
   // rejection is reported as unhandled in the meantime. The error still
   // surfaces at `await first`.
   first.catch(() => {})
   const rest = await Promise.allSettled(
     variants.map((variant) =>
-      searchHuggingFaceModels(variant, token, format, limit)
+      searchHuggingFaceModels(variant, token, format, limit, signal)
     )
   )
   return mergeById([
@@ -102,9 +136,10 @@ export async function searchHuggingFaceModelsByWords(
 
 export async function getHuggingFaceFiles(
   repo: string,
-  token?: string
+  token?: string,
+  signal?: AbortSignal
 ): Promise<HuggingFaceFile[]> {
-  return call<HuggingFaceFile[]>('files', { repo, token })
+  return call<HuggingFaceFile[]>('files', { repo, token }, signal)
 }
 
 export async function getHuggingFaceReadme(

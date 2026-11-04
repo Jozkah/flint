@@ -98,6 +98,7 @@
     "newest": "Neueste",
     "noMatching": "Keine passenden Modelle",
     "noMatchingHint": "Versuche eine breitere Suche oder entferne einen der Filter.",
+    "filesFailed": "Die Varianten dieses Repositorys konnten nicht geladen werden.",
     "noVariants": "In diesem Repository wurden keine herunterladbaren GGUF-Varianten gefunden.",
     "onThisMac": "Auf diesem Mac",
     "onlyFit": "Nur passende Modelle",
@@ -128,7 +129,9 @@
     "resultLimit": "Anzeigen",
     "recommendedHere": "Für diesen Computer empfohlen",
     "shards_one": "{{count}} shard",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Importiere eine GGUF-Modelldatei, um sie deiner Sammlung hinzuzufügen. Aktiviere die multimodale Unterstützung, um ein mmproj für Bild- oder Audioeingaben anzuhängen, oder die Unterstützung für Entwurfsmodelle für spekulatives Decoding. Embedding-Modelle werden automatisch erkannt.",

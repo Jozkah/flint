@@ -37,7 +37,6 @@ import {
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import {
-  getProxyConfig,
   buildEmbedBatches,
   mergeEmbedResponses,
   detectEmbeddingFromGgufMeta,
@@ -104,7 +103,6 @@ import {
   reloadEngineModels,
   engineDevices,
   engineAddonRestartPending,
-  generateApiKey as pluginGenerateApiKey,
   findSessionByModel as pluginFindSessionByModel,
   ensureSessionReady as pluginEnsureSessionReady,
   getLoadedModels as pluginGetLoadedModels,
@@ -511,8 +509,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   private config: LlamacppConfig
   private providerPath!: string
-  private apiSecret: string = 'JustAskNow'
-  private pendingDownloads: Map<string, Promise<void>> = new Map()
   /** Keyed by modelId; two imports of one model would cancel each other. */
   private pendingImports: Map<string, Promise<void>> = new Map()
   /**
@@ -537,7 +533,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private presetPath?: string
   private engineStartLock: Promise<void> | null = null
   private userModelsMax: number = 1
-  private engineEmbeddingBonus: number = 0
   private loadedChatOrder: string[] = []
   // Models whose `auto` KV cache defaults failed to load and now run f16. Kept
   // for the session so the next load does not fail the same way; cleared when
@@ -1124,7 +1119,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
     this.userModelsMax = modelsMax
     const bonus = modelsMax > 0 && embeddingCount > 0 ? 1 : 0
-    this.engineEmbeddingBonus = bonus
     return modelsMax + bonus
   }
 
@@ -1647,11 +1641,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         logger.warn('Preset refresh after settings update failed:', e)
       )
     }, 600)
-  }
-
-  private async generateApiKey(modelId: string, port: string): Promise<string> {
-    const hash = await pluginGenerateApiKey(modelId + port, this.apiSecret)
-    return hash
   }
 
   override async get(modelId: string): Promise<modelInfo | undefined> {
@@ -2549,10 +2538,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   override async pauseImport(_modelId: string): Promise<void> {
     // Nothing is ever in flight: models are read from disk, not fetched.
-  }
-
-  private async getRandomPort(): Promise<number> {
-    return 49152 + Math.floor(Math.random() * (65535 - 49152))
   }
 
   private parseEnvFromString(

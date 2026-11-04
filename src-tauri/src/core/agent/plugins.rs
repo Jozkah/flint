@@ -1425,9 +1425,19 @@ fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Result<String, RunE
     let mut child = cmd.spawn().map_err(RunError::Spawn)?;
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
+            // Keep the first MAX_CAPTURED bytes and discard the rest, still
+            // draining so the child never blocks on a full pipe (P2A-012).
+            const MAX_CAPTURED: usize = 1024 * 1024;
             let mut buf = Vec::new();
             if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_end(&mut buf);
+                let mut chunk = [0u8; 8192];
+                while let Ok(n) = pipe.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    let room = MAX_CAPTURED.saturating_sub(buf.len()).min(n);
+                    buf.extend_from_slice(&chunk[..room]);
+                }
             }
             buf
         })
@@ -1680,6 +1690,9 @@ fn install_git_pinned(
     // tree URL's subdirectory makes the installer move a real directory from
     // outside the clone into the plugin store. The local-folder install
     // already skips links for the same reason.
+    // A server that drips under ~1 KB/s for a minute is abandoned instead of
+    // growing the staging folder until the user notices (P2A-012).
+    cmd.args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60"]);
     cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
     if let Some(r#ref) = r#ref {
         cmd.args(["--branch", r#ref]);

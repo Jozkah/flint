@@ -2874,7 +2874,9 @@
     "pagesAsImages": "Sayfaları görsel olarak gönder",
     "pagesAsImagesHint": "Modelin taramaları, grafikleri ve düzeni görebilmesi için bu PDF'nin sayfalarını görsel olarak gönderin",
     "pdfPagesCut": "{{name}} dosyasının {{total}} sayfasından ilk {{sent}} tanesi görsel olarak gönderildi",
-    "pdfScannedAsImages": "{{name}} metin içermiyor, bu yüzden sayfaları görsel olarak gönderildi"
+    "pdfScannedAsImages": "{{name}} metin içermiyor, bu yüzden sayfaları görsel olarak gönderildi",
+    "ingestImageFailed": "Görsel eki işlenemedi",
+    "ingestFailed": "Ekler dizinlenemedi"
   },
   "fileViewer": {
     "openFull": "Tam önizlemeyi aç",
@@ -3415,5 +3417,11 @@
     "discard": "Taslağı at",
     "resurvey": "Yeniden incele",
     "accept": "Kabul et ve FLINT.md yaz"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

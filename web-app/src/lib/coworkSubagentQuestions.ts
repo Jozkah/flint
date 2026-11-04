@@ -26,6 +26,8 @@ export const MAX_QUESTIONS_PER_CHILD = 3
 /** Questions from one session's children waiting at once. */
 export const MAX_OPEN_PER_SESSION = 6
 export const DEFAULT_QUESTION_WAIT_MS = 120_000
+/** Settled questions kept per session; older ones are dropped as new ones arrive. */
+export const MAX_SETTLED_PER_SESSION = 50
 
 export type QuestionStatus = 'open' | 'answered' | 'expired' | 'cancelled'
 
@@ -68,6 +70,23 @@ export const useSubagentQuestions = create<State>(() => ({
 
 let counter = 0
 const nextId = () => `q${Date.now().toString(36)}${(counter++).toString(36)}`
+
+/**
+ * Drop a session's oldest settled questions beyond `MAX_SETTLED_PER_SESSION`.
+ * Open ones always stay; the cap leaves room for every child's own limit.
+ */
+export function pruneSettled(
+  questions: SubagentQuestion[],
+  sessionId: string
+): SubagentQuestion[] {
+  const settled = questions.filter(
+    (q) => q.sessionId === sessionId && q.status !== 'open'
+  )
+  const excess = settled.length - MAX_SETTLED_PER_SESSION
+  if (excess <= 0) return questions
+  const drop = new Set(settled.slice(0, excess).map((q) => q.id))
+  return questions.filter((q) => !drop.has(q.id))
+}
 
 const patch = (id: string, over: Partial<SubagentQuestion>) =>
   useSubagentQuestions.setState((s) => ({
@@ -156,7 +175,7 @@ export function askParent(opts: {
     }
     const onAbort = () => finish(null, 'cancelled')
     useSubagentQuestions.setState((s) => ({
-      questions: [...s.questions, entry],
+      questions: pruneSettled([...s.questions, entry], opts.sessionId),
       waiters: { ...s.waiters, [id]: (a) => finish(a, a === null ? 'cancelled' : undefined) },
     }))
     if (opts.signal.aborted) return onAbort()

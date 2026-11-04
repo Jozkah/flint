@@ -50,10 +50,9 @@ import { Icon } from '@/components/ui/icon'
 import { McpServerCard, type McpServerHandlers } from '@/containers/McpServerCard'
 import { McpServerRow } from '@/containers/McpServerRow'
 import { McpRuntimeSettings } from '@/containers/McpRuntimeSettings'
+import { useViewPrefs, type ServersView } from '@/hooks/useViewPrefs'
 
 type ToolsTab = 'servers' | 'routing'
-type ServersView = 'cards' | 'list'
-const SERVERS_VIEW_KEY = 'flint-mcp-servers-view'
 
 export const Route = createFileRoute(route.settings.mcp_servers)({
   component: MCPServersDesktop,
@@ -124,22 +123,8 @@ function MCPServersDesktop() {
   ]
   const [tab, setTab] = useSettingsTab(tabs)
   const [statusFilter, setStatusFilter] = useState<'all' | 'on' | 'off'>('all')
-  const [view, setViewState] = useState<ServersView | null>(() => {
-    try {
-      const v = localStorage.getItem(SERVERS_VIEW_KEY)
-      return v === 'cards' || v === 'list' ? v : null
-    } catch {
-      return null
-    }
-  })
-  const setView = (v: ServersView) => {
-    setViewState(v)
-    try {
-      localStorage.setItem(SERVERS_VIEW_KEY, v)
-    } catch {
-      /* the choice just does not persist */
-    }
-  }
+  const view = useViewPrefs((state) => state.mcpServersView)
+  const setView = useViewPrefs((state) => state.setMcpServersView)
   const toolCalls = useEngineActivity((s) => s.toolCalls)
   // Servers the user has expanded; collapsed (compact) is the default so the
   // page stays scannable with many servers installed.

@@ -1,4 +1,5 @@
 {
+  "readFailed": "Tidak dapat membaca log: {{message}}",
   "noLogs": "Tidak ada log yang tersedia",
   "noMatch": "Tidak ada baris yang cocok dengan filter",
   "title": "Log",

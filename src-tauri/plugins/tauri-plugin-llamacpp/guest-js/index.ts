@@ -102,8 +102,7 @@ export async function getLoadedModels(): Promise<string[]> {
  * Starts the supervised in-process engine worker. Replaces `startRouter`: no
  * downloaded backend binary, and the port is OS-assigned then reported back
  * rather than guessed.
- */
-/**
+ *
  * `slotCacheMib` caps the directory holding each thread's KV cache, which lets
  * a conversation resume without re-reading its prompt. 0 turns that off; a
  * single saved conversation runs to hundreds of MiB, so it is a budget rather
@@ -159,13 +158,6 @@ export async function engineDevices(
 }
 
 /**
- * Applies a regenerated preset to the running worker without restarting it.
- *
- * `modelsMax` is optional; omitting it keeps the worker's current value. Unlike
- * the router, the worker can be resized, so the embedding slot bonus changing
- * no longer forces a cold restart.
- */
-/**
  * Kills the worker without waiting for it to unwind. Backs the force-quit the
  * busy-on-exit dialog offers; use `stopEngine` everywhere else.
  */
@@ -202,6 +194,13 @@ export async function eraseThreadSlotState(args: {
   })
 }
 
+/**
+ * Applies a regenerated preset to the running worker without restarting it.
+ *
+ * `modelsMax` is optional; omitting it keeps the worker's current value. Unlike
+ * the router, the worker can be resized, so the embedding slot bonus changing
+ * no longer forces a cold restart.
+ */
 export async function reloadEngineModels(
   presetPath: string,
   modelsMax?: number,

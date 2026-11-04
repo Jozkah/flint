@@ -188,13 +188,39 @@ fn snapshot_root() -> PathBuf {
 /// refers to objects that no longer exist, and every later snapshot for that
 /// thread failed with `fatal: <sha> is not a valid object` and stayed failing.
 fn snapshot_index_dir(thread_id: &str) -> PathBuf {
-    // The id reaches the filesystem, so keep it to something that can be a
-    // directory name on every platform.
-    let safe: String = thread_id
+    snapshot_root().join(thread_key(thread_id))
+}
+
+/// The thread id as one name that is safe as a directory and as a ref
+/// component on every platform, and different for every different id.
+///
+/// An id made only of `[A-Za-z0-9_-]` is used as it is, so existing refs and
+/// indexes keep their names. Any other id (`a/b`, spaces, `..`, a trailing
+/// `.lock`) gets its characters flattened for readability plus a digest of the
+/// raw id, so `a/b` and `a_b` no longer share an index directory and an id git
+/// would refuse as a ref name is normalised instead of failing `update-ref`.
+fn thread_key(thread_id: &str) -> String {
+    let plain = !thread_id.is_empty()
+        && thread_id.len() <= 100
+        && thread_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if plain {
+        return thread_id.to_string();
+    }
+    let flat: String = thread_id
         .chars()
+        .take(40)
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
-    snapshot_root().join(safe)
+    format!("{flat}-x{}", fnv1a(thread_id.as_bytes()))
+}
+
+fn fnv1a(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{hash:016x}")
 }
 
 /// A stable digest of the repository path, so the same repository maps to the
@@ -202,12 +228,14 @@ fn snapshot_index_dir(thread_id: &str) -> PathBuf {
 /// guaranteed stable between runs, which is exactly what this needs to be.
 fn repo_key(repo: &Path) -> String {
     let canonical = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in canonical.to_string_lossy().to_lowercase().as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100_0000_01b3);
+    let text = canonical.to_string_lossy();
+    // Case folds to one repository only where the filesystem is
+    // case-insensitive; `/work/Repo` and `/work/repo` differ elsewhere.
+    if cfg!(any(windows, target_os = "macos")) {
+        fnv1a(text.to_lowercase().as_bytes())
+    } else {
+        fnv1a(text.as_bytes())
     }
-    format!("{hash:016x}")
 }
 
 fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
@@ -217,12 +245,12 @@ fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
 /// per thread; each snapshot parents the previous, so the whole chain is live.
 pub(crate) fn snapshot_ref(thread_id: &str) -> String {
-    format!("refs/flint/agent/snapshots/{thread_id}")
+    format!("refs/flint/agent/snapshots/{}", thread_key(thread_id))
 }
 
 /// The name older builds used; dropped alongside the current one.
 fn legacy_snapshot_ref(thread_id: &str) -> String {
-    format!("refs/jan/agent/snapshots/{thread_id}")
+    format!("refs/jan/agent/snapshots/{}", thread_key(thread_id))
 }
 
 /// The repository top-level for `path`, or `None` when `path` is not inside a
@@ -785,7 +813,14 @@ pub(crate) fn restore_worktree(
 /// intent — that nothing keeps this chain alive — is already satisfied.
 pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
     // `update-ref -d` on a missing ref is not a failure worth surfacing.
-    for name in [snapshot_ref(thread_id), legacy_snapshot_ref(thread_id)] {
+    // The raw-id names are what builds before `thread_key` wrote for an id with
+    // characters outside `[A-Za-z0-9_-]`; dropped too so no old chain lingers.
+    for name in [
+        snapshot_ref(thread_id),
+        legacy_snapshot_ref(thread_id),
+        format!("refs/flint/agent/snapshots/{thread_id}"),
+        format!("refs/jan/agent/snapshots/{thread_id}"),
+    ] {
         let _ = run(repo, None, &["update-ref", "-d", &name]);
     }
     Ok(())
@@ -1914,6 +1949,21 @@ mod tests {
 
     /// Init a throwaway repo with one commit, or `None` if git is unavailable so
     /// the suite skips instead of failing on a box without git.
+    /// CAGB-007: ids that flatten to the same text keep separate indexes, and
+    /// an id git would refuse as a ref name still gets a usable one.
+    #[test]
+    fn thread_keys_do_not_collide_and_are_ref_safe() {
+        assert_eq!(thread_key("plain-id_1"), "plain-id_1", "safe ids keep their names");
+        assert_ne!(thread_key("a/b"), thread_key("a_b"));
+        assert_ne!(snapshot_index_dir("a/b"), snapshot_index_dir("a_b"));
+        for odd in ["a b", "x..y", "t~1", "name.lock", "", "a/b/"] {
+            let key = thread_key(odd);
+            assert!(!key.is_empty());
+            assert!(key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'), "{odd} -> {key}");
+        }
+        assert!(!snapshot_ref("name.lock").ends_with(".lock"));
+    }
+
     fn init_repo() -> Option<PathBuf> {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let root = std::env::temp_dir().join(format!("jan_snap_test_{}_{n}", std::process::id()));

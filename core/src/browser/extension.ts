@@ -102,9 +102,7 @@ export abstract class BaseExtension implements ExtensionType {
    * @param models
    */
   async registerModels(models: Model[]): Promise<void> {
-    for (const model of models) {
-      ModelManager.instance().register(model)
-    }
+    ModelManager.instance().registerMany(models)
   }
 
   /**

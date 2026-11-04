@@ -96,6 +96,7 @@
     "newest": "最新",
     "noMatching": "没有匹配的模型",
     "noMatchingHint": "请尝试更宽泛的搜索，或移除某个筛选条件。",
+    "filesFailed": "无法加载此仓库的变体。",
     "noVariants": "此仓库中未找到可下载的 GGUF 变体。",
     "onThisMac": "适用于此 Mac",
     "onlyFit": "仅显示适合的模型",
@@ -125,7 +126,9 @@
     "searchPlaceholderShort": "搜索或粘贴 URL…",
     "resultLimit": "显示",
     "recommendedHere": "推荐用于这台计算机",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "导入 GGUF 模型文件，将其添加到你的收藏。启用多模态支持可附加 mmproj 以输入图像或音频；启用草稿模型支持可用于推测解码。嵌入模型会被自动识别。",

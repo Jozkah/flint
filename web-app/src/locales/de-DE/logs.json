@@ -1,4 +1,5 @@
 {
+  "readFailed": "Das Log konnte nicht gelesen werden: {{message}}",
   "noLogs": "Keine Logs verfügbar",
   "noMatch": "Keine Zeilen entsprechen dem Filter",
   "title": "Protokolle",

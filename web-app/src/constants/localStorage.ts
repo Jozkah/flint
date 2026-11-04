@@ -40,6 +40,7 @@ export const localStorageKey = {
   coworkDisplay: 'cowork-display',
   sessionMessaging: 'session-messaging',
   campaignSettings: 'campaign-settings',
+  viewPrefs: 'view-prefs',
   defaultEmbeddingModel: 'default-embedding-model',
   modelOverrides: 'model-overrides',
   webSearchChoice: 'web-search-choice',
