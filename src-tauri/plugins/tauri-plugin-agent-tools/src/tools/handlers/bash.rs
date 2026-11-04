@@ -145,6 +145,9 @@ pub(super) fn bash_timeout(args: &serde_json::Value) -> (bool, u64) {
 }
 
 pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    if arg_str(args, "session").is_some_and(|s| !s.trim().is_empty()) {
+        return bash_session(args, ctx).await;
+    }
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
     else {
         return bash_job_action(args, ctx).await;

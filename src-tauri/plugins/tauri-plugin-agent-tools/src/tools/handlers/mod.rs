@@ -50,6 +50,8 @@ pub use files::with_read_success;
 mod bash;
 #[allow(unused_imports)]
 use bash::*;
+mod bash_session;
+use bash_session::*;
 pub use bash::direct_edit_shell_start;
 pub use bash::working_folder;
 pub use bash::rebase_relative_paths;
@@ -1127,6 +1129,8 @@ mod find_cap_tests;
 mod bash_job_registry_tests;
 #[cfg(test)]
 mod bash_job_stdin_tests;
+#[cfg(test)]
+mod bash_session_tests;
 
 #[cfg(test)]
 mod bash_split_tests;
