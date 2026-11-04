@@ -474,8 +474,14 @@ pub async fn start_mcp_server<R: Runtime>(
     };
     if superseded {
         log::info!("MCP server {name} was replaced while starting; discarding this attempt");
-        if let Some(service) = servers_state.lock().await.remove(&name) {
+        let discarded = servers_state.lock().await.remove(&name);
+        if let Some(service) = discarded {
             let _ = service.cancel().await;
+            // F3a-013: cancelling closes the transport but not a server that
+            // ignores it, nor a sandbox helper's grandchildren; take the
+            // tree down by pid as the health-check path does.
+            let pid = app_state.mcp_server_pids.lock().await.remove(&name);
+            finish_stopped_instance(Some(&config), pid).await;
         }
         return Ok(());
     }
