@@ -49,7 +49,6 @@ function makeApi(initial: RemoteStatus): RemoteApi & { calls: RemoteConfig[] } {
     }),
     startPairing: vi.fn(async () => ({
       code: 'abc',
-      confirmNumber: '482913',
       expiresInMs: 300_000,
       url: 'http://100.101.1.2:1340/m/#pair=abc',
     })),
@@ -166,11 +165,10 @@ describe('RemoteAccessSettings', () => {
 })
 
 describe('PairPhoneDialog', () => {
-  it('shows a QR code, the number and a countdown', async () => {
+  it('shows a QR code and a countdown', async () => {
     const api = makeApi(status())
     render(<PairPhoneDialog api={api} onClose={() => {}} />)
     expect(await screen.findByTestId('remote-qr')).toBeInTheDocument()
-    expect(screen.getByTestId('remote-pair-number')).toHaveTextContent('482 913')
     expect(screen.getByTestId('remote-pair-expiry')).toHaveTextContent('5:00')
   })
 

@@ -150,11 +150,12 @@ fn device_names_are_cleaned() {
 // -- pairing ------------------------------------------------------------------
 
 #[test]
-fn confirmation_number_is_six_digits_and_derived() {
-    let n = confirmation_number("abc");
+fn confirmation_number_is_six_digits_and_not_derived_from_the_code() {
+    let n = confirmation_number();
     assert_eq!(n.len(), 6);
     assert!(n.chars().all(|c| c.is_ascii_digit()));
-    assert_eq!(n, confirmation_number("abc"));
+    // Random: 20 draws all equal would be a 1-in-10^114 event.
+    assert!((0..20).any(|_| confirmation_number() != n));
 }
 
 #[test]
@@ -204,7 +205,7 @@ fn nothing_is_issued_until_the_desktop_confirms() {
     let t0 = Instant::now();
     let start = book.start(t0);
     let claim = book.claim(&start.code, "Pixel", t0).unwrap();
-    assert_eq!(claim.confirm_number, start.confirm_number);
+    assert_eq!(claim.confirm_number.len(), 6);
     assert_eq!(book.poll(&claim.poll_id, t0), PollResult::Pending);
     // A wrong poll id learns nothing.
     assert_eq!(book.poll("other", t0), PollResult::Expired);
@@ -779,7 +780,7 @@ async fn http_pairing_flow() {
         .json()
         .await
         .unwrap();
-    assert_eq!(r["confirmNumber"], start.confirm_number);
+    assert_eq!(r["confirmNumber"].as_str().unwrap().len(), 6);
     let poll = r["pollId"].as_str().unwrap().to_string();
     let status = |poll: String| {
         let c = c.clone();

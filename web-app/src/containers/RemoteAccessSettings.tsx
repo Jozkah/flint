@@ -460,13 +460,6 @@ export function PairPhoneDialog({
               </div>
             )}
             <div className="flex flex-col items-center">
-              <span className="text-xs text-muted-foreground">{t('remote:pairCode')}</span>
-              <span
-                data-testid="remote-pair-number"
-                className="font-mono text-2xl tracking-[0.2em] tabular-nums"
-              >
-                {pairing.confirmNumber.slice(0, 3)} {pairing.confirmNumber.slice(3)}
-              </span>
               {!expired && (
                 <span className="text-xs text-muted-foreground" data-testid="remote-pair-expiry">
                   {t('remote:pairExpires', { time: countdown(deadline, now) })}
