@@ -165,6 +165,7 @@ export function CoworkTasksPanel({
     // Nothing to reveal — the workflow is gone, or was cleared between the
     // click and this render. Say so, or the request would never be released.
     onFocusHandled?.()
+    return undefined
   }, [focusTaskId, focusWorkflowId, workflowOfFocus, onFocusHandled])
 
   // Which stop requests are in flight. A second click while one is running

@@ -111,10 +111,15 @@ export function PromptPanel({
 
   const start = async () => {
     const text = form.prompt.trim()
-    if (!text) return toast.error(t('studio:prompt.writeFirst'))
+    if (!text) {
+      toast.error(t('studio:prompt.writeFirst'))
+      return
+    }
     if (hosted) {
-      if (!providerSettings)
-        return toast.error(t('studio:prompt.notSetUp', { provider: hosted.provider.label }))
+      if (!providerSettings) {
+        toast.error(t('studio:prompt.notSetUp', { provider: hosted.provider.label }))
+        return
+      }
       const abort = new AbortController()
       const ok = await generate(
         kind,

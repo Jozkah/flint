@@ -414,6 +414,7 @@ export function useProviderDetail() {
 
       return () => clearTimeout(timeoutId)
     }
+    return undefined
   }, [importingModel])
 
   useEffect(() => {

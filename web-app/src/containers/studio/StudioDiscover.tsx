@@ -168,7 +168,10 @@ export function StudioDiscover({
       return
     }
     const chosen = family[model.id]
-    if (!chosen) return toast.error(t('studio:discover.pickKindFirst'))
+    if (!chosen) {
+      toast.error(t('studio:discover.pickKindFirst'))
+      return
+    }
     setAdding(`${model.id}/${file.name}`)
     try {
       const added = await studioApi.addCustomModel({

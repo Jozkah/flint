@@ -287,6 +287,7 @@ const DIFF_FAMILY = ['diff', 'diff-tree', 'diff-index', 'diff-files', 'range-dif
 const readOnly: GitSubHandler = ({ sub, rest, plan }) => {
   plan.class = 'read'
   if (DIFF_FAMILY.includes(sub)) return diffPathError(rest)
+  return undefined
 }
 
 const messageFileChecked: GitSubHandler = ({ sub, rest }) =>
@@ -426,6 +427,7 @@ const REFS: Record<string, GitSubHandler> = {
     }
     if (hasOpt(rest, ['-f', '--force']))
       plan.destructive = 'moves an existing tag'
+    return undefined
   },
   stash: ({ first, plan }) => {
     if (first === 'list' || first === 'show') plan.class = 'read'
@@ -473,6 +475,7 @@ const SETUP: Record<string, GitSubHandler> = {
     if (!reading)
       return 'changing Git configuration is not allowed through this tool'
     plan.class = 'read'
+    return undefined
   },
   worktree: ({ rest, first, plan }) => {
     if (first === 'list') plan.class = 'read'
@@ -491,6 +494,7 @@ const SETUP: Record<string, GitSubHandler> = {
     ) {
       return '`git worktree` supports list, add, remove, move, prune, lock, unlock, repair'
     }
+    return undefined
   },
 }
 
@@ -501,6 +505,7 @@ const WORKTREE: Record<string, GitSubHandler> = {
         rest[1].startsWith('-') || rest[2].startsWith('-'))
       return '`git merge-tree` requires ["--write-tree", "<base>", "<head>"]'
     plan.class = 'local'
+    return undefined
   },
   reset: ({ rest, plan }) => {
     if (hasOpt(rest, ['--hard', '--merge', '--keep'])) {
@@ -604,6 +609,7 @@ const NETWORK: Record<string, GitSubHandler> = {
         return `only https://, ssh:// and git@host: URLs are allowed, not \`${url}\``
       }
     } else return `\`git remote ${first}\` is not supported`
+    return undefined
   },
   clone: ({ rest, plan }) => {
     plan.reachesRemote = true
@@ -612,6 +618,7 @@ const NETWORK: Record<string, GitSubHandler> = {
     if (!cloneUrlOk(url))
       return `only https://, ssh:// and git@host: URLs can be cloned, not \`${url}\``
     plan.remote = url
+    return undefined
   },
   fetch: (c) => fetchOrPull(c),
   pull: (c) => fetchOrPull(c),
@@ -653,6 +660,7 @@ const NETWORK: Record<string, GitSubHandler> = {
         'force push: rewrites history on the remote that others may have'
     else if (deletes)
       plan.destructive = 'deletes branches or tags on the remote'
+    return undefined
   },
 }
 
