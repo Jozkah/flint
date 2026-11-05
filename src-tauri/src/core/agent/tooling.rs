@@ -634,10 +634,21 @@ impl Scan<'_> {
         };
         let scope = self.rel(dir);
         let deps = json_deps(&pkg);
-        let has_dep = |name: &str| deps.iter().any(|d| d == name);
+        let manager = self.js_package_manager(dir, &manifest, &pkg, &scope);
+        self.js_workspaces(dir, &manifest, &pkg);
+        self.js_frameworks(dir, &manifest, &deps);
+        self.js_scripts(dir, &manifest, &pkg, &deps, &manager);
+    }
 
-        // Package manager: the `packageManager` field, then one lockfile, then
-        // the workspace root's. Two lockfiles is a conflict, not a choice.
+    /// Package manager: the `packageManager` field, then one lockfile, then
+    /// the workspace root's. Two lockfiles is a conflict, not a choice.
+    fn js_package_manager(
+        &mut self,
+        dir: &Path,
+        manifest: &Path,
+        pkg: &serde_json::Value,
+        scope: &str,
+    ) -> Option<(String, Confidence)> {
         let lockfiles: Vec<(&str, &str)> = [
             ("pnpm", "pnpm-lock.yaml"),
             ("yarn", "yarn.lock"),
@@ -704,7 +715,7 @@ impl Scan<'_> {
             self.out.conflicts.push(format!(
                 "{} has lockfiles for {}; which package manager is used is ambiguous, so no \
                  command is proposed there",
-                if scope.is_empty() { "the project root".to_string() } else { scope.clone() },
+                if scope.is_empty() { "the project root".to_string() } else { scope.to_string() },
                 managers_found.join(" and ")
             ));
             None
@@ -725,10 +736,13 @@ impl Scan<'_> {
             None
         };
         if let Some(m) = &manager {
-            self.managers.insert(scope.clone(), m.clone());
+            self.managers.insert(scope.to_string(), m.clone());
         }
+        manager
+    }
 
-        // Workspaces and orchestrators.
+    /// Workspaces and orchestrators.
+    fn js_workspaces(&mut self, dir: &Path, manifest: &Path, pkg: &serde_json::Value) {
         if pkg.get("workspaces").is_some() {
             self.fact(
                 FactKind::Workspace,
@@ -760,9 +774,12 @@ impl Scan<'_> {
                 );
             }
         }
+    }
 
-        // Frameworks: a dependency is strong evidence; a config file with no
-        // dependency behind it is weaker.
+    /// Frameworks: a dependency is strong evidence; a config file with no
+    /// dependency behind it is weaker.
+    fn js_frameworks(&mut self, dir: &Path, manifest: &Path, deps: &[String]) {
+        let has_dep = |name: &str| deps.iter().any(|d| d == name);
         for (dep, name, configs) in [
             ("next", "Next.js", &["next.config.js", "next.config.mjs", "next.config.ts"][..]),
             ("nuxt", "Nuxt", &["nuxt.config.ts", "nuxt.config.js"][..]),
@@ -805,8 +822,18 @@ impl Scan<'_> {
                 );
             }
         }
+    }
 
-        // Scripts: never copied, only classified.
+    /// Scripts: never copied, only classified.
+    fn js_scripts(
+        &mut self,
+        dir: &Path,
+        manifest: &Path,
+        pkg: &serde_json::Value,
+        deps: &[String],
+        manager: &Option<(String, Confidence)>,
+    ) {
+        let has_dep = |name: &str| deps.iter().any(|d| d == name);
         let scripts: BTreeMap<String, String> = pkg
             .get("scripts")
             .and_then(|v| v.as_object())

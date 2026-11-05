@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri_plugin_agent_tools::patch_export::{apply_file_patch, split_patch};
+use tauri_plugin_agent_tools::patch_export::{apply_file_patch, split_patch, FilePatch};
 use tauri_plugin_agent_tools::proposal::{
     self, is_reserved_name, validate_path, Approval, ApplyReport, FileInput, ProposalRecord,
     ProposalScope, ProposalState,
@@ -550,6 +550,173 @@ fn sweep_partials(data_folder: &Path) {
     super::partial_dirs::sweep(&imports_dir(data_folder));
 }
 
+fn bad(what: &str) -> ImportError {
+    ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest's {what} is malformed"))
+}
+
+/// Read and check the copied manifest.
+fn parse_manifest(work: &Path, limits: &Limits) -> Result<ManifestIn, ImportError> {
+    let manifest_bytes = std::fs::read(work.join("manifest.json")).map_err(io)?;
+    let raw: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+        .map_err(|e| ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest is not JSON: {e}")))?;
+    match raw.get("schemaVersion").and_then(serde_json::Value::as_u64) {
+        Some(v) if v == u64::from(BUNDLE_SCHEMA) => {}
+        Some(v) => {
+            return Err(ImportError::new(
+                ImportErrorKind::UnsupportedVersion,
+                format!("bundle schema {v} is not one this version of Flint reads"),
+            ))
+        }
+        None => return Err(ImportError::new(ImportErrorKind::ManifestInvalid, "the manifest has no schema version")),
+    }
+    let manifest: ManifestIn = serde_json::from_value(raw)
+        .map_err(|e| ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest is malformed: {e}")))?;
+    if manifest.schema_version != BUNDLE_SCHEMA {
+        return Err(bad("schemaVersion"));
+    }
+    if !is_hex(&manifest.base_sha, 40) {
+        return Err(bad("baseSha"));
+    }
+    if !(manifest.head_sha.is_empty() || is_hex(&manifest.head_sha, 40)) {
+        return Err(bad("headSha"));
+    }
+    if !is_hex(&manifest.patch_sha256, 64) {
+        return Err(bad("patchSha256"));
+    }
+    if manifest.branch.len() > 200 || manifest.branch.chars().any(char::is_control) {
+        return Err(bad("branch"));
+    }
+    if manifest.repository.len() > 1000 || manifest.created_at.len() > 64 || manifest.apply_with.len() > 1000 {
+        return Err(bad("text fields"));
+    }
+    if manifest.files.is_empty() || manifest.files.len() > limits.max_entries {
+        return Err(bad("file list"));
+    }
+    Ok(manifest)
+}
+
+/// Paths: each valid, none colliding with another.
+fn validate_files<'a>(manifest: &'a ManifestIn, limits: &Limits) -> Result<Vec<(String, &'a FileIn)>, ImportError> {
+    let mut seen = BTreeSet::new();
+    let mut files: Vec<(String, &FileIn)> = Vec::new();
+    for f in &manifest.files {
+        let path = check_path(&f.path, &limits)?;
+        if !seen.insert(collision_key(&path)) {
+            return Err(ImportError::new(
+                ImportErrorKind::PathCollision,
+                format!("{path} names the same file as another entry on some file systems"),
+            ));
+        }
+        if !matches!(f.change.as_str(), "added" | "modified" | "deleted") {
+            return Err(bad("change of a file"));
+        }
+        if f.flags.len() > 16 || f.additions > 10_000_000 || f.deletions > 10_000_000 {
+            return Err(bad("counts of a file"));
+        }
+        if f.whole {
+            match (&f.sha256, f.change.as_str()) {
+                (_, "deleted") => {}
+                (Some(h), _) if is_hex(h, 64) => {}
+                _ => return Err(bad("hash of a whole file")),
+            }
+        }
+        files.push((path, f));
+    }
+    Ok(files)
+}
+
+/// Entries and hashes: exactly what the manifest declares.
+fn check_entries(
+    entries: &BTreeMap<String, u64>,
+    hashes: &BTreeMap<String, String>,
+    manifest: &ManifestIn,
+    files: &[(String, &FileIn)],
+) -> Result<(), ImportError> {
+    // Entries: exactly what the manifest declares.
+    let mut expected: BTreeSet<String> = ["manifest.json".into(), "changes.patch".into()].into();
+    for (path, f) in files {
+        if f.whole && f.change != "deleted" {
+            expected.insert(format!("files/{path}"));
+        }
+    }
+    for entry in entries.keys() {
+        if !expected.contains(entry) {
+            return Err(ImportError::new(ImportErrorKind::EntryExtra, format!("{entry} is in the bundle but not in its manifest")));
+        }
+    }
+    for entry in &expected {
+        if !entries.contains_key(entry) {
+            return Err(ImportError::new(ImportErrorKind::EntryMissing, format!("the bundle has no {entry}")));
+        }
+    }
+
+    // Hashes.
+    if hashes["changes.patch"] != manifest.patch_sha256 {
+        return Err(ImportError::new(ImportErrorKind::HashMismatch, "changes.patch does not match its hash"));
+    }
+    for (path, f) in files {
+        if f.whole && f.change != "deleted"
+            && Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
+                return Err(ImportError::new(ImportErrorKind::HashMismatch, format!("files/{path} does not match its hash")));
+            }
+    }
+    Ok(())
+}
+
+/// Rebuild every file against the base commit.
+fn rebuild_inputs(
+    dest_path: &Path,
+    base: &str,
+    files: &[(String, &FileIn)],
+    sections: &[FilePatch],
+    work: &Path,
+    budget: &Budget,
+) -> Result<Vec<FileInput>, ImportError> {
+    let mut inputs = Vec::new();
+    for (path, f) in files {
+        budget.check()?;
+        let at_base = git_bytes(&dest_path, &["cat-file", "-e", &format!("{base}:{path}")]).is_ok();
+        let base_bytes = if at_base {
+            Some(git_bytes(&dest_path, &["show", &format!("{base}:{path}")]).map_err(io)?)
+        } else {
+            None
+        };
+        match (f.change.as_str(), at_base) {
+            ("added", true) => {
+                return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is added but exists at the base")))
+            }
+            ("modified" | "deleted", false) => {
+                return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is not at the base")))
+            }
+            _ => {}
+        }
+        let proposed = if f.whole {
+            if f.change == "deleted" {
+                None
+            } else {
+                Some(std::fs::read(work.join("files").join(path.replace('/', std::path::MAIN_SEPARATOR_STR))).map_err(io)?)
+            }
+        } else {
+            let section = sections.iter().find(|s| &s.path == path).expect("checked above");
+            if section.added != (f.change == "added") || section.deleted != (f.change == "deleted") {
+                return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path}: the patch and the manifest disagree about the change")));
+            }
+            let base_text = match &base_bytes {
+                Some(b) => Some(
+                    std::str::from_utf8(b)
+                        .map_err(|_| ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is not text at the base")))?,
+                ),
+                None => None,
+            };
+            apply_file_patch(base_text, section)
+                .map_err(|e| ImportError::new(ImportErrorKind::PatchInvalid, e))?
+                .map(String::into_bytes)
+        };
+        inputs.push(FileInput { path: path.clone(), base: base_bytes, proposed });
+    }
+    Ok(inputs)
+}
+
 /// Import a bundle for review. `step` runs after each piece; tests use it to
 /// stop part-way.
 pub fn import(
@@ -611,99 +778,9 @@ pub fn import(
             hashes.insert(rel.clone(), sha256_hex(&bytes));
             step(rel).map_err(|e| ImportError::new(ImportErrorKind::Cancelled, e))?;
         }
-        let manifest_bytes = std::fs::read(work.join("manifest.json")).map_err(io)?;
-        let raw: serde_json::Value = serde_json::from_slice(&manifest_bytes)
-            .map_err(|e| ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest is not JSON: {e}")))?;
-        match raw.get("schemaVersion").and_then(serde_json::Value::as_u64) {
-            Some(v) if v == u64::from(BUNDLE_SCHEMA) => {}
-            Some(v) => {
-                return Err(ImportError::new(
-                    ImportErrorKind::UnsupportedVersion,
-                    format!("bundle schema {v} is not one this version of Flint reads"),
-                ))
-            }
-            None => return Err(ImportError::new(ImportErrorKind::ManifestInvalid, "the manifest has no schema version")),
-        }
-        let manifest: ManifestIn = serde_json::from_value(raw)
-            .map_err(|e| ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest is malformed: {e}")))?;
-        let bad = |what: &str| ImportError::new(ImportErrorKind::ManifestInvalid, format!("the manifest's {what} is malformed"));
-        if manifest.schema_version != BUNDLE_SCHEMA {
-            return Err(bad("schemaVersion"));
-        }
-        if !is_hex(&manifest.base_sha, 40) {
-            return Err(bad("baseSha"));
-        }
-        if !(manifest.head_sha.is_empty() || is_hex(&manifest.head_sha, 40)) {
-            return Err(bad("headSha"));
-        }
-        if !is_hex(&manifest.patch_sha256, 64) {
-            return Err(bad("patchSha256"));
-        }
-        if manifest.branch.len() > 200 || manifest.branch.chars().any(char::is_control) {
-            return Err(bad("branch"));
-        }
-        if manifest.repository.len() > 1000 || manifest.created_at.len() > 64 || manifest.apply_with.len() > 1000 {
-            return Err(bad("text fields"));
-        }
-        if manifest.files.is_empty() || manifest.files.len() > limits.max_entries {
-            return Err(bad("file list"));
-        }
-
-        // Paths: each valid, none colliding with another.
-        let mut seen = BTreeSet::new();
-        let mut files: Vec<(String, &FileIn)> = Vec::new();
-        for f in &manifest.files {
-            let path = check_path(&f.path, &limits)?;
-            if !seen.insert(collision_key(&path)) {
-                return Err(ImportError::new(
-                    ImportErrorKind::PathCollision,
-                    format!("{path} names the same file as another entry on some file systems"),
-                ));
-            }
-            if !matches!(f.change.as_str(), "added" | "modified" | "deleted") {
-                return Err(bad("change of a file"));
-            }
-            if f.flags.len() > 16 || f.additions > 10_000_000 || f.deletions > 10_000_000 {
-                return Err(bad("counts of a file"));
-            }
-            if f.whole {
-                match (&f.sha256, f.change.as_str()) {
-                    (_, "deleted") => {}
-                    (Some(h), _) if is_hex(h, 64) => {}
-                    _ => return Err(bad("hash of a whole file")),
-                }
-            }
-            files.push((path, f));
-        }
-
-        // Entries: exactly what the manifest declares.
-        let mut expected: BTreeSet<String> = ["manifest.json".into(), "changes.patch".into()].into();
-        for (path, f) in &files {
-            if f.whole && f.change != "deleted" {
-                expected.insert(format!("files/{path}"));
-            }
-        }
-        for entry in entries.keys() {
-            if !expected.contains(entry) {
-                return Err(ImportError::new(ImportErrorKind::EntryExtra, format!("{entry} is in the bundle but not in its manifest")));
-            }
-        }
-        for entry in &expected {
-            if !entries.contains_key(entry) {
-                return Err(ImportError::new(ImportErrorKind::EntryMissing, format!("the bundle has no {entry}")));
-            }
-        }
-
-        // Hashes.
-        if hashes["changes.patch"] != manifest.patch_sha256 {
-            return Err(ImportError::new(ImportErrorKind::HashMismatch, "changes.patch does not match its hash"));
-        }
-        for (path, f) in &files {
-            if f.whole && f.change != "deleted"
-                && Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
-                    return Err(ImportError::new(ImportErrorKind::HashMismatch, format!("files/{path} does not match its hash")));
-                }
-        }
+        let manifest = parse_manifest(&work, &limits)?;
+        let files = validate_files(&manifest, &limits)?;
+        check_entries(&entries, &hashes, &manifest, &files)?;
         let mut basis = String::new();
         for (rel, h) in &hashes {
             basis.push_str(&format!("{rel}\0{h}\n"));
@@ -733,49 +810,7 @@ pub fn import(
         })?;
         budget.check()?;
 
-        // Rebuild every file against the base.
-        let mut inputs = Vec::new();
-        for (path, f) in &files {
-            budget.check()?;
-            let at_base = git_bytes(&dest_path, &["cat-file", "-e", &format!("{base}:{path}")]).is_ok();
-            let base_bytes = if at_base {
-                Some(git_bytes(&dest_path, &["show", &format!("{base}:{path}")]).map_err(io)?)
-            } else {
-                None
-            };
-            match (f.change.as_str(), at_base) {
-                ("added", true) => {
-                    return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is added but exists at the base")))
-                }
-                ("modified" | "deleted", false) => {
-                    return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is not at the base")))
-                }
-                _ => {}
-            }
-            let proposed = if f.whole {
-                if f.change == "deleted" {
-                    None
-                } else {
-                    Some(std::fs::read(work.join("files").join(path.replace('/', std::path::MAIN_SEPARATOR_STR))).map_err(io)?)
-                }
-            } else {
-                let section = sections.iter().find(|s| &s.path == path).expect("checked above");
-                if section.added != (f.change == "added") || section.deleted != (f.change == "deleted") {
-                    return Err(ImportError::new(ImportErrorKind::PatchInvalid, format!("{path}: the patch and the manifest disagree about the change")));
-                }
-                let base_text = match &base_bytes {
-                    Some(b) => Some(
-                        std::str::from_utf8(b)
-                            .map_err(|_| ImportError::new(ImportErrorKind::PatchInvalid, format!("{path} is not text at the base")))?,
-                    ),
-                    None => None,
-                };
-                apply_file_patch(base_text, section)
-                    .map_err(|e| ImportError::new(ImportErrorKind::PatchInvalid, e))?
-                    .map(String::into_bytes)
-            };
-            inputs.push(FileInput { path: path.clone(), base: base_bytes, proposed });
-        }
+        let inputs = rebuild_inputs(&dest_path, base, &files, &sections, &work, &budget)?;
 
         // Already here: applied before, or every change already present.
         let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
