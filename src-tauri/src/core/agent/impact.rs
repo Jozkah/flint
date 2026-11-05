@@ -28,9 +28,7 @@
 //! for someone else to decide about.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -184,6 +182,48 @@ fn ignored(name: &str) -> bool {
     )
 }
 
+/// Bound on the files whose import lines are kept between calls.
+const IMPORT_CACHE_FILES: usize = 50_000;
+
+type ImportCache = std::collections::HashMap<PathBuf, (u64, u64, Vec<String>)>;
+
+/// A file's import lines, kept between calls while its size and modification
+/// time are unchanged, so rebuilding the graph re-reads only files that
+/// changed. Bounded (cleared when full); a changed file is re-read.
+fn cached_imports(path: &Path, language: Language, meta: Option<&std::fs::Metadata>) -> Option<Vec<String>> {
+    static CACHE: std::sync::Mutex<Option<ImportCache>> = std::sync::Mutex::new(None);
+    let stamp = meta.map(|m| {
+        let modified = m
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        (m.len(), modified)
+    });
+    if let Some((size, modified)) = stamp {
+        if let Ok(guard) = CACHE.lock() {
+            if let Some((s, m, found)) = guard.as_ref().and_then(|c| c.get(path)) {
+                if *s == size && *m == modified {
+                    return Some(found.clone());
+                }
+            }
+        }
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    let found = imports(language, &text);
+    if let Some((size, modified)) = stamp {
+        if let Ok(mut guard) = CACHE.lock() {
+            let cache = guard.get_or_insert_with(Default::default);
+            if cache.len() >= IMPORT_CACHE_FILES {
+                cache.clear();
+            }
+            cache.insert(path.to_path_buf(), (size, modified, found.clone()));
+        }
+    }
+    Some(found)
+}
+
 /// Read a project's import edges.
 pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
     if !project_root.is_dir() {
@@ -234,13 +274,14 @@ pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
                 graph.truncated = true;
                 continue;
             }
-            if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES {
+            let meta = std::fs::metadata(&path).ok();
+            if meta.as_ref().map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES {
                 graph.truncated = true;
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Some(found) = cached_imports(&path, language, meta.as_ref()) else { continue };
             let Some(relative) = relative(project_root, &path) else { continue };
-            sources.push((relative, language, imports(language, &text)));
+            sources.push((relative, language, found));
         }
     }
 
@@ -810,6 +851,29 @@ mod tests {
         assert_eq!(graph.files, ["src/main.rs"]);
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_cached_import_scan_sees_a_file_that_changed() {
+        let root = project(
+            "cache",
+            &[("src/a.ts", "import './b';
+"), ("src/b.ts", "export {};
+"), ("src/c.ts", "export {};
+")],
+        );
+        let first = graph(&root).unwrap();
+        assert!(first.edges["src/a.ts"].contains("src/b.ts"));
+        assert!(!first.edges["src/a.ts"].contains("src/c.ts"));
+        // The second build reuses the cache; a longer file differs in size.
+        std::fs::write(root.join("src/a.ts"), "import './b';
+import './c';
+").unwrap();
+        let second = graph(&root).unwrap();
+        assert!(second.edges["src/a.ts"].contains("src/c.ts"), "{:?}", second.edges);
+        let again = graph(&root).unwrap();
+        assert_eq!(again.edges, second.edges);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
