@@ -1911,6 +1911,17 @@ fn finish_install(
     result
 }
 
+/// One payload directory to install: (dir, fallback name, is a subdir of the
+/// staging dir, relative path).
+type InstallTarget = (PathBuf, Option<String>, bool, Option<String>);
+
+/// What the selection phase decided: install these, or hand the candidate list
+/// back to the caller to present its own picker.
+enum Selected {
+    Targets(Vec<InstallTarget>),
+    Listing(GitInstall),
+}
+
 fn select_and_install(
     scope: &PluginScope,
     plugins: &Path,
@@ -1919,6 +1930,18 @@ fn select_and_install(
     ctx: &InstallCtx,
     source_url: &str,
 ) -> Result<GitInstall, PluginError> {
+    match select_targets(plugins, staged, collection)? {
+        Selected::Listing(listing) => Ok(listing),
+        Selected::Targets(targets) => install_targets(scope, plugins, staged, targets, ctx, source_url),
+    }
+}
+
+/// Phase 1: decide which payload directory(ies) to install.
+fn select_targets(
+    plugins: &Path,
+    staged: &Staged,
+    collection: CollectionChoice,
+) -> Result<Selected, PluginError> {
     let url = staged.display.as_str();
     let payload_root = &staged.payload_root;
     if !payload_root.is_dir() {
@@ -1933,7 +1956,7 @@ fn select_and_install(
 
     // Decide which payload directory(ies) to install, as
     // (dir, fallback name, is a subdir of the staging dir, relative path).
-    let mut targets: Vec<(PathBuf, Option<String>, bool, Option<String>)> = Vec::new();
+    let mut targets: Vec<InstallTarget> = Vec::new();
     if plugin_has_content(payload_root) {
         // A single plugin: either the source root or an explicit subdir.
         let fallback = staged
@@ -2016,12 +2039,12 @@ fn select_and_install(
                 // candidate list untouched and let the caller present its own
                 // picker, then re-invoke with `Only` for the chosen paths.
                 CollectionChoice::List => {
-                    return Ok(GitInstall::Collection(
+                    return Ok(Selected::Listing(GitInstall::Collection(
                         rels.into_iter()
                             .zip(already())
                             .map(|(path, installed)| CollectionPlugin { path, installed })
                             .collect(),
-                    ));
+                    )));
                 }
                 // A picker selection: install exactly the payload-root-relative
                 // paths the caller chose. A caller that never supplied any (or
@@ -2069,7 +2092,18 @@ fn select_and_install(
             targets.push((dir, fallback, true, rel));
         }
     }
+    Ok(Selected::Targets(targets))
+}
 
+/// Phase 2: install each chosen payload.
+fn install_targets(
+    scope: &PluginScope,
+    plugins: &Path,
+    staged: &Staged,
+    targets: Vec<InstallTarget>,
+    ctx: &InstallCtx,
+    source_url: &str,
+) -> Result<GitInstall, PluginError> {
     // Installing one plugin reports an already-installed collision as an error
     // (the caller asked for that exact plugin); a batch skips it and installs
     // the rest.
