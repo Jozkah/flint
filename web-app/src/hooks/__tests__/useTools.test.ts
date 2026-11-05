@@ -212,4 +212,21 @@ describe('useTools', () => {
     expect(mockGetTools).toHaveBeenCalledTimes(1)
     expect(mockListen).toHaveBeenCalledTimes(1)
   })
+
+  it('shares one fetch and one listener across mounts, released on last unmount', async () => {
+    const { useTools } = await import('../useTools')
+    const a = renderHook(() => useTools())
+    const b = renderHook(() => useTools())
+    const c = renderHook(() => useTools())
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    expect(mockGetTools).toHaveBeenCalledTimes(1)
+    expect(mockListen).toHaveBeenCalledTimes(1)
+    a.unmount()
+    b.unmount()
+    expect(mockUnsubscribe).not.toHaveBeenCalled()
+    c.unmount()
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1)
+  })
 })

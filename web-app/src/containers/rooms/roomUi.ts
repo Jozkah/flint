@@ -12,6 +12,7 @@ import type {
   VoteChoice,
 } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { formatClock } from '@/lib/time'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -324,12 +325,7 @@ export function stopReasonText(reason: StopReason, t: T): string {
 }
 
 export function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
+  return formatClock(Math.max(0, Math.round(ms / 1000)))
 }
 
 export const formatNumber = (n: number, locale = 'en-US') => n.toLocaleString(locale)
