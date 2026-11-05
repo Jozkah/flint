@@ -10,7 +10,8 @@ import { BACKGROUND_SLOT_ID } from '@/constants/models'
 
 // Mock AI SDK generateText
 const mockGenerateText = vi.fn()
-vi.mock('ai', () => ({
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
   generateText: (...args: unknown[]) => mockGenerateText(...args),
 }))
 
