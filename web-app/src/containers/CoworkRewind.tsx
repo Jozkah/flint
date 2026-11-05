@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { CheckpointEntry, RewindPlan } from '@/hooks/useCoworkCheckpoints'
 import { pathsMatch } from '@/lib/coworkChangeSummary'
+import { stableKeys } from '@/lib/stableKeys'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -76,14 +77,16 @@ function RestoreDiffPreview({ diff }: { diff: string }) {
   if (!text) {
     return <p className="text-fg-2">{t('results:rewind.previewEmpty')}</p>
   }
+  const diffLines = text.split('\n')
+  const diffKeys = stableKeys(diffLines)
   return (
     <pre
       data-testid="cowork-rewind-diff"
       className="max-h-64 overflow-auto whitespace-pre rounded-md border border-border bg-muted p-2 font-mono"
     >
-      {text.split('\n').map((line, i) => (
+      {diffLines.map((line, i) => (
         <div
-          key={i}
+          key={diffKeys[i]}
           className={cn(
             line.startsWith('+') && !line.startsWith('+++')
               ? 'text-success'

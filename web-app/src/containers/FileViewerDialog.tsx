@@ -16,6 +16,7 @@ import {
   type ChunkReader,
   type ChunkSource,
 } from '@/lib/fileChunks'
+import { stableKeys } from '@/lib/stableKeys'
 import { cn } from '@/lib/utils'
 
 /** What the full viewer shows: text read in chunks, or a parsed document. */
@@ -157,11 +158,15 @@ export function LinesView({
 }
 
 function DocView({ preview }: { preview: FilePreview }) {
+  const paraKeys = stableKeys(preview.kind === 'doc' ? preview.paragraphs : [])
+  const rowKeys = stableKeys(
+    preview.kind === 'table' ? preview.rows.map((r) => r.join('\u0001')) : []
+  )
   if (preview.kind === 'doc')
     return (
       <div className="min-h-0 flex-1 space-y-2 overflow-auto text-sm">
         {preview.paragraphs.map((p, i) => (
-          <p key={i}>{p}</p>
+          <p key={paraKeys[i]}>{p}</p>
         ))}
       </div>
     )
@@ -171,7 +176,7 @@ function DocView({ preview }: { preview: FilePreview }) {
         <table className="border-collapse text-xs">
           <tbody>
             {preview.rows.map((r, i) => (
-              <tr key={i} className="border-b border-border">
+              <tr key={rowKeys[i]} className="border-b border-border">
                 {r.map((c, j) => (
                   <td key={j} className="max-w-60 truncate px-2 py-0.5">
                     {c}
