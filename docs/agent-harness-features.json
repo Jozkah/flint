@@ -253,7 +253,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/subagent.rs"
       ],
@@ -1318,7 +1318,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/win_env.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/appcontainer.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/readiness.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "web-app/src/lib/agentTools.ts",
         "web-app/src/lib/coworkTools.ts",
         "web-app/src/containers/CoworkEnvironmentReadiness.tsx"
@@ -1567,7 +1567,7 @@
       "owner": "lane-03-permission-security",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "web-app/src/lib/redactToolOutput.ts",
         "web-app/src/routes/threads/$threadId.tsx"
       ],
@@ -1609,7 +1609,7 @@
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1704,7 +1704,7 @@
       "owner": "lane-03-permission-security",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/audit.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -4083,7 +4083,7 @@
       "files": [
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "web-app/src/lib/changeActor.ts",
         "web-app/src/lib/toolActivity.ts",
@@ -4102,7 +4102,7 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs::a_tool_call_journals_its_agent_and_refuses_an_identity_that_is_not_one",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs::a_tool_call_journals_its_agent_and_refuses_an_identity_that_is_not_one",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs::the_execution_record_carries_the_agents_identity",
         "web-app/src/lib/__tests__/changeActor.test.ts",
         "web-app/src/containers/__tests__/CoworkTurnUndo.test.tsx",
@@ -5306,7 +5306,7 @@
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
@@ -6368,7 +6368,7 @@
         "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/resources.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
@@ -7344,7 +7344,7 @@
       "owner": "lane-22-checkpoints",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "web-app/src/containers/CoworkTurnUndo.tsx",
         "web-app/src/lib/coworkDispatch.ts",
         "web-app/src/lib/agentTools.ts",
@@ -7642,7 +7642,7 @@
       "owner": "lane-26-projects",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/project_init.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands/mod.rs",
         "web-app/src/containers/CoworkProjectInit.tsx",
         "web-app/src/lib/projectInit.ts",
         "web-app/src/routes/cowork.tsx"
