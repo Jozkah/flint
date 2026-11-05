@@ -617,6 +617,69 @@ fn load_timed_out(model_id: &str, timeout: Duration) -> ServerError {
     ))
 }
 
+/// How a `/models` poll loop ended without the predicate settling it.
+enum PollEnd {
+    /// The predicate returned a final result.
+    Done(ServerResult<()>),
+    TimedOut,
+    /// Transient failures ran out, or the engine is unreachable.
+    Failed(String),
+}
+
+/// Polls `/models` every 250ms until `on_list` returns `Some`, the overall
+/// `timeout` passes, or the engine stops answering. Shared by the load and
+/// unload waits; they differ only in the state predicate and error mapping.
+async fn poll_models_until(
+    client: &reqwest::Client,
+    url: &str,
+    api_key: &str,
+    timeout: Duration,
+    mut on_list: impl FnMut(&[serde_json::Value], Duration) -> Option<ServerResult<()>>,
+) -> PollEnd {
+    let start = std::time::Instant::now();
+    let poll_interval = Duration::from_millis(250);
+    let mut transient = 0u32;
+
+    loop {
+        // The overall deadline holds even if a request stalls.
+        let remaining = timeout.saturating_sub(start.elapsed());
+        let fetched = match tokio::time::timeout(
+            remaining.max(Duration::from_millis(1)),
+            fetch_models(client, url, api_key),
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(_) => return PollEnd::TimedOut,
+        };
+
+        match fetched {
+            ModelsFetch::Models(list) => {
+                transient = 0;
+                if let Some(done) = on_list(&list, start.elapsed()) {
+                    return PollEnd::Done(done);
+                }
+            }
+            ModelsFetch::Retry(msg) => {
+                transient += 1;
+                if transient > MAX_TRANSIENT_POLL_FAILURES {
+                    return PollEnd::Failed(msg);
+                }
+            }
+            // A worker that dies mid-load (a GPU init crash, antivirus)
+            // surfaces here, as the next poll failing to connect.
+            ModelsFetch::Unreachable(msg) | ModelsFetch::Fatal(msg) => {
+                return PollEnd::Failed(msg);
+            }
+        }
+
+        if start.elapsed() >= timeout {
+            return PollEnd::TimedOut;
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
 async fn wait_until_loaded_with(
     state: &LlamacppState,
     port: u16,
@@ -627,60 +690,28 @@ async fn wait_until_loaded_with(
 ) -> ServerResult<()> {
     let client = poll_client(poll_timeout).await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
-    let start = std::time::Instant::now();
-    let poll_interval = Duration::from_millis(250);
     let mut saw_loading = false;
-    let mut transient = 0u32;
 
-    loop {
-        // The overall deadline holds even if a request stalls.
-        let remaining = timeout.saturating_sub(start.elapsed());
-        let fetched = match tokio::time::timeout(
-            remaining.max(Duration::from_millis(1)),
-            fetch_models(&client, &url, api_key),
-        )
-        .await
-        {
-            Ok(f) => f,
-            Err(_) => return Err(load_timed_out(model_id, timeout)),
-        };
-
-        match fetched {
-            ModelsFetch::Models(list) => {
-                transient = 0;
-                match evaluate_load_poll(
-                    find_entry(&list, model_id),
-                    &mut saw_loading,
-                    start.elapsed() >= STALE_FAILURE_GRACE,
-                ) {
-                    LoadPoll::Loaded => return Ok(()),
-                    LoadPoll::Pending => {}
-                    LoadPoll::Failed { exit_code } => {
-                        return Err(ServerError::Llamacpp(LlamacppError::new(
-                            ErrorCode::ModelLoadFailed,
-                            format!("Model {} failed to load", model_id),
-                            Some(format!("exit_code={:?}", exit_code)),
-                        )));
-                    }
-                }
-            }
-            ModelsFetch::Retry(msg) => {
-                transient += 1;
-                if transient > MAX_TRANSIENT_POLL_FAILURES {
-                    return Err(poll_failure(state, port, msg).await);
-                }
-            }
-            // A worker that dies mid-load (a GPU init crash, antivirus)
-            // surfaces here, as the next poll failing to connect.
-            ModelsFetch::Unreachable(msg) | ModelsFetch::Fatal(msg) => {
-                return Err(poll_failure(state, port, msg).await);
-            }
+    let end = poll_models_until(&client, &url, api_key, timeout, |list, elapsed| {
+        match evaluate_load_poll(
+            find_entry(list, model_id),
+            &mut saw_loading,
+            elapsed >= STALE_FAILURE_GRACE,
+        ) {
+            LoadPoll::Loaded => Some(Ok(())),
+            LoadPoll::Pending => None,
+            LoadPoll::Failed { exit_code } => Some(Err(ServerError::Llamacpp(LlamacppError::new(
+                ErrorCode::ModelLoadFailed,
+                format!("Model {} failed to load", model_id),
+                Some(format!("exit_code={:?}", exit_code)),
+            )))),
         }
-
-        if start.elapsed() >= timeout {
-            return Err(load_timed_out(model_id, timeout));
-        }
-        tokio::time::sleep(poll_interval).await;
+    })
+    .await;
+    match end {
+        PollEnd::Done(r) => r,
+        PollEnd::TimedOut => Err(load_timed_out(model_id, timeout)),
+        PollEnd::Failed(msg) => Err(poll_failure(state, port, msg).await),
     }
 }
 
@@ -747,52 +778,22 @@ async fn wait_until_unloaded_with(
 ) -> ServerResult<()> {
     let client = poll_client(poll_timeout).await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
-    let start = std::time::Instant::now();
-    let poll_interval = Duration::from_millis(250);
-    let mut transient = 0u32;
 
-    loop {
-        let remaining = timeout.saturating_sub(start.elapsed());
-        let fetched = match tokio::time::timeout(
-            remaining.max(Duration::from_millis(1)),
-            fetch_models(&client, &url, api_key),
-        )
-        .await
-        {
-            Ok(f) => f,
-            Err(_) => return Err(unload_timed_out(model_id, timeout)),
-        };
-
-        match fetched {
-            ModelsFetch::Models(list) => {
-                transient = 0;
-                // Absent from a valid 2xx list counts as unloaded; nothing
-                // else does.
-                let still_loaded = find_entry(&list, model_id)
-                    .and_then(|e| e.get("status"))
-                    .and_then(|s| s.get("value"))
-                    .and_then(|v| v.as_str())
-                    .map(|v| matches!(v, "loaded" | "loading"))
-                    .unwrap_or(false);
-                if !still_loaded {
-                    return Ok(());
-                }
-            }
-            ModelsFetch::Retry(msg) => {
-                transient += 1;
-                if transient > MAX_TRANSIENT_POLL_FAILURES {
-                    return Err(unload_poll_error(msg));
-                }
-            }
-            ModelsFetch::Unreachable(msg) | ModelsFetch::Fatal(msg) => {
-                return Err(unload_poll_error(msg));
-            }
-        }
-
-        if start.elapsed() >= timeout {
-            return Err(unload_timed_out(model_id, timeout));
-        }
-        tokio::time::sleep(poll_interval).await;
+    let end = poll_models_until(&client, &url, api_key, timeout, |list, _| {
+        // Absent from a valid 2xx list counts as unloaded; nothing else does.
+        let still_loaded = find_entry(list, model_id)
+            .and_then(|e| e.get("status"))
+            .and_then(|s| s.get("value"))
+            .and_then(|v| v.as_str())
+            .map(|v| matches!(v, "loaded" | "loading"))
+            .unwrap_or(false);
+        (!still_loaded).then_some(Ok(()))
+    })
+    .await;
+    match end {
+        PollEnd::Done(r) => r,
+        PollEnd::TimedOut => Err(unload_timed_out(model_id, timeout)),
+        PollEnd::Failed(msg) => Err(unload_poll_error(msg)),
     }
 }
 
