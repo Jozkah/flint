@@ -13,7 +13,6 @@ import { participantSampling } from './persona'
 import { estimateTokens } from '@/lib/context-manager'
 import { compactionHeadroom } from '@/lib/compaction'
 import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
-import { parseAddress } from './addressing'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { decideRetry, waitFor } from '@/lib/runRetry'
 import {
@@ -58,11 +57,7 @@ import {
 } from './limits'
 import { moderatorInstruction, parseDirective, renderDirective } from './moderator'
 import { toRoomCallError, type StreamReply } from './callError'
-import {
-  isRoomPersistenceError,
-  toRoomPersistenceError,
-  type RoomPersistence,
-} from './persistence'
+import { isRoomPersistenceError, toRoomPersistenceError, type RoomPersistence } from './persistence'
 import {
   activeParticipants,
   atRoundBoundary,
@@ -74,7 +69,13 @@ import {
 import { messagesFromJournal, repairJournal } from './recovery'
 import { isRepetitive, recentSpeech } from './repetition'
 import { stripConclusion } from './consensus'
-import { compareGrid, compareHistory, hasAnswered, isAskedOf, missingQuestions } from './compareGrid'
+import {
+  compareGrid,
+  compareHistory,
+  hasAnswered,
+  isAskedOf,
+  missingQuestions,
+} from './compareGrid'
 import { changesFromToolCalls } from './turnChanges'
 import { noteIsolation, participantIsolated, type RoomWorkspaceDeps } from './isolation'
 import {
@@ -94,17 +95,30 @@ import {
   type Participant,
   type Room,
   type RoomAuthor,
-  type RoomChangedFile,
   type RoomJournalRecord,
   type RoomMessage,
   type RoomModelRef,
   type RoomNote,
-  type RoomStatus,
   type StopReason,
   type ToolAccess,
   turnToolAccess,
 } from './types'
-import { parseVote, renderTally, tallyVotes, votePrompt } from './votes'
+import {
+  parseVote,
+  renderTally,
+  tallyVotes,
+  votePrompt,
+} from './votes'
+import {
+  sameFiles,
+  ranToolsInstruction,
+  modelKey,
+  truncate,
+  parseAddressFor,
+  settleAfterCommand,
+} from './engineText'
+import { chunkTranscript } from './engineText'
+export { chunkTranscript }
 
 export type SummarizeFn = (input: {
   room: Room
@@ -232,80 +246,9 @@ const DEFAULT_TOOL_GROWTH_TOKENS: Record<ToolAccess, number> = {
   edit: 4_000,
   full: 6_000,
 }
-/** Whether two change listings name the same files with the same counts. */
-function sameFiles(a: readonly RoomChangedFile[], b: readonly RoomChangedFile[]): boolean {
-  if (a.length !== b.length) return false
-  const key = (f: RoomChangedFile) => `${f.path}\u0000${f.additions}\u0000${f.deletions}`
-  const set = new Set(a.map(key))
-  return b.every((f) => set.has(key(f)))
-}
-
 /** Tool turns kept per participant to estimate how much the next one grows. */
 const GROWTH_SAMPLES = 4
-/** The most passes the built-in summariser makes for one summary. */
-const MAX_SUMMARY_PASSES = 6
 const CHARS_PER_TOKEN = 3.5
-
-/** Tells a retried turn which tools already ran, so it does not repeat their effects. */
-function ranToolsInstruction(
-  base: string | null | undefined,
-  ranTools: ReadonlyArray<{ name: string; args?: unknown }>,
-  reason: string
-): string {
-  const ran = ranTools
-    .slice(0, 12)
-    .map((t) => `${t.name} ${JSON.stringify(t.args ?? {}).slice(0, 120)}`)
-    .join('; ')
-  return `${base ? `${base}
-` : ''}${rt('ranTools', { ran, reason })}`
-}
-
-function modelKey(model: RoomModelRef): string {
-  return `${model.provider}/${model.id}`
-}
-
-/** Head and tail of `text` within `chars`, for a message too long for one pass. */
-function clipMiddle(text: string, chars: number): string {
-  if (text.length <= chars) return text
-  const half = Math.max(0, Math.floor((chars - 24) / 2))
-  return `${text.slice(0, half)}\n... (cut) ...\n${text.slice(text.length - half)}`
-}
-
-/**
- * Split transcript blocks into passes that each fit `chars`, in order. A block
- * longer than a pass is cut to one. More than `MAX_SUMMARY_PASSES` passes keep
- * the newest and say the oldest were left out.
- */
-export function chunkTranscript(
-  blocks: string[],
-  chars: number
-): { chunks: string[]; omitted: number } {
-  const chunks: string[] = []
-  let current: string[] = []
-  let used = 0
-  for (const raw of blocks) {
-    const block = clipMiddle(raw, chars)
-    if (used + block.length + 2 > chars && current.length) {
-      chunks.push(current.join('\n\n'))
-      current = []
-      used = 0
-    }
-    current.push(block)
-    used += block.length + 2
-  }
-  if (current.length) chunks.push(current.join('\n\n'))
-  if (chunks.length <= MAX_SUMMARY_PASSES) return { chunks, omitted: 0 }
-  return {
-    chunks: chunks.slice(-MAX_SUMMARY_PASSES),
-    omitted: chunks.length - MAX_SUMMARY_PASSES,
-  }
-}
-
-function truncate(text: string): string {
-  return text.length > ROOM_LIMIT_CEILINGS.maxTextLength
-    ? text.slice(0, ROOM_LIMIT_CEILINGS.maxTextLength)
-    : text
-}
 
 /** A tool call that already ran in an earlier attempt of the turn. */
 type ToolRun = { name: string; args?: unknown }
@@ -1784,22 +1727,6 @@ class RoomRun {
     }
     await this.system(renderTally(tallyVotes(this.messages, call.id)))
     return true
-  }
-}
-
-function parseAddressFor(raw: string, room: Room): Address {
-  return parseAddress(raw, room.participants, room.moderator.enabled ? room.moderator.name : null)
-}
-
-/** Status to settle on after a one-off command (vote, final positions). */
-function settleAfterCommand(previous: RoomStatus): RoomStatus {
-  switch (previous) {
-    case 'completed':
-    case 'awaiting-user':
-    case 'stopped':
-      return previous
-    default:
-      return 'paused'
   }
 }
 

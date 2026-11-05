@@ -1,4 +1,11 @@
-import { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react'
+import {
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+  memo,
+} from 'react'
 import {
   Popover,
   PopoverContent,
@@ -29,39 +36,31 @@ import { MiddleText } from '@/components/ui/middle-text'
 import { effectiveContextLength } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
-import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
+import {
+  ArrowUpDown,
+  Search,
+  Settings,
+  X,
+} from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
-import {
-  selectionForThreadModel,
-  useConversationPane,
-} from '@/hooks/useConversationPane'
+import { selectionForThreadModel, useConversationPane } from '@/hooks/useConversationPane'
 import { ModelSetting } from '@/containers/ModelSetting'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { ModelAvatar } from '@/containers/ModelAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
 import { ModelEvidenceBadges } from '@/containers/ModelEvidenceBadges'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
-import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useProviderReachability } from '@/hooks/useProviderReachability'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
-import {
-  isOffline,
-  modelAvailability,
-  OFFLINE_DOT_CLASS,
-  OFFLINE_ROW_CLASS,
-} from '@/lib/modelAvailability'
+import { isOffline, modelAvailability, OFFLINE_ROW_CLASS } from '@/lib/modelAvailability'
 import { providerHasRemoteApiKeys as hasRemoteKeys } from '@/lib/provider-api-keys'
 import { useModelOrder } from '@/hooks/useModelOrder'
-import {
-  MODEL_SORT_OPTIONS,
-  sortModels,
-  type ModelSortOption,
-} from '@/lib/modelSort'
+import { MODEL_SORT_OPTIONS, sortModels, type ModelSortOption } from '@/lib/modelSort'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +74,12 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { OfflineBadge, ProcessingLocationLabel } from '@/containers/dropdownModelParts'
+import {
+  SECTION_HEADING,
+  SORT_LABEL_KEYS,
+  setLastUsedModel,
+} from '@/containers/dropdownModelConsts'
 
 type DropdownModelProviderProps = {
   model?: ThreadModel
@@ -87,66 +92,6 @@ type DropdownModelProviderProps = {
   onModelChange?: (model: ThreadModel) => void
   /** `quiet` under a composer: the model's name as text, no box, no arrow. */
   variant?: 'pill' | 'quiet'
-}
-
-/** A section heading in the picker: Favorites, local, cloud. */
-const SECTION_HEADING =
-  'px-2 pt-2.5 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase'
-
-/** The menu entry for each order. */
-const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
-  'name-asc': 'common:sortNameAsc',
-  'name-desc': 'common:sortNameDesc',
-  recent: 'common:sortRecent',
-  provider: 'common:sortProvider',
-}
-
-/**
- * "This provider just failed to answer."
- *
- * Not a probe result: it appears only after a real request to the endpoint
- * failed at the transport layer, and it goes as soon as one succeeds. An
- * installed local model that is merely unloaded never lands here.
- */
-const OfflineBadge = ({ label, tooltip }: { label: string; tooltip: string }) => (
-  <span
-    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium text-destructive"
-    title={tooltip}
-  >
-    <span className={cn('size-1.5 rounded-full', OFFLINE_DOT_CLASS)} aria-hidden />
-    {label}
-  </span>
-)
-
-/**
- * Where a provider's requests are processed. Stated on the section header so
- * choosing a model also says whether messages leave this device.
- */
-const ProcessingLocationLabel = ({ provider }: { provider: ModelProvider }) => {
-  const { t } = useTranslation()
-  const location = classifyModelLocation({
-    baseUrl: provider.base_url,
-    builtInEngine: Boolean(isLocalProvider(provider.provider)),
-  })
-  if (location !== 'local' && location !== 'remote') return null
-  const text = t(`model-fit:location.${location}`)
-  return (
-    <span className="truncate text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground" title={text}>
-      · {text}
-    </span>
-  )
-}
-
-// Helper functions for localStorage
-const setLastUsedModel = (provider: string, model: string) => {
-  try {
-    localStorage.setItem(
-      localStorageKey.lastUsedModel,
-      JSON.stringify({ provider, model })
-    )
-  } catch (error) {
-    console.debug('Failed to set last used model in localStorage:', error)
-  }
 }
 
 // `offersModels` (the rule for which providers appear in a model picker) is

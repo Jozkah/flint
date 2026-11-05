@@ -59,6 +59,7 @@ import {
 import { measureContextPack } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { lastUserText, latestUserMessage } from '@/lib/coworkTransportMessages'
 
 export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
   /**
@@ -104,19 +105,7 @@ export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
   openingInspection?: boolean
 }
 
-function latestUserMessage(messages: UIMessage[]): { id: string; text: string } | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i]
-    if (message.role !== 'user') continue
-    const text = message.parts
-      .map((part) => (part.type === 'text' ? part.text : ''))
-      .filter(Boolean)
-      .join('\n')
-      .trim()
-    if (text) return { id: message.id, text }
-  }
-  return null
-}
+export { lastUserText }
 
 /**
  * The chat transport, re-aimed at an agent run.
@@ -126,31 +115,6 @@ function latestUserMessage(messages: UIMessage[]): { id: string; text: string } 
  * and the usage metadata. Only four things differ, and each is a seam on the
  * parent.
  */
-/** The text of the latest user message, or undefined when there is none. */
-/** Notes Flint adds as user turns (nudges, recovery); the user typed none of them. */
-const FLINT_NOTE = /^Note from Flint \(not typed by the user/
-
-/**
- * The text of the last request the user typed. A Flint note is skipped
- * (RQA-010): the delegation nudge says "survey", which turned the system
- * prompt's survey hint on mid-run, told the model its first call must be
- * `task`, and changed the prompt prefix so every later step was re-read
- * uncached.
- */
-export function lastUserText(messages: UIMessage[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.role !== 'user') continue
-    const text = m.parts
-      .map((p) => (p.type === 'text' ? p.text : ''))
-      .join('')
-      .trim()
-    if (FLINT_NOTE.test(text)) continue
-    return text
-  }
-  return undefined
-}
-
 export class CoworkChatTransport extends CustomChatTransport {
   /** The route records uses where the turn meets its snapshot (AH-083). */
   protected override recordsMemoryUsesOnFinish = false
