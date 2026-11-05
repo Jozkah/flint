@@ -6,6 +6,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { McpServerStatus } from '@/containers/McpServerConnectionDetails'
 import { RowMenu } from '@/containers/engine/RowMenu'
 import {
+  McpBudgetText,
   McpServerAvatar,
   type McpServerItemProps,
 } from '@/containers/McpServerCard'
@@ -20,6 +21,7 @@ export function McpServerRow({
   toolNames,
   loading,
   approved,
+  budget,
   handlers,
 }: McpServerItemProps) {
   const { t } = useTranslation()
@@ -59,6 +61,9 @@ export function McpServerRow({
           onRetry={() => handlers.onToggle(key, true)}
           onAuthorize={() => handlers.onAuthorize(key)}
         />
+      </span>
+      <span className="hidden @min-[48rem]:block">
+        <McpBudgetText budget={budget} />
       </span>
       <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
         {toolNames

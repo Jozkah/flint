@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { McpKpiRow } from '../McpKpiRow'
 import { McpServerSearch } from '../McpServerSearch'
 import { McpServerContextMenu } from '../McpServerContextMenu'
+import { McpBudgetText } from '../McpServerCard'
 
 vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 
@@ -111,5 +112,16 @@ describe('McpServerContextMenu', () => {
     items = await screen.findAllByRole('menuitem')
     await userEvent.click(items[3])
     expect(cb.onDelete).toHaveBeenCalledWith('srv')
+  })
+})
+
+describe('McpBudgetText', () => {
+  it('shows spent and limit only when a budget is declared', () => {
+    const { rerender } = render(<McpBudgetText />)
+    expect(screen.queryByTestId('mcp-budget-srv')).toBeNull()
+    rerender(
+      <McpBudgetText budget={{ name: 'srv', spentChars: 1200, limitChars: 60000 }} />
+    )
+    expect(screen.getByTestId('mcp-budget-srv').textContent).toMatch(/1[^0-9]?200.*60[^0-9]?000/)
   })
 })

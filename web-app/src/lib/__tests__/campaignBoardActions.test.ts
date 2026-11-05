@@ -284,3 +284,26 @@ describe('board actions on a campaign the server drives', () => {
     expect(runner.cancel).not.toHaveBeenCalled()
   })
 })
+
+describe('resumeTask', () => {
+  it('re-queues a running task with no live run and kicks the runner', async () => {
+    const { actions, api, runner } = setup([task('a', 'running')])
+    expect(await actions.resumeTask('c1', 'a', 'lost')).toEqual({ ok: true })
+    expect(api.transition).toHaveBeenNthCalledWith(1, 'c1', {
+      task: { id: 'a', to: 'interrupted' },
+    })
+    expect(api.transition).toHaveBeenNthCalledWith(2, 'c1', {
+      task: { id: 'a', to: 'queued', patch: { detail: 'lost' } },
+    })
+    expect(runner.kick).toHaveBeenCalledWith('c1')
+  })
+
+  it('refuses a task that is still running or not running at all', async () => {
+    const live = setup([task('a', 'running')], {}, ['s-a'])
+    expect((await live.actions.resumeTask('c1', 'a')).ok).toBe(false)
+    expect(live.api.transition).not.toHaveBeenCalled()
+    const done = setup([task('b', 'merged')])
+    expect((await done.actions.resumeTask('c1', 'b')).ok).toBe(false)
+    expect(done.runner.kick).not.toHaveBeenCalled()
+  })
+})

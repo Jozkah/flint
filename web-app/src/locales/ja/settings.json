@@ -915,7 +915,8 @@
         "confirm": "確認",
         "reviewChanges": "変更をレビュー",
         "openCoordinator": "コーディネーターを開く",
-        "openCowork": "Cowork を開いて続行"
+        "openCowork": "Cowork を開いて続行",
+        "resumeStalled": "再開"
       },
       "note": {
         "title": "{{task}} へのメモ",

@@ -103,6 +103,13 @@ export interface MCPTrustReport {
   invalidated: MCPInvalidatedEntry[]
 }
 
+/** One server's session spend against its declared session budget. */
+export interface MCPBudgetEntry {
+  name: string
+  spentChars: number
+  limitChars: number
+}
+
 export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
   /**
@@ -145,6 +152,8 @@ export interface MCPService {
    * that stopped applying and need renewing.
    */
   trustReport(): Promise<MCPTrustReport>
+  /** Session spend of each server that declares a session budget (display only). */
+  budgetReport(): Promise<MCPBudgetEntry[]>
   /**
    * The security fingerprint of every configured or running server, by name.
    * Computed by the backend (`mcp_identity`), never in the renderer.

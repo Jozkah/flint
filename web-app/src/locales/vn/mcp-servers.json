@@ -150,6 +150,9 @@
   "allowPermissions": "Cho phép tất cả các quyền của công cụ MCP",
   "allowPermissionsDesc": "Khi được bật, tất cả các lệnh gọi công cụ MCP sẽ được tự động phê duyệt mà không hiển thị hộp thoại cấp phép.",
   "autoApproveServer": "Tự động phê duyệt công cụ của máy chủ này",
+  "budget": {
+    "spent": "Ngân sách phiên: {{spent}} / {{limit}} ký tự"
+  },
   "noServers": "Không tìm thấy máy chủ MCP nào",
   "searchPlaceholder": "Tìm máy chủ MCP...",
   "noSearchResults": "Không có máy chủ MCP nào khớp với \"{{query}}\"",

@@ -150,6 +150,9 @@
   "allowPermissions": "Permet tots els permisos de les eines MCP",
   "allowPermissionsDesc": "Quan està activat, totes les crides a eines MCP s’aprovaran automàticament sense mostrar diàlegs de permís. Aquest ajust s’aplica a totes les converses, inclosos els xats nous.",
   "autoApproveServer": "Aprova automàticament les eines d'aquest servidor",
+  "budget": {
+    "spent": "Pressupost de la sessió: {{spent}} / {{limit}} caràcters"
+  },
   "noServers": "No s’han trobat servidors MCP",
   "searchPlaceholder": "Cerca servidors MCP...",
   "noSearchResults": "Cap servidor MCP coincideix amb \"{{query}}\"",

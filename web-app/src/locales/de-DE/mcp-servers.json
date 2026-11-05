@@ -149,6 +149,9 @@
   "allowPermissions": "Alle MCP-Tool-Berechtigungen erlauben",
   "allowPermissionsDesc": "Wenn aktiviert, werden alle MCP-Werkzeug-Aufrufe automatisch genehmigt, ohne dass Berechtigungsdialoge angezeigt werden. Diese Einstellung gilt global für alle Gespräche, einschließlich neuer Chats.",
   "autoApproveServer": "Tools dieses Servers automatisch genehmigen",
+  "budget": {
+    "spent": "Sitzungsbudget: {{spent}} / {{limit}} Zeichen"
+  },
   "noServers": "Keine MCP Server gefunden",
   "searchPlaceholder": "MCP-Server durchsuchen ...",
   "noSearchResults": "Keine MCP-Server gefunden für „{{query}}“",

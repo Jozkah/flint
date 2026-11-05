@@ -919,7 +919,8 @@
         "confirm": "Potvrdit",
         "reviewChanges": "Zkontrolovat změny",
         "openCoordinator": "Otevřít koordinátora",
-        "openCowork": "Otevřít Cowork a pokračovat"
+        "openCowork": "Otevřít Cowork a pokračovat",
+        "resumeStalled": "Pokračovat"
       },
       "note": {
         "title": "Poznámka pro úkol {{task}}",

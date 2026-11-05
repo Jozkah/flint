@@ -946,7 +946,8 @@
         "confirm": "Confirmar",
         "reviewChanges": "Revisar alterações",
         "openCoordinator": "Abrir coordenador",
-        "openCowork": "Abrir o Cowork para continuar"
+        "openCowork": "Abrir o Cowork para continuar",
+        "resumeStalled": "Retomar"
       },
       "note": {
         "title": "Nota para {{task}}",

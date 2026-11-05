@@ -243,6 +243,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'clear_mcp_auth',
       'deactivate_mcp_server',
       'get_mcp_auth_status',
+      'get_mcp_budget_report',
       'get_mcp_server_log',
       'get_mcp_server_statuses',
       'get_server_status',

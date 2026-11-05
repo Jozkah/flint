@@ -919,7 +919,8 @@
         "confirm": "Potwierdź",
         "reviewChanges": "Przejrzyj zmiany",
         "openCoordinator": "Otwórz koordynatora",
-        "openCowork": "Otwórz Cowork, aby kontynuować"
+        "openCowork": "Otwórz Cowork, aby kontynuować",
+        "resumeStalled": "Wznów"
       },
       "note": {
         "title": "Notatka do: {{task}}",

@@ -14,6 +14,7 @@ import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
 import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import type { MCPBudgetEntry } from '@/services/mcp/types'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
@@ -296,6 +297,29 @@ function MCPServersDesktop() {
     }
   }, [connectedKey])
 
+
+  // Session spend per server that declares a budget; read-only, refreshed
+  // while the page is open.
+  const [budgets, setBudgets] = useState<Record<string, MCPBudgetEntry>>({})
+  useEffect(() => {
+    let cancelled = false
+    const load = () =>
+      void serviceHubRef.current
+        .mcp()
+        .budgetReport?.()
+        .then((rows) => {
+          if (!cancelled) {
+            setBudgets(Object.fromEntries((rows ?? []).map((r) => [r.name, r])))
+          }
+        })
+        .catch(() => undefined)
+    load()
+    const timer = setInterval(load, 10_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
 
   const modelProviders = useModelProvider((state) => state.providers)
 
@@ -607,6 +631,7 @@ function MCPServersDesktop() {
           : undefined,
       loading: !!loadingServers[key],
       approved: isServerApproved(key, fingerprints[key]),
+      budget: budgets[key],
       handlers,
     }
   }

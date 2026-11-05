@@ -1088,7 +1088,8 @@
         "confirm": "पुष्टि करें",
         "reviewChanges": "बदलावों की समीक्षा करें",
         "openCoordinator": "समन्वयक खोलें",
-        "openCowork": "जारी रखने के लिए Cowork खोलें"
+        "openCowork": "जारी रखने के लिए Cowork खोलें",
+        "resumeStalled": "फिर से शुरू करें"
       },
       "note": {
         "title": "{{task}} के लिए नोट",

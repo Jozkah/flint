@@ -495,6 +495,27 @@ export function CampaignBoard({
           >
             {t('settings:campaigns.board.action.openCowork')}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            data-testid="campaign-stalled-resume"
+            onClick={() =>
+              void run(async () => {
+                for (const id of stalled) {
+                  const out = await actions.resumeTask(
+                    campaign.id,
+                    id,
+                    t('common:campaignRunLost')
+                  )
+                  if (!out.ok) return out
+                }
+                return { ok: true as const }
+              })
+            }
+          >
+            {t('settings:campaigns.board.action.resumeStalled')}
+          </Button>
         </div>
       ) : null}
 

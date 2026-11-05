@@ -149,6 +149,9 @@
   "allowPermissions": "모든 MCP 도구 권한 허용",
   "allowPermissionsDesc": "활성화하면 권한 확인창을 표시하지 않고 모든 MCP 도구 호출을 자동으로 승인합니다. 이 설정은 새 채팅을 포함한 모든 대화에 전역적으로 적용됩니다.",
   "autoApproveServer": "이 서버의 도구 자동 승인",
+  "budget": {
+    "spent": "세션 예산: {{spent}} / {{limit}}자"
+  },
   "noServers": "검색된 MCP 서버가 없습니다",
   "searchPlaceholder": "MCP 서버 검색...",
   "noSearchResults": "\"{{query}}\"와(과) 일치하는 MCP 서버가 없습니다",

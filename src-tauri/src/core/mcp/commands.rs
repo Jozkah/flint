@@ -630,6 +630,14 @@ async fn current_server_fingerprint(state: &AppState, data_folder: &Path, name: 
     server_fingerprint_from(&active, &saved_server_configs(data_folder), name)
 }
 
+/// Session spend against the session budget of each MCP server that declares
+/// one, for the read-only line in the server list. Display only.
+#[tauri::command]
+pub async fn get_mcp_budget_report() -> Result<Vec<crate::core::mcp::budget::BudgetReportEntry>, String> {
+    let servers = saved_server_configs(&crate::core::app::commands::resolve_jan_data_folder());
+    Ok(crate::core::mcp::budget::report(&servers))
+}
+
 /// Every MCP server name the backend holds a standing grant for. AH-041.
 ///
 /// Names only, for callers that just need the list; [`mcp_trust_report`] says

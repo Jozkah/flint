@@ -362,6 +362,7 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::get_tools_for_servers,
         core::mcp::commands::get_server_summaries,
         core::mcp::commands::call_tool,
+        core::mcp::commands::get_mcp_budget_report,
         core::mcp::commands::mcp_trusted_servers,
         core::mcp::commands::mcp_trust_report,
         core::mcp::commands::mcp_server_fingerprints,

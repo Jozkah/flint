@@ -149,6 +149,9 @@
   "allowPermissions": "Tüm MCP Araç İzinlerine İzin Ver",
   "allowPermissionsDesc": "Etkinleştirildiğinde, tüm MCP araç çağrıları izin diyalogları gösterilmeden otomatik olarak onaylanır. Bu ayar, yeni sohbetler dahil tüm konuşmalar için geçerlidir.",
   "autoApproveServer": "Bu sunucunun araçlarını otomatik onayla",
+  "budget": {
+    "spent": "Oturum bütçesi: {{spent}} / {{limit}} karakter"
+  },
   "noServers": "MCP sunucusu bulunamadı",
   "searchPlaceholder": "MCP sunucularında ara...",
   "noSearchResults": "\"{{query}}\" ile eşleşen MCP sunucusu yok",

@@ -10,6 +10,7 @@ import type {
   MCPAuthStatus,
   MCPForgetReason,
   MCPServerStatus,
+  MCPBudgetEntry,
   MCPTrustReport,
   ServerSummary,
   ToolCallWithCancellationResult,
@@ -72,6 +73,10 @@ export class DefaultMCPService implements MCPService {
   // and a base signature taking fewer arguments is not one an override
   // satisfies. They are named in the message rather than discarded, so a
   // failure says which server it was about.
+  async budgetReport(): Promise<MCPBudgetEntry[]> {
+    return []
+  }
+
   async trustReport(): Promise<MCPTrustReport> {
     return { trusted: [], invalidated: [] }
   }

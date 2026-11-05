@@ -1090,7 +1090,8 @@
         "confirm": "Confirmar",
         "reviewChanges": "Revisar cambios",
         "openCoordinator": "Abrir coordinador",
-        "openCowork": "Abrir Cowork para continuar"
+        "openCowork": "Abrir Cowork para continuar",
+        "resumeStalled": "Reanudar"
       },
       "note": {
         "title": "Nota para {{task}}",

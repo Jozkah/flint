@@ -149,6 +149,9 @@
   "allowPermissions": "MCP ツールの権限をすべて許可",
   "allowPermissionsDesc": "有効にすると、すべてのMCPツール呼び出しは許可ダイアログを表示せずに自動的に承認されます。この設定は、新しいチャットを含むすべての会話にグローバルに適用されます。",
   "autoApproveServer": "このサーバーのツールを自動承認",
+  "budget": {
+    "spent": "セッション予算: {{spent}} / {{limit}} 文字"
+  },
   "noServers": "MCPサーバーが見つかりません",
   "searchPlaceholder": "MCP サーバーを検索...",
   "noSearchResults": "「{{query}}」に一致する MCP サーバーはありません",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
@@ -50,6 +50,7 @@ const campaign = (tasks: CampaignTask[], over: Partial<Campaign> = {}): Campaign
 const actions = {
   pause: vi.fn(async () => ({ ok: true })),
   retryTask: vi.fn(async () => ({ ok: true })),
+  resumeTask: vi.fn(async () => ({ ok: true })),
   verifyAgain: vi.fn(async () => ({ ok: true })),
   acceptAnyway: vi.fn(async () => ({ ok: true })),
   resume: vi.fn(async () => ({ ok: true })),
@@ -311,5 +312,27 @@ describe('CampaignBoard', () => {
     expect(
       (screen.getByTestId('campaign-hint-a') as HTMLTextAreaElement).value
     ).toContain('--test-isolation=none')
+  })
+
+  it('offers a manual Resume for stalled tasks and does nothing on its own', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    try {
+      show(campaign([task('a', { status: 'running', sessionId: 's-a' })]))
+      expect(screen.queryByTestId('campaign-stalled')).toBeNull()
+      await act(async () => {
+        vi.advanceTimersByTime(13_000)
+      })
+      expect(screen.getByTestId('campaign-stalled')).toBeInTheDocument()
+      expect(actions.resumeTask).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByTestId('campaign-stalled-resume'))
+      await act(async () => {})
+      expect(actions.resumeTask).toHaveBeenCalledWith(
+        'c1',
+        'a',
+        expect.any(String)
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
