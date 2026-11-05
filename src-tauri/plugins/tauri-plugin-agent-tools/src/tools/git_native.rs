@@ -75,6 +75,11 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
         && !s.starts_with(|c: char| c.is_ascii_alphabetic() && s[1..].starts_with(":\\"))
     {
         if let Some((host_part, path)) = s.split_once(':') {
+            // A path or backslash before the `@` means the "host" is really a
+            // userinfo-looking path (`evil.com/a@github.com:o/r`).
+            if host_part.contains(['/', '\\']) {
+                return None;
+            }
             let host = host_part
                 .rsplit('@')
                 .next()
@@ -91,8 +96,13 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     }
     // URL form.
     let after_scheme = s.split_once("://").map(|(_, rest)| rest)?;
-    let after_userinfo = after_scheme.rsplit('@').next().unwrap_or(after_scheme);
-    let (authority, path) = after_userinfo.split_once('/')?;
+    // Split authority from path first; userinfo is only valid inside the
+    // authority, so `evil.com/a@github.com/o/r` cannot pose as a github host.
+    let (authority, path) = after_scheme.split_once('/')?;
+    if authority.contains('\\') {
+        return None;
+    }
+    let authority = authority.rsplit('@').next().unwrap_or(authority);
     let host = authority
         .split(':')
         .next()
@@ -878,6 +888,36 @@ pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> Str
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[test]
+    fn parse_github_repo_rejects_userinfo_spoofed_hosts() {
+        for bad in [
+            "https://evil.com/a@github.com/o/r",
+            "https://evil.com/a@github.com:443/o/r",
+            "https://evil.com\\@github.com/o/r",
+            "evil.com/a@github.com:o/r",
+            "ssh://evil.com/g@github.com/o/r",
+        ] {
+            assert!(parse_github_repo(bad).is_none(), "accepted {bad}");
+        }
+    }
+
+    #[test]
+    fn parse_github_repo_accepts_real_github_forms() {
+        let want = RepoRef::new("o", "r");
+        for good in [
+            "https://github.com/o/r",
+            "https://github.com/o/r.git",
+            "https://user@github.com/o/r",
+            "https://user:tok@github.com/o/r",
+            "ssh://git@github.com/o/r.git",
+            "git@github.com:o/r.git",
+            "github.com:o/r",
+            "o/r",
+        ] {
+            assert_eq!(parse_github_repo(good), Some(want.clone()), "rejected {good}");
+        }
+    }
 
     #[test]
     fn clone_url_accepts_owner_repo_and_git_suffix() {
