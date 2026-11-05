@@ -7,6 +7,7 @@ import { useClaudeCodeModel } from '@/hooks/useClaudeCodeModel'
 import {
   availableHelperModels,
   claudeCodeApiUrl,
+  raiseLocalContexts,
   serverModelsToPersist,
   waitForModelsActive,
 } from '@/lib/claudeCodeLaunch'
@@ -142,46 +143,21 @@ export function ClaudeCodeSettings() {
     // context (janhq/jan#8108). Raise the context of each local model that has
     // not been given one by the user, through the same write-and-reload path the
     // "Increase Context Size" button uses.
-    const llamacpp = getProviderByName('llamacpp')
-    for (const [id, plan] of Object.entries(contextPlans)) {
-      if (plan.raiseTo == null || !llamacpp) continue
-      try {
-        const latest = getProviderByName('llamacpp') ?? llamacpp
-        const index = latest.models.findIndex((m) => m.id === id)
-        if (index === -1) continue
-        const model = latest.models[index]
-        const models = [...latest.models]
-        models[index] = {
-          ...model,
-          settings: {
-            ...model.settings,
-            ctx_len: {
-              ...(model.settings?.ctx_len ?? {}),
-              controller_props: {
-                ...(model.settings?.ctx_len?.controller_props ?? {}),
-                value: plan.raiseTo,
-              },
-            },
-          },
-        } as typeof model
-        await serviceHub
-          .models()
-          .updateModelSettings(id, { ctx_len: plan.raiseTo })
-        updateProvider('llamacpp', { models })
-        const loaded = (await serviceHub.models().getActiveModels()) || []
-        if (loaded.includes(id)) {
-          await serviceHub.models().stopModel(id, 'llamacpp')
-        }
+    await raiseLocalContexts(contextPlans, {
+      getProvider: () => getProviderByName('llamacpp'),
+      updateModelSettings: (id, settings) =>
+        serviceHub.models().updateModelSettings(id, settings),
+      updateProvider: (models) => updateProvider('llamacpp', { models }),
+      getActiveModels: () => serviceHub.models().getActiveModels(),
+      stopModel: (id) => serviceHub.models().stopModel(id, 'llamacpp'),
+      onRaised: (model, context) =>
         toast.info(
           t('settings:claudeCode.contextRaised', {
             model: getModelDisplayName(model),
-            context: plan.raiseTo.toLocaleString(),
+            context: context.toLocaleString(),
           })
-        )
-      } catch (e) {
-        console.error('Failed to raise the context for Claude Code', e)
-      }
-    }
+        ),
+    })
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
