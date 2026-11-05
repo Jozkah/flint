@@ -919,7 +919,8 @@
         "confirm": "Confirma",
         "reviewChanges": "Revisa els canvis",
         "openCoordinator": "Obre el coordinador",
-        "openCowork": "Obre Cowork per continuar"
+        "openCowork": "Obre Cowork per continuar",
+        "resumeStalled": "Reprèn"
       },
       "note": {
         "title": "Nota per a {{task}}",

@@ -148,6 +148,9 @@
   "allowPermissions": "Izinkan semua izin alat MCP",
   "allowPermissionsDesc": "Jika diaktifkan, semua panggilan alat MCP akan disetujui secara otomatis tanpa menampilkan dialog izin. Pengaturan ini berlaku secara global untuk semua percakapan, termasuk chat baru.",
   "autoApproveServer": "Setujui otomatis alat server ini",
+  "budget": {
+    "spent": "Anggaran sesi: {{spent}} / {{limit}} karakter"
+  },
   "noServers": "Tidak ada server MCP yang ditemukan",
   "searchPlaceholder": "Cari server MCP...",
   "noSearchResults": "Tidak ada server MCP yang cocok dengan \"{{query}}\"",

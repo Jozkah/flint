@@ -917,7 +917,8 @@
         "confirm": "Confirmer",
         "reviewChanges": "Relire les modifications",
         "openCoordinator": "Ouvrir le coordinateur",
-        "openCowork": "Ouvrir Cowork pour continuer"
+        "openCowork": "Ouvrir Cowork pour continuer",
+        "resumeStalled": "Reprendre"
       },
       "note": {
         "title": "Note pour {{task}}",

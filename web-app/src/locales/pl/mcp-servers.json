@@ -151,6 +151,9 @@
   "allowPermissions": "Zezwalaj na wszystkie uprawnienia narzędzi MCP",
   "allowPermissionsDesc": "Po włączeniu będzie automatycznie zezwalać na wszystkie użycia narzędzi MCP bez wyświetlania próśb o zgodę. To ustawienie obowiązuje globalnie dla wszystkich rozmów, w tym nowych czatów.",
   "autoApproveServer": "Zatwierdzaj automatycznie narzędzia tego serwera",
+  "budget": {
+    "spent": "Budżet sesji: {{spent}} / {{limit}} znaków"
+  },
   "noServers": "Nie znaleziono serwerów MCP",
   "searchPlaceholder": "Szukaj serwerów MCP...",
   "noSearchResults": "Żaden serwer MCP nie pasuje do „{{query}}”",

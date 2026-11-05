@@ -27,7 +27,7 @@ import { RowMenu } from '@/containers/engine/RowMenu'
 import { bucketCounts, type ToolCallSample } from '@/stores/engine-activity-store'
 import type { deriveConnectionState } from '@/lib/mcpConnectionState'
 import type { deriveMcpServerProfile } from '@/lib/mcpServerProfile'
-import type { MCPAuthStatus } from '@/services/mcp/types'
+import type { MCPAuthStatus, MCPBudgetEntry } from '@/services/mcp/types'
 import { cn } from '@/lib/utils'
 import { CHART_BUCKETS, mcpIdSafe, serverColor } from '@/lib/mcpServerVisual'
 
@@ -75,7 +75,26 @@ export type McpServerItemProps = {
   toolNames: string[] | null | undefined
   loading: boolean
   approved: boolean
+  /** Session spend vs. the declared budget; absent when none is declared. */
+  budget?: MCPBudgetEntry
   handlers: McpServerHandlers
+}
+
+/** Read-only "spent / limit" text for a server that declares a session budget. */
+export function McpBudgetText({ budget }: { budget?: MCPBudgetEntry }) {
+  const { t } = useTranslation()
+  if (!budget) return null
+  return (
+    <span
+      data-testid={`mcp-budget-${mcpIdSafe(budget.name)}`}
+      className="shrink-0 text-xs text-muted-foreground tabular-nums"
+    >
+      {t('mcp-servers:budget.spent', {
+        spent: budget.spentChars.toLocaleString(),
+        limit: budget.limitChars.toLocaleString(),
+      })}
+    </span>
+  )
 }
 
 export function McpServerAvatar({
@@ -116,6 +135,7 @@ export function McpServerCard({
   toolNames,
   loading,
   approved,
+  budget,
   handlers,
   index,
   expanded,
@@ -204,6 +224,7 @@ export function McpServerCard({
               : '—'}
           </span>
         </div>
+        <McpBudgetText budget={budget} />
         <LiveChart
           series={series}
           // One accent for every server: the avatar already says which one it is.

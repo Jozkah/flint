@@ -919,7 +919,8 @@
         "confirm": "Подтвердить",
         "reviewChanges": "Проверить изменения",
         "openCoordinator": "Открыть координатора",
-        "openCowork": "Открыть Cowork, чтобы продолжить"
+        "openCowork": "Открыть Cowork, чтобы продолжить",
+        "resumeStalled": "Возобновить"
       },
       "note": {
         "title": "Заметка для задачи «{{task}}»",

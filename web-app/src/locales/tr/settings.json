@@ -915,7 +915,8 @@
         "confirm": "Onayla",
         "reviewChanges": "Değişiklikleri incele",
         "openCoordinator": "Koordinatörü aç",
-        "openCowork": "Devam etmek için Birlikte Çalış'ı aç"
+        "openCowork": "Devam etmek için Birlikte Çalış'ı aç",
+        "resumeStalled": "Devam et"
       },
       "note": {
         "title": "{{task}} görevine not",

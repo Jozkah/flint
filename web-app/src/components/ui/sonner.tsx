@@ -10,6 +10,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={isDark ? 'dark' : 'light'}
       className="toaster group"
+      toastOptions={{
+        classNames: {
+          title: 'select-text',
+          description: 'select-text',
+        },
+      }}
       {...props}
     />
   )

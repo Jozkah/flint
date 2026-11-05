@@ -915,7 +915,8 @@
         "confirm": "確認",
         "reviewChanges": "檢視變更",
         "openCoordinator": "開啟協調器",
-        "openCowork": "開啟 Cowork 以繼續"
+        "openCowork": "開啟 Cowork 以繼續",
+        "resumeStalled": "恢復"
       },
       "note": {
         "title": "給 {{task}} 的備註",

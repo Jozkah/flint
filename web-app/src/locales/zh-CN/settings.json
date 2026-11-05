@@ -915,7 +915,8 @@
         "confirm": "确认",
         "reviewChanges": "审阅更改",
         "openCoordinator": "打开协调器",
-        "openCowork": "打开协作以继续"
+        "openCowork": "打开协作以继续",
+        "resumeStalled": "恢复"
       },
       "note": {
         "title": "给 {{task}} 的备注",

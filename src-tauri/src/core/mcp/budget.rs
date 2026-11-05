@@ -117,6 +117,34 @@ pub fn spent() -> Vec<(String, u64, u64)> {
     out
 }
 
+/// One server's session spend against its declared session budget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetReportEntry {
+    pub name: String,
+    pub spent_chars: u64,
+    pub limit_chars: u64,
+}
+
+/// Spend of every configured server that declares a session budget. Servers
+/// without one are left out: there is nothing to compare their spend with.
+pub fn report(servers: &serde_json::Map<String, serde_json::Value>) -> Vec<BudgetReportEntry> {
+    let spent: HashMap<String, u64> = SPENT.lock().map(|m| m.clone()).unwrap_or_default();
+    let mut out: Vec<BudgetReportEntry> = servers
+        .iter()
+        .filter_map(|(name, cfg)| {
+            let limit_chars = ServerBudget::from_config(cfg).max_session_chars?;
+            Some(BudgetReportEntry {
+                name: name.clone(),
+                spent_chars: *spent.get(name).unwrap_or(&0),
+                limit_chars,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 /// The characters of text a tool result carries.
 pub fn result_chars(result: &rmcp::model::CallToolResult) -> u64 {
     result
@@ -165,6 +193,22 @@ mod tests {
         assert!(err.contains("'noisy-test'") && err.contains("estimated"), "{err}");
         assert!(check("quiet-test", &budget).is_ok(), "other servers are unaffected");
         assert!(check("noisy-test", &ServerBudget::default()).is_ok(), "no budget, no refusal");
+    }
+
+    #[test]
+    fn the_report_lists_only_servers_with_a_session_budget() {
+        let cfg = serde_json::json!({
+            "rep-a": {"command": "x", "budget": {"maxSessionChars": 100}},
+            "rep-b": {"command": "y"},
+            "rep-c": {"command": "z", "budget": {"maxResultChars": 5}}
+        });
+        let servers = cfg.as_object().unwrap();
+        reset("rep-a");
+        charge("rep-a", 42);
+        assert_eq!(
+            report(servers),
+            vec![BudgetReportEntry { name: "rep-a".into(), spent_chars: 42, limit_chars: 100 }]
+        );
     }
 
     #[test]

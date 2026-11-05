@@ -151,6 +151,9 @@
   "allowPermissions": "Povolit všechna oprávnění MCP nástrojů",
   "allowPermissionsDesc": "Pokud je povoleno, všechna volání MCP nástrojů budou automaticky schválena bez zobrazení dialogů oprávnění. Toto nastavení platí globálně pro všechny konverzace, včetně nových chatů.",
   "autoApproveServer": "Automaticky schvalovat nástroje tohoto serveru",
+  "budget": {
+    "spent": "Rozpočet relace: {{spent}} / {{limit}} znaků"
+  },
   "noServers": "Nebyly nalezeny žádné MCP servery",
   "searchPlaceholder": "Hledat servery MCP...",
   "noSearchResults": "Žádné servery MCP neodpovídají „{{query}}“",

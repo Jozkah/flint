@@ -12,6 +12,7 @@ import type {
   MCPConfig,
   MCPForgetReason,
   MCPServerStatus,
+  MCPBudgetEntry,
   MCPTrustReport,
   ServerSummary,
 } from './types'
@@ -161,6 +162,10 @@ export class TauriMCPService extends DefaultMCPService {
 
   async trustedServers(): Promise<string[]> {
     return invokeCommand('mcp_trusted_servers')
+  }
+
+  async budgetReport(): Promise<MCPBudgetEntry[]> {
+    return invokeCommand('get_mcp_budget_report')
   }
 
   async trustReport(): Promise<MCPTrustReport> {

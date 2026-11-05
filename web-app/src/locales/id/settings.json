@@ -913,7 +913,8 @@
         "confirm": "Konfirmasi",
         "reviewChanges": "Tinjau perubahan",
         "openCoordinator": "Buka koordinator",
-        "openCowork": "Buka Cowork untuk melanjutkan"
+        "openCowork": "Buka Cowork untuk melanjutkan",
+        "resumeStalled": "Lanjutkan"
       },
       "note": {
         "title": "Catatan untuk {{task}}",

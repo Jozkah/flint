@@ -149,6 +149,9 @@
   "allowPermissions": "允许所有 MCP 工具权限",
   "allowPermissionsDesc": "启用后，所有 MCP 工具调用都将自动批准，而不会显示权限对话框。此设置全局适用于所有对话，包括新聊天。",
   "autoApproveServer": "自动批准此服务器的工具",
+  "budget": {
+    "spent": "会话预算：{{spent}} / {{limit}} 个字符"
+  },
   "noServers": "未找到 MCP 服务器",
   "searchPlaceholder": "搜索 MCP 服务器...",
   "noSearchResults": "没有与“{{query}}”匹配的 MCP 服务器",

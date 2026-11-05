@@ -150,6 +150,9 @@
   "allowPermissions": "Consenti tutti i permessi degli strumenti MCP",
   "allowPermissionsDesc": "Se abilitato, tutte le chiamate agli strumenti MCP verranno approvate automaticamente senza mostrare finestre di dialogo di autorizzazione. Questa impostazione si applica a livello globale a tutte le conversazioni, incluse le nuove chat.",
   "autoApproveServer": "Approva automaticamente gli strumenti di questo server",
+  "budget": {
+    "spent": "Budget di sessione: {{spent}} / {{limit}} caratteri"
+  },
   "noServers": "Nessun server MCP trovato",
   "searchPlaceholder": "Cerca server MCP...",
   "noSearchResults": "Nessun server MCP corrisponde a \"{{query}}\"",

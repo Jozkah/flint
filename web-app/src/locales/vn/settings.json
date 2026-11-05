@@ -917,7 +917,8 @@
         "confirm": "Xác nhận",
         "reviewChanges": "Xem xét thay đổi",
         "openCoordinator": "Mở bộ điều phối",
-        "openCowork": "Mở Cowork để tiếp tục"
+        "openCowork": "Mở Cowork để tiếp tục",
+        "resumeStalled": "Tiếp tục"
       },
       "note": {
         "title": "Ghi chú cho {{task}}",

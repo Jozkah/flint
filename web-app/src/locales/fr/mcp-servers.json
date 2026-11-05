@@ -150,6 +150,9 @@
   "allowPermissions": "Autoriser toutes les permissions d'outils MCP",
   "allowPermissionsDesc": "Lorsque cette option est activée, tous les appels d'outils MCP seront automatiquement approuvés sans afficher de boîtes de dialogue de permission. Ce paramètre s'applique globalement à toutes les conversations, y compris les nouvelles discussions.",
   "autoApproveServer": "Approuver automatiquement les outils de ce serveur",
+  "budget": {
+    "spent": "Budget de session : {{spent}} / {{limit}} caractères"
+  },
   "noServers": "Aucun serveur MCP trouvé",
   "searchPlaceholder": "Rechercher des serveurs MCP...",
   "noSearchResults": "Aucun serveur MCP ne correspond à « {{query}} »",

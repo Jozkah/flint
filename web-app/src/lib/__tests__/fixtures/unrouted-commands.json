@@ -1697,6 +1697,9 @@
     "web-app/src/containers/McpElicitationCard.tsx (via respondToElicitation)",
     "web-app/src/hooks/useMcpElicitation.ts"
   ],
+  "get_mcp_budget_report": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
   "mcp_forget_server": [
     "web-app/src/services/mcp/tauri.ts"
   ],

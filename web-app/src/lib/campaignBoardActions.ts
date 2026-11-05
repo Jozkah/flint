@@ -211,6 +211,37 @@ export function createBoardActions(deps: BoardDeps) {
   }
 
   /**
+   * Put a task the record calls running, but that nothing is running, back in
+   * the queue (the same steps the run host takes on its own). Manual only: a
+   * rerun can repeat side effects, so the user decides.
+   */
+  const resumeTask = async (
+    id: string,
+    taskId: string,
+    detail?: string
+  ): Promise<ActionResult> => {
+    const { c, task } = await taskOf(id, taskId)
+    if (!task) return fail(`no task ${taskId}`)
+    if (isServerDriven(c)) return fail('server campaigns resume on the server')
+    if (task.status !== 'running') {
+      return fail(`task ${taskId} is ${task.status}, not running`)
+    }
+    if (task.sessionId && deps.liveSessions().has(task.sessionId)) {
+      return fail(`task ${taskId} is still running`)
+    }
+    await deps.api.transition(id, { task: { id: taskId, to: 'interrupted' } })
+    await deps.api.transition(id, {
+      task: {
+        id: taskId,
+        to: 'queued',
+        ...(detail ? { patch: { detail } } : {}),
+      },
+    })
+    await deps.runner.kick(id)
+    return { ok: true }
+  }
+
+  /**
    * Ask the verifier again, for a finished task whose check was blocked (the
    * model could not be reached, or the evidence was too thin). Nothing is
    * decided for the person: the verdict is whatever the verifier now says.
@@ -411,6 +442,7 @@ export function createBoardActions(deps: BoardDeps) {
     retryGate,
     fixChecks,
     retryTask,
+    resumeTask,
     verifyAgain,
     acceptAnyway,
     resolveConflict,

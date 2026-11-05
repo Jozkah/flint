@@ -915,7 +915,8 @@
         "confirm": "Confirm",
         "reviewChanges": "Review changes",
         "openCoordinator": "Open coordinator",
-        "openCowork": "Open Cowork to continue"
+        "openCowork": "Open Cowork to continue",
+        "resumeStalled": "Resume"
       },
       "note": {
         "title": "Note to {{task}}",

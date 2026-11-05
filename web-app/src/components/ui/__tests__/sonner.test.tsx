@@ -4,10 +4,12 @@ import { Toaster } from '../sonner'
 
 // Mock sonner
 vi.mock('sonner', () => ({
-  Toaster: ({ className, expand, richColors, closeButton, ...props }: any) => (
+  Toaster: ({ className, expand, richColors, closeButton, toastOptions, ...props }: any) => (
     <div 
       data-testid="toaster" 
       className={className} 
+      data-toast-title={toastOptions?.classNames?.title}
+      data-toast-description={toastOptions?.classNames?.description}
       {...props}
       {...(expand !== undefined && { 'data-expand': expand })}
       {...(richColors !== undefined && { 'data-rich-colors': richColors })}
@@ -25,6 +27,14 @@ describe('Toaster Component', () => {
     const toaster = screen.getByTestId('toaster')
     expect(toaster).toBeDefined()
     expect(screen.getByText('Toaster Component')).toBeDefined()
+  })
+
+  it('lets the toast title and description be selected and copied', () => {
+    render(<Toaster />)
+
+    const toaster = screen.getByTestId('toaster')
+    expect(toaster).toHaveAttribute('data-toast-title', 'select-text')
+    expect(toaster).toHaveAttribute('data-toast-description', 'select-text')
   })
 
   it('should apply default className', () => {
