@@ -318,7 +318,8 @@
     "promptHooksStopped": "Tur, istem kancaları çalışırken durduruldu; bu yüzden istem gönderilmedi.",
     "reasoningLoop": "Aynı metin tekrarlandığı için akıl yürütme durduruldu. Farklı bir model veya daha düşük bir düşünme bütçesi deneyin.",
     "serviceUnavailable": "Model hizmeti hazır değil veya hiçbir model ya da sağlayıcı seçilmedi.",
-    "contextUsed": "({{total}} bağlam jetonunun {{used}} tanesi kullanıldı.)"
+    "contextUsed": "({{total}} bağlam jetonunun {{used}} tanesi kullanıldı.)",
+    "imageOmitted": "(görsel atlandı: modelin görme yeteneği yok)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

@@ -549,15 +549,16 @@ export function stripUnsupportedImageParts(
       touched = true
       return {
         ...part,
-        output: stripToolImageSentinels(output, TOOL_IMAGE_OMITTED),
+        output: stripToolImageSentinels(
+          output,
+          ` ${i18n.t('chat:transport.imageOmitted', { defaultValue: '(image omitted: the model has no vision)' })}`
+        ),
       } as typeof part
     })
     if (!touched) return message
     return { ...message, parts: nextParts } as UIMessage
   })
 }
-
-const TOOL_IMAGE_OMITTED = ' (image omitted: the model has no vision)'
 
 const RESOLVED_TOOL_STATES = new Set([
   'output-available',

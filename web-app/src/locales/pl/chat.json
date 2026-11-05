@@ -348,7 +348,8 @@
     "promptHooksStopped": "Tura została zatrzymana w trakcie działania jej hooków promptu, więc prompt nie został wysłany.",
     "reasoningLoop": "Rozumowanie zatrzymało się po powtórzeniu tego samego tekstu. Spróbuj innego modelu lub niższego budżetu rozumowania.",
     "serviceUnavailable": "Usługa modeli nie jest gotowa albo nie wybrano modelu ani dostawcy.",
-    "contextUsed": "(Użyto {{used}} z {{total}} tokenów kontekstu.)"
+    "contextUsed": "(Użyto {{used}} z {{total}} tokenów kontekstu.)",
+    "imageOmitted": "(obraz pominięty: model nie obsługuje obrazów)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

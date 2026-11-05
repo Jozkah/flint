@@ -333,7 +333,8 @@
     "promptHooksStopped": "Il turno è stato interrotto mentre giravano i suoi hook del prompt, quindi il prompt non è stato inviato.",
     "reasoningLoop": "Il ragionamento si è fermato dopo aver ripetuto lo stesso testo. Prova un altro modello o un budget di ragionamento più basso.",
     "serviceUnavailable": "Il servizio dei modelli non è pronto, oppure non è selezionato alcun modello o provider.",
-    "contextUsed": "({{used}} di {{total}} token di contesto usati.)"
+    "contextUsed": "({{used}} di {{total}} token di contesto usati.)",
+    "imageOmitted": "(immagine omessa: il modello non ha la visione)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

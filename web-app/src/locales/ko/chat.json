@@ -313,7 +313,8 @@
     "promptHooksStopped": "프롬프트 훅이 실행되는 동안 턴이 중단되어 프롬프트가 제출되지 않았습니다.",
     "reasoningLoop": "같은 텍스트가 반복되어 추론이 중단되었습니다. 다른 모델을 사용하거나 사고 예산을 낮춰 보세요.",
     "serviceUnavailable": "모델 서비스가 준비되지 않았거나 선택된 모델 또는 제공자가 없습니다.",
-    "contextUsed": "(컨텍스트 토큰 {{total}}개 중 {{used}}개 사용.)"
+    "contextUsed": "(컨텍스트 토큰 {{total}}개 중 {{used}}개 사용.)",
+    "imageOmitted": "(이미지 생략됨: 모델이 비전을 지원하지 않음)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

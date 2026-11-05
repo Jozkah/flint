@@ -313,7 +313,8 @@
     "promptHooksStopped": "提示掛鉤執行期間該回合被停止，因此提示未送出。",
     "reasoningLoop": "因重複相同文字，推理已停止。請嘗試其他模型或調低思考預算。",
     "serviceUnavailable": "模型服務尚未就緒，或未選擇模型或提供者。",
-    "contextUsed": "（已使用 {{used}} / {{total}} 個上下文 token。）"
+    "contextUsed": "（已使用 {{used}} / {{total}} 個上下文 token。）",
+    "imageOmitted": "(已省略圖片:此模型不支援視覺)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"
