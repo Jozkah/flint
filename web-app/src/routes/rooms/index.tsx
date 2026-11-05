@@ -1,4 +1,3 @@
-import { peekBatches } from '@/lib/rooms/peekBatches'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
@@ -9,8 +8,6 @@ import HeaderPage from '@/containers/HeaderPage'
 import { MessagesSquare, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
-import { Icon, type IconName } from '@/components/ui/icon'
 import { Segmented } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -28,12 +25,10 @@ import {
   useRoomsState,
   type RoomsUiError,
 } from '@/containers/rooms/roomsBindings'
-import {
-  activeParticipants,
-  messagesOf,
-  type RoomDetail,
-} from '@/containers/rooms/roomUi'
+import { activeParticipants, messagesOf } from '@/containers/rooms/roomUi'
 import { RoomCard } from '@/containers/rooms/RoomCard'
+import { RoomTemplates } from '@/containers/rooms/RoomTemplates'
+import { useRoomDetails } from '@/containers/rooms/useRoomDetails'
 import {
   CreateRoomDialog,
   RoomsKpis,
@@ -68,14 +63,6 @@ const FILTERS: Record<Filter, RoomStatus[] | null> = {
   draft: ['draft'],
 }
 
-/** Starting points for the create dialog: a title and an objective to edit. */
-const TEMPLATES: Array<{ id: string; icon: IconName }> = [
-  { id: 'review', icon: 'x-cube' },
-  { id: 'naming', icon: 'x-feather' },
-  { id: 'crosscheck', icon: 'target' },
-  { id: 'debate', icon: 'comment' },
-]
-
 const WEEK = 7 * 24 * 60 * 60 * 1000
 
 function RoomsList() {
@@ -95,51 +82,13 @@ function RoomsList() {
   const [creating, setCreating] = useState(false)
   const [toDelete, setToDelete] = useState<RoomSummary | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
-  const [details, setDetails] = useState<Record<string, RoomDetail>>({})
 
   useEffect(() => {
     if (api.status !== 'ready') return
     api.loadSummaries().catch((err) => setError(normalizeError(err)))
   }, [api])
 
-  // Each card shows its participants and last message, which live in the room
-  // itself; read them without opening the room. Refetched when a summary moves.
-  const detailKey = summaries.map((s) => `${s.id}:${s.updatedAt}`).join('|')
-  useEffect(() => {
-    const peek = api.peekRoom
-    if (!peek) return
-    let live = true
-    const byId = new Map(summaries.map((s) => [s.id, s]))
-    void (async () => {
-      // Every room, newest first, a few at a time: the cards in view fill in
-      // first and the weekly statistics end up covering all rooms.
-      for (const batch of peekBatches(summaries)) {
-        const rows = await Promise.all(
-          batch.map((id) =>
-            peek(id).then(
-              (d) => [id, d] as const,
-              () => null
-            )
-          )
-        )
-        if (!live) return
-        // Keep what earlier rounds read (a refetch must not blank the cards),
-        // drop rooms that are gone, and overwrite with this round's answers.
-        setDetails((prev) => {
-          const next: Record<string, RoomDetail> = {}
-          for (const id of byId.keys()) if (prev[id]) next[id] = prev[id]
-          for (const row of rows) if (row && byId.has(row[0])) next[row[0]] = row[1]
-          return next
-        })
-      }
-      if (live && summaries.length === 0) setDetails({})
-    })()
-    return () => {
-      live = false
-    }
-    // detailKey stands for the summaries' ids and update times.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, detailKey])
+  const details = useRoomDetails(api, summaries)
 
   const openCreate = (preset?: { title: string; objective: string }) => {
     createdRoomRef.current = null
@@ -247,39 +196,7 @@ function RoomsList() {
   const loading = api.status === 'pending' || (listLoading && summaries.length === 0)
   const hasRooms = !loading && api.status !== 'unavailable' && summaries.length > 0
 
-  const templates = (
-    <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
-      <FrameHeader icon={<Icon name="x-sparkle" />} title={t('rooms:templates.title')} />
-      <FrameBody className="grid grid-cols-1 gap-2 p-2 @[40rem]/rooms:grid-cols-2 @7xl/rooms:grid-cols-4">
-        {TEMPLATES.map((tpl) => (
-          <button
-            key={tpl.id}
-            type="button"
-            data-testid="room-template"
-            onClick={() =>
-              openCreate({
-                title: t(`rooms:templates.${tpl.id}.name`),
-                objective: t(`rooms:templates.${tpl.id}.objective`),
-              })
-            }
-            className="group/tpl flex min-w-0 cursor-pointer items-start gap-3 rounded-[10px] p-3 text-left outline-hidden transition-[background-color,transform] duration-200 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985]"
-          >
-            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] transition-transform duration-300 ease-expo group-hover/tpl:-rotate-6 group-hover/tpl:scale-105">
-              <Icon name={tpl.icon} size={18} />
-            </span>
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
-                {t(`rooms:templates.${tpl.id}.name`)}
-              </b>
-              <small className="text-xs leading-snug text-muted-foreground">
-                {t(`rooms:templates.${tpl.id}.hint`)}
-              </small>
-            </span>
-          </button>
-        ))}
-      </FrameBody>
-    </Frame>
-  )
+  const templates = <RoomTemplates onPick={openCreate} />
 
   return (
     <div className="@container/rooms flex h-full flex-col">
