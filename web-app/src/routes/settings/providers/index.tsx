@@ -1,4 +1,3 @@
-import { FadeText } from '@/components/ui/fade-text'
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
@@ -13,10 +12,7 @@ import { formatBytes, getDefaultProviderTitle, getProviderTitle } from '@/lib/ut
 import { AddProviderDialog } from '@/containers/dialogs'
 import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
-import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
-import { ProviderStatusChip } from '@/components/ProviderStatusChip'
-import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -42,28 +38,24 @@ import {
   SearchField,
   TBox,
 } from '@/containers/engine/EngineKit'
-import { BrandMark } from '@/containers/engine/BrandMark'
 import { LiveChart } from '@/containers/engine/LiveChart'
 import {
-  ProviderCardMenu,
   RemoveProviderDialog,
   RenameProviderDialog,
 } from '@/containers/engine/ProviderCardMenu'
 import { useRemoveProvider } from '@/hooks/useRemoveProvider'
-import { modelLogo, providerLogo } from '@/lib/brandLogos'
-import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
   averageSpeeds,
   formatTps,
-  isEngineProviderName,
   quantOf,
   recentSpeeds,
 } from '@/lib/engineModels'
 import { useEngineActivity } from '@/stores/engine-activity-store'
-import { cn } from '@/lib/utils'
 import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
 import { ModelDefaultsCard } from '@/containers/ModelDefaultsCard'
 import { ModelsTableRow } from '@/containers/engine/ModelsTableRow'
+import { ProviderCard } from '@/containers/engine/ProviderCard'
+import { LoadedModelRow } from '@/containers/engine/LoadedModelRow'
 import { buildModelRows, filterModelRows, type ModelFilter } from '@/lib/modelTableRows'
 
 
@@ -417,78 +409,18 @@ function ModelProviders() {
                   description={t('engine:loaded.emptyHint')}
                 />
               ) : (
-                loadedRows.map(({ provider, model }) => {
-                  const speed = speeds.get(model.id)
-                  const series = recentSpeeds(generations, SPEED_WINDOW, model.id)
-                  return (
-                    <div
-                      key={`${provider.provider}:${model.id}`}
-                      data-testid={`loaded-row-${model.id}`}
-                      className="flex items-center gap-3 border-b border-dashed border-border py-3 last:border-b-0"
-                    >
-                      <BrandMark
-                        logo={modelLogo(model.id, provider.provider)}
-                        name={model.name || model.id}
-                        size={34}
-                      />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <b className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                          {model.name || model.id}
-                        </b>
-                        <small className="truncate text-xs text-muted-foreground">
-                          {[
-                            getProviderTitle(provider.provider),
-                            fileSizes[model.id]
-                              ? formatBytes(fileSizes[model.id])
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </small>
-                        {maxSpeed > 0 && speed && (
-                          // Average speed against the fastest loaded model:
-                          // named and exposed as a progressbar (C147/C150).
-                          <span
-                            role="progressbar"
-                            aria-label={t('engine:loaded.speedBar')}
-                            aria-valuemin={0}
-                            aria-valuemax={Math.round(maxSpeed)}
-                            aria-valuenow={Math.round(speed.avg)}
-                            aria-valuetext={formatTps(speed.avg)}
-                            title={`${t('engine:loaded.speedBar')}: ${formatTps(speed.avg)}`}
-                            className="h-1.5 w-full overflow-hidden rounded-full bg-track"
-                          >
-                            <i
-                              className="block h-full rounded-full bg-grad motion-safe:animate-draw-x"
-                              style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
-                            />
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex w-[110px] shrink-0 flex-col items-end gap-0.5 max-sm:hidden">
-                        {series.length > 1 && (
-                          <LiveChart series={series} compact format={formatTps} />
-                        )}
-                        {series.length > 0 && (
-                          <small className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground tabular-nums">
-                            {formatTps(series[series.length - 1])}
-                          </small>
-                        )}
-                        <small className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground tabular-nums">
-                          {speed ? formatTps(speed.avg) : t('engine:speed.noneYet')}
-                        </small>
-                      </div>
-                      <Button
-                        variant="surface"
-                        size="sm"
-                        className="pointer-coarse:h-11"
-                        onClick={() => stopModel(model.id, provider.provider)}
-                      >
-                        {t('engine:loaded.unload')}
-                      </Button>
-                    </div>
-                  )
-                })
+                loadedRows.map(({ provider, model }) => (
+                  <LoadedModelRow
+                    key={`${provider.provider}:${model.id}`}
+                    provider={provider}
+                    model={model}
+                    fileSize={fileSizes[model.id]}
+                    speedAvg={speeds.get(model.id)?.avg}
+                    maxSpeed={maxSpeed}
+                    series={recentSpeeds(generations, SPEED_WINDOW, model.id)}
+                    onUnload={() => stopModel(model.id, provider.provider)}
+                  />
+                ))
               )}
             </FrameBody>
           </Frame>
@@ -545,91 +477,19 @@ function ModelProviders() {
           />
           <FrameBody className="p-3">
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2.5">
-              {visibleProviders.map((provider) => {
-                const title = getProviderTitle(provider.provider)
-                const local = isEngineProviderName(provider.provider)
-                const setUp =
-                  local || provider.models.length > 0 || providerHasRemoteApiKeys(provider)
-                return (
-                  <li
-                    key={provider.provider}
-                    data-testid={`provider-row-${provider.provider}`}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setMenuFor(provider.provider)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
-                        e.preventDefault()
-                        setMenuFor(provider.provider)
-                      }
-                    }}
-                    className={cn(
-                      'group relative flex flex-col items-start gap-1.5 rounded-xl border-[0.8px] border-border p-3 text-left transition-[transform,box-shadow] duration-300 ease-expo motion-safe:animate-rise-in',
-                      provider.active
-                        ? 'bg-card hover:-translate-y-0.5 hover:shadow-lift'
-                        : 'bg-muted'
-                    )}
-                  >
-                    <div className="mb-1 flex w-full items-start justify-between">
-                      <BrandMark
-                        logo={providerLogo(provider.provider)}
-                        name={title}
-                        size={40}
-                        className={cn(!provider.active && 'opacity-60')}
-                      />
-                      <div className="flex items-center gap-1">
-                        <ProviderCardMenu
-                          provider={provider}
-                          title={title}
-                          open={menuFor === provider.provider}
-                          onOpenChange={(o) => setMenuFor(o ? provider.provider : null)}
-                          onEdit={() => openProvider(provider.provider)}
-                          onToggle={() => void toggleProvider(provider, !provider.active)}
-                          onRename={() => setRenaming(provider)}
-                          onRemove={() => setPendingRemoval(provider)}
-                        />
-                        <Switch
-                          className="relative z-10"
-                          checked={provider.active}
-                          aria-label={t('providers:useProvider', {
-                            provider: title,
-                          })}
-                          onCheckedChange={(e) => void toggleProvider(provider, e)}
-                        />
-                      </div>
-                    </div>
-                    {provider.active ? (
-                      <button
-                        type="button"
-                        onClick={() => openProvider(provider.provider)}
-                        aria-label={t('providers:openProvider', { provider: title })}
-                        className="min-w-0 max-w-full text-left text-[length:calc(var(--ui-font-base)*0.84375)] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
-                      >
-                        <FadeText>{title}</FadeText>
-                      </button>
-                    ) : (
-                      <FadeText as="b" className="max-w-full text-[length:calc(var(--ui-font-base)*0.84375)] font-semibold text-foreground opacity-60">
-                        {title}
-                      </FadeText>
-                    )}
-                    <small className="text-xs text-muted-foreground">
-                      {local ? t('engine:providers.onDevice') : t('engine:providers.remote')}
-                      {' · '}
-                      {setUp
-                        ? t('engine:providers.modelsCount', { count: provider.models.length })
-                        : t('engine:providers.notSetUp')}
-                    </small>
-                    {provider.active ? (
-                      <ProviderStatusChip
-                        status={providerKeyStatus(provider, { bedrockCredentials })}
-                      />
-                    ) : (
-                      <Chip dot>{t('engine:status.off')}</Chip>
-                    )}
-                  </li>
-                )
-              })}
+              {visibleProviders.map((provider) => (
+                <ProviderCard
+                  key={provider.provider}
+                  provider={provider}
+                  menuOpen={menuFor === provider.provider}
+                  onMenuOpenChange={(o) => setMenuFor(o ? provider.provider : null)}
+                  onOpenMenu={() => setMenuFor(provider.provider)}
+                  onOpenProvider={() => openProvider(provider.provider)}
+                  onToggle={(active) => void toggleProvider(provider, active)}
+                  onRename={() => setRenaming(provider)}
+                  onRemove={() => setPendingRemoval(provider)}
+                />
+              ))}
               <li className="motion-safe:animate-rise-in">
                 <AddProviderDialog onCreateProvider={createProvider}>
                   <button
