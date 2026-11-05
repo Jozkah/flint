@@ -50,31 +50,25 @@ import {
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
-import {
-  ThreadStatusMark,
-  useThreadStatus,
-  type ThreadStatus,
-} from '@/containers/ThreadStatusMark'
-import { usePrStatus } from '@/stores/pr-status-store'
 import { startSharedFolderSync, useSharedWith } from '@/stores/shared-folder-store'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { isCoworkRoute } from '@/constants/routes'
-import {
-  useCoworkSessions,
-  type CoworkSession,
-} from '@/hooks/useCoworkSessions'
+import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
-import { useHeldMailCount, useWaitingOnUser } from '@/hooks/useHeldMail'
+import { useWaitingOnUser } from '@/hooks/useHeldMail'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
-import {
-  archiveCoworkSession,
-  deleteCoworkSession,
-} from '@/lib/coworkSessionLifecycle'
+import { archiveCoworkSession, deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
@@ -105,11 +99,8 @@ import { useCampaignFolderState } from '@/hooks/useCampaignFolder'
 import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
 import { ServerSessionDialog } from '@/containers/ServerSessionDialog'
 import { isServerTransport } from '@/lib/serverTransportFlag'
-import {
-  claimedSessionIds,
-  deriveCampaignGroups,
-  type CampaignDot,
-} from '@/lib/campaignView'
+import { claimedSessionIds, deriveCampaignGroups, type CampaignDot } from '@/lib/campaignView'
+import { SessionMark } from '@/components/shell/nav/CoworkSessionMark'
 
 type CoworkNavItem = {
   title: string
@@ -444,74 +435,6 @@ const SessionItem = memo(function SessionItem({
     </NavItem>
   )
 })
-
-/**
- * The mark before a session: waiting on the user, working, waiting on a pull
- * request's review, or
- * recently active. A session whose folder is on a branch with a pull request
- * shows that request's state (read through the GitHub CLI).
- */
-function SessionMark({
-  session,
-  running,
-  selected,
-}: {
-  session: CoworkSession
-  running: boolean
-  selected: boolean
-}) {
-  // The session's own worktree when it has one: its branch, not the folder's.
-  const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
-  const pr = usePrStatus(worktreePath ?? session.folder, session.id)
-  // Waiting on the user: a tool approval, a question the run asked, or mail
-  // from another session held for them.
-  const waiting = useWaitingOnUser(session.id)
-  const heldMail = useHeldMailCount(session.id)
-  const sharedWith = useSharedWith(session.id)
-  const { t } = useTranslation()
-  const recency = useThreadStatus(
-    { updated: session.updated },
-    running,
-    waiting,
-    {
-      id: `cowork:${session.id}`,
-      selected,
-    }
-  )
-  const status: ThreadStatus = waiting
-    ? 'wait'
-    : running
-      ? 'active'
-      : pr
-        ? pr.state === 'open'
-          ? 'pr'
-          : pr.state
-        : recency
-  return (
-    <span className="relative inline-flex shrink-0">
-      <ThreadStatusMark
-        status={status}
-        shared={sharedWith}
-        detail={
-          heldMail > 0
-            ? t('messaging:waitingCount', { count: heldMail })
-            : pr
-              ? `#${pr.number}`
-              : undefined
-        }
-      />
-      {heldMail > 1 && (
-        <span
-          data-testid="held-mail-count"
-          aria-hidden
-          className="absolute -top-1.5 -right-1.5 min-w-3 rounded-full bg-warning px-0.5 text-center text-[length:calc(var(--ui-font-base)*0.5625)] leading-3 font-medium text-background"
-        >
-          {heldMail > 9 ? '9+' : heldMail}
-        </span>
-      )}
-    </span>
-  )
-}
 
 /**
  * The Cowork tab's session area: New session (its menu holds the less frequent
