@@ -469,6 +469,11 @@ enum Commands {
         #[arg(long, value_name = "DIR")]
         out: Option<std::path::PathBuf>,
     },
+    /// Print a shell completion script to stdout (bash, zsh, fish, powershell, elvish)
+    Completions {
+        /// Shell to generate the script for
+        shell: clap_complete::Shell,
+    },
     /// Show system hardware info (CPU, memory, GPUs) and check readiness
     #[command(display_order = 7)]
     Doctor {
@@ -2756,6 +2761,10 @@ async fn run() {
             yes,
             out,
         } => handle_bug_report(thread, show, yes, out),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "flint", &mut std::io::stdout());
+        }
         Commands::Doctor { json } => handle_doctor(json),
         Commands::Migrate { cmd } => {
             use app_lib::core::cli::migrate_cmd as m;

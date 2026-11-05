@@ -557,6 +557,48 @@ pub fn probe_workspace(project_root: Option<&Path>, now_ms: i64) -> ComponentRep
     .granting(&[capability::WORKSPACE_ATTACHED])
 }
 
+/// Removes the probe file when dropped, so every exit path (including a panic
+/// between create and remove) deletes the file this probe created (F04-009).
+struct ProbeFile(std::path::PathBuf);
+
+impl Drop for ProbeFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Write-probe `root`, one probe at a time per folder so at most one probe file
+/// exists there at once (F04-009, O04-022). `create_new`, so a file that
+/// shares the name is never truncated or removed.
+fn probe_write(root: &Path) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOCKS: OnceLock<Mutex<HashMap<std::path::PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let gate = LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(root.to_path_buf())
+        .or_default()
+        .clone();
+    let _held = gate.lock().unwrap_or_else(|e| e.into_inner());
+    let probe = root.join(format!(
+        ".jan-write-probe-{}-{:x}",
+        std::process::id(),
+        probe_nonce()
+    ));
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
+        Ok(file) => {
+            let _guard = ProbeFile(probe);
+            drop(file);
+            true
+        }
+        // Somebody else's file by that name: the folder took a file once, so
+        // it is writable, and that file is left alone.
+        Err(e) => e.kind() == std::io::ErrorKind::AlreadyExists,
+    }
+}
+
 /// Probe the filesystem tools: can the project be read, and written?
 ///
 /// Writability is tested by actually creating and removing a file, because the
@@ -592,24 +634,7 @@ pub fn probe_filesystem(project_root: Option<&Path>, now_ms: i64) -> ComponentRe
             now_ms,
         );
     }
-    // `create_new`, so the probe never truncates a file that happens to share
-    // its name, and only a file this probe created is removed (O04-022).
-    let probe = root.join(format!(
-        ".jan-write-probe-{}-{:x}",
-        std::process::id(),
-        probe_nonce()
-    ));
-    let writable = match std::fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
-        Ok(file) => {
-            drop(file);
-            let _ = std::fs::remove_file(&probe);
-            true
-        }
-        // Somebody else's file by that name: the folder took a file once, so
-        // it is writable, and that file is left alone.
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => true,
-        Err(_) => false,
-    };
+    let writable = probe_write(root);
     if !writable {
         return ComponentReport::new(
             Component::Filesystem,
@@ -1433,6 +1458,23 @@ mod tests {
             .filter_map(Result::ok)
             .collect();
         assert!(leftovers.is_empty(), "the write probe left a file behind");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn concurrent_write_probes_leave_no_file_behind() {
+        let dir = std::env::temp_dir().join(format!("jan-readiness-conc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let d = dir.clone();
+                std::thread::spawn(move || probe_write(&d))
+            })
+            .collect();
+        for h in handles {
+            assert!(h.join().expect("probe thread"));
+        }
+        assert_eq!(std::fs::read_dir(&dir).expect("read back").count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
