@@ -729,3 +729,22 @@ fn every_subcommand_answers_help() {
     walk(&root, &mut Vec::new(), &mut seen);
     assert!(seen > 30, "walked only {seen} commands");
 }
+
+#[test]
+fn completions_cover_every_top_level_subcommand() {
+    use clap::CommandFactory;
+    let mut cmd = Cli::command();
+    let names: Vec<String> = cmd
+        .get_subcommands()
+        .filter(|s| !s.is_hide_set())
+        .map(|s| s.get_name().to_string())
+        .collect();
+    for shell in [clap_complete::Shell::Bash, clap_complete::Shell::Zsh, clap_complete::Shell::Fish, clap_complete::Shell::PowerShell] {
+        let mut out = Vec::new();
+        clap_complete::generate(shell, &mut cmd, "flint", &mut out);
+        let text = String::from_utf8(out).expect("utf8");
+        assert!(names.iter().all(|n| text.contains(n.as_str())), "{shell:?} misses a subcommand");
+        assert!(text.contains("completions"));
+    }
+    assert!(Cli::try_parse_from(["flint", "completions", "bash"]).is_ok());
+}
