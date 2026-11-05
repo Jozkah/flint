@@ -20,60 +20,21 @@ use std::process::Command;
 use serde::Serialize;
 
 // One implementation of the GitHub-repo coordinate and native-tool discovery,
-// shared with the `git_inspect` tool (Q1-034). `parse_github_repo` stays here:
+// shared with the `git_inspect` tool (Q1-034). `parse_github_repo` wraps the shared one:
 // this side accepts only URL and scp spellings, not a bare `owner/repo`.
 pub use tauri_plugin_agent_tools::tools::git_native::{discover_git, on_path, two_segments, RepoRef, GITHUB_HOSTS};
 
 /// Parse an owner/repo out of any GitHub URL or git remote spelling, or `None`
 /// when the string does not name a GitHub repository.
 ///
-/// Handles: `https://github.com/o/r`, `.../o/r.git`, `http://github.com/o/r/...`,
-/// `https://api.github.com/repos/o/r`, `https://raw.githubusercontent.com/o/r/...`,
-/// `git@github.com:o/r.git` (scp form) and `ssh://git@github.com/o/r.git`.
+/// Delegates to the shared parser, minus its bare `owner/repo` form: this side
+/// accepts only URL and scp spellings.
 pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     let s = input.trim();
-    if s.is_empty() {
+    if !s.contains("://") && !s.contains(':') {
         return None;
     }
-
-    // scp-like syntax: `[user@]host:owner/repo(.git)` -- no `://`, a single
-    // colon separating host from path. Detected before URL parsing because it
-    // has no scheme.
-    if !s.contains("://") {
-        if let Some((host_part, path)) = s.split_once(':') {
-            // A path or backslash before the `@` means the "host" is really a
-            // userinfo-looking path (`evil.com/a@github.com:o/r`).
-            if host_part.contains(['/', '\\']) {
-                return None;
-            }
-            let host = host_part.rsplit('@').next().unwrap_or(host_part).to_ascii_lowercase();
-            if host == "github.com" {
-                return two_segments(path).map(|(o, r)| RepoRef::new(o, r));
-            }
-            // Not a code host we recognise; fall through (it may still be a URL).
-        }
-    }
-
-    // Scheme form: strip `scheme://`, then any `user@`, then split host / path.
-    let after_scheme = s.split_once("://").map(|(_, rest)| rest)?;
-    // Split authority from path first; userinfo is only valid inside the
-    // authority, so `github.com/x@evil.com/..` cannot pose as a github host.
-    let (authority, path) = match after_scheme.split_once('/') {
-        Some((a, _)) if a.contains('\\') => return None,
-        Some((a, p)) => (a.rsplit('@').next().unwrap_or(a), p),
-        None => return None,
-    };
-    let host = authority.split(':').next().unwrap_or(authority).to_ascii_lowercase();
-    if !GITHUB_HOSTS.contains(&host.as_str()) {
-        return None;
-    }
-    // `api.github.com/repos/o/r` carries an extra leading `repos` segment.
-    let path = if host == "api.github.com" {
-        path.strip_prefix("repos/").unwrap_or(path)
-    } else {
-        path
-    };
-    two_segments(path).map(|(o, r)| RepoRef::new(o, r))
+    tauri_plugin_agent_tools::tools::git_native::parse_github_repo(s)
 }
 
 /// Whether two remote spellings name the same GitHub repository.
