@@ -18,7 +18,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,6 +57,7 @@ import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useHubSearch } from '@/hooks/useHubSearch'
 import { modelIdKey } from '@/lib/modelIdPath'
 import {
   cleanHuggingFaceRepo,
@@ -68,7 +69,6 @@ import {
   inferParameterCount,
   mlxWeightsBytes,
   repoLooksMlx,
-  searchHuggingFaceModelsByWords,
   type HuggingFaceFormat,
   type HuggingFaceModel,
 } from '@/lib/huggingface'
@@ -131,9 +131,6 @@ function ModelDiscoverRoute() {
   const narrow = useMediaQuery('(max-width: 639px)')
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebouncedValue(cleanHuggingFaceRepo(query), 300)
-  const [models, setModels] = useState<HuggingFaceModel[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const resultLimit = useViewPrefs((state) => state.hubResultLimit)
   const setResultLimit = useViewPrefs((state) => state.setHubResultLimit)
   const [filters, setFilters] = useState<HubFilters>(defaultFilters)
@@ -160,55 +157,14 @@ function ModelDiscoverRoute() {
     Record<string, KvArchitecture | null>
   >({})
 
-  useEffect(() => {
-    // Picture models have their own search (StudioDiscover).
-    if (source === 'studio') {
-      setLoading(false)
-      return
-    }
-    // A newer search aborts this one: its answer is never waited for.
-    const controller = new AbortController()
-    const { signal } = controller
-    setLoading(true)
-    setError(null)
-
-    const run = async () => {
-      try {
-        let result: HuggingFaceModel[]
-        if (format === 'all' && IS_MACOS) {
-          const [gguf, mlx] = await Promise.all([
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf', resultLimit, signal),
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx', resultLimit, signal),
-          ])
-          const byId = new Map<string, HuggingFaceModel>()
-          for (const model of [...gguf, ...mlx]) byId.set(model.id, model)
-          result = [...byId.values()]
-        } else {
-          result = await searchHuggingFaceModelsByWords(
-            debouncedQuery,
-            token,
-            format,
-            resultLimit,
-            signal
-          )
-        }
-        if (signal.aborted) return
-        setModels(result)
-        seedFiles(result)
-      } catch (err) {
-        if (!signal.aborted) {
-          // Drop the previous query's results so they do not sit beside this error.
-          setModels([])
-          setError(err instanceof Error ? err.message : String(err))
-        }
-      } finally {
-        if (!signal.aborted) setLoading(false)
-      }
-    }
-
-    void run()
-    return () => controller.abort()
-  }, [debouncedQuery, token, format, source, resultLimit, seedFiles])
+  const { models, loading, error } = useHubSearch({
+    query: debouncedQuery,
+    token,
+    format,
+    source,
+    resultLimit,
+    seedFiles,
+  })
 
   const installedIds = useMemo(() => {
     const ids = new Set<string>()
