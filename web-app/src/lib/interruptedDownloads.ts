@@ -10,6 +10,7 @@
 //
 // No token is stored: a resumed download reads the one in Settings.
 
+import { readJson } from '@/lib/localPrefs'
 import type { HuggingFaceFile, HuggingFaceFileGroup } from '@/lib/huggingface'
 
 const STORAGE_KEY = 'flint-interrupted-downloads'
@@ -66,14 +67,8 @@ function isRecord(value: unknown): value is InterruptedDownload {
 
 /** The saved downloads; an unreadable or blocked store reads as none. */
 export function readInterruptedDownloads(): InterruptedDownload[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter(isRecord) : []
-  } catch {
-    return []
-  }
+  const parsed = readJson(STORAGE_KEY)
+  return Array.isArray(parsed) ? parsed.filter(isRecord) : []
 }
 
 let lastWritten: string | null = null

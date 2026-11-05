@@ -150,6 +150,11 @@ const oneLine = (text: string, max = 110) => {
 type ThreadStats = { count: number; preview: string }
 const threadStats = new Map<string, ThreadStats>()
 
+/** Drop a deleted thread's cached stats. */
+export function forgetThreadStats(threadId: string): void {
+  threadStats.delete(threadId)
+}
+
 function statsFromMessages(messages: ThreadMessage[]): ThreadStats {
   const spoken = messages.filter(
     (m) => (m.role === 'user' || m.role === 'assistant') && textOfThreadMessage(m)
