@@ -568,7 +568,9 @@ pub(crate) fn user_line_enabled() -> bool {
         .unwrap_or(true)
 }
 
-/// Persist the opt-out chosen in Settings.
+/// Persist the opt-out chosen in Settings. Only the desktop Settings command
+/// writes it; the `cli` build has no such command and would see dead code.
+#[cfg(any(test, not(feature = "cli")))]
 pub(crate) fn set_user_line_enabled(enabled: bool) -> Result<(), String> {
     let path = user_line_setting_path().ok_or("Flint data folder is unavailable")?;
     let body = serde_json::json!({ "userLine": enabled }).to_string();

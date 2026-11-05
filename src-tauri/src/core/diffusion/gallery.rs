@@ -171,31 +171,50 @@ pub fn list<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind) -> Vec<GalleryIte
     list_in(&dir_for(app, kind), kind)
 }
 
+/// Parsed recipes by gallery folder, so a listing re-reads only the JSON files
+/// that changed since the last one (ENG-044). Replaced wholesale on each list,
+/// so it never keeps an entry for a deleted file.
+type RecipeCache = std::collections::HashMap<PathBuf, std::collections::HashMap<String, (std::time::SystemTime, u64, Recipe)>>;
+
+fn recipe_cache() -> &'static std::sync::Mutex<RecipeCache> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<RecipeCache>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
 fn list_in(dir: &Path, kind: Kind) -> Vec<GalleryItem> {
     let Ok(entries) = std::fs::read_dir(dir) else {
+        recipe_cache().lock().unwrap_or_else(|p| p.into_inner()).remove(dir);
         return Vec::new();
     };
-    let mut items: Vec<GalleryItem> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                return None;
-            }
-            let id = path.file_stem()?.to_str()?.to_string();
-            let recipe: Recipe = serde_json::from_slice(&std::fs::read(&path).ok()?).ok()?;
-            if recipe.kind != kind {
-                return None;
-            }
-            let media = media_file(dir, &id)?;
-            Some(GalleryItem {
-                id,
-                kind,
-                path: media.to_string_lossy().into_owned(),
-                recipe,
-            })
-        })
-        .collect();
+    let previous = recipe_cache().lock().unwrap_or_else(|p| p.into_inner()).get(dir).cloned().unwrap_or_default();
+    let mut seen = std::collections::HashMap::new();
+    let mut items: Vec<GalleryItem> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
+        let Ok(meta) = std::fs::metadata(&path) else { continue };
+        let stamp = meta.modified().ok().map(|m| (m, meta.len()));
+        let cached = stamp.and_then(|(m, l)| previous.get(&id).filter(|c| c.0 == m && c.1 == l).map(|c| c.2.clone()));
+        let recipe = match cached {
+            Some(r) => r,
+            None => match std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Recipe>(&b).ok()) {
+                Some(r) => r,
+                None => continue,
+            },
+        };
+        if let Some((m, l)) = stamp {
+            seen.insert(id.clone(), (m, l, recipe.clone()));
+        }
+        if recipe.kind != kind {
+            continue;
+        }
+        let Some(media) = media_file(dir, &id) else { continue };
+        items.push(GalleryItem { id, kind, path: media.to_string_lossy().into_owned(), recipe });
+    }
+    recipe_cache().lock().unwrap_or_else(|p| p.into_inner()).insert(dir.to_path_buf(), seen);
     items.sort_by(|a, b| b.recipe.created_at_ms.cmp(&a.recipe.created_at_ms).then(a.id.cmp(&b.id)));
     items
 }
@@ -296,6 +315,21 @@ mod tests {
         std::fs::write(dir.join(format!("{id}.json")), serde_json::to_vec(r).unwrap()).unwrap();
     }
 
+
+    #[test]
+    fn a_rewritten_recipe_is_re_read_not_served_from_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut r = recipe("job-cache", 100, Kind::Image);
+        std::fs::write(dir.path().join("a.json"), serde_json::to_vec(&r).unwrap()).unwrap();
+        std::fs::write(dir.path().join("a.png"), b"x").unwrap();
+        assert_eq!(list_in(dir.path(), Kind::Image)[0].recipe.created_at_ms, 100);
+        assert_eq!(list_in(dir.path(), Kind::Image)[0].recipe.created_at_ms, 100, "second list uses the cache");
+        r.created_at_ms = 123456;
+        std::fs::write(dir.path().join("a.json"), serde_json::to_vec(&r).unwrap()).unwrap();
+        assert_eq!(list_in(dir.path(), Kind::Image)[0].recipe.created_at_ms, 123456);
+        std::fs::remove_file(dir.path().join("a.json")).unwrap();
+        assert!(list_in(dir.path(), Kind::Image).is_empty());
+    }
     #[test]
     fn the_list_is_newest_first_and_only_the_asked_kind() {
         let dir = tempfile::tempdir().unwrap();
