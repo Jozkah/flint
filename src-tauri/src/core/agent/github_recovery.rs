@@ -41,6 +41,11 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     // has no scheme.
     if !s.contains("://") {
         if let Some((host_part, path)) = s.split_once(':') {
+            // A path or backslash before the `@` means the "host" is really a
+            // userinfo-looking path (`evil.com/a@github.com:o/r`).
+            if host_part.contains(['/', '\\']) {
+                return None;
+            }
             let host = host_part.rsplit('@').next().unwrap_or(host_part).to_ascii_lowercase();
             if host == "github.com" {
                 return two_segments(path).map(|(o, r)| RepoRef::new(o, r));
@@ -54,6 +59,7 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     // Split authority from path first; userinfo is only valid inside the
     // authority, so `github.com/x@evil.com/..` cannot pose as a github host.
     let (authority, path) = match after_scheme.split_once('/') {
+        Some((a, _)) if a.contains('\\') => return None,
         Some((a, p)) => (a.rsplit('@').next().unwrap_or(a), p),
         None => return None,
     };
@@ -300,6 +306,28 @@ mod tests {
     fn userinfo_trick_in_path_is_not_a_github_host() {
         assert!(parse_github_repo("https://evil.com/github.com@x/o/r").is_none());
         assert!(parse_github_repo("https://user@github.com/o/r").is_some());
+    }
+
+    #[test]
+    fn userinfo_spoofed_hosts_are_rejected() {
+        for bad in [
+            "https://evil.com/a@github.com/o/r",
+            "https://evil.com/a@github.com:443/o/r",
+            "https://evil.com\\@github.com/o/r",
+            "evil.com/a@github.com:o/r",
+            "ssh://evil.com/g@github.com/o/r",
+        ] {
+            assert!(parse_github_repo(bad).is_none(), "accepted {bad}");
+        }
+        let want = RepoRef::new("o", "r");
+        for good in [
+            "https://github.com/o/r",
+            "https://user:tok@github.com/o/r",
+            "ssh://git@github.com/o/r.git",
+            "git@github.com:o/r.git",
+        ] {
+            assert_eq!(parse_github_repo(good), Some(want.clone()), "rejected {good}");
+        }
     }
 
     #[test]
