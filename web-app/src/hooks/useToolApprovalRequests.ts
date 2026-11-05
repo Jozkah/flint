@@ -9,8 +9,13 @@ import type { SecretWriteFinding } from '@/lib/secretWrite'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
-import { destructiveCommandReason } from '@/lib/destructiveCommand'
-import { GIT_TOOL_NAME, planGitTool } from '@/lib/gitTool'
+import {
+  bashDestructiveReason,
+  canTemporarilyAllowGit,
+  cleanRefusalReason,
+  sensitiveCall,
+} from '@/lib/approvalClassify'
+import { forget, remember } from '@/lib/approvalRecords'
 import {
   autoApprovePauseReason,
   noteAutoApproved,
@@ -198,9 +203,6 @@ export type ApprovalDecision =
 /** Why a request that resolved `false` did so. */
 export type ApprovalRefusal = 'denied' | 'cancelled'
 
-/** Refusal reasons are kept for this many calls, newest last. */
-const REFUSAL_MEMORY = 200
-
 type ToolApprovalRequestsState = {
   pending: Record<string, PendingApproval>
   queued: Record<string, PendingApproval[]>
@@ -269,101 +271,8 @@ type ToolApprovalRequestsState = {
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
-function bashDestructiveReason(
-  toolName: string,
-  input: unknown,
-  context: ApprovalRequestContext | undefined
-): string | null {
-  if (toolName !== 'bash') return null
-  const command = (input as { command?: unknown } | undefined)?.command
-  if (typeof command !== 'string') return null
-  const label = context?.workspaceLabel
-  const roots =
-    context?.workspaceRoots ??
-    (label && (/^[a-zA-Z]:[\\/]/.test(label) || label.startsWith('/'))
-      ? [label]
-      : [])
-  return destructiveCommandReason(command, roots)
-}
-
-/** Calls that cannot safely be inferred from a generic tool approval. */
-function sensitiveCall(
-  toolName: string,
-  serverName: string | undefined,
-  input: unknown
-): boolean {
-  if (/^(?:bash|browser_(?:click|type|press|select))$/.test(toolName))
-    return true
-  if (
-    /(?:^|_)(?:approve|grant|permission|create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|shell|terminal|upload|move|rename|replace|install)(?:_|$)/i.test(
-      toolName
-    )
-  )
-    return true
-  const action =
-    input && typeof input === 'object' && !Array.isArray(input)
-      ? (input as Record<string, unknown>).action
-      : undefined
-  if (
-    typeof action === 'string' &&
-    /^(?:create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|upload|move|rename|replace|install)$/i.test(
-      action
-    )
-  )
-    return true
-  return (
-    !!serverName &&
-    !/^(?:list|get|read|search|find|fetch|query|inspect|describe|status|view|preview)(?:_|$)/i.test(
-      toolName
-    )
-  )
-}
-
-/** A configured remote's name, not a URL or a path (`.`, `..`, `a/b`, `host:x`). */
-const REMOTE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
-const PUSH_TARGET_OPTIONS = ['--repo', '--receive-pack', '--exec']
-
-/**
- * Whether "Allow all temporarily" may cover this call. It is for routine
- * publishing to a remote the repository already has: a push to a configured
- * remote NAME (never a URL or path, which could send the work anywhere), or a
- * `gh` call that acts on an existing repository. Anything that creates,
- * reconfigures, or merges on GitHub (`gh repo *`, `gh pr merge`, `gh release
- * *`) keeps prompting, and so does everything destructive.
- */
-export function canTemporarilyAllowGit(
-  toolName: string,
-  input: unknown,
-  threadIsEphemeral = false
-): boolean {
-  if (threadIsEphemeral || toolName !== GIT_TOOL_NAME) return false
-  const planned = planGitTool(input)
-  if (!planned.ok) return false
-  const { plan } = planned
-  if (plan.class !== 'remote' || plan.destructive !== undefined) return false
-  if (plan.program === 'gh') {
-    const [group, action] = plan.args
-    if (group === 'repo' || group === 'release') return false
-    if (group === 'pr' && action === 'merge') return false
-    return true
-  }
-  const retargeted = plan.args.some((a) =>
-    PUSH_TARGET_OPTIONS.some((o) => a === o || a.startsWith(`${o}=`))
-  )
-  if (retargeted) return false
-  return plan.remote === undefined || REMOTE_NAME.test(plan.remote)
-}
-
-/** Longest reason handed to the model; the Rust side caps the same way. */
-export const REFUSAL_REASON_MAX_CHARS = 500
-
-/** A typed reason as it is stored: control characters to spaces, trimmed, capped. */
-export function cleanRefusalReason(reason: string | undefined): string | undefined {
-  if (!reason) return undefined
-  // eslint-disable-next-line no-control-regex
-  const cleaned = reason.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
-  return cleaned ? Array.from(cleaned).slice(0, REFUSAL_REASON_MAX_CHARS).join('') : undefined
-}
+export { canTemporarilyAllowGit, cleanRefusalReason }
+export { REFUSAL_REASON_MAX_CHARS } from '@/lib/approvalClassify'
 
 let nextRequest = 0
 const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
@@ -377,30 +286,6 @@ export function allApprovalRequests(state: {
     out.push(head, ...(state.queued[id] ?? []))
   }
   return out
-}
-
-function remember<T>(
-  map: Record<string, T>,
-  entries: [string, T][]
-): Record<string, T> {
-  const next = { ...map }
-  for (const [id, value] of entries) {
-    delete next[id]
-    next[id] = value
-  }
-  const keys = Object.keys(next)
-  for (const key of keys.slice(0, Math.max(0, keys.length - REFUSAL_MEMORY))) {
-    delete next[key]
-  }
-  return next
-}
-
-/** `map` without the given call ids; the same object when none was there. */
-function forget<T>(map: Record<string, T>, ids: string[]): Record<string, T> {
-  if (!ids.some((id) => id in map)) return map
-  const next = { ...map }
-  for (const id of ids) delete next[id]
-  return next
 }
 
 function without(

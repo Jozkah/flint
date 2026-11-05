@@ -14,7 +14,7 @@ import { SETTINGS_ITEMS } from '@/lib/settingsSearch'
 // for the same class of problem, so this follows it.
 
 const SRC = resolve(__dirname, '../..')
-const REGISTRY = join(SRC, 'lib/settingsSearch.ts')
+const REGISTRY = join(SRC, 'lib/settingsSearch.data.ts')
 
 /** Every non-test `.tsx` under a settings surface that can render a target. */
 function pageSources(dir: string, acc: string[] = []): string[] {
