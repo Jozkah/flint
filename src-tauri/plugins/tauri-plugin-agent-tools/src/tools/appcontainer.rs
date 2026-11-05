@@ -2209,7 +2209,7 @@ mod win {
 
     /// Most processes alive at once in one sandboxed command's tree, the helper
     /// included.
-    const SANDBOX_MAX_PROCESSES: u32 = 512;
+    const SANDBOX_MAX_PROCESSES: u32 = 256;
 
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
