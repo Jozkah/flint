@@ -128,7 +128,7 @@ export function serverRoutes(): Set<string> {
     }
   }
   // rpc_route's own arms: lines that open with a string pattern.
-  const body = fnBody(fs.readFileSync(path.join(WEB_SERVER, 'server.rs'), 'utf8'), 'rpc_route')
+  const body = fnBody(fs.readFileSync(path.join(WEB_SERVER, 'server', 'rpc_api.rs'), 'utf8'), 'rpc_route')
   for (const line of body.split('\n')) {
     const arm = line.match(/^\s*((?:\|\s*)?"[^"]+"(?:\s*\|\s*"[^"]+")*)\s*(?:=>|\|\s*$)/)
     if (arm) for (const l of literals(arm[1])) routes.add(l)

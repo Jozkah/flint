@@ -67,5 +67,5 @@
   "src-tauri/src/core/web_server/events.rs": 4,
   "src-tauri/src/core/web_server/provider.rs": 4,
   "src-tauri/src/core/web_server/runner.rs": 15,
-  "src-tauri/src/core/web_server/server.rs": 4
+  "src-tauri/src/core/web_server/server/mod.rs": 4
 }
