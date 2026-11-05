@@ -1,4 +1,6 @@
 import { forgetDeadTools } from '@/lib/deadTools'
+import { forgetChatLoopGuard } from '@/lib/chatLoopGuard'
+import { forgetThreadStats } from '@/lib/chatMentionSources'
 import { clearChatImages } from '@/lib/chatImages'
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
@@ -109,6 +111,8 @@ const forgetThreadState = (threadId: string) => {
   useWebSearchChoice.getState().dropScope(threadId)
   useToolApproval.getState().revokeThread(threadId)
   forgetDeadTools(threadId)
+  forgetChatLoopGuard(threadId)
+  forgetThreadStats(threadId)
 }
 
 // The selected thread id, or undefined when that thread was just deleted.

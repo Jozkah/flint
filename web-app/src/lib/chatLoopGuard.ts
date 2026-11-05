@@ -30,6 +30,11 @@ type TurnHistory = { turnId: string; calls: ObservedCall[]; stopped: boolean }
 
 const turns = new Map<string, TurnHistory>()
 
+/** Drop a deleted thread's turn history. */
+export function forgetChatLoopGuard(threadId: string): void {
+  turns.delete(threadId)
+}
+
 function historyFor(threadId: string, turnId: string): TurnHistory {
   const known = turns.get(threadId)
   if (known && known.turnId === turnId) return known

@@ -1,4 +1,5 @@
 import type { RunEnding } from '@/hooks/useCoworkRun'
+import { readJson } from '@/lib/localPrefs'
 
 /**
  * How each session's last run ended, kept across a reload: a failed run's
@@ -7,15 +8,10 @@ import type { RunEnding } from '@/hooks/useCoworkRun'
 const OUTCOMES_KEY = 'cowork-run-outcomes'
 
 export function loadRunEndings(): Record<string, RunEnding> {
-  try {
-    const raw = localStorage.getItem(OUTCOMES_KEY)
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, RunEnding>)
-      : {}
-  } catch {
-    return {}
-  }
+  const parsed = readJson(OUTCOMES_KEY)
+  return parsed && typeof parsed === 'object'
+    ? (parsed as Record<string, RunEnding>)
+    : {}
 }
 
 export function saveRunEndings(outcomes: Record<string, RunEnding>) {
