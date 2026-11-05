@@ -92,3 +92,61 @@ export function serverModelsToPersist(
     return p ? [{ model: id, provider: p.provider }] : []
   })
 }
+
+type ContextRaiseModel = {
+  id: string
+  settings?: Record<string, { controller_props?: Record<string, unknown> } | undefined>
+}
+type ContextRaiseProvider = { models: ContextRaiseModel[] }
+
+export type ContextRaiseDeps<P extends ContextRaiseProvider> = {
+  getProvider: () => P | undefined
+  updateModelSettings: (id: string, settings: { ctx_len: number }) => Promise<unknown>
+  updateProvider: (models: P['models']) => void
+  getActiveModels: () => Promise<string[] | null | undefined>
+  stopModel: (id: string) => Promise<unknown>
+  onRaised: (model: P['models'][number], context: number) => void
+}
+
+/**
+ * Raises the context length of each planned local model through the same
+ * write-and-reload path the "Increase Context Size" button uses. A failure on
+ * one model is logged and does not stop the others.
+ */
+export async function raiseLocalContexts<P extends ContextRaiseProvider>(
+  plans: Record<string, { raiseTo?: number | null }>,
+  deps: ContextRaiseDeps<P>
+): Promise<void> {
+  const first = deps.getProvider()
+  if (!first) return
+  for (const [id, plan] of Object.entries(plans)) {
+    if (plan.raiseTo == null) continue
+    try {
+      const latest = deps.getProvider() ?? first
+      const index = latest.models.findIndex((m) => m.id === id)
+      if (index === -1) continue
+      const model = latest.models[index]
+      const models = [...latest.models]
+      models[index] = {
+        ...model,
+        settings: {
+          ...model.settings,
+          ctx_len: {
+            ...(model.settings?.ctx_len ?? {}),
+            controller_props: {
+              ...(model.settings?.ctx_len?.controller_props ?? {}),
+              value: plan.raiseTo,
+            },
+          },
+        },
+      } as typeof model
+      await deps.updateModelSettings(id, { ctx_len: plan.raiseTo })
+      deps.updateProvider(models)
+      const loaded = (await deps.getActiveModels()) || []
+      if (loaded.includes(id)) await deps.stopModel(id)
+      deps.onRaised(model, plan.raiseTo)
+    } catch (e) {
+      console.error('Failed to raise the context for Claude Code', e)
+    }
+  }
+}

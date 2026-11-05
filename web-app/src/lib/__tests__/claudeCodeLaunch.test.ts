@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   availableHelperModels,
   claudeCodeApiUrl,
+  raiseLocalContexts,
   serverModelsToPersist,
   waitForModelsActive,
 } from '../claudeCodeLaunch'
@@ -75,5 +76,46 @@ describe('serverModelsToPersist', () => {
     expect(serverModelsToPersist(['qwen', 'ghost'], providers)).toEqual([
       { model: 'qwen', provider: 'llamacpp' },
     ])
+  })
+})
+
+describe('raiseLocalContexts', () => {
+  const makeDeps = (loaded: string[]) => {
+    const provider = { models: [{ id: 'a', settings: {} }, { id: 'b', settings: {} }] }
+    return {
+      getProvider: vi.fn((): typeof provider | undefined => provider),
+      updateModelSettings: vi.fn(async () => undefined),
+      updateProvider: vi.fn(),
+      getActiveModels: vi.fn(async () => loaded),
+      stopModel: vi.fn(async () => undefined),
+      onRaised: vi.fn(),
+    }
+  }
+
+  it('writes, reloads a loaded model and reports', async () => {
+    const deps = makeDeps(['a'])
+    await raiseLocalContexts({ a: { raiseTo: 32768 }, b: { raiseTo: null } }, deps)
+    expect(deps.updateModelSettings).toHaveBeenCalledTimes(1)
+    expect(deps.updateModelSettings).toHaveBeenCalledWith('a', { ctx_len: 32768 })
+    const models = deps.updateProvider.mock.calls[0][0]
+    expect(models[0].settings.ctx_len.controller_props.value).toBe(32768)
+    expect(deps.stopModel).toHaveBeenCalledWith('a')
+    expect(deps.onRaised).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 32768)
+  })
+
+  it('does not stop an unloaded model and survives a failure', async () => {
+    const deps = makeDeps([])
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    deps.updateModelSettings.mockRejectedValueOnce(new Error('x'))
+    await raiseLocalContexts({ a: { raiseTo: 1 }, b: { raiseTo: 2 } }, deps)
+    expect(deps.stopModel).not.toHaveBeenCalled()
+    expect(deps.onRaised).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing without a provider', async () => {
+    const deps = makeDeps([])
+    deps.getProvider.mockReturnValue(undefined)
+    await raiseLocalContexts({ a: { raiseTo: 1 } }, deps)
+    expect(deps.updateModelSettings).not.toHaveBeenCalled()
   })
 })
