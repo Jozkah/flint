@@ -1354,6 +1354,10 @@
     "web-app/src/containers/UsageCeilingsCard.tsx",
     "web-app/src/routes/settings/local-api-server.tsx (via UsageCeilingsCard)"
   ],
+  "get_user_line_setting": [
+    "web-app/src/containers/AttributionSettings.tsx (via getUserLineSetting)",
+    "web-app/src/lib/userLineSetting.ts"
+  ],
   "inspect_group_folders": [
     "web-app/src/components/shell/nav/GroupFoldersDialog.tsx (via inspectFolders)",
     "web-app/src/lib/groups/folders.ts"
@@ -2499,6 +2503,10 @@
   "set_usage_ceilings": [
     "web-app/src/containers/UsageCeilingsCard.tsx",
     "web-app/src/routes/settings/local-api-server.tsx (via UsageCeilingsCard)"
+  ],
+  "set_user_line_setting": [
+    "web-app/src/containers/AttributionSettings.tsx (via setUserLineSetting)",
+    "web-app/src/lib/userLineSetting.ts"
   ],
   "settings_backup_load": [
     "web-app/src/containers/SettingsBackupCard.tsx",

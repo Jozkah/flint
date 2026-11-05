@@ -22,7 +22,12 @@ vi.mock('@/lib/extensionsStore', () => ({
   listProjects: vi.fn(),
 }))
 
-import { deleteSkill, listSkills } from '@/lib/skillStore'
+vi.mock('@/lib/folderTrust', () => ({
+  folderTrustStatus: vi.fn(),
+}))
+
+import { deleteSkill, listSkills, readSkill, writeSkill } from '@/lib/skillStore'
+import { folderTrustStatus } from '@/lib/folderTrust'
 import { listProjects } from '@/lib/extensionsStore'
 import SkillsTab from '../SkillsTab'
 
@@ -105,5 +110,46 @@ describe('SkillsTab', () => {
       expect(screen.getByText('My Project')).toBeInTheDocument()
     })
     expect(screen.getByText('proj-skill')).toBeInTheDocument()
+  })
+
+  const openProjectSkill = async (trusted: boolean) => {
+    mockedListProjects.mockResolvedValue([
+      { id: 'p1', folder: '/path/to/proj', name: 'My Project' },
+    ])
+    mockedListSkills.mockImplementation(async (scope: any) =>
+      scope.kind === 'project'
+        ? ([{ name: 'proj-skill', description: 'A project skill' }] as any)
+        : []
+    )
+    vi.mocked(readSkill).mockResolvedValue('body' as never)
+    vi.mocked(writeSkill).mockReset()
+    vi.mocked(writeSkill).mockResolvedValue(undefined as never)
+    vi.mocked(folderTrustStatus).mockResolvedValue({
+      folder: '/path/to/proj',
+      trusted,
+      carries: { hooks: false, subagents: false },
+    })
+    render(<SkillsTab />)
+    await screen.findByText('proj-skill')
+    fireEvent.click(screen.getByText('engine:extensions.view'))
+    await screen.findByText('common:skillContentPlaceholder', {}, { timeout: 100 }).catch(() => {})
+    return await screen.findByPlaceholderText('common:skillContentPlaceholder')
+  }
+
+  it('saves a project skill in place when its folder is trusted', async () => {
+    const area = await openProjectSkill(true)
+    expect(area).not.toHaveAttribute('readonly')
+    fireEvent.click(screen.getByText('common:skillSave'))
+    await waitFor(() => expect(writeSkill).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(writeSkill).mock.calls[0][0]).toEqual({
+      kind: 'project',
+      folder: '/path/to/proj',
+    })
+  })
+
+  it('keeps a project skill read-only when its folder is not trusted', async () => {
+    const area = await openProjectSkill(false)
+    expect(area).toHaveAttribute('readonly')
+    expect(screen.queryByText('common:skillSave')).toBeNull()
   })
 })

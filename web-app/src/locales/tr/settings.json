@@ -350,6 +350,8 @@
     "attributionCommitsDesc": "Ajanın yaptığı commit'ler, Flint'i ve onları yazan modeli belirten bir Co-Authored-By satırıyla biter.",
     "attributionPullRequests": "Pull request'lere 'Generated with Flint' ekle",
     "attributionPullRequestsDesc": "Ajanın yazdığı pull request açıklamaları 'Generated with Flint' satırıyla biter.",
+    "userLineShare": "Kullanıcı adımı ve ana klasörümü modelle paylaş",
+    "userLineShareDesc": "Modele gönderilen çalışma ortamı notu, yolları tahmin etmesin diye işletim sistemi hesabınızı ve profil klasörlerinizi belirtir. Her istekten çıkarmak için kapatın.",
     "toolchains": {
       "title": "Korumalı alan araç zincirleri",
       "description": "Bunlar yüklü, ancak korumalı alan onları çalıştıramıyor: klasörleri, korumalı alan uygulamalarının içindekini okumasına ve çalıştırmasına izin vermiyor. Her seferinde bir araç zinciri için izin verebilirsiniz.",

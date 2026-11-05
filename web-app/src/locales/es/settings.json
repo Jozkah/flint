@@ -352,6 +352,8 @@
     "attributionCommitsDesc": "Los commits que hace el agente terminan con un tráiler Co-Authored-By que nombra a Flint y al modelo que los escribió.",
     "attributionPullRequests": "Añadir 'Generated with Flint' a las pull requests",
     "attributionPullRequestsDesc": "Las descripciones de pull request que escribe el agente terminan con una línea 'Generated with Flint'.",
+    "userLineShare": "Compartir mi nombre de usuario y carpeta personal con el modelo",
+    "userLineShareDesc": "La nota de entorno enviada al modelo incluye tu cuenta del sistema y las carpetas de perfil para que no adivine rutas. Desactívalo para no incluirlas en ninguna solicitud.",
     "toolchains": {
       "title": "Toolchains del sandbox",
       "description": "Estos están instalados, pero el sandbox no puede ejecutarlos: su carpeta no permite que las aplicaciones en sandbox lean y ejecuten lo que hay dentro. Puedes permitirlo para un toolchain cada vez.",

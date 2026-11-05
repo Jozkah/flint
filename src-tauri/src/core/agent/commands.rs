@@ -136,6 +136,19 @@ pub async fn set_attribution_settings(
     Ok(settings)
 }
 
+/// Whether the prompt's runtime block names the OS account and profile
+/// folders (`<data folder>/prompt-privacy.json`, read by the CLI too).
+#[tauri::command]
+pub async fn get_user_line_setting() -> bool {
+    crate::core::agent::context::user_line_enabled()
+}
+
+#[tauri::command]
+pub async fn set_user_line_setting(enabled: bool) -> Result<bool, String> {
+    crate::core::agent::context::set_user_line_enabled(enabled)?;
+    Ok(enabled)
+}
+
 /// Screen regions the `computer` tool must never act in
 /// (`<data folder>/computer-exclusions.json`).
 #[tauri::command]

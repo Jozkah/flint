@@ -352,6 +352,8 @@
     "attributionCommitsDesc": "Les commits de l'agent se terminent par un trailer Co-Authored-By citant Flint et le modèle qui les a écrits.",
     "attributionPullRequests": "Ajouter « Generated with Flint » aux pull requests",
     "attributionPullRequestsDesc": "Les descriptions de pull request rédigées par l'agent se terminent par une ligne « Generated with Flint ».",
+    "userLineShare": "Partager mon nom d'utilisateur et mon dossier personnel avec le modèle",
+    "userLineShareDesc": "La note d'environnement envoyée au modèle nomme votre compte système et vos dossiers de profil pour qu'il ne devine pas les chemins. Désactivez pour les exclure de chaque requête.",
     "toolchains": {
       "title": "Chaînes d'outils du bac à sable",
       "description": "Ces outils sont installés mais le bac à sable ne peut pas les exécuter : leur dossier n'autorise pas les applications en bac à sable à lire et exécuter son contenu. Vous pouvez l'autoriser pour une chaîne d'outils à la fois.",

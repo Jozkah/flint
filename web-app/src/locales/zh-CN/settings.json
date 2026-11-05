@@ -350,6 +350,8 @@
     "attributionCommitsDesc": "代理创建的提交末尾会附上 Co-Authored-By 尾注，注明 Flint 及编写它们的模型。",
     "attributionPullRequests": "在拉取请求中添加“Generated with Flint”",
     "attributionPullRequestsDesc": "代理撰写的拉取请求描述末尾会附上“Generated with Flint”一行。",
+    "userLineShare": "与模型共享我的用户名和主目录",
+    "userLineShareDesc": "发送给模型的运行环境说明包含你的系统账户和用户配置文件夹，以免它猜测路径。关闭后，每次请求都不会包含这些信息。",
     "toolchains": {
       "title": "沙盒工具链",
       "description": "这些已安装，但沙盒无法运行它们：其文件夹不允许沙盒应用读取和运行其中的内容。你可以一次为一个工具链开启许可。",

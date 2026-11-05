@@ -352,6 +352,8 @@
     "attributionCommitsDesc": "Các commit do tác tử tạo kết thúc bằng trailer Co-Authored-By ghi tên Flint và mô hình đã viết chúng.",
     "attributionPullRequests": "Thêm 'Generated with Flint' vào pull request",
     "attributionPullRequestsDesc": "Mô tả pull request do tác tử viết kết thúc bằng dòng 'Generated with Flint'.",
+    "userLineShare": "Chia sẻ tên người dùng và thư mục chính với mô hình",
+    "userLineShareDesc": "Ghi chú môi trường gửi cho mô hình nêu tài khoản hệ điều hành và thư mục hồ sơ của bạn để nó không đoán đường dẫn. Tắt để loại chúng khỏi mọi yêu cầu.",
     "toolchains": {
       "title": "Bộ công cụ sandbox",
       "description": "Những công cụ này đã được cài nhưng sandbox không thể chạy chúng: thư mục của chúng không cho phép ứng dụng sandbox đọc và chạy những gì bên trong. Bạn có thể cho phép từng bộ công cụ một.",
