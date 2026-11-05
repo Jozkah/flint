@@ -3346,6 +3346,11 @@ async fn orchestrate_inner(
                 })?;
         }
     }
+    // F1x3-009: parsed once here and read by every section consumer below, so
+    // one run start cannot see two states of a file edited mid-startup.
+    let agent_cfg = project_root.as_deref().and_then(|root| {
+        crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+    });
     let settings = project_root
         .as_deref()
         .map(|root| resolve_run_settings(root, *sandbox, profile.as_deref()));
@@ -3377,15 +3382,7 @@ async fn orchestrate_inner(
         // The context window is a CLI-only `[agent]` key; elsewhere the
         // documented 128K default applies (see `thresholds_for`).
         #[cfg(feature = "cli")]
-        let ctx_window = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(
-                    root,
-                    profile.as_deref(),
-                )
-                .ok()
-            })
+        let ctx_window = agent_cfg.clone()
             .and_then(|cfg| cfg.agent.context_window);
         #[cfg(not(feature = "cli"))]
         let ctx_window: Option<u64> = None;
@@ -3422,11 +3419,7 @@ async fn orchestrate_inner(
     }
     // `[agent] final_answer_on_limit`, top-level runs only (see `turn_limit`).
     #[cfg(feature = "cli")]
-    let final_answer_on_limit = project_root
-        .as_deref()
-        .and_then(|root| {
-            crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
-        })
+    let final_answer_on_limit = agent_cfg.clone()
         .and_then(|cfg| cfg.agent.final_answer_on_limit)
         .unwrap_or(false);
     #[cfg(not(feature = "cli"))]
@@ -3435,11 +3428,7 @@ async fn orchestrate_inner(
     // declaration that cannot be evaluated refuses the run before any request.
     #[cfg(feature = "cli")]
     {
-        let checks = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
-            })
+        let checks = agent_cfg.clone()
             .map(|cfg| cfg.agent.final_checks)
             .unwrap_or_default();
         crate::core::agent::final_checks::validate(&checks)?;
@@ -3818,15 +3807,7 @@ async fn orchestrate_inner(
     // switched. Inert when no `[models]` section is written, so a project that
     // never restricts models finalizes exactly as before.
     let model_id = {
-        let policy = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(
-                    root,
-                    profile.as_deref(),
-                )
-                .ok()
-            })
+        let policy = agent_cfg.clone()
             .map(|cfg| cfg.models)
             .unwrap_or_default();
         if policy.is_empty() {
@@ -3851,11 +3832,7 @@ async fn orchestrate_inner(
     // `role:plan`: a plan-mode run may be routed to a stronger model than the
     // one that executes the plan afterwards. Only plan mode asks for this role.
     let model_id = if run_mode == crate::core::agent::plan::RunMode::Plan {
-        let rules = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
-            })
+        let rules = agent_cfg.clone()
             .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
             .unwrap_or_default();
         match crate::core::agent::routing::plan_model(&rules, &model_id) {
@@ -3942,11 +3919,7 @@ async fn orchestrate_inner(
     // allowlist and deny rules leave it standing.
     let code_mode = args.parent_run.is_none()
         && child_run_id.is_none()
-        && project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
-            })
+        && agent_cfg.clone()
             .and_then(|cfg| cfg.tools.code_mode)
             .unwrap_or(false)
         && allowed_names.as_ref().is_none_or(|set| set.contains(crate::core::agent::code_mode::TOOL_NAME))
@@ -4148,22 +4121,13 @@ async fn orchestrate_inner(
         // Rules that cannot be honoured were already refused where the run was
         // started; a project whose file is unreadable here simply has none,
         // rather than failing a run twice for one reason.
-        let routing = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
-            })
+        let routing = agent_cfg.clone()
             .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
             .unwrap_or_default();
         // The autonomous-mode safety policy, resolved once per run like routing.
         // Absent/unreadable config means the default (disabled), so the classifier
         // is inert unless a project opts in with `[auto_mode] enabled = true`.
-        let auto_mode = project_root
-            .as_deref()
-            .and_then(|root| {
-                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref())
-                    .ok()
-            })
+        let auto_mode = agent_cfg.clone()
             .map(|cfg| cfg.auto_mode)
             .unwrap_or_default();
         // A scheduled task's child has nobody to ask, so the classifier is on
@@ -4172,30 +4136,14 @@ async fn orchestrate_inner(
         // `[[tool_rules]]`: order and count rules over the run's tool calls.
         // None when the project has none or its file cannot be read.
         let tool_rules = crate::core::agent::tool_rules::usable(
-            project_root
-                .as_deref()
-                .and_then(|root| {
-                    crate::core::agent::project::load_agent_config_with_profile(
-                        root,
-                        profile.as_deref(),
-                    )
-                    .ok()
-                })
+            agent_cfg.clone()
                 .map(|cfg| cfg.tool_rules)
                 .unwrap_or_default(),
         );
         // `[approvals]`: whether a prompt nobody can answer is put off to be
         // answered later instead of being denied.
         let approvals = crate::core::agent::approval_flow::Runtime::from_section(
-            &project_root
-                .as_deref()
-                .and_then(|root| {
-                    crate::core::agent::project::load_agent_config_with_profile(
-                        root,
-                        profile.as_deref(),
-                    )
-                    .ok()
-                })
+            &agent_cfg.clone()
                 .map(|cfg| cfg.approvals)
                 .unwrap_or_default(),
         );
