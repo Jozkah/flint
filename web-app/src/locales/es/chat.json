@@ -333,7 +333,8 @@
     "promptHooksStopped": "El turno se detuvo mientras se ejecutaban sus hooks de prompt, por lo que el prompt no se envió.",
     "reasoningLoop": "El razonamiento se detuvo tras repetir el mismo texto. Prueba con otro modelo o con un presupuesto de razonamiento menor.",
     "serviceUnavailable": "El servicio de modelos no está listo, o no hay ningún modelo o proveedor seleccionado.",
-    "contextUsed": "(Se usaron {{used}} de {{total}} tokens de contexto.)"
+    "contextUsed": "(Se usaron {{used}} de {{total}} tokens de contexto.)",
+    "imageOmitted": "(imagen omitida: el modelo no tiene visión)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

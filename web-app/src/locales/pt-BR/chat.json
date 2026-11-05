@@ -333,7 +333,8 @@
     "promptHooksStopped": "O turno foi interrompido enquanto seus hooks de prompt rodavam, então o prompt não foi enviado.",
     "reasoningLoop": "O raciocínio parou após repetir o mesmo texto. Tente outro modelo ou um orçamento de raciocínio menor.",
     "serviceUnavailable": "O serviço de modelos não está pronto, ou nenhum modelo ou provedor está selecionado.",
-    "contextUsed": "({{used}} de {{total}} tokens de contexto usados.)"
+    "contextUsed": "({{used}} de {{total}} tokens de contexto usados.)",
+    "imageOmitted": "(imagem omitida: o modelo não tem visão)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

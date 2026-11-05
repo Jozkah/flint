@@ -313,7 +313,8 @@
     "promptHooksStopped": "プロンプトフックの実行中にターンが停止されたため、プロンプトは送信されませんでした。",
     "reasoningLoop": "同じテキストの繰り返しにより推論が停止しました。別のモデルを試すか、思考予算を下げてください。",
     "serviceUnavailable": "モデルサービスの準備ができていないか、モデルまたはプロバイダーが選択されていません。",
-    "contextUsed": "（コンテキストトークン {{total}} 中 {{used}} を使用。）"
+    "contextUsed": "（コンテキストトークン {{total}} 中 {{used}} を使用。）",
+    "imageOmitted": "(画像は省略されました: このモデルは画像を扱えません)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

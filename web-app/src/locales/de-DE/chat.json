@@ -318,7 +318,8 @@
     "promptHooksStopped": "Der Durchlauf wurde angehalten, während seine Prompt-Hooks liefen, daher wurde der Prompt nicht gesendet.",
     "reasoningLoop": "Das Denken wurde gestoppt, weil derselbe Text wiederholt wurde. Probiere ein anderes Modell oder ein niedrigeres Denkbudget.",
     "serviceUnavailable": "Der Modelldienst ist nicht bereit, oder es ist kein Modell oder Anbieter ausgewählt.",
-    "contextUsed": "({{used}} von {{total}} Kontext-Tokens verwendet.)"
+    "contextUsed": "({{used}} von {{total}} Kontext-Tokens verwendet.)",
+    "imageOmitted": "(Bild ausgelassen: Das Modell kann keine Bilder verarbeiten)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

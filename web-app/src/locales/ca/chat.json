@@ -333,7 +333,8 @@
     "promptHooksStopped": "El torn s’ha aturat mentre s’executaven els seus hooks del prompt, de manera que el prompt no s’ha enviat.",
     "reasoningLoop": "El raonament s’ha aturat després de repetir el mateix text. Prova un altre model o un pressupost de raonament més baix.",
     "serviceUnavailable": "El servei de models no està a punt, o no hi ha cap model o proveïdor seleccionat.",
-    "contextUsed": "(S’han fet servir {{used}} de {{total}} tokens de context.)"
+    "contextUsed": "(S’han fet servir {{used}} de {{total}} tokens de context.)",
+    "imageOmitted": "(imatge omesa: el model no té visió)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"

@@ -304,7 +304,8 @@
     "promptHooksStopped": "Giliran dihentikan saat hook prompt-nya berjalan, sehingga prompt tidak dikirim.",
     "reasoningLoop": "Penalaran berhenti setelah mengulang teks yang sama. Coba model lain atau anggaran berpikir yang lebih rendah.",
     "serviceUnavailable": "Layanan model belum siap, atau tidak ada model atau penyedia yang dipilih.",
-    "contextUsed": "({{used}} dari {{total}} token konteks digunakan.)"
+    "contextUsed": "({{used}} dari {{total}} token konteks digunakan.)",
+    "imageOmitted": "(gambar dilewati: model tidak memiliki kemampuan melihat)"
   },
   "chainOfThought": {
     "fallbackTool": "tool"
