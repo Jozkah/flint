@@ -227,6 +227,13 @@ export type RoomDetail = {
   }
 }
 
+/** `rooms.summaries`: the details of several rooms in one read, so a list can
+ * show every card without one `rooms.get` each. Ids that are not rooms are
+ * left out. Older desktops refuse the method; callers fall back to
+ * `rooms.get`. */
+export type RoomsSummariesParams = { ids: string[] }
+export type RoomsSummariesResult = { rooms: RoomDetail[] }
+
 export type CoworkTodo = { text: string; status: 'pending' | 'in_progress' | 'completed' }
 
 export type CoworkDetail = {

@@ -11,6 +11,8 @@ import type {
   StatusResult,
   IdParams,
   RoomDetail,
+  RoomsSummariesParams,
+  RoomsSummariesResult,
   CoworkDetail,
   ApprovalsListResult,
   SystemInfo,
@@ -95,6 +97,7 @@ export type RemoteMethods = {
   'models.list': { params: Record<string, never>; result: ModelsListResult }
   status: { params: Record<string, never>; result: StatusResult }
   'rooms.get': { params: IdParams; result: RoomDetail }
+  'rooms.summaries': { params: RoomsSummariesParams; result: RoomsSummariesResult }
   'cowork.get': { params: IdParams; result: CoworkDetail }
   'approvals.list': { params: Record<string, never>; result: ApprovalsListResult }
   'system.info': { params: Record<string, never>; result: SystemInfo }
