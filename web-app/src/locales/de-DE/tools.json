@@ -158,7 +158,7 @@
     "projectFolder": "der Projektordner",
     "reveal": "{{path}} im Explorer anzeigen",
     "open": "{{path}} mit der Standard-App öffnen",
-    "build": "`{{command}}` in {{where}} außerhalb der Sandbox ausführen (es führt die eigenen Build-Skripte des Projekts aus)",
+    "build": "`{{command}}` in {{where}} außerhalb der Sandbox ausführen (es führt die eigenen Build-Skripte des Projekts aus) Seine Argumente können den Build auf andere Ordner richten.",
     "noProcess": "es läuft kein Prozess mit dieser Nummer",
     "kill": "Prozess {{pid}} beenden: {{who}}",
     "service": "{{verb}} service {{name}}",

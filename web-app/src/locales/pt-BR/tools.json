@@ -158,7 +158,7 @@
     "projectFolder": "a pasta do projeto",
     "reveal": "Mostrar {{path}} no Explorador",
     "open": "Abrir {{path}} com o app padrão",
-    "build": "Executar `{{command}}` em {{where}}, fora do sandbox (executa os próprios scripts de build do projeto)",
+    "build": "Executar `{{command}}` em {{where}}, fora do sandbox (executa os próprios scripts de build do projeto) Seus argumentos podem apontar o build para outras pastas.",
     "noProcess": "nenhum processo com esse número está em execução",
     "kill": "Encerrar o processo {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

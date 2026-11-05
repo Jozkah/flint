@@ -158,7 +158,7 @@
     "projectFolder": "la carpeta del projecte",
     "reveal": "Mostra {{path}} a l'Explorador",
     "open": "Obre {{path}} amb l'aplicació per defecte",
-    "build": "Executa `{{command}}` a {{where}}, fora de la sandbox (executa els scripts de build del projecte)",
+    "build": "Executa `{{command}}` a {{where}}, fora de la sandbox (executa els scripts de build del projecte) Els seus arguments poden apuntar la compilació a altres carpetes.",
     "noProcess": "cap procés amb aquest número s'està executant",
     "kill": "Finalitza el procés {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

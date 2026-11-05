@@ -158,7 +158,7 @@
     "projectFolder": "项目文件夹",
     "reveal": "在资源管理器中显示 {{path}}",
     "open": "使用默认应用打开 {{path}}",
-    "build": "在沙箱之外于{{where}}中运行 `{{command}}`（它会运行项目自己的构建脚本）",
+    "build": "在沙箱之外于{{where}}中运行 `{{command}}`（它会运行项目自己的构建脚本）其参数可以让构建指向其他文件夹。",
     "noProcess": "没有使用该编号的进程正在运行",
     "kill": "结束进程 {{pid}}：{{who}}",
     "service": "{{verb}} service {{name}}",

@@ -158,7 +158,7 @@
     "projectFolder": "la carpeta del proyecto",
     "reveal": "Mostrar {{path}} en el Explorador",
     "open": "Abrir {{path}} con su app predeterminada",
-    "build": "Ejecutar `{{command}}` en {{where}}, fuera del sandbox (ejecuta los propios scripts de compilación del proyecto)",
+    "build": "Ejecutar `{{command}}` en {{where}}, fuera del sandbox (ejecuta los propios scripts de compilación del proyecto) Sus argumentos pueden dirigir la compilación a otras carpetas.",
     "noProcess": "no hay ningún proceso en ejecución con ese número",
     "kill": "Finalizar el proceso {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

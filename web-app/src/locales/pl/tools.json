@@ -158,7 +158,7 @@
     "projectFolder": "folder projektu",
     "reveal": "Pokaż {{path}} w Eksploratorze",
     "open": "Otwórz {{path}} w aplikacji domyślnej",
-    "build": "Uruchom `{{command}}` w {{where}}, poza piaskownicą (uruchamia własne skrypty budowania projektu)",
+    "build": "Uruchom `{{command}}` w {{where}}, poza piaskownicą (uruchamia własne skrypty budowania projektu) Jego argumenty mogą skierować build do innych folderów.",
     "noProcess": "żaden proces o tym numerze nie jest uruchomiony",
     "kill": "Zakończ proces {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",

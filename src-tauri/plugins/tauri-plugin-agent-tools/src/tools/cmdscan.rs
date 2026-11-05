@@ -782,6 +782,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         let args = &tokens[idx + 1..];
         if (ASSIGNING_BUILTINS.contains(&name.as_str()) && assigns_unsafely(args))
             || names_a_variable(&name, args)
+            || runs_argument_command(&name, args)
         {
             return false;
         }
@@ -863,6 +864,52 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         }
         bases.insert(base);
         return true;
+    }
+}
+
+/// Programs that run a command named in an argument: `git -c core.pager=...`
+/// (or an `alias.x=!cmd`), `fd -x/-X`, `rg --pre`, `tar --to-command`. A rule
+/// for the program alone must not cover them, so the segment is opaque and
+/// prompts (O06-013).
+fn runs_argument_command(name: &str, args: &[String]) -> bool {
+    let long = |a: &str, flag: &str| {
+        a == flag || a.strip_prefix(flag).is_some_and(|r| r.starts_with('='))
+    };
+    match name {
+        "git" => {
+            // Only options before the subcommand: `git commit -c <commit>` is
+            // a different, harmless flag.
+            let mut it = args.iter();
+            while let Some(a) = it.next() {
+                if a == "-c" || long(a, "--config-env") || long(a, "--exec-path") {
+                    return true;
+                }
+                if a == "-C" || a == "--git-dir" || a == "--work-tree" || a == "--namespace" {
+                    it.next();
+                    continue;
+                }
+                if !a.starts_with('-') {
+                    return false;
+                }
+            }
+            false
+        }
+        "fd" | "fdfind" => args.iter().any(|a| {
+            long(a, "--exec")
+                || long(a, "--exec-batch")
+                || (a.starts_with('-') && !a.starts_with("--") && a.contains(['x', 'X']))
+        }),
+        "rg" | "ripgrep" => args
+            .iter()
+            .any(|a| long(a, "--pre") || long(a, "--hostname-bin")),
+        "tar" | "gtar" | "bsdtar" => args.iter().any(|a| {
+            long(a, "--to-command")
+                || long(a, "--use-compress-program")
+                || long(a, "--checkpoint-action")
+                || long(a, "--rsh-command")
+                || a == "-I"
+        }),
+        _ => false,
     }
 }
 
@@ -1361,6 +1408,26 @@ mod tests {
         assert_eq!(scan_command("sudo rm -rf /"), CommandScan::Opaque);
         assert_eq!(scan_command("ls | xargs rm"), CommandScan::Opaque);
         assert_eq!(scan_command("source ./x.sh"), CommandScan::Opaque);
+    }
+
+    #[test]
+    fn argument_borne_exec_is_opaque() {
+        for c in [
+            "git -c core.pager=evil log",
+            "git -C x -c alias.st=!rm st",
+            "fd -x rm",
+            "fd -HIX rm",
+            "fd --exec rm",
+            "rg --pre ./x foo",
+            "rg --pre=./x foo",
+            "tar xf a.tar --to-command=sh",
+            "tar -I evil -cf a.tar x",
+        ] {
+            assert_eq!(scan_command(c), CommandScan::Opaque, "{c}");
+        }
+        for c in ["git commit -c abc", "git log -n 3", "fd -e rs", "rg foo -n", "tar xf a.tar"] {
+            assert!(matches!(scan_command(c), CommandScan::Bases(_)), "{c}");
+        }
     }
 
     #[test]

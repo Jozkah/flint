@@ -158,7 +158,7 @@
     "projectFolder": "le dossier du projet",
     "reveal": "Afficher {{path}} dans l’Explorateur",
     "open": "Ouvrir {{path}} avec son application par défaut",
-    "build": "Exécuter `{{command}}` dans {{where}}, hors du bac à sable (cela lance les scripts de build propres au projet)",
+    "build": "Exécuter `{{command}}` dans {{where}}, hors du bac à sable (cela lance les scripts de build propres au projet) Ses arguments peuvent diriger le build vers d'autres dossiers.",
     "noProcess": "aucun processus avec ce numéro n’est en cours d’exécution",
     "kill": "Terminer le processus {{pid}} : {{who}}",
     "service": "{{verb}} service {{name}}",

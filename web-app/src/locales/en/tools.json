@@ -158,7 +158,7 @@
     "projectFolder": "the project folder",
     "reveal": "Show {{path}} in Explorer",
     "open": "Open {{path}} with its default app",
-    "build": "Run `{{command}}` in {{where}}, outside the sandbox (it runs the project's own build scripts)",
+    "build": "Run `{{command}}` in {{where}}, outside the sandbox (it runs the project's own build scripts) Its arguments can point the build at other folders.",
     "noProcess": "no process with that number is running",
     "kill": "End process {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
