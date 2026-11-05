@@ -28,7 +28,9 @@ describe('motion scale and polish utilities', () => {
 describe('composer hit areas', () => {
   it('gives the shared composer icon button and the token counter the taller hit area', () => {
     const shared = readFileSync(resolve(__dirname, '..', '..', 'containers', 'composerIconButton.ts'), 'utf8')
-    const counter = readFileSync(resolve(__dirname, '..', '..', 'components', 'TokenCounter.tsx'), 'utf8')
+    const counter =
+      readFileSync(resolve(__dirname, '..', '..', 'components', 'TokenCounter.tsx'), 'utf8') +
+      readFileSync(resolve(__dirname, '..', '..', 'components', 'TokenCounterParts.tsx'), 'utf8')
     expect(shared).toContain('hit-y')
     expect(counter.match(/hit-y cursor-pointer/g)?.length).toBe(2)
     expect(css('styles/motion-voice.css')).toMatch(/\.vp-root::after[\s\S]*inset-block: -6px/)
