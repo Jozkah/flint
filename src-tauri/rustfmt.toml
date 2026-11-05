@@ -1,0 +1,2 @@
+# Defaults only. Edition matches src-tauri/Cargo.toml.
+edition = "2021"
