@@ -3901,15 +3901,22 @@ impl App {
             self.note("not signed in — run /login to choose a provider first");
             return;
         }
-        let images = if display {
+        let mut images = if display {
             std::mem::take(&mut self.pending_images)
         } else {
             Vec::new()
         };
+        // Resolve @path file references before sending; an `@image` is attached
+        // like `/image` when the model can see it.
+        let resolved = path_refs::resolve_references_full(
+            &text,
+            self.work_root(),
+            true,
+            display && crate::core::cli::model_capabilities::accepts_images(&self.model),
+        );
+        let (clean_text, injected_contents) = (resolved.clean, resolved.block);
+        images.extend(resolved.images);
         let names: Vec<String> = images.iter().map(|i| i.name.clone()).collect();
-        // Resolve @path file references before sending
-        let (clean_text, injected_contents) =
-            path_refs::resolve_references(&text, self.work_root());
         let final_text = if injected_contents.is_empty() {
             clean_text
         } else {
