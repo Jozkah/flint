@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Info, Trash2, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { BarRow } from '@/components/ui/bar-row'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
+import { stableKeys } from '@/lib/stableKeys'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -473,6 +474,14 @@ function CopyApplyDialog(props: {
   const [pair, setPair] = useState<FilePair | null>(null)
   const [force, setForce] = useState(false)
   const [busy, setBusy] = useState(false)
+  const diffRows = useMemo(
+    () => (pair === null || pair.binary ? [] : lineDiff(pair.original, pair.copy)),
+    [pair]
+  )
+  const diffKeys = useMemo(
+    () => stableKeys(diffRows.map((l) => l.kind + l.text)),
+    [diffRows]
+  )
 
   const dataFolder = async () =>
     (await serviceHub.app().getJanDataFolder().catch(() => '')) ?? ''
@@ -593,9 +602,9 @@ function CopyApplyDialog(props: {
                 ? null
                 : pair.binary
                   ? t('common:coworkParallel.binary')
-                  : lineDiff(pair.original, pair.copy).map((line, i) => (
+                  : diffRows.map((line, i) => (
                       <div
-                        key={i}
+                        key={diffKeys[i]}
                         className={
                           line.kind === 'add'
                             ? 'bg-green-500/15'

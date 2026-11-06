@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, GitBranch, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { stableKeys } from '@/lib/stableKeys'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 import {
   applyProposal,
@@ -117,13 +118,14 @@ function HunkPreview({
     ...added.map((l) => ({ sign: '+', text: l })),
   ]
   const shown = lines.slice(0, PREVIEW_LINES)
+  const shownKeys = stableKeys(shown.map((l) => l.sign + l.text))
   return (
     // Long lines scroll sideways inside the hunk, never the panel.
     <pre className="mt-1.5 overflow-x-auto rounded-lg border-[0.8px] border-border bg-code-bg py-1 font-mono text-xs leading-5 [scrollbar-width:thin]">
       <div className="w-max min-w-full">
         {shown.map((l, i) => (
           <div
-            key={i}
+            key={shownKeys[i]}
             className={
               l.sign === '+'
                 ? 'bg-diff-add-bg px-2 text-diff-add'
