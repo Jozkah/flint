@@ -149,6 +149,14 @@ describe('new read handlers', () => {
     expect(await call(handlers, 'cowork.get', { id: 'w1' })).toMatchObject({ result: { status: 'running' } })
   })
 
+  it('rooms.summaries returns many rooms in one read and skips unknown ids', async () => {
+    expect(await call(handlers, 'rooms.summaries', {})).toMatchObject({ error: { code: 'bad_params' } })
+    expect(await call(handlers, 'rooms.summaries', { ids: [1] })).toMatchObject({ error: { code: 'bad_params' } })
+    expect(await call(handlers, 'rooms.summaries', { ids: ['r1', 'nope', 'r1'] })).toMatchObject({
+      result: { rooms: [{ id: 'r1', status: 'running' }] },
+    })
+  })
+
   it('lists tools and the accent', async () => {
     expect(await call(handlers, 'tools.list')).toMatchObject({ result: { servers: [{ name: 'github' }] } })
     expect(await call(handlers, 'appearance.get')).toMatchObject({ result: { vars: { dark: { '--primary': '#fff' } } } })

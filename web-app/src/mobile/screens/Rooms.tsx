@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { SessionSummary } from '@/lib/remote/protocol'
+import type { RoomDetail, SessionSummary } from '@/lib/remote/protocol'
 import { TopMain } from '../shell/TopBar'
 import { I } from '../ui/icons'
 import { Tx } from '../ui/trans'
@@ -14,8 +14,11 @@ import { activate } from '../ui/a11y'
 
 const MODE = { 'round-robin': t('rooms.mode.roundRobin'), 'user-selected': t('rooms.mode.userSelected'), 'moderator-selected': t('rooms.mode.moderatorSelected'), compare: t('rooms.mode.compare') } as const
 
-function RoomCard({ s }: { s: SessionSummary }) {
-  const { data: room } = useRpc('rooms.get', { id: s.id })
+/** `batched` is the list's one `rooms.summaries` read; `fallback` is set when
+ * the desktop is too old for it, and the card then reads its own room. */
+function RoomCard({ s, batched, fallback }: { s: SessionSummary; batched?: RoomDetail; fallback: boolean }) {
+  const own = useRpc('rooms.get', { id: s.id }, fallback).data
+  const room = batched ?? own
   const status = room?.roomStatus ?? (s.status === 'running' ? 'running' : 'completed')
   return (
     <div className="rc" role="button" {...activate(() => go({ name: 'room', id: s.id }))} data-testid="room-card">
@@ -103,6 +106,10 @@ export default function Rooms() {
   const shown = rooms.filter((r) =>
     filter === 'all' ? true : filter === 'active' ? r.status === 'running' || r.status === 'waiting' || r.status === 'paused' : r.status === 'done'
   )
+  const ids = shown.slice(0, 20).map((s) => s.id)
+  const summaries = useRpc('rooms.summaries', { ids }, ids.length > 0)
+  const byId = new Map((summaries.data?.rooms ?? []).map((r) => [r.id, r]))
+  const fallback = Boolean(summaries.error) && !summaries.data
   return (
     <>
       <TopMain crumb={t('common.workspace')} title={t('rooms.title')} />
@@ -139,7 +146,7 @@ export default function Rooms() {
         {loading && !data && <Loading />}
         {data && shown.length === 0 && <Empty>{t('rooms.empty')}</Empty>}
         {shown.slice(0, 20).map((s) => (
-          <RoomCard key={s.id} s={s} />
+          <RoomCard key={s.id} s={s} batched={byId.get(s.id)} fallback={fallback} />
         ))}
         <button type="button" className="btn pri big" style={{ marginTop: 6 }} onClick={() => openSheet('roomnew')}>
           <I n="plus" />

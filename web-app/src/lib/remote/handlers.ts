@@ -328,6 +328,19 @@ export function createRemoteHandlers(
       return src.running().room.has(room.id) ? { ...room, status: 'running' } : room
     },
 
+    'rooms.summaries': async (params) => {
+      const raw = isRecord(params) ? params.ids : undefined
+      if (!Array.isArray(raw) || raw.some((i) => typeof i !== 'string')) {
+        throw new RemoteRpcError('bad_params', 'ids must be a list of room ids')
+      }
+      const ids = [...new Set(raw as string[])].slice(0, MAX_PAGE)
+      const running = src.running().room
+      const found = await Promise.all(ids.map((id) => src.roomDetail(id)))
+      return {
+        rooms: found.flatMap((room) => (room ? [running.has(room.id) ? { ...room, status: 'running' as const } : room] : [])),
+      }
+    },
+
     'cowork.get': (params) => {
       const id = requireId(params)
       const detail = src.coworkDetail(id)
