@@ -83,6 +83,34 @@ async fn answer_next(
     }
 }
 
+/// The prompt path is taken only when stdin is a terminal, so detach it once
+/// for the whole test binary. Nothing else in this binary reads stdin.
+fn detach_stdin() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        #[cfg(windows)]
+        // SAFETY: the NUL handle is opened once and handed to the process for good.
+        unsafe {
+            use std::os::windows::io::IntoRawHandle;
+            use windows_sys::Win32::System::Console::{SetStdHandle, STD_INPUT_HANDLE};
+            if let Ok(nul) = std::fs::File::open("NUL") {
+                SetStdHandle(STD_INPUT_HANDLE, nul.into_raw_handle() as _);
+            }
+        }
+        #[cfg(unix)]
+        // SAFETY: dup2 onto fd 0 replaces stdin; the opened fd is closed after.
+        unsafe {
+            let fd = libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY);
+            if fd >= 0 {
+                libc::dup2(fd, 0);
+                if fd != 0 {
+                    libc::close(fd);
+                }
+            }
+        }
+    });
+}
+
 fn setup() -> (
     std::path::PathBuf,
     std::path::PathBuf,
@@ -90,6 +118,7 @@ fn setup() -> (
     mpsc::UnboundedReceiver<StreamEvent>,
     PermissionRegistry,
 ) {
+    detach_stdin();
     let root = unique_project_root();
     let data = fresh_data();
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -343,12 +372,6 @@ fn deferring() -> (
     (root, data, invoker, rx, registry)
 }
 
-/// A run with a terminal can prompt, which these tests are not about.
-fn has_a_terminal() -> bool {
-    use std::io::IsTerminal;
-    std::io::stdin().is_terminal()
-}
-
 fn pending_id(data: &std::path::Path) -> String {
     let all = deferred::list(data, None, false);
     assert_eq!(all.len(), 1, "{all:?}");
@@ -357,9 +380,6 @@ fn pending_id(data: &std::path::Path) -> String {
 
 #[tokio::test]
 async fn an_unattended_prompt_is_deferred_not_denied_and_the_call_does_not_run() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, mut rx, _registry) = deferring();
     let out = invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     assert!(out[0].content.contains(flow::DEFERRED_MARK), "{}", out[0].content);
@@ -376,9 +396,6 @@ async fn an_unattended_prompt_is_deferred_not_denied_and_the_call_does_not_run()
 
 #[tokio::test]
 async fn proposing_the_call_again_before_an_answer_is_still_refused_and_adds_no_second_record() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     let out = invoke_within(&invoker, &[write_to("c2", "other.txt", "hello")]).await;
@@ -389,9 +406,6 @@ async fn proposing_the_call_again_before_an_answer_is_still_refused_and_adds_no_
 
 #[tokio::test]
 async fn an_allow_given_later_runs_the_same_call_once() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, mut rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     let id = pending_id(&data);
@@ -412,9 +426,6 @@ async fn an_allow_given_later_runs_the_same_call_once() {
 
 #[tokio::test]
 async fn a_deferred_write_lists_its_content_not_just_the_path() {
-    if has_a_terminal() {
-        return;
-    }
     let (_root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "rm -rf the payload line")]).await;
     let record = &deferred::list(&data, None, false)[0];
@@ -424,9 +435,6 @@ async fn a_deferred_write_lists_its_content_not_just_the_path() {
 
 #[tokio::test]
 async fn an_allow_for_a_file_changed_after_the_question_is_refused_and_writes_nothing() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     std::fs::write(root.join("other.txt"), "original").unwrap();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
@@ -443,9 +451,6 @@ async fn an_allow_for_a_file_changed_after_the_question_is_refused_and_writes_no
 
 #[tokio::test]
 async fn an_allow_does_not_cover_different_arguments() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "what was asked")]).await;
     deferred::answer(&data, &pending_id(&data), true).unwrap();
@@ -462,9 +467,6 @@ async fn an_allow_does_not_cover_different_arguments() {
 
 #[tokio::test]
 async fn a_denial_given_later_is_told_to_the_model_and_nothing_runs() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     deferred::answer(&data, &pending_id(&data), false).unwrap();
@@ -475,9 +477,6 @@ async fn a_denial_given_later_is_told_to_the_model_and_nothing_runs() {
 
 #[tokio::test]
 async fn an_expired_answer_refuses_and_never_approves() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     // A question asked and allowed long ago, with a short window.
     let args = json!({ "path": "other.txt", "content": "hello" });
@@ -511,9 +510,6 @@ async fn an_expired_answer_refuses_and_never_approves() {
 
 #[tokio::test]
 async fn an_answer_for_another_session_or_project_is_not_applied() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     deferred::answer(&data, &pending_id(&data), true).unwrap();
@@ -534,9 +530,6 @@ async fn an_answer_for_another_session_or_project_is_not_applied() {
 
 #[tokio::test]
 async fn a_restore_voids_an_unspent_answer() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, data, invoker, _rx, _registry) = deferring();
     invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
     deferred::answer(&data, &pending_id(&data), true).unwrap();
@@ -548,9 +541,6 @@ async fn a_restore_voids_an_unspent_answer() {
 
 #[tokio::test]
 async fn without_a_session_or_data_folder_the_old_behavior_is_kept() {
-    if has_a_terminal() {
-        return;
-    }
     // No session id to resume: the call is denied as it always was, not lost
     // into a record nobody can resume.
     let (root, data, mut invoker, mut rx, registry) = deferring();
@@ -846,9 +836,6 @@ async fn a_saved_rule_and_a_session_grant_never_answer_a_flagged_write() {
 
 #[tokio::test]
 async fn an_unattended_run_refuses_a_flagged_write_and_says_how_to_allow_it() {
-    if has_a_terminal() {
-        return;
-    }
     let (root, _data, invoker, mut rx, _registry) = setup();
     // Nobody attached: no question is raised, nothing is auto-approved.
     let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
