@@ -145,8 +145,26 @@ pub(crate) fn resolve_context_window(
     }
 }
 
+/// True when `model_id` is a known family that accepts image input. Unknown
+/// models answer false: an image they cannot read is worse than a text note.
+pub(crate) fn accepts_images(model_id: &str) -> bool {
+    let id = strip_provider_qualifier(model_id);
+    id.starts_with("claude-")
+        || id.starts_with("gemini-")
+        || ["gpt-4o", "gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5", "o3", "o4-mini"]
+            .iter()
+            .any(|b| is_version(id, b))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn accepts_images_is_conservative() {
+        assert!(super::accepts_images("anthropic/claude-sonnet-4-6"));
+        assert!(super::accepts_images("gpt-4o-mini"));
+        assert!(!super::accepts_images("qwen3-4b"));
+    }
+
     use super::*;
 
     #[test]

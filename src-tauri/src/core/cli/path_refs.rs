@@ -8,7 +8,9 @@
 //!
 //! * Files are read as UTF-8 text (1 MB cap).
 //! * Directories produce a listing of immediate children (20 KB cap).
-//! * Images are noted inline as `(image: image/mime)` markers.
+//! * Images (png, jpeg, gif, webp) are attached to the message when the caller
+//!   says the model accepts them and the file is within `MAX_IMAGE_BYTES`;
+//!   otherwise they are noted inline as `(image: image/mime, N bytes)`.
 //! * Missing/unreadable items surface as inline error notices.
 //! * `@http://` / `@https://` / `@file://` prefixed tokens are skipped.
 //! * `user@host`, emails and bare IPv4 tokens are not references and pass
@@ -16,6 +18,7 @@
 //! * Once resolved, the `@path` tokens are removed from the text so the model
 //!   sees the content directly via the injected block, not raw `@` tokens.
 
+use super::user_message::{image_mime_of, PendingImage, MAX_IMAGE_BYTES};
 use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 
@@ -74,8 +77,13 @@ const MAX_FILE_BYTES: u64 = 1024 * 1024;
 /// Maximum characters in a directory listing sent to the model.
 const MAX_DIR_CHARS: usize = 20_000;
 
-/// Image extensions.
-const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+/// What `resolve_references_full` produced: the text without reference tokens,
+/// the injected content block, and the images staged for the message.
+pub struct Resolved {
+    pub clean: String,
+    pub block: String,
+    pub images: Vec<PendingImage>,
+}
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -189,8 +197,20 @@ fn strip_references_except(text: &str, keep: &std::collections::HashSet<String>)
 /// Returns `(cleaned_text, injected_content_block)`.
 /// When no references are found, returns the original text unchanged with an
 /// empty injected block.
+#[cfg(test)]
 pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
     resolve_references_with(text, project_root, true)
+}
+
+/// Text-only form of [`resolve_references_full`]: images are noted, never attached.
+#[cfg(test)]
+pub fn resolve_references_with(
+    text: &str,
+    project_root: &Path,
+    allow_outside: bool,
+) -> (String, String) {
+    let r = resolve_references_full(text, project_root, allow_outside, false);
+    (r.clean, r.block)
 }
 
 /// File names that are never injected into a prompt (credentials, keys).
@@ -223,14 +243,18 @@ fn is_outside_root(abs: &Path, root: &Path) -> bool {
 /// paths outside `project_root` are read (interactive TUI) or refused
 /// (headless). Sensitive file names are always refused and the injected block
 /// is scrubbed of secrets.
-pub fn resolve_references_with(
+/// With `attach_images`, an image reference the model can use is staged in
+/// `Resolved::images` instead of only being noted.
+pub fn resolve_references_full(
     text: &str,
     project_root: &Path,
     allow_outside: bool,
-) -> (String, String) {
+    attach_images: bool,
+) -> Resolved {
     let refs = parse_references(text);
+    let mut images: Vec<PendingImage> = Vec::new();
     if refs.is_empty() {
-        return (text.to_string(), String::new());
+        return Resolved { clean: text.to_string(), block: String::new(), images };
     }
 
     let mut parts: Vec<String> = Vec::new();
@@ -306,17 +330,34 @@ pub fn resolve_references_with(
             continue;
         }
 
-        let ext = abs
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        // An image is never read into the prompt, only noted by size, so the
-        // text cap below does not apply to it: a 3 MB screenshot is named, not
-        // refused as "too large".
-        if IMAGE_EXTS.contains(&ext.as_str()) {
-            parts.push(image_note(raw, &abs));
+        // An image is never read into the prompt as text, so the text cap
+        // below does not apply to it: a 3 MB screenshot is attached when the
+        // model can see it and it fits `MAX_IMAGE_BYTES`, else named by size.
+        if let Some(mime) = image_mime_of(&abs.to_string_lossy()) {
+            if attach_images && metadata.len() <= MAX_IMAGE_BYTES {
+                match load_image(&abs, mime) {
+                    Ok(img) => {
+                        parts.push(format!(
+                            "{} (image attached: {}, {} bytes)",
+                            abs.display(),
+                            mime,
+                            metadata.len()
+                        ));
+                        images.push(img);
+                        continue;
+                    }
+                    Err(e) => {
+                        parts.push(format!("[{}: cannot read image: {}]", raw, e));
+                        continue;
+                    }
+                }
+            }
+            parts.push(format!(
+                "{} (image: {}, {} bytes)",
+                abs.display(),
+                mime,
+                metadata.len()
+            ));
             continue;
         }
 
@@ -359,7 +400,7 @@ pub fn resolve_references_with(
 
     let clean = strip_references_except(text, &unresolved);
     let block = super::secrets::scrub_text(&parts.join("\n\n"));
-    (clean, block)
+    Resolved { clean, block, images }
 }
 
 /// Largest index `<= max` that is a char boundary of `s`.
@@ -436,32 +477,28 @@ pub fn search_files_sync(
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-/// Read an image file and return a text note with mime type.
-fn image_note(raw: &str, abs: &Path) -> String {
-    let ext = abs
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let mime = image_mime(&ext);
-    // The size is already known from the metadata; opening confirms the file is
-    // readable without reading it into memory.
-    match (std::fs::File::open(abs), std::fs::metadata(abs)) {
-        (Ok(_), Ok(m)) => format!("{} (image: {}, {} bytes)", abs.display(), mime, m.len()),
-        _ => format!("[{}: cannot read image]", raw),
+/// Read an image of at most `MAX_IMAGE_BYTES` into a staged `PendingImage`.
+/// The read is bounded again, so a file that grew after the size check cannot
+/// exceed the cap.
+fn load_image(abs: &Path, mime: &str) -> std::io::Result<PendingImage> {
+    use base64::Engine;
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(abs)?
+        .take(MAX_IMAGE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_IMAGE_BYTES {
+        return Err(std::io::Error::other("empty or over the size cap"));
     }
-}
-
-fn image_mime(ext: &str) -> &'static str {
-    match ext {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "svg" => "image/svg+xml",
-        _ => "image/png",
-    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(PendingImage {
+        name: abs
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("image")
+            .to_string(),
+        data_url: format!("data:{mime};base64,{b64}"),
+    })
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -521,6 +558,50 @@ mod tests {
         let (_, block) = resolve_references("see @shot.png and @big.txt", root);
         assert!(block.contains(&format!("(image: image/png, {size} bytes)")), "{block}");
         assert!(block.contains("file too large"), "text files keep the cap: {block}");
+    }
+
+    fn png_bytes(n: usize) -> Vec<u8> {
+        vec![7u8; n]
+    }
+
+    #[test]
+    fn image_ref_is_attached_for_a_vision_model() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("shot.png"), png_bytes(16)).unwrap();
+        let r = resolve_references_full("see @shot.png", dir.path(), true, true);
+        assert_eq!(r.images.len(), 1);
+        assert_eq!(r.images[0].name, "shot.png");
+        assert!(r.images[0].data_url.starts_with("data:image/png;base64,"));
+        assert!(r.block.contains("image attached: image/png, 16 bytes"), "{}", r.block);
+    }
+
+    #[test]
+    fn image_over_the_cap_keeps_the_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let size = MAX_IMAGE_BYTES as usize + 1;
+        std::fs::write(dir.path().join("big.png"), png_bytes(size)).unwrap();
+        let r = resolve_references_full("see @big.png", dir.path(), true, true);
+        assert!(r.images.is_empty());
+        assert!(r.block.contains(&format!("(image: image/png, {size} bytes)")), "{}", r.block);
+    }
+
+    #[test]
+    fn image_for_a_non_vision_model_keeps_the_note() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("shot.jpg"), png_bytes(16)).unwrap();
+        let r = resolve_references_full("see @shot.jpg", dir.path(), true, false);
+        assert!(r.images.is_empty());
+        assert!(r.block.contains("(image: image/jpeg, 16 bytes)"), "{}", r.block);
+    }
+
+    #[test]
+    fn unknown_image_extension_is_not_attached() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("pic.svg"), b"<svg/>").unwrap();
+        std::fs::write(dir.path().join("pic.bmp"), png_bytes(8)).unwrap();
+        let r = resolve_references_full("see @pic.svg and @pic.bmp", dir.path(), true, true);
+        assert!(r.images.is_empty());
+        assert!(!r.block.contains("(image"), "{}", r.block);
     }
 
     #[test]

@@ -1033,7 +1033,14 @@ pub(super) fn prepare_agent_run(
         .as_ref()
         .map(|w| w.path.clone())
         .unwrap_or_else(|| project_root.clone());
-    let (clean_task, injected) = path_refs::resolve_references_with(task, &read_root, false);
+    let resolved = path_refs::resolve_references_full(
+        task,
+        &read_root,
+        false,
+        crate::core::cli::model_capabilities::accepts_images(&session.model),
+    );
+    let (clean_task, injected) = (resolved.clean, resolved.block);
+    let task_images = resolved.images;
     let final_task = if injected.is_empty() {
         clean_task
     } else {
@@ -1079,7 +1086,11 @@ pub(super) fn prepare_agent_run(
         .as_ref()
         .map(|r| r.history.clone())
         .unwrap_or_default();
-    history.push(serde_json::json!({ "role": "user", "content": final_task }));
+    history.push(if task_images.is_empty() {
+        serde_json::json!({ "role": "user", "content": final_task })
+    } else {
+        super::user_message::build_user_message(&final_task, &task_images)
+    });
     let mut body = session.body(serde_json::json!(history.clone()));
     if !flags.allow_tools.is_empty() {
         body["allowed_tools"] = serde_json::json!(flags.allow_tools);
