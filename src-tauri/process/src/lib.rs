@@ -95,29 +95,66 @@ pub trait CommandConsole {
     /// call this; it exists so that the intent is spelled out where a
     /// terminal really is meant to appear, rather than left to the default.
     fn user_terminal(&mut self) -> &mut Self;
+
+    /// [`background`](Self::background) plus `extra` Windows creation flags,
+    /// OR-ed in. `creation_flags` replaces the whole set on every call, so a
+    /// caller that needs another flag must not call it after `background()`:
+    /// the hidden-console flag would be silently dropped. Pass the flag here
+    /// instead. `extra` is ignored on Unix.
+    fn background_with(&mut self, extra: u32) -> &mut Self;
+
+    /// [`background_in_new_group`](Self::background_in_new_group) plus `extra`
+    /// Windows creation flags, OR-ed in. Same rule as
+    /// [`background_with`](Self::background_with): do not call
+    /// `creation_flags` yourself. `extra` is ignored on Unix.
+    fn background_in_new_group_with(&mut self, extra: u32) -> &mut Self;
+}
+
+/// The Windows flag set for a background child with `extra` flags OR-ed in.
+#[cfg(windows)]
+fn background_flags_with(extra: u32) -> u32 {
+    BACKGROUND_FLAGS | extra
+}
+
+/// [`background_flags_with`] for the own-process-group variant.
+#[cfg(windows)]
+fn background_group_flags_with(extra: u32) -> u32 {
+    BACKGROUND_GROUP_FLAGS | extra
 }
 
 impl CommandConsole for StdCommand {
     fn background(&mut self) -> &mut Self {
+        self.background_with(0)
+    }
+
+    fn background_with(&mut self, extra: u32) -> &mut Self {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            self.creation_flags(BACKGROUND_FLAGS);
+            self.creation_flags(background_flags_with(extra));
         }
+        #[cfg(not(windows))]
+        let _ = extra;
         self
     }
 
     fn background_in_new_group(&mut self) -> &mut Self {
+        self.background_in_new_group_with(0)
+    }
+
+    fn background_in_new_group_with(&mut self, extra: u32) -> &mut Self {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            self.creation_flags(BACKGROUND_GROUP_FLAGS);
+            self.creation_flags(background_group_flags_with(extra));
         }
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
             self.process_group(0);
         }
+        #[cfg(not(windows))]
+        let _ = extra;
         self
     }
 
@@ -133,16 +170,28 @@ impl CommandConsole for StdCommand {
 
 impl CommandConsole for TokioCommand {
     fn background(&mut self) -> &mut Self {
+        self.background_with(0)
+    }
+
+    fn background_with(&mut self, extra: u32) -> &mut Self {
         #[cfg(windows)]
-        self.creation_flags(BACKGROUND_FLAGS);
+        self.creation_flags(background_flags_with(extra));
+        #[cfg(not(windows))]
+        let _ = extra;
         self
     }
 
     fn background_in_new_group(&mut self) -> &mut Self {
+        self.background_in_new_group_with(0)
+    }
+
+    fn background_in_new_group_with(&mut self, extra: u32) -> &mut Self {
         #[cfg(windows)]
-        self.creation_flags(BACKGROUND_GROUP_FLAGS);
+        self.creation_flags(background_group_flags_with(extra));
         #[cfg(unix)]
         self.process_group(0);
+        #[cfg(not(windows))]
+        let _ = extra;
         self
     }
 
@@ -619,6 +668,79 @@ mod tests {
                 .output()
                 .expect("tasklist");
             String::from_utf8_lossy(&o.stdout).contains(&format!(",\"{pid}\","))
+        }
+    }
+}
+
+#[cfg(test)]
+mod with_tests {
+    use super::CommandConsole;
+    use std::process::Command;
+
+    #[cfg(windows)]
+    #[test]
+    fn extra_flags_are_ord_with_the_background_set() {
+        use super::*;
+        assert_eq!(background_flags_with(0), BACKGROUND_FLAGS);
+        assert_eq!(background_group_flags_with(0), BACKGROUND_GROUP_FLAGS);
+        let extra = 0x0100_0000; // CREATE_BREAKAWAY_FROM_JOB
+        assert_eq!(background_flags_with(extra), CREATE_NO_WINDOW | extra);
+        assert_eq!(
+            background_group_flags_with(extra),
+            CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | extra
+        );
+        // an extra that repeats a base flag changes nothing
+        assert_eq!(background_flags_with(CREATE_NO_WINDOW), BACKGROUND_FLAGS);
+    }
+
+    fn echo() -> Command {
+        #[cfg(windows)]
+        {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "echo ok"]);
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            let mut c = Command::new("sh");
+            c.args(["-c", "echo ok"]);
+            c
+        }
+    }
+
+    #[test]
+    fn background_with_still_runs_the_child() {
+        let o = echo().background_with(0).output().expect("runs");
+        assert!(o.status.success());
+        assert!(String::from_utf8_lossy(&o.stdout).contains("ok"));
+    }
+
+    #[test]
+    fn background_in_new_group_with_still_runs_the_child() {
+        let o = echo().background_in_new_group_with(0).output().expect("runs");
+        assert!(o.status.success());
+        assert!(String::from_utf8_lossy(&o.stdout).contains("ok"));
+    }
+
+    #[tokio::test]
+    async fn tokio_with_variants_still_run_the_child() {
+        for group in [false, true] {
+            let mut c = if cfg!(windows) {
+                let mut c = tokio::process::Command::new("cmd");
+                c.args(["/C", "echo ok"]);
+                c
+            } else {
+                let mut c = tokio::process::Command::new("sh");
+                c.args(["-c", "echo ok"]);
+                c
+            };
+            if group {
+                c.background_in_new_group_with(0);
+            } else {
+                c.background_with(0);
+            }
+            let o = c.output().await.expect("runs");
+            assert!(o.status.success());
         }
     }
 }
