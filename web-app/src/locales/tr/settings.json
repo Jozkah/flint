@@ -915,7 +915,7 @@
         "confirm": "Onayla",
         "reviewChanges": "Değişiklikleri incele",
         "openCoordinator": "Koordinatörü aç",
-        "openCowork": "Devam etmek için Birlikte Çalış'ı aç",
+        "openCowork": "Devam etmek için Cowork'ü aç",
         "resumeStalled": "Devam et"
       },
       "note": {
@@ -949,7 +949,7 @@
         "missing": "Öneri bulunamadı. İncele ve uygula'yı yeniden çalıştırın."
       },
       "resumed": "Uygulama durduğunda kesintiye uğrayan {{n}} görev sürdürüldü.",
-      "stalled": "{{n}} görev çalışıyor gibi görünüyor ama bu pencerede onları çalıştıran bir şey yok. Devam ettirmek için Birlikte Çalış'ı açın.",
+      "stalled": "{{n}} görev çalışıyor gibi görünüyor ama bu pencerede onları çalıştıran bir şey yok. Devam ettirmek için Cowork'ü açın.",
       "noteState": {
         "sent": "Not gönderildi",
         "delivered": "Not göreve iletildi"

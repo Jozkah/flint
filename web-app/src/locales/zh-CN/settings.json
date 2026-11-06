@@ -915,7 +915,7 @@
         "confirm": "确认",
         "reviewChanges": "审阅更改",
         "openCoordinator": "打开协调器",
-        "openCowork": "打开协作以继续",
+        "openCowork": "打开 Cowork 以继续",
         "resumeStalled": "恢复"
       },
       "note": {
@@ -949,7 +949,7 @@
         "missing": "找不到该提案。请重新运行“审阅并应用”。"
       },
       "resumed": "已恢复 {{n}} 个在应用停止时被中断的任务。",
-      "stalled": "有 {{n}} 个任务显示为运行中，但此窗口中没有任何东西在运行它们。请打开协作以继续这些任务。",
+      "stalled": "有 {{n}} 个任务显示为运行中，但此窗口中没有任何东西在运行它们。请打开 Cowork 以继续这些任务。",
       "noteState": {
         "sent": "备注已发送",
         "delivered": "备注已送达任务"
