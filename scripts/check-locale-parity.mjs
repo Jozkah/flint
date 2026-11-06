@@ -52,7 +52,9 @@ const SHOWN = 12
  * the way i18next falls back to it.
  */
 export function missingPluralForms(locale, english, theirs) {
-  const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories
+  // `vn` is a legacy folder name for Vietnamese; Intl only knows `vi`.
+  const tag = locale === 'vn' ? 'vi' : locale
+  const categories = new Intl.PluralRules(tag).resolvedOptions().pluralCategories
   const bases = new Set([...english.keys()].filter((k) => PLURAL.test(k)).map((k) => k.replace(PLURAL, '')))
   const out = []
   for (const base of bases) {
