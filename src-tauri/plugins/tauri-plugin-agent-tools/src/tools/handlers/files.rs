@@ -352,13 +352,42 @@ pub async fn with_read_success<F: std::future::Future>(work: F) -> (F::Output, O
 /// A call with neither id is not tracked and not checked: nothing could tell
 /// one caller's reads from another's. Bounded per session; hitting the bound
 /// forgets that session's records, which only asks the model to read again.
+/// The sessions themselves are bounded too: past [`MAX_TRACKED_SESSIONS`] the
+/// least recently used one is forgotten, so ended sessions do not pile up for
+/// the life of the process.
 pub(super) const MAX_TRACKED_FILES: usize = 4096;
+pub(super) const MAX_TRACKED_SESSIONS: usize = 64;
 
 pub(super) type ReadHashes = Mutex<HashMap<String, HashMap<PathBuf, [u8; 32]>>>;
 
 pub(super) fn read_hashes() -> &'static ReadHashes {
     static HASHES: OnceLock<ReadHashes> = OnceLock::new();
     HASHES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Sessions in [`read_hashes`], least recently recorded first.
+fn session_order() -> &'static Mutex<std::collections::VecDeque<String>> {
+    static ORDER: OnceLock<Mutex<std::collections::VecDeque<String>>> = OnceLock::new();
+    ORDER.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
+}
+
+/// Mark `key` as the most recently used session and, when that takes the
+/// count past `cap`, drop the least recently used ones from `all`.
+pub(super) fn touch_session<V>(
+    all: &mut HashMap<String, V>,
+    order: &mut std::collections::VecDeque<String>,
+    key: &str,
+    cap: usize,
+) {
+    if let Some(i) = order.iter().position(|k| k == key) {
+        order.remove(i);
+    }
+    order.push_back(key.to_string());
+    while order.len() > cap {
+        if let Some(old) = order.pop_front() {
+            all.remove(&old);
+        }
+    }
 }
 
 /// The SHA-256 of the file at `path`, read in chunks so a large file is
@@ -406,6 +435,10 @@ pub(super) async fn record_seen(
     };
     let hash = file_hash(&path).await;
     let mut all = read_hashes().lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let mut order = session_order().lock().unwrap_or_else(|e| e.into_inner());
+        touch_session(&mut all, &mut order, &key, MAX_TRACKED_SESSIONS);
+    }
     let seen = all.entry(key).or_default();
     match hash {
         Some(h) => {

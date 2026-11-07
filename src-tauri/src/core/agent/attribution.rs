@@ -88,10 +88,25 @@ impl Configured {
                 out.mcp_servers = map.keys().cloned().collect();
             }
         }
-        out.subagents = crate::core::agent::roles::definitions()
-            .into_iter()
-            .map(|d| d.name)
-            .collect();
+        // The set `task` can dispatch: built-in roles, the user's subagents and,
+        // with a project root, the (trusted) project's. A name shadowed in a
+        // later scope is listed once.
+        use crate::core::agent::subagent::{user_subagents_dir, SubagentRegistry, SubagentScope};
+        let mut names: Vec<String> = match root {
+            Some(root) => SubagentRegistry::load(root).list().into_iter().map(|d| d.name.clone()).collect(),
+            None => {
+                let mut names: Vec<String> =
+                    crate::core::agent::roles::definitions().into_iter().map(|d| d.name).collect();
+                if let Some(dir) = user_subagents_dir() {
+                    let user = SubagentRegistry::load_one(&dir, SubagentScope::User);
+                    names.extend(user.list().into_iter().map(|d| d.name.clone()));
+                }
+                names
+            }
+        };
+        let mut seen = std::collections::HashSet::new();
+        names.retain(|n| seen.insert(n.clone()));
+        out.subagents = names;
         out
     }
 }
@@ -332,6 +347,26 @@ pub fn render(a: &Attribution) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_project_subagent_counts_as_configured() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let dir = crate::core::agent::subagent::project_subagents_dir(root.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("lint-fixer.toml"),
+            "name = \"lint-fixer\"
+description = \"d\"
+system_prompt = \"p\"
+",
+        )
+        .unwrap();
+        let names = super::Configured::load(data.path(), Some(root.path())).subagents;
+        assert!(names.iter().any(|n| n == "lint-fixer"), "{names:?}");
+        let builtin = crate::core::agent::roles::definitions().remove(0).name;
+        assert_eq!(names.iter().filter(|n| **n == builtin).count(), 1);
+    }
+
     #[test]
     fn a_skill_named_only_in_free_text_is_not_credited() {
         let known = vec![("review".to_string(), None, 0u64), ("deploy".to_string(), None, 0u64)];

@@ -259,6 +259,48 @@ fn not_found(run: &str) -> HarnessError {
     HarnessError::new(ErrorKind::NotFound, format!("no run `{run}` in this session")).at(Stage::Startup)
 }
 
+/// One request line, read without growing past `cap` bytes: the rest of an
+/// oversized line is consumed and dropped, and `Some(None)` reports it.
+/// `None` at end of input.
+async fn next_bounded_line<R: AsyncBufRead + Unpin>(input: &mut R, cap: usize) -> std::io::Result<Option<Option<String>>> {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut oversized = false;
+    let mut saw_any = false;
+    loop {
+        let available = input.fill_buf().await?;
+        if available.is_empty() {
+            break;
+        }
+        saw_any = true;
+        let newline = available.iter().position(|b| *b == b'\n');
+        let take = newline.map_or(available.len(), |i| i + 1);
+        if !oversized {
+            if bytes.len() + take <= cap {
+                bytes.extend_from_slice(&available[..take]);
+            } else {
+                bytes = Vec::new();
+                oversized = true;
+            }
+        }
+        input.consume(take);
+        if newline.is_some() {
+            break;
+        }
+    }
+    if !saw_any {
+        return Ok(None);
+    }
+    if oversized {
+        return Ok(Some(None));
+    }
+    while matches!(bytes.last(), Some(b'\n') | Some(b'\r')) {
+        bytes.pop();
+    }
+    String::from_utf8(bytes)
+        .map(|s| Some(Some(s)))
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
 /// Serve requests from `input` until it ends or `shutdown` is asked for, then
 /// cancel what is still running and wait for every run to report.
 pub(crate) async fn serve<R, W>(input: R, output: W, runner: Arc<dyn Runner>, limits: ServeLimits)
@@ -284,10 +326,18 @@ where
 
     let runs: Runs = Arc::new(Mutex::new(BTreeMap::new()));
     let mut next = 0u64;
-    let mut lines = input.lines();
+    let mut input = input;
     loop {
-        let line = match lines.next_line().await {
-            Ok(Some(line)) => line,
+        let line = match next_bounded_line(&mut input, super::stream_input::MAX_LINE_BYTES).await {
+            Ok(Some(Some(line))) => line,
+            Ok(Some(None)) => {
+                let too_long = refusal(format!(
+                    "the request line is over the {} byte cap",
+                    super::stream_input::MAX_LINE_BYTES
+                ));
+                let _ = emit.send(error_response(&Value::Null, &too_long));
+                continue;
+            }
             Ok(None) => break,
             Err(e) => {
                 let _ = emit.send(error_response(&Value::Null, &refusal(format!("stdin is not readable: {e}"))));
@@ -586,6 +636,15 @@ pub async fn serve_stdio(limits: ServeLimits) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn an_oversized_request_line_is_dropped_without_losing_the_next() {
+        let data = format!("{}\nshort\r\n", "x".repeat(100));
+        let mut input = tokio::io::BufReader::with_capacity(8, data.as_bytes());
+        assert_eq!(next_bounded_line(&mut input, 32).await.unwrap(), Some(None));
+        assert_eq!(next_bounded_line(&mut input, 32).await.unwrap(), Some(Some("short".to_string())));
+        assert_eq!(next_bounded_line(&mut input, 32).await.unwrap(), None);
+    }
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
