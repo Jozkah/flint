@@ -582,6 +582,20 @@ function checkSegment(
       ) {
         return '`git push --delete` removes a remote branch'
       }
+      // Reflog expiry and immediate pruning drop the safety net that lets
+      // reset/rebase mistakes be recovered.
+      if (name === 'reflog' && (rest[0] === 'expire' || rest[0] === 'delete')) {
+        return '`git reflog expire` discards recovery history'
+      }
+      if (
+        name === 'gc' &&
+        rest.some((a) => a === '--prune=now' || a === '--prune=all')
+      ) {
+        return '`git gc --prune=now` deletes unreachable commits'
+      }
+      if (name === 'update-ref' && has('-d')) {
+        return '`git update-ref -d` deletes a ref'
+      }
       return null
     }
     case 'dd':

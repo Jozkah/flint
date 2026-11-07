@@ -54,6 +54,17 @@ describe('destructiveCommandReason', () => {
     expect(flagged('git push origin main')).toBe(false)
   })
 
+  it('flags git operations that drop recovery history', () => {
+    expect(flagged('git reflog expire --expire=now --all')).toBe(true)
+    expect(flagged('git gc --prune=now')).toBe(true)
+    expect(flagged('git gc --aggressive --prune=all')).toBe(true)
+    expect(flagged('git update-ref -d refs/heads/feature')).toBe(true)
+    expect(flagged('git reflog')).toBe(false)
+    expect(flagged('git reflog show main')).toBe(false)
+    expect(flagged('git gc')).toBe(false)
+    expect(flagged('git update-ref refs/heads/x HEAD')).toBe(false)
+  })
+
   it('flags disks and databases', () => {
     expect(flagged('mkfs.ext4 /dev/sdb1')).toBe(true)
     expect(flagged('dd if=/dev/zero of=/dev/sda bs=1M')).toBe(true)

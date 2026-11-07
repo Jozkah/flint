@@ -37,6 +37,21 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { searchWork, type WorkItem } from '@/lib/searchDialogWork'
 
 const MAX_RECENT_SEARCHES = 5
+
+/**
+ * Stored recent-search thread ids. Blocked storage (private mode, policy)
+ * or a corrupt value reads as empty instead of throwing.
+ */
+function readRecentSearchIds(): string[] {
+  try {
+    const stored = localStorage.getItem(localStorageKey.recentSearches)
+    if (!stored) return []
+    const ids = JSON.parse(stored) as unknown
+    return Array.isArray(ids) ? (ids as string[]) : []
+  } catch {
+    return []
+  }
+}
 /** Wait for a pause in typing before scanning every chat's messages. */
 const MESSAGE_SEARCH_DEBOUNCE_MS = 250
 
@@ -120,18 +135,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const recentSearches = useMemo(() => {
     if (!open) return []
 
-    // Blocked storage (private mode, policy) must not throw during render.
-    try {
-      const stored = localStorage.getItem(localStorageKey.recentSearches)
-      if (!stored) return []
-      const threadIds = JSON.parse(stored) as string[]
-      return threadIds
-        .map((id) => threads[id])
-        .filter((thread): thread is Thread => thread !== undefined)
-        .slice(0, MAX_RECENT_SEARCHES)
-    } catch {
-      return []
-    }
+    return readRecentSearchIds()
+      .map((id) => threads[id])
+      .filter((thread): thread is Thread => thread !== undefined)
+      .slice(0, MAX_RECENT_SEARCHES)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, threads, recentVersion])
 
@@ -156,23 +163,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     // Save to recent searches. Best effort: blocked storage must not stop
     // the selection from opening the thread.
     try {
-      const stored = localStorage.getItem(localStorageKey.recentSearches)
-      let threadIds: string[] = []
-
-      if (stored) {
-        try {
-          threadIds = JSON.parse(stored) as string[]
-        } catch {
-          threadIds = []
-        }
-      }
-
-      // Remove if already exists and add to front
-      threadIds = threadIds.filter((id) => id !== threadId)
-      threadIds.unshift(threadId)
-
-      // Keep only MAX_RECENT_SEARCHES
-      threadIds = threadIds.slice(0, MAX_RECENT_SEARCHES)
+      // Remove if already exists, add to front, keep MAX_RECENT_SEARCHES.
+      const threadIds = [
+        threadId,
+        ...readRecentSearchIds().filter((id) => id !== threadId),
+      ].slice(0, MAX_RECENT_SEARCHES)
 
       localStorage.setItem(
         localStorageKey.recentSearches,
