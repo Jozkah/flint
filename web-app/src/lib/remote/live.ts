@@ -63,16 +63,44 @@ export function coworkToolStep(turn: CoworkTurn, awaiting: ReadonlySet<string>):
   }
 }
 
+const joinText = (turns: CoworkTurn[]) =>
+  turns
+    .filter((t) => t.role === 'assistant' && t.content)
+    .map((t) => t.content)
+    .join('\n\n')
+
+// Per run, the joined text of every turn but the last. A streamed delta only
+// replaces the last turn, so the earlier text is reused instead of rejoined.
+const headCache = new Map<string, { turns: CoworkTurn[]; head: string }>()
+const HEAD_CACHE_MAX = 32
+
+function coworkReplyText(runId: string, turns: CoworkTurn[]): string {
+  if (turns.length === 0) return ''
+  const last = turns.length - 1
+  const cached = headCache.get(runId)
+  const reuse =
+    !!cached &&
+    cached.turns.length === turns.length &&
+    turns.every((t, i) => i === last || t === cached.turns[i])
+  const head = reuse ? cached.head : joinText(turns.slice(0, last))
+  headCache.delete(runId)
+  if (headCache.size >= HEAD_CACHE_MAX) {
+    const oldest = headCache.keys().next().value
+    if (oldest !== undefined) headCache.delete(oldest)
+  }
+  headCache.set(runId, { turns, head })
+  const tail = turns[last]
+  if (tail.role !== 'assistant' || !tail.content) return head
+  return head ? `${head}\n\n${tail.content}` : tail.content
+}
+
 /** A Cowork run's live lane as one reply: its text so far and its tools. */
 export function coworkLiveReply(
   runId: string,
   turns: CoworkTurn[],
   awaiting: ReadonlySet<string> = new Set()
 ): LiveReply {
-  const text = turns
-    .filter((t) => t.role === 'assistant' && t.content)
-    .map((t) => t.content)
-    .join('\n\n')
+  const text = coworkReplyText(runId, turns)
   const tools = turns.flatMap((t) => {
     const step = coworkToolStep(t, awaiting)
     return step ? [step] : []
