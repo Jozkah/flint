@@ -18755,7 +18755,7 @@ exports[`useModelProvider migrate > migrates a version 13 state 1`] = `
             "chatTemplate": "tpl",
             "ctx_len": {
               "controller_props": {
-                "value": "",
+                "value": 8192,
               },
             },
             "ctx_shift": {
@@ -19974,7 +19974,7 @@ exports[`useModelProvider migrate > migrates a version 14 state 1`] = `
             "chatTemplate": "tpl",
             "ctx_len": {
               "controller_props": {
-                "value": "",
+                "value": 8192,
               },
             },
             "ctx_shift": {
@@ -21234,7 +21234,7 @@ exports[`useModelProvider migrate > migrates a version 15 state 1`] = `
             "chatTemplate": "tpl",
             "ctx_len": {
               "controller_props": {
-                "value": "",
+                "value": 8192,
               },
             },
             "ctx_shift": {

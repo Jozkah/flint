@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
@@ -8,15 +8,30 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { importConversations, parseChatGptExport } from '@/lib/chatgptImport'
 import { useMigrationAssistant } from '@/stores/migration-assistant-store'
 
+/**
+ * Largest export read. The whole file is read and parsed in memory, so a
+ * bigger one could stall the window; ChatGPT exports rarely come near this.
+ */
+export const MAX_CHATGPT_EXPORT_BYTES = 256 * 1024 * 1024
+
 /** Bringing data in: the Jan migration assistant and a ChatGPT export. Desktop only. */
 export function DataImportCard(): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const openMigrationAssistant = useMigrationAssistant((s) => s.openAssistant)
   const chatGptFileInput = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
 
   const handleImportChatGpt = async (file: File | undefined) => {
     if (!file) return
+    if (file.size > MAX_CHATGPT_EXPORT_BYTES) {
+      toast.error(t('settings:general.importChatGptTooLarge'), {
+        description: `${Math.round(MAX_CHATGPT_EXPORT_BYTES / 1024 / 1024)} MB`,
+      })
+      return
+    }
+    setImporting(true)
+    const progress = toast.loading(t('settings:general.importChatGptReading'))
     try {
       const conversations = parseChatGptExport(await file.text())
       if (conversations.length === 0) {
@@ -26,6 +41,11 @@ export function DataImportCard(): React.ReactElement {
       const { threads, failed } = await importConversations(conversations, {
         createThread: (thread) => serviceHub.threads().createThread(thread),
         createMessage: (message) => serviceHub.messages().createMessage(message),
+        onProgress: (done, total) =>
+          toast.loading(
+            t('settings:general.importChatGptProgress', { done, total }),
+            { id: progress }
+          ),
       })
       if (threads.length > 0) {
         const store = useThreads.getState()
@@ -45,6 +65,9 @@ export function DataImportCard(): React.ReactElement {
       toast.error(t('settings:general.importChatGptFailed'), {
         description: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      toast.dismiss(progress)
+      setImporting(false)
     }
   }
 
@@ -83,6 +106,7 @@ export function DataImportCard(): React.ReactElement {
             />
             <Button
               variant="outline"
+              disabled={importing}
               onClick={() => chatGptFileInput.current?.click()}
             >
               {t('settings:general.importChatGptAction')}

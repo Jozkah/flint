@@ -141,6 +141,8 @@ export function parseChatGptExport(json: string): ImportedConversation[] {
 type ImportDeps = {
   createThread: (thread: Thread) => Promise<Thread>
   createMessage: (message: ThreadMessage) => Promise<ThreadMessage>
+  /** Called after each conversation, imported or not. */
+  onProgress?: (done: number, total: number) => void
 }
 
 /**
@@ -186,6 +188,7 @@ export async function importConversations(
       console.error('Failed to import conversation:', error)
       failed++
     }
+    deps.onProgress?.(threads.length + failed, conversations.length)
   }
   return { threads, failed }
 }

@@ -14,6 +14,9 @@ export function migrateProviderState(
   persistedState: unknown,
   version: number
 ): ModelProviderState {
+  // ctx_len values the v16 step fills in during this run, so the v23 step
+  // can tell its own seeded 8192 from one the user chose.
+  const seededCtx = new WeakSet<object>()
   const state = persistedState as ModelProviderState & {
     providers: Array<
       ModelProvider & {
@@ -419,6 +422,7 @@ export function migrateProviderState(
         const value = controllerProps.value
         if (value === '' || value == null) {
           controllerProps.value = 8192
+          seededCtx.add(controllerProps)
         }
       })
     })
@@ -581,7 +585,11 @@ export function migrateProviderState(
             | { controller_props?: { value?: unknown } }
             | undefined
         )?.controller_props
-        if (props && Number(props.value) === 8192) props.value = ''
+        // Coming from before v16, a value v16 did not just write was set
+        // after v12 cleared the old default, so it is the user's own.
+        if (!props || Number(props.value) !== 8192) return
+        if (version <= 15 && !seededCtx.has(props)) return
+        props.value = ''
       })
     })
   }

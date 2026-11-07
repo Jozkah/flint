@@ -140,6 +140,25 @@ describe('useModelProvider migrate', () => {
     })
   }
 
+  it('keeps a context size of 8192 the user chose after v12, clears the seeded one', () => {
+    const ctxOf = (state: unknown, id: string) =>
+      (
+        state as {
+          providers: Array<{
+            models: Array<{
+              id: string
+              settings: { ctx_len: { controller_props: { value: unknown } } }
+            }>
+          }>
+        }
+      ).providers[0].models.find((m) => m.id === id)!.settings.ctx_len
+        .controller_props.value
+    const chosen = migrate(fixture(), 14)
+    expect(ctxOf(chosen, 'with-template')).toBe(8192)
+    const seeded = migrate(fixture(), 20)
+    expect(ctxOf(seeded, 'with-template')).toBe('')
+  })
+
   it('passes through a missing state', () => {
     expect(migrate(undefined, 0)).toBeUndefined()
   })
