@@ -13,14 +13,13 @@ permission-gated, audited tool calls.
 | `get_terminal_contents` | Read recent terminal output | bounded lines; this session's terminals only |
 | `show_diff` | Show a diff, return a diff id | workspace path; id bound to the session |
 | `diff_accepted` | Record a diff acceptance | id must be issued to this session; consumed on use |
-| `apply_settings` | Change one setting | allowlisted keys only; secret values redacted |
 
 ## Design
 
 - **Transport-independent core.** The module holds the schemas, typed args, and
   the authorization layer. The rmcp `ServerHandler` that speaks the wire protocol
   is a thin adapter over `DesktopBridge::dispatch` and does no validation itself.
-- **`DesktopUi` trait.** The real editor/terminal/diff/settings services are the
+- **`DesktopUi` trait.** The real editor/terminal/diff services are the
   single implementation; tests use a fake. The bridge never duplicates that
   logic.
 - **`RequestContext`.** Every dispatch is bound to the window, workspace,
@@ -38,8 +37,6 @@ permission-gated, audited tool calls.
   and only the requesting session's terminals are visible.
 - **Diff-id integrity** — a `diff_id` must be one `show_diff` issued to *this*
   session; unknown, cross-session, or already-accepted (replayed) ids are refused.
-- **Settings allowlist** — only `SETTINGS_ALLOWLIST` keys may change; a sensitive
-  value never appears in a result or log (`redact_setting`).
 - **Local, non-networked** — the server runs in the desktop process; it is not a
   network transport and accepts no remote clients.
 
@@ -50,5 +47,5 @@ permission-gated, audited tool calls.
    and authorizes against `RequestContext` **before** calling the `DesktopUi`.
 3. If it touches files, resolve through `resolve_in_workspace`. If it hands back
    an id to be redeemed later, bind it to the session in a registry like
-   `issued_diffs`. If it exposes settings, gate on an allowlist and redact.
+   `issued_diffs`.
 4. Add unit tests for schema validation and every authorization refusal.

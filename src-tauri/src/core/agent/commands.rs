@@ -1252,13 +1252,12 @@ pub async fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> 
 
 /// Route one `jan-desktop` bridge tool call. The runtime entry point for the
 /// in-process desktop UI tools (open_file, get_terminal_contents, show_diff,
-/// diff_accepted, apply_settings): it binds the call to its window, workspace,
+/// diff_accepted): it binds the call to its window, workspace,
 /// conversation and session via a [`RequestContext`], and dispatches through the
 /// bridge's authorization layer.
 ///
-/// The backend context supplies a settings-file-backed UI, so `apply_settings`
-/// works end to end; the editor/terminal/diff tools require a live window and
-/// are served by the desktop window layer's own UI implementation.
+/// The backend context has no live window, so the editor/terminal/diff tools
+/// refuse; the desktop window layer serves them with its own UI implementation.
 #[tauri::command]
 pub async fn agent_desktop_bridge<R: tauri::Runtime>(
     window: tauri::Window<R>,
