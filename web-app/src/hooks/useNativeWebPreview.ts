@@ -1,3 +1,4 @@
+import { isTauriBuild } from '@/lib/platform/tauriBuild'
 import { useEffect, useRef, useState } from 'react'
 import { invokeCommand } from '@/lib/backend'
 import { listen } from '@tauri-apps/api/event'
@@ -22,11 +23,10 @@ type NavigatedPayload = {
   loading?: boolean | null
 }
 
-const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
 // A second WebKitGTK view inside the main window can take the shared web
 // process down on Linux, leaving the whole window grey. Linux uses the iframe.
 const nativeSupported = () =>
-  isTauri() && !(typeof IS_LINUX !== 'undefined' && IS_LINUX)
+  isTauriBuild() && !(typeof IS_LINUX !== 'undefined' && IS_LINUX)
 
 /**
  * Drives a native child webview laid over `container` (the preview panel's

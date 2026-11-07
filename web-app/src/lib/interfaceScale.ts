@@ -1,3 +1,4 @@
+import { isTauriBuild } from '@/lib/platform/tauriBuild'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 /** The size the design is drawn at; the interface size scales relative to it. */
@@ -23,8 +24,6 @@ export function interfaceZoomFactor(size: string): number {
   return Math.round((px / 16) * 1000) / 1000
 }
 
-const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
-
 /**
  * Whether the interface size is applied as native webview zoom. In the Linux
  * desktop app CSS zoom is off, and the rem fallback only grew the text while
@@ -34,7 +33,7 @@ const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
  */
 export function usesNativeInterfaceZoom(): boolean {
   return (
-    isTauri() &&
+    isTauriBuild() &&
     typeof navigator !== 'undefined' &&
     isWebKitGtk(navigator.userAgent)
   )

@@ -51,6 +51,7 @@ vi.mock('@/hooks/useModelProvider', () => {
     const state = {
       setProviders: h.setProviders,
       getProviderByName: h.getProviderByName,
+      providers: h.providers,
     }
     return sel ? sel(state) : state
   }) as unknown as {
@@ -636,6 +637,28 @@ describe('DataProvider', () => {
       )
     await waitFor(() => expect(Object.keys(sent())).toHaveLength(3))
     expect(sent()).toEqual({ anthropic: 'anthropic', 'my-proxy': 'anthropic', openai: 'openai' })
+  })
+
+  it('does not re-send an unchanged provider when the providers list changes', async () => {
+    const fetched = [
+      { provider: 'diffed', active: true, models: [{ id: 'm' }], custom_header: [], base_url: 'https://d' },
+    ]
+    hubState.getProviders.mockResolvedValue(fetched)
+    h.providers = fetched
+    const registrations = () =>
+      h.invoke.mock.calls.filter((c) => c[0] === 'register_provider_config').length
+    const { rerender } = render(<DataProvider />)
+    // The startup registration and the mount-time sync.
+    await waitFor(() => expect(registrations()).toBe(2))
+    // A new array with the same content, as any unrelated store update makes.
+    h.providers = fetched.map((p) => ({ ...p }))
+    rerender(<DataProvider />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(registrations()).toBe(2)
+    // A real change is still sent.
+    h.providers = fetched.map((p) => ({ ...p, base_url: 'https://d2' }))
+    rerender(<DataProvider />)
+    await waitFor(() => expect(registrations()).toBe(3))
   })
 
   it('skips registration when provider has no API key chain', async () => {

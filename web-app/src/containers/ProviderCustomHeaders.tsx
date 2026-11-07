@@ -53,13 +53,19 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
   // second change made before the round-trip (switching a header off and on
   // again) must be compared with the first, or it is dropped as "unchanged".
   const lastSaved = useRef(saved)
+  // Every list this component sent to the store whose echo has not come back.
+  const committed = useRef(new Set<string>())
   const lastProvider = useRef(provider.provider)
   useEffect(() => {
     const switched = lastProvider.current !== provider.provider
     lastProvider.current = provider.provider
     // The store echoing back what this component just saved is not news:
     // re-seeding would drop a blank row the user is still filling in.
+    // Nor is the late echo of an earlier save that a newer one has already
+    // superseded: re-seeding from it would undo the newer edit on screen.
+    if (!switched && committed.current.delete(saved)) return
     if (!switched && saved === lastSaved.current) return
+    committed.current.clear()
     lastSaved.current = saved
     setDrafts(toDrafts(provider.custom_header))
     setErrors(new Map())
@@ -92,12 +98,14 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
       if (serialized === lastSaved.current) return
       const previous = lastSaved.current
       lastSaved.current = serialized
+      committed.current.add(serialized)
       const providerName = provider.provider
       saving.current = saving.current.then(async () => {
         try {
           await storeSecretHeaderValues(providerName, rows)
           updateProvider(providerName, { custom_header: rows })
         } catch (e) {
+          committed.current.delete(serialized)
           // Not saved: the next attempt must not be skipped as unchanged.
           if (lastSaved.current === serialized) lastSaved.current = previous
           toast.error(t('providers:customHeaders.title'), {

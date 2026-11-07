@@ -179,11 +179,11 @@ export function CoworkPage() {
       selectionForThreadModel(viewedModel, {
         selectedModel: globalModel,
         selectedProvider: globalProvider,
-        getProviderByName,
+        // Looked up in the subscribed list, so a provider change re-runs this.
+        getProviderByName: (name: string) =>
+          modelProviders.find((p) => p.provider === name),
       }),
-    // `modelProviders` is why getProviderByName's answer can change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewedModel, globalModel, globalProvider, getProviderByName, modelProviders]
+    [viewedModel, globalModel, globalProvider, modelProviders]
   )
   // Resolved once for the route: the readiness card, the context measurement
   // and the run all have to be talking about the same window.
