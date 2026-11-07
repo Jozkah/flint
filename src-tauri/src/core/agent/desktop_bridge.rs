@@ -3,15 +3,15 @@
 //! instead of bespoke agent-to-UI calls.
 //!
 //! This module holds the part that must be correct regardless of the transport:
-//! the five tools' schemas, their typed arguments, and the authorization layer —
-//! path containment, bounded terminal reads, a session-scoped diff-id registry
-//! that rejects stale or cross-session ids, and a settings allowlist. Every
+//! the four tools' schemas, their typed arguments, and the authorization layer —
+//! path containment, bounded terminal reads, and a session-scoped diff-id registry
+//! that rejects stale or cross-session ids. Every
 //! request is bound to the window, workspace, conversation, and session it came
 //! from, so one conversation can never open another's files or accept another's
 //! diff.
 //!
-//! The actual UI work (opening an editor, reading a terminal, showing a diff,
-//! writing a setting) is behind the [`DesktopUi`] trait, so the domain services
+//! The actual UI work (opening an editor, reading a terminal, showing a diff)
+//! is behind the [`DesktopUi`] trait, so the domain services
 //! stay the single implementation and this logic is testable with a fake. The
 //! rmcp `ServerHandler` that speaks the wire protocol is a thin adapter over
 //! [`DesktopBridge::dispatch`]; it does no validation of its own.
@@ -50,45 +50,6 @@ pub trait DesktopUi {
     fn show_diff(&self, path: &Path, diff: &str) -> Result<String, String>;
     /// Record that a diff the host issued was accepted.
     fn diff_accepted(&self, diff_id: &str) -> Result<(), String>;
-    /// Apply one setting (already allowlist-checked), returning its previous and
-    /// resulting values.
-    fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String>;
-}
-
-/// The before/after of a setting change, for the tool result. Secret-valued
-/// settings are redacted by [`redact_setting`] before they leave the bridge.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SettingChange {
-    pub key: String,
-    pub previous: Value,
-    pub resulting: Value,
-}
-
-/// Settings the agent is allowed to change. Anything not listed is refused, so a
-/// new setting is opt-in rather than reachable by default.
-const SETTINGS_ALLOWLIST: &[&str] = &[
-    "editor.fontSize",
-    "editor.wordWrap",
-    "editor.theme",
-    "ui.density",
-    "agent.showReasoning",
-];
-
-/// Keys whose value must never appear in a tool result or log, even on the
-/// allowlist path (kept here so a future allowlisted secret is redacted).
-fn is_secret_key(key: &str) -> bool {
-    let k = key.to_ascii_lowercase();
-    k.contains("token") || k.contains("secret") || k.contains("api_key") || k.contains("apikey")
-        || k.contains("password")
-}
-
-/// Redact a setting change whose key is sensitive.
-pub fn redact_setting(mut change: SettingChange) -> SettingChange {
-    if is_secret_key(&change.key) {
-        change.previous = json!("[redacted]");
-        change.resulting = json!("[redacted]");
-    }
-    change
 }
 
 /// Most diff ids kept at once; the oldest is dropped past this.
@@ -220,18 +181,6 @@ impl<U: DesktopUi> DesktopBridge<U> {
                     "required": ["diff_id"]
                 }
             }),
-            json!({
-                "name": "apply_settings",
-                "description": "Change one allowlisted Jan setting and return its previous and resulting values. A setting not on the allowlist is refused; a sensitive value is redacted in the result.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "key": { "type": "string", "description": "Dotted setting name; must be allowlisted." },
-                        "value": { "description": "New value for the setting." }
-                    },
-                    "required": ["key", "value"]
-                }
-            }),
         ]
     }
 
@@ -243,7 +192,6 @@ impl<U: DesktopUi> DesktopBridge<U> {
             "get_terminal_contents" => self.get_terminal_contents(args),
             "show_diff" => self.show_diff(ctx, args),
             "diff_accepted" => self.diff_accepted(ctx, args),
-            "apply_settings" => self.apply_settings(args),
             other => Err(format!("unknown jan-desktop tool: {other}")),
         }
     }
@@ -287,21 +235,6 @@ impl<U: DesktopUi> DesktopBridge<U> {
         Ok(json!({ "accepted": diff_id }))
     }
 
-    fn apply_settings(&self, args: &Value) -> Result<Value, String> {
-        let key = arg_str(args, "key")?;
-        if !SETTINGS_ALLOWLIST.contains(&key) {
-            return Err(format!("setting {key:?} is not allowed to be changed by the agent"));
-        }
-        let value = args
-            .get("value")
-            .ok_or_else(|| "missing required argument 'value'".to_string())?;
-        let change = redact_setting(self.ui.apply_setting(key, value)?);
-        Ok(json!({
-            "key": change.key,
-            "previous": change.previous,
-            "resulting": change.resulting,
-        }))
-    }
 }
 
 /// Resolve a workspace-relative path and refuse anything that escapes the
@@ -404,45 +337,14 @@ fn arg_u32(args: &Value, key: &str) -> Result<Option<u32>, String> {
     }
 }
 
-/// A [`DesktopUi`] backed by the on-disk settings JSON for `apply_setting`, with
-/// the UI-only capabilities (open file, terminal, diff) reporting that no
-/// interactive desktop surface is attached to this context.
-///
-/// This is the runtime-reachable slice: `apply_settings` genuinely reads and
-/// writes the settings file (allowlisted, atomically), so the agent can change a
-/// permitted setting end to end. The editor/terminal/diff tools require a live
-/// window and are served by the desktop's window layer, which supplies its own
-/// [`DesktopUi`]; here they refuse rather than pretend.
-pub struct FileSettingsUi {
-    settings_path: PathBuf,
-    /// Write through the app's settings store instead of the file.
-    shared: bool,
-}
+/// A [`DesktopUi`] for contexts with no interactive desktop surface attached:
+/// open file, terminal and diff report that none is, rather than pretend. The
+/// desktop's window layer supplies its own [`DesktopUi`] for those tools.
+pub struct FileSettingsUi;
 
 impl FileSettingsUi {
-    pub fn new(settings_path: PathBuf) -> Self {
-        Self { settings_path, shared: false }
-    }
-
-    /// The app's own `settings.json`, changed through `settings_store`
-    /// (Jozkah/jan#240).
-    ///
-    /// The webview's settings store holds that file in memory and rewrites
-    /// the whole of it on a debounce. A write of our own straight to the file
-    /// was lost at its next flush, and a flush in flight was lost to ours --
-    /// whichever landed second won. Going through the store's own
-    /// `settings_get`/`settings_set` puts the change under its lock and into
-    /// the map it flushes, so both writers' keys survive.
     pub fn app_store() -> Self {
-        Self { settings_path: PathBuf::new(), shared: true }
-    }
-
-    fn read(&self) -> serde_json::Map<String, Value> {
-        std::fs::read_to_string(&self.settings_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default()
+        Self
     }
 }
 
@@ -459,84 +361,12 @@ impl DesktopUi for FileSettingsUi {
     fn diff_accepted(&self, _diff_id: &str) -> Result<(), String> {
         Err("no interactive desktop surface is attached to this session".to_string())
     }
-    fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String> {
-        // The desktop's settings store (and its lock) exists only in the app
-        // build; the CLI has no webview writing the same file, so it writes
-        // the file directly below.
-        #[cfg(not(feature = "cli"))]
-        if self.shared {
-            let previous = crate::core::app::settings_store::settings_get(key.to_string())
-                .map_or(Value::Null, |s| from_store_value(&s));
-            crate::core::app::settings_store::settings_set(key.to_string(), to_store_value(value))?;
-            return Ok(SettingChange {
-                key: key.to_string(),
-                previous,
-                resulting: value.clone(),
-            });
-        }
-        let mut map = self.read();
-        let previous = map.get(key).cloned().unwrap_or(Value::Null);
-        map.insert(key.to_string(), value.clone());
-        let serialized =
-            serde_json::to_string_pretty(&Value::Object(map)).map_err(|e| e.to_string())?;
-        // Atomic write: temp + rename, so a crash never truncates settings.
-        let dir = self
-            .settings_path
-            .parent()
-            .ok_or_else(|| "settings path has no parent".to_string())?;
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        // Unique per call: two concurrent writers must not share a temp file.
-        static NEXT_TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let tmp = dir.join(format!(
-            ".settings.tmp-{}-{}",
-            std::process::id(),
-            NEXT_TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        std::fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &self.settings_path).map_err(|e| e.to_string())?;
-        Ok(SettingChange {
-            key: key.to_string(),
-            previous,
-            resulting: value.clone(),
-        })
-    }
-}
-
-/// The settings store keeps every value as a string (`{ key: string }`); a
-/// bare JSON number written into the file made the whole map fail to parse.
-/// A string is kept as it is, anything else as its JSON text.
-fn to_store_value(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
-/// The inverse of [`to_store_value`]: JSON text back to its value, anything
-/// else as the string it is.
-fn from_store_value(stored: &str) -> Value {
-    serde_json::from_str::<Value>(stored)
-        .ok()
-        .filter(|v| !v.is_string())
-        .unwrap_or_else(|| Value::String(stored.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::RefCell;
-
-    /// Values go into the settings store as strings and come back as what
-    /// they were (#240).
-    #[test]
-    fn store_values_round_trip() {
-        for v in [json!(16), json!(true), json!("compact"), json!({ "a": 1 })] {
-            assert_eq!(from_store_value(&to_store_value(&v)), v, "{v}");
-        }
-        assert_eq!(to_store_value(&json!("compact")), "compact");
-        assert!(FileSettingsUi::app_store().shared);
-        assert!(!FileSettingsUi::new(PathBuf::from("x")).shared);
-    }
 
     /// A file opened, with its line and column.
     type Opened = (PathBuf, Option<u32>, Option<u32>);
@@ -563,13 +393,6 @@ mod tests {
         fn diff_accepted(&self, diff_id: &str) -> Result<(), String> {
             self.accepted.borrow_mut().push(diff_id.to_string());
             Ok(())
-        }
-        fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String> {
-            Ok(SettingChange {
-                key: key.to_string(),
-                previous: json!("old"),
-                resulting: value.clone(),
-            })
         }
     }
 
@@ -621,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn advertises_five_tools() {
+    fn advertises_four_tools() {
         let schemas = DesktopBridge::<FakeUi>::tool_schemas();
         let names: Vec<&str> = schemas
             .iter()
@@ -633,8 +456,7 @@ mod tests {
                 "open_file",
                 "get_terminal_contents",
                 "show_diff",
-                "diff_accepted",
-                "apply_settings"
+                "diff_accepted"
             ]
         );
     }
@@ -723,72 +545,12 @@ mod tests {
     }
 
     #[test]
-    fn apply_settings_enforces_the_allowlist() {
-        let mut b = bridge();
-        let c = ctx("s1");
-        let ok = b
-            .dispatch(&c, "apply_settings", &json!({ "key": "editor.fontSize", "value": 14 }))
-            .unwrap();
-        assert_eq!(ok["resulting"], json!(14));
-        assert!(b
-            .dispatch(&c, "apply_settings", &json!({ "key": "provider.apiKey", "value": "x" }))
-            .is_err(), "non-allowlisted setting refused");
-    }
-
-    #[test]
-    fn secret_setting_value_is_redacted() {
-        let change = redact_setting(SettingChange {
-            key: "provider.apiKey".into(),
-            previous: json!("old-secret"),
-            resulting: json!("new-secret"),
-        });
-        assert_eq!(change.previous, json!("[redacted]"));
-        assert_eq!(change.resulting, json!("[redacted]"));
-    }
-
-    #[test]
     fn unknown_tool_is_refused() {
         let mut b = bridge();
         assert!(b.dispatch(&ctx("s1"), "rm_rf", &json!({})).is_err());
-    }
-
-    #[test]
-    fn file_settings_ui_applies_an_allowlisted_setting_atomically() {
-        let dir = std::env::temp_dir().join(format!("jan-settings-ui-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("settings.json");
-        std::fs::write(&path, r#"{ "editor.fontSize": 12 }"#).unwrap();
-
-        let mut b = DesktopBridge::new(FileSettingsUi::new(path.clone()));
-        let c = RequestContext {
-            window_id: "w".into(),
-            workspace_root: dir.clone(),
-            conversation_id: "c".into(),
-            session_id: "s".into(),
-        };
-
-        // An allowlisted setting is written through, and the file reflects it.
-        let out = b
-            .dispatch(&c, "apply_settings", &json!({ "key": "editor.fontSize", "value": 16 }))
-            .unwrap();
-        assert_eq!(out["previous"], json!(12));
-        assert_eq!(out["resulting"], json!(16));
-        let saved: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(saved["editor.fontSize"], json!(16));
-
-        // A non-allowlisted key is refused and the file is untouched.
-        assert!(b
-            .dispatch(&c, "apply_settings", &json!({ "key": "provider.apiKey", "value": "x" }))
-            .is_err());
-
-        // A UI-only tool reports there is no interactive surface here.
         let err = b
-            .dispatch(&c, "open_file", &json!({ "path": "a.txt" }))
+            .dispatch(&ctx("s1"), "apply_settings", &json!({ "key": "editor.fontSize", "value": 14 }))
             .unwrap_err();
-        assert!(err.contains("no interactive desktop surface"), "{err}");
-
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(err.contains("unknown jan-desktop tool"), "{err}");
     }
 }
