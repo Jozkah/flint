@@ -279,6 +279,28 @@ fn read_session(data_folder: &Path, session: &str) -> SessionFile {
     }
 }
 
+/// Replays kept per session. Each settled one can hold up to [`MAX_TEXT`] of
+/// text and every refused `begin` adds one, so without a bound the file (which
+/// is rewritten whole on every change) only grows.
+const MAX_REPLAYS_PER_SESSION: usize = 100;
+
+/// Drop the oldest finished replays beyond [`MAX_REPLAYS_PER_SESSION`]. A
+/// running one is never dropped: its `settle` must still find it.
+fn cap_replays(replays: &mut Vec<ReplayRecord>) {
+    let mut excess = replays.len().saturating_sub(MAX_REPLAYS_PER_SESSION);
+    if excess == 0 {
+        return;
+    }
+    replays.retain(|r| {
+        if excess > 0 && r.status != ReplayStatus::Running {
+            excess -= 1;
+            false
+        } else {
+            true
+        }
+    });
+}
+
 fn write_session(data_folder: &Path, file: &SessionFile) -> Result<(), ReplayError> {
     std::fs::create_dir_all(store_dir(data_folder)).map_err(io)?;
     let path = session_path(data_folder, &file.session);
@@ -662,6 +684,7 @@ pub fn begin(data_folder: &Path, session: &str, snapshot_id: &str) -> Result<Rep
     match checked {
         Ok(snap) => {
             file.replays.push(record.clone());
+            cap_replays(&mut file.replays);
             write_session(data_folder, &file)?;
             Ok(ReplayStart {
                 record,
@@ -676,6 +699,7 @@ pub fn begin(data_folder: &Path, session: &str, snapshot_id: &str) -> Result<Rep
                 record.ended_at = Some(now());
                 record.error = Some(refusal.clone());
                 file.replays.push(record);
+                cap_replays(&mut file.replays);
                 write_session(data_folder, &file)?;
             }
             Err(refusal)
@@ -819,6 +843,40 @@ mod harness_error_bridge {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn replays_are_capped_dropping_the_oldest_finished_ones() {
+        let make = |i: usize, status: ReplayStatus| ReplayRecord {
+            schema_version: SCHEMA_VERSION,
+            id: format!("r{i}"),
+            session: "s".into(),
+            snapshot_id: String::new(),
+            snapshot_hash: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            status,
+            started_at: String::new(),
+            ended_at: None,
+            instance: String::new(),
+            replay_snapshot_id: None,
+            matched: None,
+            text: String::new(),
+            truncated: false,
+            finish_reason: None,
+            tool_calls: Vec::new(),
+            usage: None,
+            error: None,
+        };
+        let mut replays = vec![make(0, ReplayStatus::Running)];
+        for i in 1..=MAX_REPLAYS_PER_SESSION + 5 {
+            replays.push(make(i, ReplayStatus::Refused));
+        }
+        cap_replays(&mut replays);
+        assert_eq!(replays.len(), MAX_REPLAYS_PER_SESSION);
+        assert_eq!(replays[0].id, "r0", "a running replay was dropped");
+        assert_eq!(replays[1].id, "r7");
+        assert_eq!(replays.last().unwrap().id, format!("r{}", MAX_REPLAYS_PER_SESSION + 5));
+    }
 
     // ---- AH-032: replaying a recorded run ------------------------------
 

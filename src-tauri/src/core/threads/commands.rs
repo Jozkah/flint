@@ -74,6 +74,7 @@ fn list_threads_in(data_folder: &std::path::Path) -> Result<Vec<serde_json::Valu
     if !data_dir.exists() {
         return Ok(threads);
     }
+    super::storage::sweep_crash_leftovers_once(&data_dir);
 
     let mut cache = thread_file_cache().lock().unwrap_or_else(|p| p.into_inner());
     let mut seen = std::collections::HashSet::new();

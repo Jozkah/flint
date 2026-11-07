@@ -232,7 +232,9 @@ impl Drop for Unlock<'_> {
 /// ids written, loaded once per process.
 struct SessionState {
     last_seq: u64,
-    ids: BTreeSet<String>,
+    /// Every recorded id, with the byte offset its line starts at, so a
+    /// duplicate append reads back one line instead of the whole log.
+    ids: BTreeMap<String, u64>,
     bytes: u64,
 }
 
@@ -284,7 +286,7 @@ fn forget(key: &str) {
 /// on a line of its own.
 fn load(path: &Path) -> Result<SessionState, LogError> {
     let io = |e: std::io::Error| LogError::Io(e.to_string());
-    let mut state = SessionState { last_seq: 0, ids: BTreeSet::new(), bytes: 0 };
+    let mut state = SessionState { last_seq: 0, ids: BTreeMap::new(), bytes: 0 };
     let Ok(bytes) = std::fs::read(path) else {
         return Ok(state);
     };
@@ -294,14 +296,31 @@ fn load(path: &Path) -> Result<SessionState, LogError> {
         let file = std::fs::OpenOptions::new().write(true).open(path).map_err(io)?;
         file.set_len(keep as u64).map_err(io)?;
     }
-    for line in String::from_utf8_lossy(&bytes[..keep]).lines().filter(|l| !l.trim().is_empty()) {
-        if let Ok(e) = decode_line(line) {
+    let mut start = 0usize;
+    for raw in bytes[..keep].split_inclusive(|b| *b == b'\n') {
+        let offset = start as u64;
+        start += raw.len();
+        let line = String::from_utf8_lossy(raw);
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Ok(e) = decode_line(line.trim_end_matches(['\n', '\r'])) {
             state.last_seq = state.last_seq.max(e.seq);
-            state.ids.insert(e.id);
+            state.ids.entry(e.id).or_insert(offset);
         }
     }
     state.bytes = keep as u64;
     Ok(state)
+}
+
+/// The event on the line starting at byte `offset` of the log.
+fn read_line_at(path: &Path, offset: u64) -> Option<Envelope> {
+    use std::io::{BufRead, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    file.seek(SeekFrom::Start(offset)).ok()?;
+    let mut line = String::new();
+    std::io::BufReader::new(file).read_line(&mut line).ok()?;
+    decode_line(line.trim_end_matches(['\n', '\r'])).ok()
 }
 
 /// Keep only the newest `max_sessions` logs.
@@ -447,11 +466,11 @@ pub fn append_within(
         states.insert(key.clone(), loaded);
     }
     let state = states.get_mut(&key).expect("inserted above");
-    if state.ids.contains(&event.id) {
+    if let Some(&offset) = state.ids.get(&event.id) {
         drop(states);
-        return read_session(data_folder, &event.session)?
-            .into_iter()
-            .find(|e| e.id == event.id)
+        // The file lock is still held, so the recorded offset is current.
+        return read_line_at(&path, offset)
+            .filter(|e| e.id == event.id)
             .ok_or_else(|| LogError::Io("the event was recorded but cannot be read back".into()));
     }
     let envelope = Envelope {
@@ -473,7 +492,7 @@ pub fn append_within(
         // it says where it ended -- once, in the same envelope as every other
         // line, so what is there stays readable JSONL and a reader that knows
         // the kind can say why the record goes no further.
-        if !state.ids.contains(BOUNDARY_ID) {
+        if !state.ids.contains_key(BOUNDARY_ID) {
             let boundary = Envelope {
                 v: ENVELOPE_VERSION,
                 id: BOUNDARY_ID.to_string(),
@@ -497,7 +516,7 @@ pub fn append_within(
                     if file.write_all(mark.as_bytes()).is_ok() {
                         let _ = file.flush();
                         state.last_seq = boundary.seq;
-                        state.ids.insert(boundary.id);
+                        state.ids.insert(boundary.id, state.bytes);
                         state.bytes += mark.len() as u64;
                     }
                 }
@@ -536,7 +555,7 @@ pub fn append_within(
         // Still the state this append read: bring it up to date.
         Some(state) if state.bytes == before => {
             state.last_seq = envelope.seq;
-            state.ids.insert(envelope.id.clone());
+            state.ids.insert(envelope.id.clone(), before);
             state.bytes += line.len() as u64;
         }
         // Evicted or replaced meanwhile: the next append re-reads the file.
@@ -894,6 +913,24 @@ mod tests {
         bad_inv.invocation = "inv\u{0}".to_string();
         assert!(matches!(append(&d, bad_inv), Err(LogError::InvalidInput(_))));
         assert_eq!(read_session(&d, "s-ids").unwrap().len(), 1, "a refusal wrote something");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A repeated id returns the first envelope, read back from its own line,
+    /// both from the cache and after a reload from disk.
+    #[test]
+    fn a_repeated_id_returns_the_recorded_envelope() {
+        let d = dir("dup");
+        let first = append(&d, ev("a", "dup-s1", "run.started", json!({ "n": 1 }))).unwrap();
+        append(&d, ev("b", "dup-s1", "tool.requested", json!({ "n": "é" }))).unwrap();
+        let again = append(&d, ev("b", "dup-s1", "tool.requested", json!({ "n": 9 }))).unwrap();
+        assert_eq!(again.seq, 2);
+        assert_eq!(again.payload, json!({ "n": "é" }));
+        forget(&log_path(&d, "dup-s1").to_string_lossy());
+        let reloaded = append(&d, ev("a", "dup-s1", "run.started", json!({}))).unwrap();
+        assert_eq!(reloaded.seq, first.seq);
+        assert_eq!(reloaded.payload, first.payload);
+        assert_eq!(read_session(&d, "dup-s1").unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(&d);
     }
 

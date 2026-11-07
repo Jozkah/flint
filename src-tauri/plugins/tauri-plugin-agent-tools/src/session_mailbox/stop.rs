@@ -124,6 +124,23 @@ struct Approval {
     target: String,
     reason: String,
     at: i64,
+    /// Real time of recording: another mailbox's clock is not known here, so
+    /// its entries are pruned once this much real time has passed.
+    created: std::time::Instant,
+}
+
+/// Drop expired approvals: this mailbox's by its own clock, every other
+/// mailbox's by real elapsed time, so a root that is never used again does
+/// not keep its entries for the process lifetime.
+fn prune_expired(held: &mut Vec<Approval>, root: &std::path::Path, now: i64) {
+    let ttl = Duration::from_millis(STOP_APPROVAL_TTL_MS as u64);
+    held.retain(|a| {
+        if a.root == root {
+            now - a.at < STOP_APPROVAL_TTL_MS
+        } else {
+            a.created.elapsed() < ttl
+        }
+    });
 }
 
 /// In memory on purpose: an approval is for a call in flight, and must not
@@ -208,12 +225,8 @@ impl Mailbox {
         }
         let now = self.now();
         let mut held = approvals();
-        // Only this mailbox's entries are pruned, against this mailbox's clock.
-        held.retain(|a| {
-            a.root != self.root
-                || (now - a.at < STOP_APPROVAL_TTL_MS
-                    && !(a.session_id == session_id && a.call_id == call_id))
-        });
+        prune_expired(&mut held, &self.root, now);
+        held.retain(|a| !(a.root == self.root && a.session_id == session_id && a.call_id == call_id));
         held.push(Approval {
             root: self.root.clone(),
             session_id: session_id.to_string(),
@@ -221,18 +234,18 @@ impl Mailbox {
             target: target.to_string(),
             reason: reason.to_string(),
             at: now,
+            created: std::time::Instant::now(),
         });
         Ok(())
     }
 
     /// Consume the approval for exactly this call, target and reason.
     /// Whether the approval is held; with `consume`, it is also spent. Expired
-    /// approvals of this mailbox are dropped on every call (another root is
-    /// judged by its own clock when it is used).
+    /// approvals are dropped on every call (see `prune_expired`).
     fn take_approval(&self, session_id: &str, call_id: &str, target: &str, reason: &str, consume: bool) -> bool {
         let now = self.now();
         let mut held = approvals();
-        held.retain(|a| a.root != self.root || now - a.at < STOP_APPROVAL_TTL_MS);
+        prune_expired(&mut held, &self.root, now);
         let found = held.iter().position(|a| {
             a.root == self.root
                 && a.session_id == session_id
@@ -507,4 +520,44 @@ pub(super) async fn run_stop_tool(
         "status": outcome.status.as_str(),
         "note": note,
     }))
+}
+
+#[cfg(test)]
+mod prune_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Instant;
+
+    fn approval(root: &str, at: i64, created: Instant) -> Approval {
+        Approval {
+            root: PathBuf::from(root),
+            session_id: "s".into(),
+            call_id: "c".into(),
+            target: "t".into(),
+            reason: "r".into(),
+            at,
+            created,
+        }
+    }
+
+    #[test]
+    fn expired_approvals_of_other_mailboxes_are_pruned_by_real_time() {
+        let ttl = Duration::from_millis(STOP_APPROVAL_TTL_MS as u64 + 1);
+        let Some(old) = Instant::now().checked_sub(ttl) else {
+            return; // monotonic clock too young on this host to fake an old entry
+        };
+        let now = Instant::now();
+        let mut held = vec![
+            approval("own", 0, old),           // own root, expired by its clock
+            approval("own", 100_000, old),     // own root, fresh by its clock
+            approval("gone", 0, old),          // other root, old in real time
+            approval("other", 0, now),         // other root, fresh in real time
+        ];
+        prune_expired(&mut held, std::path::Path::new("own"), 130_000);
+        let left: Vec<(String, i64)> = held
+            .iter()
+            .map(|a| (a.root.display().to_string(), a.at))
+            .collect();
+        assert_eq!(left, vec![("own".to_string(), 100_000), ("other".to_string(), 0)]);
+    }
 }
