@@ -33,10 +33,13 @@ const REST_ROUTES: Record<string, RestRoute> = {
       )
     ).keys,
   register_provider_config: async (args) => {
-    const request = args?.request as RegisterRequest
-    const keys = [request.api_key, ...(request.api_keys ?? [])].filter(
-      (key): key is string => !!key && key.trim() !== ''
-    )
+    const request = args?.request as RegisterRequest | undefined
+    if (!request || typeof request.provider !== 'string') {
+      throw new Error('register_provider_config: missing request')
+    }
+    const keys = [request.api_key, ...(request.api_keys ?? [])]
+      .map((key) => (typeof key === 'string' ? key.trim() : ''))
+      .filter((key) => key !== '')
     const secrets = (request.custom_headers ?? [])
       .filter((header) => header.secret)
       .map((header) => header.value)
