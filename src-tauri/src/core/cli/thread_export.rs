@@ -357,7 +357,8 @@ pub fn file_name(title: &str, ext: &str) -> String {
 
 /// `threads export <id> [--format F] [--verbose] [--all-versions] [--out PATH]`.
 /// Without `--out` the text goes to stdout. A directory `--out` gets a file
-/// named after the thread. Returns where it was written, if anywhere.
+/// named after the thread. An existing file is replaced only with `overwrite`.
+/// Returns where it was written, if anywhere.
 pub fn export_thread(
     data: &Path,
     thread_id: &str,
@@ -365,6 +366,7 @@ pub fn export_thread(
     verbose: bool,
     all_versions: bool,
     out: Option<&Path>,
+    overwrite: bool,
 ) -> Result<Option<std::path::PathBuf>, String> {
     let thread = super::cli_get_thread_in(data, thread_id)?;
     let messages = super::cli_list_messages_active_in(data, thread_id, all_versions && format == Format::Json)?;
@@ -385,7 +387,19 @@ pub fn export_thread(
             if text.len() > 50 * 1024 * 1024 {
                 return Err("the export is over 50 MB, so it was not written".to_string());
             }
-            std::fs::write(&target, text).map_err(|e| format!("write {}: {e}", target.display()))?;
+            if overwrite {
+                std::fs::write(&target, text).map_err(|e| format!("write {}: {e}", target.display()))?;
+            } else {
+                use std::io::Write as _;
+                let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::AlreadyExists {
+                        format!("{} already exists; pass --force to replace it", target.display())
+                    } else {
+                        format!("write {}: {e}", target.display())
+                    }
+                })?;
+                file.write_all(text.as_bytes()).map_err(|e| format!("write {}: {e}", target.display()))?;
+            }
             Ok(Some(target))
         }
     }
@@ -501,9 +515,13 @@ mod tests {
             .unwrap();
             let out = data.join("out");
             std::fs::create_dir_all(&out).unwrap();
-            let written = export_thread(data, id, Format::Markdown, false, false, Some(&out)).unwrap().unwrap();
+            let written = export_thread(data, id, Format::Markdown, false, false, Some(&out), false).unwrap().unwrap();
             assert_eq!(written.file_name().unwrap(), "My chat.md");
-            assert!(std::fs::read_to_string(written).unwrap().contains("## User"));
+            assert!(std::fs::read_to_string(&written).unwrap().contains("## User"));
+            // A second export to the same place is refused unless asked to replace it.
+            let again = export_thread(data, id, Format::Markdown, false, false, Some(&out), false).unwrap_err();
+            assert!(again.contains("already exists"), "{again}");
+            assert!(export_thread(data, id, Format::Markdown, false, false, Some(&out), true).unwrap().is_some());
             assert!(Format::parse("pdf").is_err());
         });
     }

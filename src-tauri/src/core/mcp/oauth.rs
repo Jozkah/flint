@@ -1078,8 +1078,11 @@ fn parse_callback_query(query: &str, expected_state: &str) -> Option<Result<Call
     }
     match (code, state) {
         (Some(code), Some(state)) => Some(Ok(Callback { code, state })),
-        // A `code` with no `state` cannot be CSRF-checked, so it is refused
-        // rather than accepted with the check skipped.
+        // A `code` with no `state` cannot be CSRF-checked, so it is never
+        // accepted. When this flow issued a state, such a request is not its
+        // redirect either: keep waiting, so a local page probing the port
+        // cannot cancel the sign-in.
+        (Some(_), None) if !expected_state.is_empty() => None,
         (Some(_), None) => Some(Err(
             "the redirect carried no 'state' parameter, so it cannot be verified".to_string(),
         )),
@@ -2168,6 +2171,9 @@ mod tests {
         assert!(parse_callback_query("error=access_denied&state=forged", "issued").is_none());
         assert!(parse_callback_query("code=abc&state=forged", "issued").is_none());
         assert!(parse_callback_query("code=abc&state=issued", "issued").is_some());
+        // A code with no state is never accepted, and does not abort a flow
+        // that issued one.
+        assert!(parse_callback_query("code=abc", "issued").is_none());
     }
 
     #[test]

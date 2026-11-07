@@ -48,6 +48,40 @@ fn copy_recursive(src: &Path, dst: &Path, skip: &[&str]) -> std::io::Result<u64>
     Ok(files)
 }
 
+/// `path` resolved through its nearest existing ancestor, so a folder that
+/// does not exist yet compares like the one it will become. Lowercased on
+/// Windows, where case does not tell folders apart.
+fn comparable_path(path: &Path) -> PathBuf {
+    // `..` inside the part that does not exist yet cannot be resolved by the
+    // file system, so it is resolved by spelling first.
+    let mut lexical = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                lexical.pop();
+            }
+            other => lexical.push(other),
+        }
+    }
+    let path = lexical.as_path();
+    let mut existing = path;
+    let mut rest: Vec<&std::ffi::OsStr> = Vec::new();
+    let resolved = loop {
+        if let Ok(c) = existing.canonicalize() {
+            break rest.iter().rev().fold(c, |acc, part| acc.join(part));
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name);
+                existing = parent;
+            }
+            _ => break path.to_path_buf(),
+        }
+    };
+    if cfg!(windows) { PathBuf::from(resolved.to_string_lossy().to_lowercase()) } else { resolved }
+}
+
 /// `data-folder --set PATH [--no-copy]`: point Flint at another folder, copying
 /// the current one into it first unless told not to. The desktop app reads the
 /// same settings file, so both follow. Refused when the new folder is inside
@@ -59,6 +93,13 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
     }
     let current = resolve_jan_data_folder();
     let existed = new_path.exists();
+    // Compared after resolving, so `..`, links and (on Windows) letter case
+    // cannot hide that one folder is inside the other. Checked before anything
+    // is created, so a refused folder leaves nothing behind.
+    let (cur_key, new_key) = (comparable_path(&current), comparable_path(&new_path));
+    if new_key != cur_key && (new_key.starts_with(&cur_key) || cur_key.starts_with(&new_key)) {
+        return Err("the new data folder cannot be inside the current one, or contain it".to_string());
+    }
     std::fs::create_dir_all(&new_path).map_err(|e| format!("create {}: {e}", new_path.display()))?;
     // A folder this call made is removed again when the call fails.
     let undo = |dir: &Path| {
@@ -66,17 +107,6 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
             let _ = std::fs::remove_dir_all(dir);
         }
     };
-    // Compared after resolving, so `..`, links and (on Windows) letter case
-    // cannot hide that one folder is inside the other.
-    let key = |p: &Path| {
-        let c = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-        if cfg!(windows) { PathBuf::from(c.to_string_lossy().to_lowercase()) } else { c }
-    };
-    let (cur_key, new_key) = (key(&current), key(&new_path));
-    if new_key != cur_key && (new_key.starts_with(&cur_key) || cur_key.starts_with(&new_key)) {
-        undo(&new_path);
-        return Err("the new data folder cannot be inside the current one, or contain it".to_string());
-    }
     let mut copied = 0;
     if copy && current.exists() && new_key != cur_key {
         // Copying over an existing Flint or JAN folder would replace its files.
@@ -175,6 +205,9 @@ mod tests {
             assert!(set_data_folder(&sneaky.to_string_lossy(), true).is_err());
             let parent = data.parent().unwrap().to_path_buf();
             assert!(set_data_folder(&parent.to_string_lossy(), true).is_err());
+            // A refused folder is never created, not even for a moment.
+            assert!(!inside.exists());
+            assert!(!data.join("other").exists() && !data.join("child2").exists());
             let info = data_folder_info();
             assert_eq!(info["overriddenByEnvironment"], true);
         });
