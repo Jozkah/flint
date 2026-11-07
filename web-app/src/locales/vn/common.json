@@ -3363,6 +3363,9 @@
     }
   },
   "imageLoadFailed": "Không thể tải hình ảnh này.",
+  "imagePreviewDescription": "Xem hình ảnh ở kích thước đầy đủ.",
+  "sliderMaxValue": "Giá trị tối đa cho phép là {{max}}",
+  "sliderMinValue": "Giá trị tối thiểu cho phép là {{min}}",
   "attachedImage": "Hình ảnh đính kèm {{n}}",
   "saveChanges": "Lưu thay đổi",
   "savingEllipsis": "Saving…",

@@ -3290,6 +3290,9 @@
     }
   },
   "imageLoadFailed": "यह चित्र लोड नहीं हो सका।",
+  "imagePreviewDescription": "चित्र का पूर्ण आकार दृश्य।",
+  "sliderMaxValue": "अधिकतम अनुमत मान {{max}} है",
+  "sliderMinValue": "न्यूनतम अनुमत मान {{min}} है",
   "attachedImage": "संलग्न चित्र {{n}}",
   "saveChanges": "बदलाव सहेजें",
   "savingEllipsis": "Saving…",

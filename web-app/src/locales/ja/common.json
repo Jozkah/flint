@@ -3271,6 +3271,9 @@
     }
   },
   "imageLoadFailed": "この画像を読み込めませんでした。",
+  "imagePreviewDescription": "画像の原寸表示です。",
+  "sliderMaxValue": "許可される最大値は {{max}} です",
+  "sliderMinValue": "許可される最小値は {{min}} です",
   "attachedImage": "添付画像 {{n}}",
   "saveChanges": "変更を保存",
   "savingEllipsis": "Saving…",

@@ -82,6 +82,22 @@ describe('GlobalError Component', () => {
     ;(window as any).location = originalLocation
   })
 
+  it('copies the message and stack with Copy details', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    const error = new Error('copy me')
+    error.stack = 'Error: copy me\n    at here'
+    render(<GlobalError error={error} />)
+    fireEvent.click(screen.getByText('Copy details'))
+    expect(writeText).toHaveBeenCalledWith(
+      'copy me\n\nError: copy me\n    at here'
+    )
+    expect(await screen.findByText('Copied')).toBeDefined()
+  })
+
   it('should render contact us link with correct href', () => {
     const error = new Error('Test error')
     render(<GlobalError error={error} />)

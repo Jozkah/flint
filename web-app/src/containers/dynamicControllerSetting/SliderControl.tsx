@@ -3,6 +3,7 @@ import { SliderProps } from '@radix-ui/react-slider'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
 import { parseDecimalInput, readCommittedDecimal } from '@/lib/parseDecimalInput'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 interface SliderControlProps {
   key?: string
@@ -36,7 +37,9 @@ export function SliderControl({
     initialValue[0].toString()
   )
   const [inputNumber, setInputNumber] = React.useState<number>(initialValue[0])
+  const { t } = useTranslation()
   const isExceedingMax = inputNumber > max
+  const isOutOfRange = isExceedingMax || inputNumber < min
   const isInWarnBand =
     (warnAbove !== undefined && inputNumber > warnAbove) ||
     (warnBelow !== undefined && inputNumber < warnBelow)
@@ -102,19 +105,21 @@ export function SliderControl({
         </div>
         <Input
           className={`w-16 h-8 shrink-0 rounded-md border px-2 text-right text-xs tabular-nums ${
-            isExceedingMax
+            isOutOfRange
               ? 'border-destructive text-destructive'
               : 'text-foreground'
           }`}
           value={inputValue}
           aria-label={title}
-          aria-invalid={isExceedingMax || undefined}
+          aria-invalid={isOutOfRange || undefined}
           onChange={handleInputChange}
         />
       </div>
-      {isExceedingMax && (
+      {isOutOfRange && (
         <p role="alert" className="text-xs text-destructive mt-1">
-          Maximum value allowed is <span className="font-medium">{max}</span>
+          {isExceedingMax
+            ? t('common:sliderMaxValue', { max })
+            : t('common:sliderMinValue', { min })}
         </p>
       )}
     </div>

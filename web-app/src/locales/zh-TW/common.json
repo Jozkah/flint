@@ -3276,6 +3276,9 @@
     }
   },
   "imageLoadFailed": "無法載入此圖片。",
+  "imagePreviewDescription": "以完整尺寸檢視圖片。",
+  "sliderMaxValue": "允許的最大值為 {{max}}",
+  "sliderMinValue": "允許的最小值為 {{min}}",
   "attachedImage": "附加的圖片 {{n}}",
   "saveChanges": "儲存變更",
   "savingEllipsis": "Saving…",

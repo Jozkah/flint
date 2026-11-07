@@ -18,5 +18,8 @@ describe('TauriMCPService without the bridge', () => {
     await expect(call.promise).resolves.toMatchObject({
       error: 'MCP bridge unavailable',
     })
+    await expect(
+      svc.callTool({ toolName: 'x', arguments: {} })
+    ).resolves.toMatchObject({ error: 'MCP bridge unavailable' })
   })
 })

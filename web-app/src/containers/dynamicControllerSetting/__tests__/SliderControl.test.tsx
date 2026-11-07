@@ -69,3 +69,23 @@ describe('SliderControl number field', () => {
     expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('1.3')
   })
 })
+
+describe('SliderControl range feedback', () => {
+  it('flags a value below the minimum and does not commit it', async () => {
+    const seen = vi.fn()
+    render(
+      <SliderControl title="Top K" min={5} max={10} value={[6]} onChange={seen} />
+    )
+    const input = await retype('2')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByRole('alert').textContent).toBe('common:sliderMinValue')
+    expect(seen).not.toHaveBeenCalledWith([2])
+  })
+
+  it('flags a value above the maximum', async () => {
+    render(<SliderControl title="Top K" min={0} max={10} value={[6]} />)
+    const input = await retype('20')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByRole('alert').textContent).toBe('common:sliderMaxValue')
+  })
+})

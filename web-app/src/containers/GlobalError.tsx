@@ -21,6 +21,17 @@ export default function GlobalError({ error }: GlobalErrorProps) {
     console.error('Error in root route:', error)
   }, [error])
   const [showFull, setShowFull] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copyDetails = () => {
+    const details =
+      error instanceof Error
+        ? `${error.message}\n\n${error.stack ?? ''}`.trim()
+        : String(error)
+    navigator.clipboard?.writeText(details).then(
+      () => setCopied(true),
+      () => setCopied(false)
+    )
+  }
 
   return (
     <div className="flex h-screen w-full items-start justify-center overflow-auto bg-background px-4 py-10 text-foreground sm:items-center">
@@ -80,6 +91,13 @@ export default function GlobalError({ error }: GlobalErrorProps) {
             className="mt-1.5 cursor-pointer rounded-sm text-sm text-destructive underline underline-offset-2 pointer-coarse:min-h-11"
           >
             {showFull ? 'Show less' : 'Show more'}
+          </button>
+          <button
+            type="button"
+            onClick={copyDetails}
+            className="ml-3 mt-1.5 cursor-pointer rounded-sm text-sm text-destructive underline underline-offset-2 pointer-coarse:min-h-11"
+          >
+            {copied ? 'Copied' : 'Copy details'}
           </button>
         </div>
       </div>

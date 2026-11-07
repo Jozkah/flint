@@ -3229,6 +3229,9 @@
     }
   },
   "imageLoadFailed": "Gambar ini tidak dapat dimuat.",
+  "imagePreviewDescription": "Tampilan gambar dalam ukuran penuh.",
+  "sliderMaxValue": "Nilai maksimum yang diizinkan adalah {{max}}",
+  "sliderMinValue": "Nilai minimum yang diizinkan adalah {{min}}",
   "attachedImage": "Gambar terlampir {{n}}",
   "saveChanges": "Simpan perubahan",
   "savingEllipsis": "Saving…",

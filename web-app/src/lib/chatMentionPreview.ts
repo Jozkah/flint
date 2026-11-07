@@ -123,8 +123,9 @@ export function toggleSummary(text: string, token: string): string {
   const base = token.replace(/#summary$/, '')
   const next = token.endsWith('#summary') ? base : `${base}#summary`
   const escaped = token.replace(/[.*+?^${}()|[\]\\#]/g, '\\$&')
+  const tail = token.endsWith('#summary') ? '' : '#'
   return text.replace(
-    new RegExp(`(^|[^A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_.-])`, 'g'),
+    new RegExp(`(^|[^A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_.${tail}-])`, 'g'),
     `$1@${next}`
   )
 }
