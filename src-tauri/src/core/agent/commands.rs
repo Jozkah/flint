@@ -170,10 +170,35 @@ pub async fn list_open_apps() -> Vec<String> {
     tauri_plugin_agent_tools::tools::computer::list_open_apps().await
 }
 
+/// Shortest gap between two desktop previews. The region picker takes one
+/// capture when its dialog opens; anything faster is a renderer looping on the
+/// command, which would silently stream the screen.
+const DESKTOP_PREVIEW_MIN_GAP: std::time::Duration = std::time::Duration::from_secs(2);
+
+static LAST_DESKTOP_PREVIEW: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// Claim a preview slot at `now`: refused when the last granted one is less
+/// than [`DESKTOP_PREVIEW_MIN_GAP`] old, otherwise recorded and allowed.
+fn claim_desktop_preview(last: &mut Option<std::time::Instant>, now: std::time::Instant) -> Result<(), String> {
+    if let Some(prev) = *last {
+        let since = now.saturating_duration_since(prev);
+        if since < DESKTOP_PREVIEW_MIN_GAP {
+            let wait = (DESKTOP_PREVIEW_MIN_GAP - since).as_secs_f32().ceil().max(1.0);
+            return Err(format!("desktop preview was just taken; try again in {wait:.0}s"));
+        }
+    }
+    *last = Some(now);
+    Ok(())
+}
+
 /// The desktop as a PNG data URL, for drawing a region on.
 #[tauri::command]
 pub async fn capture_desktop_preview() -> Result<String, String> {
     use base64::Engine as _;
+    {
+        let mut last = LAST_DESKTOP_PREVIEW.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        claim_desktop_preview(&mut last, std::time::Instant::now())?;
+    }
     let png = tauri_plugin_agent_tools::tools::computer::capture_png().await?;
     Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
 }
@@ -3888,4 +3913,21 @@ pub async fn agent_deferred_discard(id: String) -> Result<bool, String> {
         tauri_plugin_agent_tools::deferred_approvals::discard(&data, &id)
     })
     .await?
+}
+
+#[cfg(test)]
+mod desktop_preview_rate_tests {
+    use super::{claim_desktop_preview, DESKTOP_PREVIEW_MIN_GAP};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn first_preview_is_allowed_and_a_quick_repeat_is_refused() {
+        let t0 = Instant::now();
+        let mut last = None;
+        assert!(claim_desktop_preview(&mut last, t0).is_ok());
+        let err = claim_desktop_preview(&mut last, t0 + Duration::from_millis(500)).unwrap_err();
+        assert!(err.contains("try again"), "{err}");
+        // A refused call does not push the window forward.
+        assert!(claim_desktop_preview(&mut last, t0 + DESKTOP_PREVIEW_MIN_GAP).is_ok());
+    }
 }

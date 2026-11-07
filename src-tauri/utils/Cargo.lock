@@ -584,7 +584,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
- "tokio-util",
  "url",
  "windows-sys 0.60.2",
 ]
