@@ -87,6 +87,7 @@
     "sectionModel": "Model i rozumowanie",
     "sectionTools": "Narzędzia",
     "lockedWhileRunning": "Wstrzymaj pokój, aby zmienić ustawienia.",
+    "unsavedInvalid": "Zmiany pokoju nie zostały zapisane, ponieważ niektóre pola są nieprawidłowe.",
     "title": "Tytuł",
     "objective": "Cel",
     "workingFolder": "Folder roboczy",

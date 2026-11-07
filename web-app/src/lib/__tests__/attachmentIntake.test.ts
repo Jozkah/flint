@@ -3,6 +3,7 @@ import {
   AUDIO_MAX_BYTES,
   VIDEO_MAX_BYTES,
   mediaBatchErrors,
+  mediaMaxBytes,
   prepareAudioFiles,
   prepareImageFiles,
   prepareVideoFiles,
@@ -150,6 +151,19 @@ describe('prepareVideoFiles', () => {
     )
     expect(batch.invalid).toEqual(['a.txt'])
     expect(batch.oversized).toEqual(['b.mp4'])
+  })
+})
+
+describe('mediaMaxBytes', () => {
+  it('lowers the built-in cap to a smaller max file size setting', async () => {
+    expect(mediaMaxBytes('video', 10)).toBe(10 * 1024 * 1024)
+    expect(mediaMaxBytes('audio', 500)).toBe(AUDIO_MAX_BYTES)
+    const big = fileOf('b.mp4', '', 11 * 1024 * 1024)
+    const batch = await prepareVideoFiles([big], { read: okRead, maxBytes: mediaMaxBytes('video', 10) })
+    expect(batch.oversized).toEqual(['b.mp4'])
+    expect(mediaBatchErrors('video', batch, undefined, mediaMaxBytes('video', 10))).toEqual([
+      'Video file too large (max 10MB): b.mp4',
+    ])
   })
 })
 

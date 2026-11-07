@@ -376,8 +376,9 @@ export function ThreadConversation({
   isSplitRef.current = isSplit
   const threadIdRef = useRef(threadId)
   threadIdRef.current = threadId
-  // This conversation's tool call ids as of the last commit (see below).
-  const toolCallIdsRef = useRef<string[]>([])
+  // This conversation's messages as of the last commit (see below); the tool
+  // call ids are read from them only when the conversation is left.
+  const committedMessagesRef = useRef<typeof chatMessages>([])
   const fontSize = useInterfaceSettings((state) => state.fontSize)
   const messageZoom = useInterfaceSettings((state) => state.messageZoom)
   const setCurrentThreadId = useThreads((state) => state.setCurrentThreadId)
@@ -1606,12 +1607,7 @@ export function ThreadConversation({
   // Kept as of the last commit, so leaving this conversation while split
   // forgets exactly its own runtime entries (cleanups run before new effects).
   useEffect(() => {
-    toolCallIdsRef.current = chatMessages.flatMap((m) =>
-      m.parts.flatMap((p) => {
-        const id = (p as { toolCallId?: string }).toolCallId
-        return id ? [id] : []
-      })
-    )
+    committedMessagesRef.current = chatMessages
   }, [chatMessages])
 
   /**
@@ -1933,7 +1929,14 @@ export function ThreadConversation({
       // split the other pane's cards are still on screen, so only this
       // conversation's entries go.
       if (isSplitRef.current) {
-        useToolCallRuntime.getState().forget(toolCallIdsRef.current)
+        useToolCallRuntime.getState().forget(
+          committedMessagesRef.current.flatMap((m) =>
+            m.parts.flatMap((p) => {
+              const id = (p as { toolCallId?: string }).toolCallId
+              return id ? [id] : []
+            })
+          )
+        )
       } else {
         useToolCallRuntime.getState().reset()
       }

@@ -63,5 +63,6 @@
   "usage": "使用状況",
   "activityModelSwapped": "Model swapped",
   "activitySwapDetail": "{{from}} to {{to}}",
-  "activityModelLoaded": "Model loaded"
+  "activityModelLoaded": "Model loaded",
+  "activityModelUnloaded": "モデルをアンロードしました"
 }

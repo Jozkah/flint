@@ -83,6 +83,7 @@
     "sectionModel": "मॉडल और तर्क",
     "sectionTools": "टूल",
     "lockedWhileRunning": "सेटिंग बदलने के लिए रूम को रोकें।",
+    "unsavedInvalid": "कुछ फ़ील्ड अमान्य होने के कारण रूम के बदलाव सहेजे नहीं गए।",
     "title": "शीर्षक",
     "objective": "उद्देश्य",
     "workingFolder": "कार्य फ़ोल्डर",

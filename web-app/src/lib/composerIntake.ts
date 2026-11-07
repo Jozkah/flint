@@ -130,9 +130,12 @@ export async function clipboardImageFiles(
   return files
 }
 
-/** The image type the desktop picker gives a chosen file: PNG, else JPEG. */
-export const pickedImageMime = (fileName: string): string =>
-  extOf(fileName) === 'png' ? 'image/png' : 'image/jpeg'
+/** The image type the desktop picker gives a chosen file, JPEG when unknown. */
+export const pickedImageMime = (fileName: string): string => {
+  const ext = extOf(fileName)
+  if (ext === 'png' || ext === 'webp' || ext === 'gif') return `image/${ext}`
+  return 'image/jpeg'
+}
 
 /**
  * One line per rejection reason, naming the files it applies to, in the

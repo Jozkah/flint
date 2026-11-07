@@ -130,6 +130,11 @@ describe('pickedImageMime', () => {
     expect(pickedImageMime('a.jpeg')).toBe('image/jpeg')
     expect(pickedImageMime('a')).toBe('image/jpeg')
   })
+
+  it('keeps WebP and GIF types for files from the picker', () => {
+    expect(pickedImageMime('a.webp')).toBe('image/webp')
+    expect(pickedImageMime('a.GIF')).toBe('image/gif')
+  })
 })
 
 describe('rejectionLines', () => {

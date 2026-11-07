@@ -81,6 +81,7 @@
     "sectionModel": "模型與推理",
     "sectionTools": "工具",
     "lockedWhileRunning": "暫停房間以變更設定。",
+    "unsavedInvalid": "部分欄位無效，房間變更未儲存。",
     "title": "標題",
     "objective": "目標",
     "workingFolder": "工作資料夾",

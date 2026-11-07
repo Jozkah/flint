@@ -87,6 +87,7 @@
     "sectionModel": "Model a uvažování",
     "sectionTools": "Nástroje",
     "lockedWhileRunning": "Pro změnu nastavení místnost pozastavte.",
+    "unsavedInvalid": "Změny místnosti nebyly uloženy, protože některá pole jsou neplatná.",
     "title": "Název",
     "objective": "Cíl",
     "workingFolder": "Pracovní složka",

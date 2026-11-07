@@ -53,11 +53,13 @@ function getInitialValue(query: string, initialValue?: boolean) {
 export function useMediaQuery(
   query: string,
   initialValue?: boolean,
+  // Read on the first render by default, so a narrow window does not paint
+  // the wide layout for a frame before the effect corrects it.
   { getInitialValueInEffect }: UseMediaQueryOptions = {
-    getInitialValueInEffect: true,
+    getInitialValueInEffect: false,
   }
 ): boolean {
-  const [matches, setMatches] = useState(
+  const [matches, setMatches] = useState(() =>
     getInitialValueInEffect ? initialValue : getInitialValue(query)
   )
   const queryRef = useRef<MediaQueryList>(null)

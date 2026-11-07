@@ -81,6 +81,7 @@
     "sectionModel": "Model & penalaran",
     "sectionTools": "Alat",
     "lockedWhileRunning": "Jeda ruang untuk mengubah pengaturan.",
+    "unsavedInvalid": "Perubahan ruang tidak disimpan karena beberapa kolom tidak valid.",
     "title": "Judul",
     "objective": "Tujuan",
     "workingFolder": "Folder kerja",

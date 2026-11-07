@@ -70,6 +70,12 @@ export function TimeChips({ id, times, onChange, invalid }: Props) {
             setDraft(e.target.value)
             setProblem(null)
           }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            // Enter adds the time instead of submitting the surrounding form.
+            e.preventDefault()
+            add()
+          }}
         />
         <Button type="button" variant="outline" size="sm" onClick={add}>
           {t('schedules:editor.addTime')}

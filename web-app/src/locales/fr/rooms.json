@@ -85,6 +85,7 @@
     "sectionModel": "Modèle et raisonnement",
     "sectionTools": "Outils",
     "lockedWhileRunning": "Mettez la salle en pause pour modifier les réglages.",
+    "unsavedInvalid": "Les modifications du salon n'ont pas été enregistrées car certains champs sont invalides.",
     "title": "Titre",
     "objective": "Objectif",
     "workingFolder": "Dossier de travail",

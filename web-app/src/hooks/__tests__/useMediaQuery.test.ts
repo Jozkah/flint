@@ -17,6 +17,21 @@ afterEach(() => {
 })
 
 describe('useMediaQuery hook', () => {
+  it('reports the real match on the very first render', () => {
+    mockMatchMedia.mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    const seen: boolean[] = []
+    renderHook(() => {
+      const v = useMediaQuery('(max-width: 640px)')
+      seen.push(v)
+      return v
+    })
+    expect(seen[0]).toBe(true)
+  })
+
   it('should return initial match value', () => {
     const mockMediaQueryList = {
       matches: true,
@@ -201,9 +216,9 @@ describe('useMediaQuery hook', () => {
       removeEventListener: vi.fn(),
     }
 
-    mockMatchMedia
-      .mockReturnValueOnce(mockMediaQueryList1)
-      .mockReturnValueOnce(mockMediaQueryList2)
+    mockMatchMedia.mockImplementation((q: string) =>
+      q === '(min-width: 768px)' ? mockMediaQueryList1 : mockMediaQueryList2
+    )
 
     const { result, rerender } = renderHook(
       ({ query }) => useMediaQuery(query),

@@ -69,5 +69,6 @@
   "usage": "Расход",
   "activityModelSwapped": "Model swapped",
   "activitySwapDetail": "{{from}} to {{to}}",
-  "activityModelLoaded": "Model loaded"
+  "activityModelLoaded": "Model loaded",
+  "activityModelUnloaded": "Модель выгружена"
 }

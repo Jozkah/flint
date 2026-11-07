@@ -323,7 +323,7 @@ export function useImageAttachments({
           filters: [
             {
               name: t('chat:composer.filterImages'),
-              extensions: ['jpg', 'jpeg', 'png'],
+              extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
             },
           ],
         })

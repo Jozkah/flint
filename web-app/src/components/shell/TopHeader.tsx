@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
+import { activityText, useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { HeaderLiveChips } from '@/components/shell/HeaderLiveChips'
@@ -72,6 +72,7 @@ const NOTIF_ICON: Partial<Record<ActivityKind, IconName>> = {
   'tool-denied': 'feed-alert',
   'tool-failed': 'feed-alert',
   'model-loaded': 'feed-star',
+  'model-unloaded': 'feed-star',
   'model-swapped': 'feed-repeat',
   compaction: 'feed-book',
   'run-finished': 'feed-ticket',
@@ -319,7 +320,7 @@ export function TopHeader() {
                   <NotifRow icon="feed-ticket" title={t('common:shell.runsTitle')} detail={t('common:shell.runs', { count: runs })} onSelect={() => navigate({ to: route.cowork })} />
                 )}
                 {recent.map((a) => (
-                  <NotifRow key={a.id} icon={NOTIF_ICON[a.kind] ?? 'feed-star'} title={a.title} detail={a.detail} onSelect={() => navigate({ to: route.overview })} />
+                  <NotifRow key={a.id} icon={NOTIF_ICON[a.kind] ?? 'feed-star'} {...activityText(a, t)} onSelect={() => navigate({ to: route.overview })} />
                 ))}
               </>
             )}

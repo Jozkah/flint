@@ -316,6 +316,17 @@ describe('migrations', () => {
     )
   })
 
+  it('does not advance the version when a migration write fails', async () => {
+    seedAssistant('f', { id: 'f', instructions: 'You are a helpful AI assistant. x' })
+    vi.mocked(fs.writeFileSync).mockImplementation(async (p: string, data: string) => {
+      if (p === `${ROOT}/f/assistant.json`) throw new Error('disk full')
+      files.set(p, data)
+    })
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(getVersion()).toBeUndefined()
+  })
+
   it('treats an unparseable migration version file as version 0 and runs migrations', async () => {
     dirs.add(ROOT)
     files.set(`${ROOT}/.migration_version`, 'garbage')

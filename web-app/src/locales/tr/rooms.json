@@ -83,6 +83,7 @@
     "sectionModel": "Model ve akıl yürütme",
     "sectionTools": "Araçlar",
     "lockedWhileRunning": "Ayarları değiştirmek için odayı duraklatın.",
+    "unsavedInvalid": "Bazı alanlar geçersiz olduğu için oda değişiklikleri kaydedilmedi.",
     "title": "Başlık",
     "objective": "Amaç",
     "workingFolder": "Çalışma klasörü",

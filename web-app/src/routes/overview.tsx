@@ -33,6 +33,7 @@ import { cn, getProviderTitle } from '@/lib/utils'
 import { speedStats } from '@/lib/tokenSpeed'
 import {
   change,
+  activityText,
   summarize,
   useUsageStats,
   type ActivityItem,
@@ -290,6 +291,7 @@ const ACTIVITY_ICON: Record<ActivityKind, IconName> = {
   'tool-denied': 'feed-alert',
   'tool-failed': 'feed-alert',
   'model-loaded': 'feed-user',
+  'model-unloaded': 'feed-user',
   'model-swapped': 'feed-repeat',
   compaction: 'feed-star',
   'run-finished': 'feed-ticket',
@@ -311,7 +313,7 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
       : range === 'yesterday'
         ? at >= startToday - 86_400_000 && at < startToday
         : at >= startToday - 6 * 86_400_000
-  const list = items.filter(
+  const list = items.map((it) => ({ ...it, ...activityText(it, t) })).filter(
     (it) =>
       inRange(it.at) &&
       (!q || `${it.title} ${it.detail ?? ''}`.toLowerCase().includes(q.toLowerCase()))

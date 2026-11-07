@@ -33,4 +33,13 @@ describe('TimeChips (P2E-026)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'schedules:editor.addTime' }))
     expect(onChange).toHaveBeenCalledWith(['08:30'])
   })
+
+  it('adds the time on Enter', () => {
+    const onChange = vi.fn()
+    render(<TimeChips id="t" times={[]} onChange={onChange} />)
+    const input = screen.getByLabelText('schedules:editor.timeLabel')
+    fireEvent.change(input, { target: { value: '09:15' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onChange).toHaveBeenCalledWith(['09:15'])
+  })
 })

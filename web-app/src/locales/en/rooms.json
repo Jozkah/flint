@@ -83,6 +83,7 @@
     "sectionModel": "Model & reasoning",
     "sectionTools": "Tools",
     "lockedWhileRunning": "Pause the room to change settings.",
+    "unsavedInvalid": "Room changes weren't saved because some fields are invalid.",
     "title": "Title",
     "objective": "Objective",
     "workingFolder": "Working folder",

@@ -52,7 +52,7 @@ describe('useRoomAutosave', () => {
     act(() => result.current.markEdited())
 
     unmount()
-    expect(save).toHaveBeenCalledWith(true)
+    expect(save).toHaveBeenCalledWith(true, true)
   })
 
   it('does not save on unmount when nothing was edited', () => {

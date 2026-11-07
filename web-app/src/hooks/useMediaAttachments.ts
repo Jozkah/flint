@@ -5,6 +5,7 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 import {
   VIDEO_EXTS,
   mediaBatchErrors,
+  mediaMaxBytes,
   prepareAudioFiles,
   prepareVideoFiles,
   splitNewByContent,
@@ -12,6 +13,7 @@ import {
   type MediaBatch,
 } from '@/lib/attachmentIntake'
 import type { Attachment } from '@/types/attachment'
+import { useAttachments } from '@/hooks/useAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -39,7 +41,7 @@ const KIND = {
 } satisfies Record<
   Kind,
   {
-    prepare: (files: File[]) => Promise<MediaBatch>
+    prepare: (files: File[], deps: { maxBytes: number }) => Promise<MediaBatch>
     extensions: string[]
     mimeFor: (ext?: string) => string
     filterKey: string
@@ -76,10 +78,12 @@ function useMediaKind(
   const setAttachmentsForThread = useChatAttachments((s) => s.setAttachments)
   const inputRef = useRef<HTMLInputElement>(null)
   const spec = KIND[kind]
+  const maxFileSizeMB = useAttachments((s) => s.maxFileSizeMB)
 
   const process = useCallback(
     async (files: File[]) => {
-      const batch = await spec.prepare(files)
+      const maxBytes = mediaMaxBytes(kind, maxFileSizeMB)
+      const batch = await spec.prepare(files, { maxBytes })
       const current = useChatAttachments
         .getState()
         .getAttachments(attachmentsKey)
@@ -104,13 +108,13 @@ function useMediaKind(
           }),
         })
       }
-      const errors = mediaBatchErrors(kind, batch, t)
+      const errors = mediaBatchErrors(kind, batch, t, maxBytes)
       if (errors.length > 0) {
         setMessage(errors.join(' | '))
         if (inputRef.current) inputRef.current.value = ''
       }
     },
-    [attachmentsKey, setAttachmentsForThread, t, kind, spec, setMessage]
+    [attachmentsKey, setAttachmentsForThread, t, kind, spec, setMessage, maxFileSizeMB]
   )
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Copy, CopyCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,9 @@ export function DataFolderCard({
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const [isCopied, setIsCopied] = useState(false)
+  // Resets the "copied" mark; cleared on unmount and on another copy.
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(copiedTimer.current), [])
   const [selectedNewPath, setSelectedNewPath] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
@@ -75,7 +78,8 @@ export function DataFolderCard({
     try {
       await navigator.clipboard.writeText(text)
       setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000) // Reset after 2 seconds
+      clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setIsCopied(false), 2000)
     } catch (error) {
       console.error('Failed to copy to clipboard:', error)
     }

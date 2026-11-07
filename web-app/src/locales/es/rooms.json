@@ -85,6 +85,7 @@
     "sectionModel": "Modelo y razonamiento",
     "sectionTools": "Herramientas",
     "lockedWhileRunning": "Pausa la sala para cambiar los ajustes.",
+    "unsavedInvalid": "Los cambios de la sala no se guardaron porque algunos campos no son válidos.",
     "title": "Título",
     "objective": "Objetivo",
     "workingFolder": "Carpeta de trabajo",

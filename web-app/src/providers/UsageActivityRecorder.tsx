@@ -25,15 +25,33 @@ export function UsageActivityRecorder() {
     const unloaded = before.filter((m) => !activeModels.includes(m))
     const stats = useUsageStats.getState()
     if (loaded.length && unloaded.length) {
-      // Translated as recorded (F9x1-011).
+      // Keys are stored with the text so the feed follows a language switch;
+      // the text stays as the fallback and for search.
+      const vars = { from: unloaded[0], to: loaded[0] }
       stats.pushActivity({
         kind: 'model-swapped',
         title: i18n.t('overview:activityModelSwapped'),
-        detail: i18n.t('overview:activitySwapDetail', { from: unloaded[0], to: loaded[0] }),
+        titleKey: 'overview:activityModelSwapped',
+        detail: i18n.t('overview:activitySwapDetail', vars),
+        detailKey: 'overview:activitySwapDetail',
+        detailVars: vars,
       })
     } else {
       for (const m of loaded) {
-        stats.pushActivity({ kind: 'model-loaded', title: i18n.t('overview:activityModelLoaded'), detail: m })
+        stats.pushActivity({
+          kind: 'model-loaded',
+          title: i18n.t('overview:activityModelLoaded'),
+          titleKey: 'overview:activityModelLoaded',
+          detail: m,
+        })
+      }
+      for (const m of unloaded) {
+        stats.pushActivity({
+          kind: 'model-unloaded',
+          title: i18n.t('overview:activityModelUnloaded'),
+          titleKey: 'overview:activityModelUnloaded',
+          detail: m,
+        })
       }
     }
   }, [activeModels, synced])

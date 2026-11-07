@@ -81,6 +81,7 @@
     "sectionModel": "モデルと推論",
     "sectionTools": "ツール",
     "lockedWhileRunning": "設定を変更するには、ルームを一時停止してください。",
+    "unsavedInvalid": "無効な項目があるため、ルームの変更は保存されませんでした。",
     "title": "タイトル",
     "objective": "目的",
     "workingFolder": "作業フォルダー",
