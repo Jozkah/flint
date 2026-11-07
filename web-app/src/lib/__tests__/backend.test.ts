@@ -71,6 +71,31 @@ describe('invokeCommand routing', () => {
     expect(tauriInvoke.mock.calls[0]).toEqual(['migration_detect'])
   })
 
+  it('sends trimmed provider keys and drops blank ones', async () => {
+    vi.spyOn(providerFetch, 'hasTauriRuntime').mockReturnValue(false)
+    vi.spyOn(providerFetch, 'hasProviderTransport').mockReturnValue(true)
+    const fetch = vi.fn(async (..._a: unknown[]) => ({
+      ok: true,
+      status: 204,
+      redirected: false,
+      json: async () => undefined,
+    }))
+    vi.stubGlobal('fetch', fetch)
+    await invokeCommand('register_provider_config', {
+      request: { provider: 'p', api_key: ' sk-a\n', api_keys: ['  ', 'sk-b '] },
+    })
+    const init = fetch.mock.calls.at(-1)?.[1] as { body: string }
+    expect(JSON.parse(init.body)).toEqual({ keys: ['sk-a', 'sk-b'] })
+  })
+
+  it('rejects register_provider_config without a request', async () => {
+    vi.spyOn(providerFetch, 'hasTauriRuntime').mockReturnValue(false)
+    vi.spyOn(providerFetch, 'hasProviderTransport').mockReturnValue(true)
+    await expect(invokeCommand('register_provider_config', {})).rejects.toThrow(
+      'missing request'
+    )
+  })
+
   it('knows only its own REST routes', () => {
     expect(hasRestRoute('get_provider_keys')).toBe(true)
     expect(hasRestRoute('constructor')).toBe(false)
