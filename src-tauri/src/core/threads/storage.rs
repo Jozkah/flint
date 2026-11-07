@@ -35,7 +35,7 @@ pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String>
     ensure_data_dirs(root)?;
     let id = Uuid::new_v4().to_string();
     thread["id"] = Value::String(id.clone());
-    let data = serde_json::to_vec_pretty(&thread).map_err(|e| e.to_string())?;
+    let data = serde_json::to_vec(&thread).map_err(|e| e.to_string())?;
     let dir = get_thread_dir(root, &id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // A failed write must not leave an empty thread folder behind, which the
@@ -86,7 +86,9 @@ pub fn modify_thread_unlocked(root: &Path, mut thread: Value) -> Result<(), Stri
             }
         }
     }
-    let data = serde_json::to_vec_pretty(&thread).map_err(|e| e.to_string())?;
+    // Compact: this runs on every timestamp bump, and pretty-printing the
+    // whole thread (assistant instructions included) only grows the write.
+    let data = serde_json::to_vec(&thread).map_err(|e| e.to_string())?;
     write_file_atomically(&get_thread_metadata_path(root, id), &data)
 }
 
@@ -266,6 +268,25 @@ mod create_tests {
         }
         let made = create_thread_in(dir.path(), serde_json::json!({"title": "t"})).unwrap();
         assert!(made["id"].is_string());
+    }
+
+    /// thread.json is rewritten on every timestamp bump, so it is stored
+    /// compact rather than pretty-printed, and still reads back the same.
+    #[test]
+    fn thread_json_is_written_compact() {
+        let dir = tempfile::tempdir().unwrap();
+        let made = create_thread_in(dir.path(), serde_json::json!({"title": "t", "updated": 1})).unwrap();
+        let id = made["id"].as_str().unwrap().to_string();
+        let path = get_thread_metadata_path(dir.path(), &id);
+        assert!(!fs::read_to_string(&path).unwrap().contains('\n'));
+        let mut next = made.clone();
+        next["updated"] = serde_json::json!(2);
+        modify_thread_unlocked(dir.path(), next).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains('\n'), "{text}");
+        let back: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(back["updated"], 2);
+        assert_eq!(back["title"], "t");
     }
 }
 

@@ -788,6 +788,11 @@ pub(super) async fn find(
     let Some(pattern) = pattern else {
         return "ERROR: missing required argument 'pattern'".to_string();
     };
+    // Same stop conditions as grep: a dropped (cancelled or timed-out) call and
+    // a wall-clock budget end the blocking walk instead of leaving it running.
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _cancel_on_drop = CancelOnDrop(cancel.clone());
+    let started = std::time::Instant::now();
     let res = tokio::task::spawn_blocking(move || {
         let pat = match glob::Pattern::new(&pattern) {
             Ok(p) => p,
@@ -799,12 +804,21 @@ pub(super) async fn find(
             require_literal_leading_dot: false,
         };
         let mut matches: Vec<String> = Vec::new();
+        let mut stopped = false;
         for entry in WalkBuilder::new(&base)
             .hidden(false)
             .require_git(false)
+            // Git's own database is never project content.
+            .filter_entry(|e| e.file_name() != ".git")
             .build()
             .flatten()
         {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed)
+                || started.elapsed() > GREP_WALL_BUDGET
+            {
+                stopped = true;
+                break;
+            }
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
                 continue;
             }
@@ -821,12 +835,17 @@ pub(super) async fn find(
                 }
             }
         }
-        if matches.is_empty() {
+        let out = if matches.is_empty() {
             "No matches.".to_string()
         } else {
             // The same byte cap `ls` and `grep` apply: long paths times the
             // match limit can still be megabytes of tool result.
             cap_output(&matches.join("\n"), usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
+        };
+        if stopped {
+            format!("{out}\n\n[search stopped early (time budget or cancelled); narrow the path or pattern to search the rest]")
+        } else {
+            out
         }
     })
     .await;

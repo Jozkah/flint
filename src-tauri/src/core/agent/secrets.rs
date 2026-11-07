@@ -22,7 +22,7 @@
 //! `~/.jan/secret-placeholder.key` (mode 0600, never sent anywhere), so a reader
 //! of a transcript cannot dictionary-hash a placeholder back to its secret.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
@@ -60,8 +60,38 @@ const NOT_SECRETS: &[&str] = &["SSH_AUTH_SOCK", "GPG_AGENT_INFO"];
 /// placeholder text -> the secret it stands for. Shared by every filter in the
 /// process, so a subagent's or a compaction's completion restores what the main
 /// run hid. A placeholder is deterministic, so a restart rebuilds the same ones.
-static REVERSE: LazyLock<Mutex<HashMap<String, String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Bounded so a long-lived process does not keep every secret it ever hid:
+/// past the cap the oldest placeholder is forgotten (a later hide of the same
+/// value remembers it again).
+static REVERSE: LazyLock<Mutex<ReverseMap>> = LazyLock::new(|| Mutex::new(ReverseMap::default()));
+
+/// Most placeholders [`REVERSE`] remembers at once.
+const REVERSE_CAP: usize = 4096;
+
+/// Placeholder -> secret, evicting the oldest entry once [`REVERSE_CAP`] is hit.
+#[derive(Default)]
+struct ReverseMap {
+    map: HashMap<String, String>,
+    order: VecDeque<String>,
+}
+
+impl ReverseMap {
+    fn remember(&mut self, text: String, value: &str) {
+        if self.map.contains_key(&text) {
+            return;
+        }
+        while self.map.len() >= REVERSE_CAP {
+            let Some(oldest) = self.order.pop_front() else { break };
+            self.map.remove(&oldest);
+        }
+        self.order.push_back(text.clone());
+        self.map.insert(text, value.to_string());
+    }
+
+    fn get(&self, text: &str) -> Option<&String> {
+        self.map.get(text)
+    }
+}
 
 /// One built-in credential shape. `group` is the capture group to hide (`0` =
 /// the whole match).
@@ -331,8 +361,7 @@ impl SecretFilter {
         REVERSE
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .entry(text.clone())
-            .or_insert_with(|| value.to_string());
+            .remember(text.clone(), value);
         text
     }
 
@@ -556,6 +585,22 @@ mod tests {
     use serde_json::json;
 
     const KEY: [u8; 32] = [7; 32];
+
+    #[test]
+    fn reverse_map_is_bounded_and_evicts_the_oldest() {
+        let mut m = ReverseMap::default();
+        for i in 0..REVERSE_CAP + 10 {
+            m.remember(format!("$$P{i}$$"), &format!("secret{i}"));
+        }
+        assert_eq!(m.map.len(), REVERSE_CAP);
+        assert_eq!(m.order.len(), REVERSE_CAP);
+        assert!(m.get("$$P0$$").is_none());
+        let last = REVERSE_CAP + 9;
+        assert_eq!(m.get(&format!("$$P{last}$$")), Some(&format!("secret{last}")));
+        // Re-remembering a known placeholder does not duplicate its order slot.
+        m.remember(format!("$$P{last}$$"), "x");
+        assert_eq!(m.order.len(), REVERSE_CAP);
+    }
 
     #[test]
     fn windows_paths_are_not_secret_values() {
