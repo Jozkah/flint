@@ -104,6 +104,27 @@ async fn mid_turn_messages_updated_saves_off_the_render_loop() {
     assert_eq!(last["content"], "step two", "newest snapshot wins");
 }
 
+/// Mid-turn steps do not re-copy the display journal every step: once
+/// dumped, the next steps inside the interval leave it alone, and a turn
+/// boundary (`persist`) still dumps it.
+#[test]
+fn mid_turn_steps_do_not_redump_the_journal_every_step() {
+    let mut app = test_app();
+    app.submit_user("first".into());
+    app.persist();
+    let boundary = app.journal_dumped_at.expect("persist dumps the journal");
+    app.journal_dumped_at = Some(std::time::Instant::now());
+    let recent = app.journal_dumped_at;
+    app.apply(StreamEvent::MessagesUpdated {
+        messages: vec![json!({ "role": "user", "content": "first" })],
+    });
+    assert_eq!(app.journal_dumped_at, recent, "a step inside the interval skips the dump");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    app.persist();
+    assert!(app.journal_dumped_at > recent && app.journal_dumped_at > Some(boundary));
+    app.join_journal();
+}
+
 /// The boxed diff panel is re-drawn at the current width, so its right
 /// border still lands inside the frame after a shrink.
 #[test]

@@ -18,16 +18,36 @@ impl hyper::body::Body for Stalled {
 #[tokio::test]
 async fn login_body_trickle_times_out() {
     let result = collect_limited(Stalled, MAX_LOGIN_BODY, std::time::Duration::from_millis(50)).await;
-    assert_eq!(result, Err(StatusCode::REQUEST_TIMEOUT));
+    assert_eq!(result.map(|b| b.bytes.clone()), Err(StatusCode::REQUEST_TIMEOUT));
 }
 
 #[tokio::test]
 async fn collect_limited_enforces_size() {
     let deadline = std::time::Duration::from_secs(5);
     let ok = collect_limited(Full::new(Bytes::from_static(b"abcd")), 4, deadline).await;
-    assert_eq!(ok, Ok(Bytes::from_static(b"abcd")));
+    assert_eq!(ok.map(|b| b.bytes.clone()), Ok(Bytes::from_static(b"abcd")));
     let big = collect_limited(Full::new(Bytes::from_static(b"abcde")), 4, deadline).await;
-    assert_eq!(big, Err(StatusCode::PAYLOAD_TOO_LARGE));
+    assert_eq!(big.map(|b| b.bytes.clone()), Err(StatusCode::PAYLOAD_TOO_LARGE));
+}
+
+/// Large bodies share one budget: while held bodies fill it, the next large
+/// body is refused with 503 instead of being buffered, and a released body
+/// frees its share. Small bodies never wait on it.
+#[tokio::test]
+async fn large_bodies_share_one_in_flight_budget() {
+    let budget = Arc::new(tokio::sync::Semaphore::new(200 * 1024));
+    let deadline = std::time::Duration::from_millis(100);
+    let big = || Full::new(Bytes::from(vec![b'x'; 100 * 1024]));
+    let first = collect_budgeted(big(), 1 << 20, deadline, &budget).await.expect("fits");
+    let second = collect_budgeted(big(), 1 << 20, deadline, &budget).await.expect("fits");
+    let third = collect_budgeted(big(), 1 << 20, deadline, &budget).await;
+    assert_eq!(third.map(|b| b.bytes.len()), Err(StatusCode::SERVICE_UNAVAILABLE));
+    let small = collect_budgeted(Full::new(Bytes::from_static(b"ok")), 1 << 20, deadline, &budget).await;
+    assert_eq!(small.map(|b| b.bytes.clone()), Ok(Bytes::from_static(b"ok")));
+    drop(first);
+    let again = collect_budgeted(big(), 1 << 20, deadline, &budget).await;
+    assert_eq!(again.map(|b| b.bytes.len()), Ok(100 * 1024));
+    drop(second);
 }
 
 #[test]
