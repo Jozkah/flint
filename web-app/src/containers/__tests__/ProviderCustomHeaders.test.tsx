@@ -197,6 +197,24 @@ describe('ProviderCustomHeaders', () => {
     expect(screen.getByTestId('custom-header-name-1')).toBeInTheDocument()
   })
 
+  it('keeps a newer edit when an older save echoes back late', async () => {
+    const one = [{ header: 'X-Tenant', value: 'acme' }]
+    const { rerender } = render(<ProviderCustomHeaders provider={provider(one)} />)
+    type('custom-header-value-0', 'acme2')
+    await waitFor(() => expect(h.updateProvider).toHaveBeenCalledTimes(1))
+    // A second edit is committed before the first save comes back.
+    type('custom-header-value-0', 'acme3')
+    fireEvent.click(screen.getByTestId('custom-header-add'))
+    // The first save's echo arrives now.
+    rerender(
+      <ProviderCustomHeaders
+        provider={provider([{ header: 'X-Tenant', value: 'acme2' }])}
+      />
+    )
+    expect(screen.getByTestId('custom-header-value-0')).toHaveValue('acme3')
+    expect(screen.getByTestId('custom-header-name-1')).toBeInTheDocument()
+  })
+
   it('removing a middle row leaves the other rows in place', () => {
     render(
       <ProviderCustomHeaders

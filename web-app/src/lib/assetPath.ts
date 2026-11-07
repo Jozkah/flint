@@ -6,6 +6,7 @@
  * grant (`allow_asset_path`) before `convertFileSrc` URLs for them will load.
  * Grants are requested once per path and remembered.
  */
+import { isTauriBuild } from '@/lib/platform/tauriBuild'
 import { useCallback, useState } from 'react'
 import { invokeCommand as invoke } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -14,14 +15,12 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 export const ASSET_PLACEHOLDER =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
-const inTauri = () => typeof IS_TAURI !== 'undefined' && IS_TAURI
-
 const pending = new Map<string, Promise<void>>()
 const granted = new Set<string>()
 
 /** Grant the webview asset access to `path`. Never rejects; a refusal just leaves the URL unloadable. */
 export function ensureAssetAccess(path: string, recursive = false): Promise<void> {
-  if (!inTauri()) return Promise.resolve()
+  if (!isTauriBuild()) return Promise.resolve()
   const key = `${recursive ? 'r' : 'f'}:${path}`
   if (granted.has(key)) return Promise.resolve()
   const known = pending.get(key)
@@ -54,7 +53,7 @@ export function useAssetUrl(): (path: string) => string {
   const [version, bump] = useState(0)
   return useCallback(
     (path: string) => {
-      if (!inTauri() || granted.has(`f:${path}`)) {
+      if (!isTauriBuild() || granted.has(`f:${path}`)) {
         return getServiceHub().core().convertFileSrc(path)
       }
       void ensureAssetAccess(path).then(() => bump((n) => n + 1))

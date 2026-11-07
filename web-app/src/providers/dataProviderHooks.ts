@@ -67,7 +67,15 @@ type RegisterProviderRequest = {
   api_type: ProviderApiType
 }
 
-async function registerRemoteProvider(provider: ModelProvider) {
+// The last registration sent per provider. The providers array changes on any
+// store update (a model setting, a favourite, a finished download), so the
+// sync below compares with this instead of re-sending every provider's keys.
+const lastRegistered = new Map<string, string>()
+
+async function registerRemoteProvider(
+  provider: ModelProvider,
+  { skipUnchanged = false }: { skipUnchanged?: boolean } = {}
+) {
   // Skip llamacpp - those are local models
   if (provider.provider === 'llamacpp') return
 
@@ -91,10 +99,18 @@ async function registerRemoteProvider(provider: ModelProvider) {
     api_type: getProviderApiType(provider),
   }
 
+  const sent = JSON.stringify(request)
+  if (skipUnchanged && lastRegistered.get(provider.provider) === sent) return
+  lastRegistered.set(provider.provider, sent)
+
   try {
     await invokeCommand('register_provider_config', { request })
     console.debug(`Registered remote provider: ${provider.provider}`)
   } catch (error) {
+    // Not registered: the next sync must try again.
+    if (lastRegistered.get(provider.provider) === sent) {
+      lastRegistered.delete(provider.provider)
+    }
     console.error(`Failed to register provider ${provider.provider}:`, error)
   }
 }
@@ -179,7 +195,7 @@ const syncRemoteProviders = () => {
       provider.provider !== 'llamacpp' &&
       providerHasRemoteApiKeys(provider)
     ) {
-      registerRemoteProvider(provider)
+      registerRemoteProvider(provider, { skipUnchanged: true })
       currentActive.add(provider.provider)
     }
   })
@@ -187,6 +203,7 @@ const syncRemoteProviders = () => {
   // Unregister providers that were previously registered but are now inactive/removed
   for (const name of registeredProviderNames) {
     if (!currentActive.has(name)) {
+      lastRegistered.delete(name)
       invokeCommand('unregister_provider_config', { provider: name }).catch(() => {})
     }
   }

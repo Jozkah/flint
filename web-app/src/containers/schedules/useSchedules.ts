@@ -1,3 +1,4 @@
+import { isTauriBuild } from '@/lib/platform/tauriBuild'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { listen } from '@tauri-apps/api/event'
@@ -18,8 +19,6 @@ import {
 /** How often the list re-reads while the page is open, for next-run times. */
 const REFRESH_MS = 30_000
 
-const inTauri = () => typeof IS_TAURI !== 'undefined' && IS_TAURI
-
 export function useSchedules() {
   const { t } = useTranslation()
   const [views, setViews] = useState<ScheduledTaskView[]>([])
@@ -31,7 +30,7 @@ export function useSchedules() {
 
   const refresh = useCallback(async () => {
     const id = ++requestId.current
-    if (!inTauri()) {
+    if (!isTauriBuild()) {
       setLoading(false)
       setError(t('schedules:unavailable'))
       return
@@ -61,7 +60,7 @@ export function useSchedules() {
 
   // The driver says when a run starts or ends; the page re-reads on each.
   useEffect(() => {
-    if (!inTauri()) return
+    if (!isTauriBuild()) return
     let off: (() => void) | undefined
     let cancelled = false
     void listen<ScheduleEvent>(SCHEDULE_EVENT, (event) => {

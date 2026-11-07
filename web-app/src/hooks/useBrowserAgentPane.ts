@@ -1,3 +1,4 @@
+import { isTauriBuild } from '@/lib/platform/tauriBuild'
 import { useEffect, useRef } from 'react'
 import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
@@ -36,8 +37,6 @@ export const useBrowserAgentPane = create<PaneState>()((set) => ({
 export const stopBrowserAgent = () => invokeCommand('browser_agent_stop')
 export const resumeBrowserAgent = () => invokeCommand('browser_agent_resume')
 
-const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
-
 /**
  * Listens for the backend's browser-agent events: open the pane when the
  * assistant asks for a page, track whether it is driving, and say so when a
@@ -52,7 +51,7 @@ export function useBrowserAgentEvents(
   const onDomainRef = useRef(onDomainRequest)
   onDomainRef.current = onDomainRequest
   useEffect(() => {
-    if (!isTauri()) return
+    if (!isTauriBuild()) return
     let expiry: ReturnType<typeof setTimeout> | undefined
     const unlisten: Array<() => void> = []
     let live = true
