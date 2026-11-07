@@ -571,7 +571,114 @@ fn restrict_permissions(path: &PathBuf) {
     }
 }
 
-#[cfg(not(unix))]
+/// Replace the file's DACL with a protected one that grants full control to
+/// the current user only, so inherited entries (an admin group, a shared
+/// parent folder) no longer apply.
+#[cfg(windows)]
+fn restrict_permissions(path: &PathBuf) {
+    if let Err(err) = windows_owner_only::apply(path) {
+        log::warn!(
+            "Failed to restrict permissions on {}: {err}",
+            path.display()
+        );
+    }
+}
+
+#[cfg(windows)]
+mod windows_owner_only {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE};
+    use windows_sys::Win32::Security::Authorization::{
+        SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE,
+        SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+    };
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE,
+        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    /// `GENERIC_ALL`.
+    const FULL_CONTROL: u32 = 0x1000_0000;
+
+    /// The current process user's TOKEN_USER in u64 storage (so the struct
+    /// read is aligned); the SID it points to lives inside the same buffer.
+    fn token_user() -> Result<Vec<u64>, String> {
+        let mut token: HANDLE = std::ptr::null_mut();
+        // SAFETY: GetCurrentProcess returns a pseudo-handle; `token` is a local out-pointer.
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        let mut len = 0u32;
+        // SAFETY: a null buffer with size 0 only asks for the needed length.
+        unsafe { GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut len) };
+        let mut buf = vec![0u64; (len as usize).div_ceil(8).max(1)];
+        // SAFETY: `buf` holds at least `len` bytes, the size the previous call reported.
+        let ok = unsafe {
+            GetTokenInformation(token, TokenUser, buf.as_mut_ptr().cast(), len, &mut len)
+        };
+        let err = std::io::Error::last_os_error();
+        // SAFETY: `token` was opened above and is not used after this.
+        unsafe { CloseHandle(token) };
+        if ok == 0 {
+            return Err(err.to_string());
+        }
+        Ok(buf)
+    }
+
+    pub(super) fn apply(path: &Path) -> Result<(), String> {
+        let user = token_user()?;
+        // SAFETY: `user` was filled by GetTokenInformation(TokenUser) and is
+        // 8-byte aligned, so it starts with a TOKEN_USER whose SID points into
+        // the same buffer, which outlives every use of `sid` below.
+        let sid = unsafe { (*(user.as_ptr() as *const TOKEN_USER)).User.Sid };
+        let access = EXPLICIT_ACCESS_W {
+            grfAccessPermissions: FULL_CONTROL,
+            grfAccessMode: SET_ACCESS,
+            grfInheritance: NO_INHERITANCE,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: std::ptr::null_mut(),
+                MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_USER,
+                ptstrName: sid.cast(),
+            },
+        };
+        let mut acl: *mut ACL = std::ptr::null_mut();
+        // SAFETY: one valid EXPLICIT_ACCESS_W, no old ACL; the new ACL is freed with LocalFree below.
+        let status = unsafe { SetEntriesInAclW(1, &access, std::ptr::null(), &mut acl) };
+        if status != ERROR_SUCCESS {
+            return Err(std::io::Error::from_raw_os_error(status as i32).to_string());
+        }
+        let mut name: Vec<u16> = OsStr::new(path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; `acl` is the valid ACL built above.
+        let status = unsafe {
+            SetNamedSecurityInfoW(
+                name.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                acl,
+                std::ptr::null_mut(),
+            )
+        };
+        // SAFETY: `acl` came from SetEntriesInAclW and is not used after this.
+        unsafe { LocalFree(acl.cast()) };
+        if status != ERROR_SUCCESS {
+            return Err(std::io::Error::from_raw_os_error(status as i32).to_string());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn restrict_permissions(_path: &PathBuf) {}
 
 fn secrets_index_path() -> PathBuf {
@@ -1405,6 +1512,26 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn fallback_file_is_owner_only() {
+        let _tmp = TempDataFolder::new();
+        file_store("openai", &["sk-x".to_string()]).unwrap();
+        let out = std::process::Command::new("icacls")
+            .arg(secrets_file_path())
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        let user = std::env::var("USERNAME").unwrap().to_lowercase();
+        let aces: Vec<&str> = text
+            .lines()
+            .filter(|l| l.contains(":("))
+            .collect();
+        assert_eq!(aces.len(), 1, "{text}");
+        assert!(aces[0].to_lowercase().contains(&user), "{text}");
+        assert!(!aces[0].contains("(I)"), "{text}");
     }
 
     #[test]

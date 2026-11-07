@@ -379,6 +379,9 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_UI_WindowsAndMessaging",
   # Hold off system sleep during a run (core::keep_awake).
   "Win32_System_Power",
+  # Owner-only ACL on the provider secrets files (core::server::provider_secrets).
+  "Win32_Security",
+  "Win32_Security_Authorization",
 ] }
 
 # MLX runs only on Apple Silicon, so the plugin is built solely for macOS.

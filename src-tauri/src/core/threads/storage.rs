@@ -48,6 +48,91 @@ pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String>
     Ok(thread)
 }
 
+/// How old a crash leftover must be before it is swept: far longer than any
+/// write takes, so a write in flight in another process is never touched.
+const LEFTOVER_MIN_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// A staging file of `write_file_atomically` for one of the thread files:
+/// `thread.json.<pid>-<n>.tmp` or `messages.jsonl.<pid>-<n>.tmp`.
+fn is_staging_name(name: &str) -> bool {
+    let Some(rest) = name
+        .strip_prefix("thread.json.")
+        .or_else(|| name.strip_prefix("messages.jsonl."))
+    else {
+        return false;
+    };
+    let Some(stem) = rest.strip_suffix(".tmp") else {
+        return false;
+    };
+    let Some((pid, n)) = stem.split_once('-') else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    digits(pid) && digits(n)
+}
+
+fn older_than(meta: &fs::Metadata, age: std::time::Duration) -> bool {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|elapsed| elapsed >= age)
+}
+
+/// Remove what a crash can leave in the threads folder: staging files of an
+/// interrupted atomic write, and a thread folder created but never given its
+/// `thread.json`. Conservative on purpose: only names this code writes, only
+/// when older than `min_age`, and a folder only when it is empty afterwards
+/// (`remove_dir` refuses anything else).
+pub fn sweep_crash_leftovers(data_dir: &Path, min_age: std::time::Duration) {
+    let Ok(entries) = fs::read_dir(data_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let dir = entry.path();
+        let Some(id) = dir.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if validate_thread_id(id).is_err() {
+            continue;
+        }
+        if let Ok(files) = fs::read_dir(&dir) {
+            for file in files.flatten() {
+                let name = file.file_name();
+                if !name.to_str().is_some_and(is_staging_name) {
+                    continue;
+                }
+                if file.metadata().is_ok_and(|m| m.is_file() && older_than(&m, min_age)) {
+                    let _ = fs::remove_file(file.path());
+                }
+            }
+        }
+        if dir.join(super::constants::THREADS_FILE).exists() {
+            continue;
+        }
+        if fs::metadata(&dir).is_ok_and(|m| older_than(&m, min_age)) {
+            // Fails, leaving it alone, unless the folder is empty.
+            let _ = fs::remove_dir(&dir);
+        }
+    }
+}
+
+/// [`sweep_crash_leftovers`] once per data folder per process, at the first
+/// thread list after start.
+pub fn sweep_crash_leftovers_once(data_dir: &Path) {
+    static SWEPT: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+    {
+        let mut swept = SWEPT.lock().unwrap_or_else(|p| p.into_inner());
+        if swept.iter().any(|p| p == data_dir) {
+            return;
+        }
+        swept.push(data_dir.to_path_buf());
+    }
+    sweep_crash_leftovers(data_dir, LEFTOVER_MIN_AGE);
+}
+
 /// Write a thread's `thread.json` under its lock, so it cannot interleave with
 /// the assistant commands that read-modify-write the same file.
 pub async fn modify_thread_in(root: &Path, thread: Value) -> Result<(), String> {
@@ -254,6 +339,51 @@ pub async fn delete_message_in(root: &Path, thread_id: &str, message_id: &str) -
         write_messages_to_file(&messages, &get_messages_path(root, thread_id))
     })
     .await
+}
+
+#[cfg(test)]
+mod sweep_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn staging_names_are_recognised_strictly() {
+        assert!(is_staging_name("thread.json.123-4.tmp"));
+        assert!(is_staging_name("messages.jsonl.9-0.tmp"));
+        assert!(!is_staging_name("thread.json"));
+        assert!(!is_staging_name("notes.txt.1-2.tmp"));
+        assert!(!is_staging_name("thread.json.1-x.tmp"));
+        assert!(!is_staging_name("thread.json.12.tmp"));
+    }
+
+    #[test]
+    fn old_leftovers_go_and_everything_else_stays() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path();
+        let live = data.join("live");
+        let empty = data.join("empty");
+        let unknown = data.join("unknown-content");
+        for d in [&live, &empty, &unknown] {
+            fs::create_dir_all(d).unwrap();
+        }
+        fs::write(live.join("thread.json"), "{}").unwrap();
+        fs::write(live.join("thread.json.1-2.tmp"), "x").unwrap();
+        fs::write(live.join("keep.tmp"), "x").unwrap();
+        fs::write(empty.join("messages.jsonl.3-4.tmp"), "x").unwrap();
+        fs::write(unknown.join("messages.jsonl"), "x").unwrap();
+
+        // Too young: nothing is touched.
+        sweep_crash_leftovers(data, Duration::from_secs(3600));
+        assert!(live.join("thread.json.1-2.tmp").exists());
+        assert!(empty.exists());
+
+        sweep_crash_leftovers(data, Duration::ZERO);
+        assert!(!live.join("thread.json.1-2.tmp").exists());
+        assert!(live.join("thread.json").exists());
+        assert!(live.join("keep.tmp").exists());
+        assert!(!empty.exists(), "an empty orphan folder was kept");
+        assert!(unknown.join("messages.jsonl").exists(), "a folder with content was swept");
+    }
 }
 
 #[cfg(test)]

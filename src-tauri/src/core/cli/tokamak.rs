@@ -103,26 +103,57 @@ fn send_allowed(root: &str) -> Result<(), String> {
 /// Verify `api_key` against Tokamak and return the model ids it grants access
 /// to. An empty list is a valid answer (the account has no models yet), so the
 /// caller decides whether that is usable.
-async fn verify_key(api_key: &str, root: &str) -> Result<Vec<String>, String> {
-    send_allowed(root)?;
+async fn verify_key(api_key: &str, root: &str) -> Result<Vec<String>, VerifyError> {
+    send_allowed(root).map_err(VerifyError::Other)?;
     let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| VerifyError::Other(e.to_string()))?;
     let response = client
         .get(format!("{root}/models"))
         .header("Authorization", format!("Bearer {api_key}"))
         .send()
         .await
-        .map_err(|e| format!("could not reach {root}: {e}"))?;
+        .map_err(|e| VerifyError::Other(format!("could not reach {root}: {e}")))?;
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(describe_failure(status.as_u16(), &body));
+        let message = describe_failure(status.as_u16(), &body);
+        return Err(match status.as_u16() {
+            401 | 403 => VerifyError::Rejected(message),
+            _ => VerifyError::Other(message),
+        });
     }
-    let parsed: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Tokamak returned a response we could not read: {e}"))?;
+    let parsed: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        VerifyError::Other(format!("Tokamak returned a response we could not read: {e}"))
+    })?;
     Ok(parse_models(&parsed))
+}
+
+/// Why [`verify_key`] failed. Only `Rejected` (HTTP 401/403) says anything
+/// about the key itself; a network error, a 429, a 5xx or an unreadable body
+/// is `Other`. Both carry the message shown to the user.
+#[derive(Debug, PartialEq)]
+enum VerifyError {
+    Rejected(String),
+    Other(String),
+}
+
+impl From<VerifyError> for String {
+    fn from(e: VerifyError) -> Self {
+        match e {
+            VerifyError::Rejected(m) | VerifyError::Other(m) => m,
+        }
+    }
+}
+
+/// What a failed verification means for `live_valid`.
+fn key_validity(result: &Result<Vec<String>, VerifyError>) -> Option<bool> {
+    match result {
+        Ok(_) => Some(true),
+        Err(VerifyError::Rejected(_)) => Some(false),
+        Err(VerifyError::Other(_)) => None,
+    }
 }
 
 /// Verify the key, then persist it as the `tokamak` provider. Nothing is written
@@ -420,14 +451,9 @@ pub async fn live_valid() -> Option<bool> {
     if key.is_empty() {
         return Some(false);
     }
-    match verify_key(&key, &stored_base_url()).await {
-        // A 401/403 is an invalid key; a network blip should not read as one.
-        // Only a rejection says the key is bad; a 429, a 5xx or a body we
-        // cannot read says nothing about it.
-        Ok(_) => Some(true),
-        Err(e) if e == describe_failure(401, "") => Some(false),
-        Err(_) => None,
-    }
+    // A 401/403 is an invalid key; a network blip, a 429, a 5xx or a body we
+    // cannot read says nothing about it.
+    key_validity(&verify_key(&key, &stored_base_url()).await)
 }
 
 /// Human-readable reason a verification request was rejected.
@@ -540,6 +566,9 @@ mod tests {
 
     #[test]
     fn failure_messages_name_the_actual_problem() {
+        assert_eq!(key_validity(&Ok(vec![])), Some(true));
+        assert_eq!(key_validity(&Err(VerifyError::Rejected("x".into()))), Some(false));
+        assert_eq!(key_validity(&Err(VerifyError::Other("x".into()))), None);
         assert!(describe_failure(401, r#"{"error":"unauthorized"}"#).contains("rejected"));
         assert!(describe_failure(403, "").contains("rejected"));
         assert!(describe_failure(429, "").contains("rate limiting"));
