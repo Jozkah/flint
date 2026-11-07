@@ -1,5 +1,5 @@
 //! Session-scoped JSON-RPC over LF-delimited stdio. Stdout contains only protocol records.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
@@ -296,26 +296,60 @@ fn start_turn(
 /// `session/model/set` would rename something the client is still holding.
 /// `session/fork` names its new session itself, after this returns.
 async fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession, String> {
-    let project = source
-        .agent
-        .args
-        .project_root
-        .as_deref()
-        .ok_or_else(|| "session has no project root".to_owned())?;
+    rebuild_from(RebuildSource::of(source), model)
+}
+
+/// What `rebuild_agent` reads from a session, owned so a rebuild can run off
+/// the dispatch loop.
+struct RebuildSource {
+    project_root: Option<std::path::PathBuf>,
+    id: String,
+    model: String,
+    host_tools: HostToolSet,
+    host_owns_gate: bool,
+    mcp_servers: crate::core::state::SharedMcpServers,
+    args_mcp_servers: crate::core::state::SharedMcpServers,
+}
+
+impl RebuildSource {
+    fn of(source: &Session) -> Self {
+        RebuildSource {
+            project_root: source.agent.args.project_root.clone(),
+            id: source.id.clone(),
+            model: source.agent.model.clone(),
+            host_tools: source.agent.args.host_tools.clone(),
+            host_owns_gate: source.agent.args.host_owns_gate,
+            mcp_servers: source.agent.mcp_servers.clone(),
+            args_mcp_servers: source.agent.args.mcp_servers.clone(),
+        }
+    }
+}
+
+/// A `session/model/set` that finished resolving off the dispatch loop. The
+/// session stays busy until the loop installs this.
+struct ModelSwitched {
+    id: Value,
+    has_id: bool,
+    session_id: String,
+    outcome: Result<AgentSession, String>,
+}
+
+fn rebuild_from(source: RebuildSource, model: Option<String>) -> Result<AgentSession, String> {
+    let project = source.project_root.as_deref().ok_or_else(|| "session has no project root".to_owned())?;
     let mut agent = prepare_agent_session(
         &project.to_string_lossy(),
-        Some(model.unwrap_or_else(|| source.agent.model.clone())),
+        Some(model.unwrap_or(source.model)),
         ProviderOverrides::default(),
         // The source's MCP servers are already connected: reuse them instead
         // of spawning a second copy of every stdio server.
         SessionFlags { require_model: true, skip_mcp: true, ..Default::default() },
         None,
     )?;
-    agent.args.session_id = Some(source.id.clone());
-    agent.args.host_tools = source.agent.args.host_tools.clone();
-    agent.args.host_owns_gate = source.agent.args.host_owns_gate;
-    agent.mcp_servers = source.agent.mcp_servers.clone();
-    agent.args.mcp_servers = source.agent.args.mcp_servers.clone();
+    agent.args.session_id = Some(source.id);
+    agent.args.host_tools = source.host_tools;
+    agent.args.host_owns_gate = source.host_owns_gate;
+    agent.mcp_servers = source.mcp_servers;
+    agent.args.mcp_servers = source.args_mcp_servers;
     Ok(agent)
 }
 
@@ -516,7 +550,10 @@ pub async fn serve() -> Result<(), String> {
 /// The dispatch loop, until `input` closes. Every record goes out on `out`.
 async fn serve_loop(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sender<Value>, hooks: Arc<Hooks>) -> Result<(), String> {
     let (started_tx, mut started_rx) = mpsc::unbounded_channel::<Started>();
+    let (model_set_tx, mut model_set_rx) = mpsc::unbounded_channel::<ModelSwitched>();
     let mut server = RpcServer {
+        model_set_tx,
+        switching: HashSet::new(),
         out: Arc::new(out),
         hooks,
         started_tx,
@@ -529,6 +566,11 @@ async fn serve_loop(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sende
         tokio::select! {
             Some(done) = started_rx.recv() => {
                 if let Some(reply) = finish_start(&mut server.sessions, done) {
+                    send_reply(&server.out, reply).await?;
+                }
+            }
+            Some(done) = model_set_rx.recv() => {
+                if let Some(reply) = server.finish_model_set(done) {
                     send_reply(&server.out, reply).await?;
                 }
             }
@@ -569,6 +611,9 @@ struct RpcServer {
     sessions: HashMap<String, Session>,
     /// The running turn of each busy session, keyed by session id.
     active: HashMap<String, ActiveTurn>,
+    model_set_tx: mpsc::UnboundedSender<ModelSwitched>,
+    /// Sessions whose `session/model/set` is still resolving off the loop.
+    switching: HashSet<String>,
 }
 
 /// What a method asks the loop to send: a reply, or nothing (a notification,
@@ -577,7 +622,7 @@ type Reply = Option<Value>;
 
 impl RpcServer {
     fn busy(&self, session_id: &str) -> bool {
-        self.active.contains_key(session_id)
+        self.active.contains_key(session_id) || self.switching.contains(session_id)
     }
 
     async fn handle_line(&mut self, line: &[u8], too_long: bool) -> Result<(), String> {
@@ -648,7 +693,7 @@ impl RpcServer {
             "session/start" => self.session_start(id, has_id, params),
             "session/tools/get" => Some(self.tools_get(id, params).await),
             "session/tools/set" => Some(self.tools_set(id, params).await),
-            "session/model/set" => Some(self.model_set(id, params).await),
+            "session/model/set" => self.model_set(id, has_id, params),
             "session/reset" => Some(self.reset(id, params).await),
             "tool/respond" => Some(self.tool_respond(id, params).await),
             "session/list" => Some(self.list(id, params)),
@@ -714,12 +759,12 @@ impl RpcServer {
         }
     }
 
-    async fn model_set(&mut self, id: &Value, params: &Value) -> Value {
+    fn model_set(&mut self, id: &Value, has_id: bool, params: &Value) -> Reply {
         match serde_json::from_value::<SessionModelSetParams>(params.clone()) {
-            Err(_) => error(id, -32602, "session/model/set requires sessionId and model"),
-            Ok(set) if !self.sessions.contains_key(&set.session_id) => error(id, -32602, UNKNOWN_SESSION),
-            Ok(set) if self.busy(&set.session_id) => turn_active(id),
-            Ok(set) if set.model.trim().is_empty() => error(id, -32602, "model must not be empty"),
+            Err(_) => Some(error(id, -32602, "session/model/set requires sessionId and model")),
+            Ok(set) if !self.sessions.contains_key(&set.session_id) => Some(error(id, -32602, UNKNOWN_SESSION)),
+            Ok(set) if self.busy(&set.session_id) => Some(turn_active(id)),
+            Ok(set) if set.model.trim().is_empty() => Some(error(id, -32602, "model must not be empty")),
             Ok(set) => {
                 // Refuse a model no configured provider serves. The turn would
                 // fail closed on it too -- nothing goes out on the session's
@@ -727,26 +772,45 @@ impl RpcServer {
                 // told, and the session must not be left pinned to a model that
                 // cannot serve it, which the next turn would report as a failure
                 // of the client's own input.
-                let provider_configs = self.sessions.get(&set.session_id).expect("checked").agent.args.provider_configs.clone();
-                match crate::core::agent::upstream::resolve_upstream_for_model(&set.model, provider_configs).await {
-                    Err(message) => error(id, -32602, &message),
-                    Ok(_) => {
-                        let session = self.sessions.get_mut(&set.session_id).expect("checked");
-                        match rebuild_agent(session, Some(set.model)).await {
-                            Ok(agent) => {
-                                // The same registry: nothing is pending between
-                                // turns, and keeping it keeps one per session.
-                                let registry = Arc::clone(&session.agent.args.host_tool_requests);
-                                session.agent = agent;
-                                session.agent.args.host_tool_requests = registry;
-                                response(id, json!({"model":session.agent.model}))
-                            }
-                            Err(message) => error(id, -32602, &message),
-                        }
-                    }
-                }
+                // Resolved and rebuilt in its own task: provider resolution can
+                // go out to the network, and the loop must keep serving other
+                // sessions meanwhile. The session counts as busy until the loop
+                // takes the result, so nothing else can touch it in between.
+                let session = self.sessions.get(&set.session_id).expect("checked");
+                let source = RebuildSource::of(session);
+                let provider_configs = session.agent.args.provider_configs.clone();
+                self.switching.insert(set.session_id.clone());
+                let tx = self.model_set_tx.clone();
+                let reply_id = id.clone();
+                tokio::spawn(async move {
+                    let outcome = match crate::core::agent::upstream::resolve_upstream_for_model(&set.model, provider_configs).await {
+                        Err(message) => Err(message),
+                        Ok(_) => rebuild_from(source, Some(set.model)),
+                    };
+                    let _ = tx.send(ModelSwitched { id: reply_id, has_id, session_id: set.session_id, outcome });
+                });
+                None
             }
         }
+    }
+
+    /// Install a finished `session/model/set` and make its reply.
+    fn finish_model_set(&mut self, done: ModelSwitched) -> Reply {
+        let ModelSwitched { id, has_id, session_id, outcome } = done;
+        self.switching.remove(&session_id);
+        let reply = match (outcome, self.sessions.get_mut(&session_id)) {
+            (Err(message), _) => error(&id, -32602, &message),
+            (Ok(_), None) => error(&id, -32602, UNKNOWN_SESSION),
+            (Ok(agent), Some(session)) => {
+                // The same registry: nothing is pending between
+                // turns, and keeping it keeps one per session.
+                let registry = Arc::clone(&session.agent.args.host_tool_requests);
+                session.agent = agent;
+                session.agent.args.host_tool_requests = registry;
+                response(&id, json!({"model":session.agent.model}))
+            }
+        };
+        has_id.then_some(reply)
     }
 
     async fn reset(&mut self, id: &Value, params: &Value) -> Value {
@@ -1149,6 +1213,47 @@ mod tests {
             assert_eq!(rpc.call("nope/nope", json!({})).await["error"]["code"], -32601);
             rpc.stop().await;
         });
+    }
+
+    #[test]
+    fn a_refused_model_switch_replies_off_the_loop_and_frees_the_session() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let sid = rpc.session().await;
+            let refused = rpc.call("session/model/set", json!({"sessionId":sid,"model":"no-such-model"})).await;
+            assert_eq!(refused["error"]["code"], -32602, "{refused}");
+            // The switch settled: the session is not left busy.
+            let again = rpc.call("session/model/set", json!({"sessionId":sid,"model":"no-such-model"})).await;
+            assert_eq!(again["error"]["code"], -32602, "{again}");
+            assert_ne!(again["error"]["message"], turn_active(&json!(1))["error"]["message"]);
+            let reset = rpc.call("session/reset", json!({"sessionId":sid})).await;
+            assert!(reset.get("result").is_some(), "{reset}");
+            rpc.stop().await;
+        });
+    }
+
+    #[tokio::test]
+    async fn a_switching_session_is_busy() {
+        let (out, _rx) = mpsc::channel(1);
+        let (started_tx, _s) = mpsc::unbounded_channel();
+        let (model_set_tx, _m) = mpsc::unbounded_channel();
+        let mut server = RpcServer {
+            out: Arc::new(out),
+            hooks: Arc::new(Hooks::real()),
+            started_tx,
+            initialized: true,
+            negotiated: true,
+            sessions: HashMap::new(),
+            active: HashMap::new(),
+            model_set_tx,
+            switching: HashSet::new(),
+        };
+        server.switching.insert("s".into());
+        assert!(server.busy("s"));
+        let reply = server.finish_model_set(ModelSwitched { id: json!(3), has_id: true, session_id: "s".into(), outcome: Err("nope".into()) }).unwrap();
+        assert_eq!(reply["error"]["message"], "nope");
+        assert!(!server.busy("s"));
     }
 
     #[test]

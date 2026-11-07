@@ -1593,6 +1593,10 @@ pub(super) struct App {
     pub(super) display_log: Vec<DisplayEntry>,
     /// Background journal writer, created on the first dump and joined on exit.
     pub(super) journal_writer: Option<journal::Writer>,
+    /// When the display journal was last handed to the writer. Mid-turn saves
+    /// dump it at most once per `MID_TURN_JOURNAL_INTERVAL`, so a fast model
+    /// does not deep-copy the whole transcript on the render loop every step.
+    pub(super) journal_dumped_at: Option<std::time::Instant>,
     /// Background thread saver for mid-turn `MessagesUpdated` snapshots, so a
     /// model step does not stall the render loop on a full-history rewrite
     /// and fsync (#63). Flushed before every synchronous save and on exit.
@@ -2175,6 +2179,7 @@ impl App {
             transcript: Vec::new(),
             display_log: Vec::new(),
             journal_writer: None,
+            journal_dumped_at: None,
             thread_saver: None,
             assistant_buf: String::new(),
             think_scan: Default::default(),
@@ -4535,7 +4540,11 @@ impl App {
             self.detail = format!("save failed: {err}");
         }
         saver.save(job);
-        self.dump_display_log();
+        // The journal is display-only and every turn boundary (`persist`)
+        // dumps it in full; mid-turn it only has to stay roughly current.
+        if self.journal_dumped_at.is_none_or(|at| at.elapsed() >= MID_TURN_JOURNAL_INTERVAL) {
+            self.dump_display_log();
+        }
     }
 
     /// Wait for queued background thread saves to reach disk, surfacing the
@@ -4556,6 +4565,7 @@ impl App {
             return;
         };
         let path = journal::journal_path(&self.agent_dir, &id);
+        self.journal_dumped_at = Some(std::time::Instant::now());
         self.journal_writer
             .get_or_insert_with(journal::Writer::new)
             .dump(path, self.display_log.clone());
@@ -4726,3 +4736,6 @@ impl App {
         self.note(&format!("reasoning effort: {}", self.reasoning_effort));
     }
 }
+
+/// The longest a mid-turn save waits before re-dumping the display journal.
+const MID_TURN_JOURNAL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);

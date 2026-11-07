@@ -207,20 +207,87 @@ fn json_created(value: &impl serde::Serialize) -> Resp {
     response
 }
 
+/// The most request-body bytes all connections together may hold in memory
+/// at once. Each body is buffered whole, and one client could otherwise open
+/// many connections each sending a 64 MB JSON body or a 100 MB upload.
+const BODY_BUDGET_BYTES: usize = 256 * 1024 * 1024;
+
+/// Bodies this small skip the budget: sign-in and ordinary JSON must not
+/// queue behind someone's uploads.
+const UNBUDGETED_BODY_BYTES: usize = 64 * 1024;
+
+fn body_budget() -> &'static Arc<tokio::sync::Semaphore> {
+    static BUDGET: std::sync::OnceLock<Arc<tokio::sync::Semaphore>> = std::sync::OnceLock::new();
+    BUDGET.get_or_init(|| Arc::new(tokio::sync::Semaphore::new(BODY_BUDGET_BYTES)))
+}
+
+/// A collected body and its share of the global body budget, released when
+/// this is dropped -- after the caller is done with the bytes, not when
+/// collection ends.
+#[derive(Debug)]
+pub(super) struct BudgetedBody {
+    bytes: Bytes,
+    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+}
+
+impl std::ops::Deref for BudgetedBody {
+    type Target = Bytes;
+    fn deref(&self) -> &Bytes {
+        &self.bytes
+    }
+}
+
+/// The bytes a body may hold: its declared length when it has one (hyper
+/// refuses a body that runs past it), else the route's cap.
+fn body_reservation<B: hyper::body::Body>(body: &B, max: usize) -> usize {
+    body.size_hint().upper().and_then(|n| usize::try_from(n).ok()).unwrap_or(max).min(max)
+}
+
+/// Wait for `bytes` of the global body budget, up to `deadline`.
+async fn reserve_body_budget(
+    budget: &Arc<tokio::sync::Semaphore>,
+    bytes: usize,
+    deadline: std::time::Duration,
+) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, StatusCode> {
+    if bytes <= UNBUDGETED_BODY_BYTES {
+        return Ok(None);
+    }
+    let permits = u32::try_from(bytes).map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
+    match tokio::time::timeout(deadline, Arc::clone(budget).acquire_many_owned(permits)).await {
+        Ok(Ok(permit)) => Ok(Some(permit)),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
 /// The whole body, or the status to refuse with: 413 over `max` bytes, 408 when
 /// the client has not finished sending within `deadline` (a trickling client
-/// would otherwise hold the connection and its buffer open).
+/// would otherwise hold the connection and its buffer open), 503 when the
+/// global body budget stays full for that long.
 async fn collect_limited<B>(
     body: B,
     max: usize,
     deadline: std::time::Duration,
-) -> Result<Bytes, StatusCode>
+) -> Result<BudgetedBody, StatusCode>
 where
     B: hyper::body::Body<Data = Bytes>,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    collect_budgeted(body, max, deadline, body_budget()).await
+}
+
+async fn collect_budgeted<B>(
+    body: B,
+    max: usize,
+    deadline: std::time::Duration,
+    budget: &Arc<tokio::sync::Semaphore>,
+) -> Result<BudgetedBody, StatusCode>
+where
+    B: hyper::body::Body<Data = Bytes>,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    let permit = reserve_body_budget(budget, body_reservation(&body, max), deadline).await?;
     match tokio::time::timeout(deadline, Limited::new(body, max).collect()).await {
-        Ok(Ok(collected)) => Ok(collected.to_bytes()),
+        Ok(Ok(collected)) => Ok(BudgetedBody { bytes: collected.to_bytes(), _permit: permit }),
         Ok(Err(_)) => Err(StatusCode::PAYLOAD_TOO_LARGE),
         Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
     }
@@ -978,7 +1045,7 @@ async fn upload_routes(
         let name = query_param(req.uri().query(), "name").unwrap_or_default();
         let body = match collect_limited(req.into_body(), uploads::MAX_UPLOAD_BYTES, UPLOAD_BODY_DEADLINE).await {
             Ok(body) => body,
-            Err(status) => return Ok(text(status, "File too large or too slow")),
+            Err(status) => return Ok(text(status, "File too large or too slow, or the server is busy")),
         };
         let root = state.data_folder.clone();
         return Ok(match tokio::task::spawn_blocking(move || uploads::store(&root, &name, &body)).await {
