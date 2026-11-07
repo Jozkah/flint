@@ -56,6 +56,7 @@
 //! from being trusted without a recorded decision, stops a tool name from
 //! standing in for a server identity, and stops a name from standing in for a
 //! definition. It is not a defence against the renderer itself.
+#![deny(clippy::print_stdout, clippy::print_stderr)]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -264,7 +265,7 @@ impl State {
                 // nothing about the content. Trust nothing for now, leave the
                 // file where it is, refuse to save over it, and read it again
                 // on the next look.
-                eprintln!(
+                log::warn!(
                     "mcp trust: {} could not be read, nothing is trusted until it can: {e}",
                     path.display()
                 );
@@ -287,12 +288,12 @@ impl State {
         if parsed.is_none() && text.is_some() {
             let aside = path.with_extension(format!("json.corrupt-{}", audit::now().replace(':', "-")));
             match std::fs::rename(&path, &aside) {
-                Ok(()) => eprintln!(
+                Ok(()) => log::warn!(
                     "mcp trust: {} could not be parsed; kept as {} and starting with nothing trusted",
                     path.display(),
                     aside.display()
                 ),
-                Err(e) => eprintln!("mcp trust: {} could not be parsed or kept aside: {e}", path.display()),
+                Err(e) => log::warn!("mcp trust: {} could not be parsed or kept aside: {e}", path.display()),
             }
         }
         self.loaded_stamp = stamp_of(&path);
@@ -331,7 +332,7 @@ impl State {
             );
         }
         if let Err(e) = self.save(data_folder) {
-            eprintln!("mcp trust: could not persist the schema 2 migration: {e}");
+            log::warn!("mcp trust: could not persist the schema 2 migration: {e}");
         }
     }
 
@@ -600,7 +601,7 @@ pub fn permits(
                 fingerprint: Some(grant.fingerprint.clone()),
             });
             if let Err(e) = state.save(data_folder) {
-                eprintln!("mcp trust: could not persist an invalidated grant: {e}");
+                log::warn!("mcp trust: could not persist an invalidated grant: {e}");
             }
             record(
                 data_folder,

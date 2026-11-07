@@ -322,6 +322,72 @@ async fn read_json<T: for<'de> Deserialize<'de>>(body: Incoming, limit: usize) -
     parse_json(&read_bytes(body, limit).await?)
 }
 
+/// Whether a body prefix names `voice.transcribe` as its method. A cheap gate
+/// so only that call keeps reading past [`MAX_RPC_BODY`]; [`body_fits`] still
+/// checks the whole body once it is in.
+fn names_voice_method(prefix: &[u8]) -> bool {
+    let key = br#""method""#;
+    let want = format!("\"{VOICE_METHOD}\"");
+    let mut at = 0;
+    while let Some(i) = prefix[at..].windows(key.len()).position(|w| w == key) {
+        let rest = &prefix[at + i + key.len()..];
+        let rest = rest.trim_ascii_start();
+        if let Some(rest) = rest.strip_prefix(b":") {
+            if rest.trim_ascii_start().starts_with(want.as_bytes()) {
+                return true;
+            }
+        }
+        at += i + key.len();
+    }
+    false
+}
+
+/// An RPC body: up to [`MAX_RPC_BODY`] for every method, and up to
+/// [`MAX_VOICE_BODY`] only once the prefix read so far names
+/// `voice.transcribe`, so other calls are refused before megabytes arrive.
+#[allow(clippy::result_large_err)]
+async fn read_rpc_bytes<B>(body: B) -> Result<Bytes, Resp>
+where
+    B: hyper::body::Body<Data = Bytes> + Unpin,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    let read = async move {
+        let mut body = Limited::new(body, MAX_VOICE_BODY);
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(frame) = body.frame().await {
+            let frame = match frame {
+                Ok(f) => f,
+                Err(e) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => {
+                    return Err(too_large());
+                }
+                Err(_) => {
+                    return Err(error(
+                        StatusCode::BAD_REQUEST,
+                        "bad_request",
+                        "The request body could not be read",
+                    ))
+                }
+            };
+            if let Ok(data) = frame.into_data() {
+                let was_small = buf.len() <= MAX_RPC_BODY;
+                buf.extend_from_slice(&data);
+                if was_small && buf.len() > MAX_RPC_BODY && !names_voice_method(&buf) {
+                    return Err(too_large());
+                }
+            }
+        }
+        Ok(Bytes::from(buf))
+    };
+    match tokio::time::timeout(BODY_DEADLINE, read).await {
+        Ok(r) => r,
+        Err(_) => Err(error(
+            StatusCode::REQUEST_TIMEOUT,
+            "request_timeout",
+            "The request body took too long to arrive",
+        )),
+    }
+}
+
 /// Only `voice.transcribe` may use the larger cap; every other call keeps
 /// the usual one.
 fn body_fits(bytes: &[u8]) -> bool {
@@ -526,7 +592,7 @@ async fn route(
 }
 
 async fn rpc(hub: &Arc<RemoteHub>, device: &Device, body: Incoming) -> Resp {
-    let bytes = match read_bytes(body, MAX_VOICE_BODY).await {
+    let bytes = match read_rpc_bytes(body).await {
         Ok(b) => b,
         Err(r) => return r,
     };
@@ -1262,6 +1328,20 @@ mod body_cap_tests {
         assert!(body_fits(voice.as_bytes()));
         assert!(!body_fits(other.as_bytes()));
         assert!(body_fits(br#"{"id":"1","method":"chat.send","params":{}}"#));
+    }
+
+    #[tokio::test]
+    async fn non_voice_rpc_is_refused_once_past_the_usual_cap() {
+        let pad = "a".repeat(MAX_RPC_BODY);
+        let voice = format!(r#"{{"id":"1", "method" : "voice.transcribe","params":{{"audio":"{pad}"}}}}"#);
+        let other = format!(r#"{{"id":"1","method":"chat.send","params":{{"text":"{pad}"}}}}"#);
+        let small = r#"{"id":"1","method":"chat.send","params":{}}"#;
+        assert!(read_rpc_bytes(Full::new(Bytes::from(voice))).await.is_ok());
+        let refused = read_rpc_bytes(Full::new(Bytes::from(other))).await.unwrap_err();
+        assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(read_rpc_bytes(Full::new(Bytes::from(small))).await.is_ok());
+        let huge = format!(r#"{{"method":"voice.transcribe","params":{{"audio":"{}"}}}}"#, "a".repeat(MAX_VOICE_BODY));
+        assert!(read_rpc_bytes(Full::new(Bytes::from(huge))).await.is_err());
     }
 }
 

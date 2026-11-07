@@ -183,6 +183,7 @@ pub fn cli_read_messages_lenient(
 ) -> Result<(Vec<serde_json::Value>, usize), String> {
     use std::io::BufRead;
 
+    crate::core::threads::utils::validate_thread_id(thread_id)?;
     let path = get_messages_path(base, thread_id);
     if !path.exists() {
         return Ok((Vec::new(), 0));

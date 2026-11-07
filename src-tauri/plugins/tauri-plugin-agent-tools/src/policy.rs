@@ -9,6 +9,7 @@
 //!
 //! Read here rather than passed in from the renderer on purpose. A policy that
 //! arrives as an argument is a policy the caller can choose not to send.
+#![deny(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::Path;
 
@@ -96,7 +97,7 @@ pub fn agent_toml_path(project_root: &Path) -> std::path::PathBuf {
 pub fn load(project_root: Option<&Path>, network_default: Option<bool>) -> ProjectPolicy {
     let (org, org_error) = crate::org_policy::load();
     if let Some(error) = &org_error {
-        eprintln!("machine policy: {}", error.message);
+        log::warn!("machine policy: {}", error.message);
     }
     load_under(project_root, network_default, &org.unwrap_or_default())
 }
@@ -122,7 +123,7 @@ fn closed_policy(
     org: &crate::org_policy::OrgPolicy,
     why: &str,
 ) -> ProjectPolicy {
-    eprintln!("agent.toml: could not read the tool policy, running read-only: {why}");
+    log::warn!("agent.toml: could not read the tool policy, running read-only: {why}");
     ProjectPolicy {
         permissions: ToolPermissions::new(
             org.clamp_default(PermissionDefault::ReadOnly),
@@ -202,7 +203,7 @@ pub fn load_under_trust(
     // dropped `deny` is a restriction that silently vanished, so say so here
     // as well as wherever the warnings are shown.
     for w in permissions.warnings() {
-        eprintln!(
+        log::warn!(
             "agent.toml: [tools].{} rule `{}` {}: {}",
             w.list,
             w.rule,

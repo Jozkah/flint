@@ -98,3 +98,19 @@ async fn find_output_is_capped() {
     assert!(out.contains("[truncated: 64KB limit]"));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `find` skips Git's own database like `grep` does, so `**/*` does not spend
+/// its limit on object files.
+#[tokio::test]
+async fn find_skips_the_git_directory() {
+    let root = std::env::temp_dir().join(format!("jan_find_git_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join(".git/objects")).unwrap();
+    std::fs::write(root.join(".git/objects/deadbeef"), b"").unwrap();
+    std::fs::write(root.join("src.txt"), b"").unwrap();
+    let out = find(&serde_json::json!({"pattern": "**/*"}), &root, None, false, &[], &[]).await;
+    assert!(out.contains("src.txt"), "{out}");
+    assert!(!out.contains("deadbeef"), "{out}");
+    assert!(!out.contains("stopped early"), "{out}");
+    let _ = std::fs::remove_dir_all(&root);
+}

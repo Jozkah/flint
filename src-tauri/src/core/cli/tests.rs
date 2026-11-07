@@ -938,6 +938,14 @@ fn read_messages_lenient_on_missing_thread_is_empty() {
 }
 
 #[test]
+fn read_messages_lenient_rejects_path_like_ids() {
+    let dir = tempfile::tempdir().unwrap();
+    for bad in ["", "..", "../x", "a/b", "C:foo"] {
+        assert!(cli_read_messages_lenient(dir.path(), bad).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
 fn saved_thread_file_has_no_raw_secrets_but_keeps_prose() {
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path();
