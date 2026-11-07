@@ -62,6 +62,26 @@ describe('coworkLiveReply', () => {
       ['c3', 'awaiting', 'appr'],
     ])
   })
+
+  it('gives the same text across streamed deltas, new turns and edits to earlier turns', () => {
+    const a = { role: 'assistant', content: 'One.' } as CoworkTurn
+    const tool = { role: 'tool', content: '', callId: 'c1', name: 'read', status: 'done' } as CoworkTurn
+    const join = (ts: CoworkTurn[]) =>
+      ts.filter((t) => t.role === 'assistant' && t.content).map((t) => t.content).join('\n\n')
+    const steps: CoworkTurn[][] = [
+      [],
+      [a],
+      [a, tool],
+      [a, tool, { role: 'assistant', content: 'Tw' } as CoworkTurn],
+      [a, tool, { role: 'assistant', content: 'Two.' } as CoworkTurn],
+      // An earlier turn replaced while the last one is unchanged.
+      [{ role: 'assistant', content: 'Uno.' } as CoworkTurn, tool, { role: 'assistant', content: 'Two.' } as CoworkTurn],
+      [a, { role: 'assistant', content: '' } as CoworkTurn],
+    ]
+    for (const turns of steps) {
+      expect(coworkLiveReply('run-inc', turns).text).toBe(join(turns))
+    }
+  })
 })
 
 describe('diffLiveReply', () => {
