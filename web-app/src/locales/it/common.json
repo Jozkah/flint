@@ -3362,6 +3362,9 @@
     }
   },
   "imageLoadFailed": "Impossibile caricare questa immagine.",
+  "imagePreviewDescription": "Visualizzazione dell’immagine a grandezza intera.",
+  "sliderMaxValue": "Il valore massimo consentito è {{max}}",
+  "sliderMinValue": "Il valore minimo consentito è {{min}}",
   "attachedImage": "Immagine allegata {{n}}",
   "saveChanges": "Salva modifiche",
   "savingEllipsis": "Saving…",

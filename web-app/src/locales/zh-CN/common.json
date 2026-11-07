@@ -3276,6 +3276,9 @@
     }
   },
   "imageLoadFailed": "无法加载此图片。",
+  "imagePreviewDescription": "以完整尺寸查看图片。",
+  "sliderMaxValue": "允许的最大值为 {{max}}",
+  "sliderMinValue": "允许的最小值为 {{min}}",
   "attachedImage": "附加的图片 {{n}}",
   "saveChanges": "保存更改",
   "savingEllipsis": "Saving…",

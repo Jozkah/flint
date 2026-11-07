@@ -157,7 +157,14 @@ export class TauriMCPService extends DefaultMCPService {
     approvalTicket?: string
     cancellationToken?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
-    return tallied(args, window.core?.api?.callTool(args))
+    return tallied(
+      args,
+      window.core?.api?.callTool(args) ??
+        Promise.resolve({
+          error: 'MCP bridge unavailable',
+          content: [] as { text: string }[],
+        })
+    )
   }
 
   async trustedServers(): Promise<string[]> {

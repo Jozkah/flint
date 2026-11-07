@@ -3363,6 +3363,9 @@
     }
   },
   "imageLoadFailed": "No se pudo cargar esta imagen.",
+  "imagePreviewDescription": "Vista a tamaño completo de la imagen.",
+  "sliderMaxValue": "El valor máximo permitido es {{max}}",
+  "sliderMinValue": "El valor mínimo permitido es {{min}}",
   "attachedImage": "Imagen adjunta {{n}}",
   "saveChanges": "Guardar cambios",
   "savingEllipsis": "Saving…",

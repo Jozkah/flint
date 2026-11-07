@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -22,6 +23,9 @@ const ImageModal = ({ image, onClose }: ImageModalProps) => {
       <DialogContent className="max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="p-6 pb-2">
           <DialogTitle>{image?.alt || t('common:image')}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t('common:imagePreviewDescription')}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex justify-center items-center p-6 pt-2">
           {image &&

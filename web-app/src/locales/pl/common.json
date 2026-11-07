@@ -3436,6 +3436,9 @@
     }
   },
   "imageLoadFailed": "Nie udało się wczytać tego obrazu.",
+  "imagePreviewDescription": "Podgląd obrazu w pełnym rozmiarze.",
+  "sliderMaxValue": "Maksymalna dozwolona wartość to {{max}}",
+  "sliderMinValue": "Minimalna dozwolona wartość to {{min}}",
   "attachedImage": "Załączony obraz {{n}}",
   "saveChanges": "Zapisz zmiany",
   "savingEllipsis": "Saving…",

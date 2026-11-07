@@ -330,6 +330,8 @@ export const useAppState = create<AppState>()((set) => ({
       const embeddingThreads = { ...state.embeddingThreads }
       const modelLoadFailures = { ...state.modelLoadFailures }
       delete modelLoadFailures[threadId]
+      const abortControllers = { ...state.abortControllers }
+      delete abortControllers[threadId]
       delete streamingContents[threadId]
       delete loadingModels[threadId]
       delete promptProgresses[threadId]
@@ -350,6 +352,7 @@ export const useAppState = create<AppState>()((set) => ({
         busyThreads,
         embeddingThreads,
         modelLoadFailures,
+        abortControllers,
       }
     }),
 }))

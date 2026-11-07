@@ -3362,6 +3362,9 @@
     }
   },
   "imageLoadFailed": "No s'ha pogut carregar aquesta imatge.",
+  "imagePreviewDescription": "Vista a mida completa de la imatge.",
+  "sliderMaxValue": "El valor màxim permès és {{max}}",
+  "sliderMinValue": "El valor mínim permès és {{min}}",
   "attachedImage": "Imatge adjunta {{n}}",
   "saveChanges": "Desa els canvis",
   "savingEllipsis": "Saving…",

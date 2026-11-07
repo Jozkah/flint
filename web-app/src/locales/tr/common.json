@@ -3288,6 +3288,9 @@
     }
   },
   "imageLoadFailed": "Bu görsel yüklenemedi.",
+  "imagePreviewDescription": "Görselin tam boyutlu görünümü.",
+  "sliderMaxValue": "İzin verilen en yüksek değer {{max}}",
+  "sliderMinValue": "İzin verilen en düşük değer {{min}}",
   "attachedImage": "Ekli görsel {{n}}",
   "saveChanges": "Değişiklikleri kaydet",
   "savingEllipsis": "Saving…",
