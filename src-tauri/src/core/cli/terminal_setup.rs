@@ -289,6 +289,56 @@ fn preferred_vscode_path(candidates: &[PathBuf]) -> PathBuf {
         .unwrap_or_default()
 }
 
+/// The VS Code-family editor whose integrated terminal this is, from the
+/// environment it hands its shell. Every fork sets `TERM_PROGRAM=vscode`, so
+/// the flavour comes from the editor's own executable path (the git askpass
+/// helper) or a fork-only variable. `None` when it cannot be told.
+fn running_vscode_flavour(get: &impl Fn(&str) -> Option<String>) -> Option<&'static str> {
+    if get("CURSOR_TRACE_ID").is_some_and(|v| !v.is_empty()) {
+        return Some("Cursor");
+    }
+    let exe = get("VSCODE_GIT_ASKPASS_NODE")?.to_ascii_lowercase();
+    if exe.contains("cursor") {
+        Some("Cursor")
+    } else if exe.contains("codium") {
+        Some("VSCodium")
+    } else if exe.contains("windsurf") {
+        Some("Windsurf")
+    } else if exe.contains("insiders") {
+        Some("Code - Insiders")
+    } else if exe.contains("code") {
+        Some("Code")
+    } else {
+        None
+    }
+}
+
+/// `preferred_vscode_path`, but the editor this terminal runs in wins when its
+/// `User` directory exists: a Cursor user who also has VS Code installed must
+/// not get the binding written to VS Code's file.
+fn preferred_vscode_path_for(
+    candidates: &[PathBuf],
+    get: &impl Fn(&str) -> Option<String>,
+) -> PathBuf {
+    if let Some(flavour) = running_vscode_flavour(get) {
+        let own: Vec<PathBuf> = candidates
+            .iter()
+            .filter(|p| {
+                // `<root>/<flavour>/User/keybindings.json`
+                p.parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::file_name)
+                    .is_some_and(|n| n == flavour)
+            })
+            .cloned()
+            .collect();
+        if own.iter().any(|p| p.parent().is_some_and(|d| d.exists())) {
+            return preferred_vscode_path(&own);
+        }
+    }
+    preferred_vscode_path(candidates)
+}
+
 /// The binding VS Code needs, as the JSON object we append.
 fn vscode_entry() -> serde_json::Value {
     serde_json::json!({
@@ -580,8 +630,12 @@ fn configure_alacritty(
     }
 }
 
-fn configure_vscode(home: &Path, appdata: Option<&Path>) -> Outcome {
-    let path = preferred_vscode_path(&vscode_keybinding_paths(home, appdata));
+fn configure_vscode(
+    home: &Path,
+    appdata: Option<&Path>,
+    get: &impl Fn(&str) -> Option<String>,
+) -> Outcome {
+    let path = preferred_vscode_path_for(&vscode_keybinding_paths(home, appdata), get);
     let current = match read_config(&path) {
         Ok(s) => s,
         Err(error) => return Outcome::Failed { path, error },
@@ -646,7 +700,7 @@ pub fn apply(home: &Path, macos: bool, get: impl Fn(&str) -> Option<String>) -> 
         ShiftEnter::Works(name) => outcomes.push(Outcome::Works(format!(
             "Shift+Enter already works -- {name} reports modifiers"
         ))),
-        ShiftEnter::VsCodeBinding => outcomes.push(configure_vscode(home, appdata.as_deref())),
+        ShiftEnter::VsCodeBinding => outcomes.push(configure_vscode(home, appdata.as_deref(), &get)),
         // One file holds both Alacritty halves, so it is written once below.
         ShiftEnter::AlacrittyBinding => alacritty_binding = true,
         ShiftEnter::Manual(name, steps) => outcomes.push(Outcome::Manual {
@@ -734,13 +788,16 @@ pub fn setup_hint(
     }
 
     if matches!(shift_enter(kind), ShiftEnter::VsCodeBinding) {
-        let path = preferred_vscode_path(&vscode_keybinding_paths(
-            home,
-            get("APPDATA")
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-                .as_deref(),
-        ));
+        let path = preferred_vscode_path_for(
+            &vscode_keybinding_paths(
+                home,
+                get("APPDATA")
+                    .filter(|v| !v.is_empty())
+                    .map(PathBuf::from)
+                    .as_deref(),
+            ),
+            &get,
+        );
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         // The file is JSONC in practice (comments, trailing commas): a parse
         // failure means "unknown", and an unknown state earns no nag.
@@ -1041,6 +1098,41 @@ mod tests {
             "{chosen:?}"
         );
         assert!(chosen.ends_with("User/keybindings.json"), "{chosen:?}");
+    }
+
+    #[test]
+    fn the_running_fork_wins_over_an_installed_vs_code() {
+        let home = tempfile::tempdir().unwrap();
+        for flavour in ["Code", "Cursor", "VSCodium"] {
+            for root in [".config", "Library/Application Support"] {
+                std::fs::create_dir_all(home.path().join(root).join(flavour).join("User")).unwrap();
+            }
+        }
+        // VS Code already has a keybindings file; the fork does not.
+        for root in [".config", "Library/Application Support"] {
+            std::fs::write(home.path().join(root).join("Code/User/keybindings.json"), "[]").unwrap();
+        }
+        let paths = vscode_keybinding_paths(home.path(), None);
+        let flavour_of = |p: &Path| {
+            p.parent().and_then(Path::parent).and_then(Path::file_name).unwrap().to_owned()
+        };
+        let env = |k: &'static str, v: &'static str| move |q: &str| (q == k).then(|| v.to_string());
+        let cursor = preferred_vscode_path_for(&paths, &env("CURSOR_TRACE_ID", "abc"));
+        assert_eq!(flavour_of(&cursor), "Cursor", "{cursor:?}");
+        let codium = preferred_vscode_path_for(
+            &paths,
+            &env("VSCODE_GIT_ASKPASS_NODE", "/usr/share/codium/codium"),
+        );
+        assert_eq!(flavour_of(&codium), "VSCodium", "{codium:?}");
+        // Unknown editor: the existing file is still the choice.
+        let unknown = preferred_vscode_path_for(&paths, &|_: &str| None);
+        assert_eq!(flavour_of(&unknown), "Code", "{unknown:?}");
+        // A detected fork that is not installed falls back the same way.
+        let windsurf = preferred_vscode_path_for(
+            &paths,
+            &env("VSCODE_GIT_ASKPASS_NODE", "C:/Program Files/Windsurf/Windsurf.exe"),
+        );
+        assert_eq!(flavour_of(&windsurf), "Code", "{windsurf:?}");
     }
 
     #[test]

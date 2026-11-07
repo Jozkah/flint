@@ -280,11 +280,11 @@ fn start_inner(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let mut child = spawn_detached(&mut cmd).map_err(|e| {
-        HarnessError::new(
-            ErrorKind::Io,
-            format!("the job supervisor could not be started: {e}"),
-        )
-        .at(Stage::Job)
+        let why = format!("the job supervisor could not be started: {e}");
+        // The record is already saved as started; with no supervisor it would
+        // stay that way forever.
+        fail_unstarted(data_folder, owner.as_str(), &id, &why);
+        HarnessError::new(ErrorKind::Io, why).at(Stage::Job)
     })?;
     // One line, then closed. Small enough to sit in the pipe buffer.
     if let Some(mut stdin) = child.stdin.take() {
@@ -482,7 +482,11 @@ fn supervise_launch(
     let claim_text = serde_json::to_string(&claim).map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the job's claim could not be encoded: {e}")).at(Stage::Job)
     })?;
-    if let Err(e) = std::fs::write(claim_path(data_folder, job.as_str()), claim_text) {
+    // Atomic: a listing that reads the claim mid-write must not see a torn
+    // file and call a healthy job foreign. Private: it holds the job's token.
+    if let Err(e) =
+        crate::atomic_file::write_atomic_private(&claim_path(data_folder, job.as_str()), claim_text.as_bytes())
+    {
         let why = format!("the job's claim could not be written: {e}");
         fail_unstarted(data_folder, owner.as_str(), job.as_str(), &why);
         return Err(HarnessError::new(ErrorKind::Io, why).at(Stage::Job));
@@ -980,6 +984,21 @@ mod tests {
         assert_eq!(after.state, JobState::Failed);
         assert!(after.note.contains("claim"), "{}", after.note);
         assert!(!output_path(&d, id).exists(), "the job must not have started");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A supervisor that cannot be started leaves a failed record, not one
+    /// that reads as started forever.
+    #[test]
+    fn a_supervisor_that_cannot_start_fails_the_record() {
+        let d = dir("nospawn");
+        let missing = d.join("no-such-supervisor-binary");
+        let err = start(&d, &missing, "s", "echo hi", ("", "", "")).unwrap_err();
+        assert!(format!("{err:?}").contains("could not be started"), "{err:?}");
+        let records = crate::job_record::read_owner(&d, "s");
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(records[0].state, JobState::Failed);
+        assert!(records[0].ended_at_ms.is_some());
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -685,6 +685,9 @@ pub struct ResourceRule {
     /// `None` matches the tool whatever it touches.
     resource: Option<Pattern>,
     source: String,
+    /// The project root a relative path pattern is anchored to when this rule
+    /// *allows*. `None` keeps the floating match (any directory boundary).
+    anchor: Option<PathBuf>,
 }
 
 impl ResourceRule {
@@ -729,7 +732,19 @@ impl ResourceRule {
                 None => None,
             },
             source: rule.to_string(),
+            anchor: None,
         })
+    }
+
+    /// Anchor this rule's relative path pattern to `root` for allowing.
+    ///
+    /// A relative rule is also tried under any directory boundary, which is
+    /// right for deny and ask (the cautious side) but over-broad for allow:
+    /// `write(src/**)` written for this project would otherwise allow
+    /// `/other/repo/src/x` too. Anchored, it allows only `<root>/src/**`.
+    pub fn anchored_to(mut self, root: &Path) -> Self {
+        self.anchor = Some(normalize(root));
+        self
     }
 
     /// The subject qualifier, for audit records and the rules UI.
@@ -779,7 +794,7 @@ impl ResourceRule {
         }
         match &self.resource {
             None => true,
-            Some(pattern) => resources.iter().any(|r| resource_matches(pattern, r)),
+            Some(pattern) => resources.iter().any(|r| resource_matches(pattern, r, None)),
         }
     }
 
@@ -829,24 +844,25 @@ impl ResourceRule {
                     let prog = program_of(r);
                     commands
                         .iter()
-                        .any(|c| program_of(c) == prog && resource_matches(pattern, c))
+                        .any(|c| program_of(c) == prog && resource_matches(pattern, c, None))
                 });
             }
-            return commands.iter().all(|r| resource_matches(pattern, r));
+            return commands.iter().all(|r| resource_matches(pattern, r, None));
         }
         // Resources of one kind (paths, hosts) each need their own match, so
         // a rule matching one path does not vouch for a second one.
+        let anchor = self.anchor.as_deref();
         let kind = |r: &Resource| std::mem::discriminant(r);
         let matched: Vec<_> = relevant
             .iter()
-            .filter(|r| resource_matches(pattern, r))
+            .filter(|r| resource_matches(pattern, r, anchor))
             .map(|r| kind(r))
             .collect();
         !matched.is_empty()
             && relevant
                 .iter()
                 .filter(|r| matched.contains(&kind(r)))
-                .all(|r| resource_matches(pattern, r))
+                .all(|r| resource_matches(pattern, r, anchor))
     }
 
     /// Whether this rule denies this call.
@@ -869,7 +885,7 @@ impl ResourceRule {
         };
         resources.iter().any(|r| match r {
             Resource::Unknown { .. } => true,
-            other => resource_matches(pattern, other),
+            other => resource_matches(pattern, other, None),
         })
     }
 
@@ -908,7 +924,7 @@ impl ResourceRule {
 /// A pattern may be written with or without its kind prefix: `path:/etc/**`
 /// and `/etc/**` both name a path, and `git:force-push` names a git operation
 /// class rather than a command spelling.
-fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
+fn resource_matches(pattern: &Pattern, resource: &Resource, anchor: Option<&Path>) -> bool {
     let raw = pattern.as_str();
     if let Some(op) = raw.strip_prefix("git:") {
         return match resource {
@@ -923,10 +939,10 @@ fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
             if resource.kind() != kind {
                 return false;
             }
-            return matches_resource_text(rest, resource);
+            return matches_resource_text(rest, resource, anchor);
         }
     }
-    matches_resource_text(raw, resource)
+    matches_resource_text(raw, resource, anchor)
 }
 
 /// Match a pattern against a resource's text, in the spellings a person writes.
@@ -941,7 +957,11 @@ fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
 /// So a relative pattern is also tried anchored at any directory boundary. The
 /// boundary is what keeps it honest: `secrets/**` covers `/proj/secrets/x` and
 /// does not cover `/proj/notsecrets/x`.
-fn matches_resource_text(pattern: &str, resource: &Resource) -> bool {
+///
+/// With an `anchor` (an allow rule that knows its project root) the relative
+/// pattern is tried under that root only, so an allow rule written for this
+/// project never vouches for the same layout in another folder.
+fn matches_resource_text(pattern: &str, resource: &Resource, anchor: Option<&Path>) -> bool {
     let text = resource.match_text();
     let is_path = matches!(resource, Resource::Path(_));
     // Windows and default macOS volumes open any casing of a path as the same
@@ -960,19 +980,38 @@ fn matches_resource_text(pattern: &str, resource: &Resource) -> bool {
     // (`C:\PROGRA~1`) or a link above it must not walk around a rule written
     // for the long name. The deepest existing ancestor is resolved; the rest
     // is kept as written.
-    if let Resource::Path(p) = resource {
-        let real = crate::shared_folder::path_key::strip_verbatim(
+    let real = match resource {
+        Resource::Path(p) => crate::shared_folder::path_key::strip_verbatim(
             &crate::shared_folder::path_key::canonical_lenient(p).to_string_lossy(),
-        );
-        if real != text && Pattern::new(pattern).is_ok_and(|pat| pat.matches_with(&real, options)) {
-            return true;
-        }
+        ),
+        _ => text.clone(),
+    };
+    if real != text && Pattern::new(pattern).is_ok_and(|pat| pat.matches_with(&real, options)) {
+        return true;
     }
     // Already absolute or already anchored: nothing further to try.
     if pattern.starts_with('/') || pattern.starts_with("**") {
         return false;
     }
-    Pattern::new(&format!("**/{pattern}")).is_ok_and(|p| p.matches_with(&text, options))
+    let Some(root) = anchor else {
+        return Pattern::new(&format!("**/{pattern}")).is_ok_and(|p| p.matches_with(&text, options));
+    };
+    // The root's own text is literal: a `[` or `*` in a folder name must not
+    // turn into a wildcard. Both spellings of the root are tried, against the
+    // matching spelling of the resource.
+    let under = |root: &str, path: &str| {
+        let root = root.trim_end_matches(['/', '\\']);
+        Pattern::new(&format!("{}/{pattern}", Pattern::escape(root)))
+            .is_ok_and(|p| p.matches_with(path, options))
+    };
+    let root_text = root.to_string_lossy();
+    if under(&root_text, &text) {
+        return true;
+    }
+    let real_root = crate::shared_folder::path_key::strip_verbatim(
+        &crate::shared_folder::path_key::canonical_lenient(root).to_string_lossy(),
+    );
+    real != text && under(&real_root, &real)
 }
 
 #[cfg(test)]
@@ -1059,6 +1098,49 @@ mod tests {
         let allow = ResourceRule::parse("browser(open*)").unwrap();
         assert!(allow.matches_allow("browser", &open, &main));
         assert!(!allow.matches_allow("browser", &eval, &main));
+    }
+
+    /// An anchored allow rule vouches only for its own project's folder; the
+    /// same layout under any other parent is not allowed. Deny keeps floating.
+    #[test]
+    fn an_anchored_relative_allow_rule_stays_in_its_project() {
+        let main = crate::subject::Subject::MainAgent;
+        let base = std::env::temp_dir().join("jan-anchor-test");
+        let root = base.join("proj [1]");
+        let other = base.join("other");
+        let allow = ResourceRule::parse("write(src/**)").unwrap().anchored_to(&root);
+        let at = |dir: &Path, rel: &str| Resource::path(&dir.join(rel).to_string_lossy(), None);
+
+        assert!(allow.matches_allow("write", &[at(&root, "src/a.rs")], &main));
+        assert!(allow.matches_allow("write", &[at(&root, "src/deep/b.rs")], &main));
+        // Negative: another project's `src`, a nested `src`, a lookalike.
+        assert!(!allow.matches_allow("write", &[at(&other, "src/a.rs")], &main));
+        assert!(!allow.matches_allow("write", &[at(&root, "vendor/src/a.rs")], &main));
+        assert!(!allow.matches_allow("write", &[at(&root, "notsrc/a.rs")], &main));
+        // `[1]` in the root is literal, not a character class.
+        let sibling = base.join("proj 1");
+        assert!(!allow.matches_allow("write", &[at(&sibling, "src/a.rs")], &main));
+        // Mixed call: one path outside the project spoils the allow.
+        assert!(!allow.matches_allow(
+            "write",
+            &[at(&root, "src/a.rs"), at(&other, "src/a.rs")],
+            &main
+        ));
+
+        // A bare file name and an absolute rule still work as written.
+        let dotenv = ResourceRule::parse("read(.env)").unwrap().anchored_to(&root);
+        assert!(dotenv.matches_allow("read", &[at(&root, ".env")], &main));
+        assert!(!dotenv.matches_allow("read", &[at(&other, ".env")], &main));
+        let abs = format!("read({}/**)", other.to_string_lossy().replace('\\', "/"));
+        let abs = ResourceRule::parse(&abs).unwrap().anchored_to(&root);
+        assert!(abs.matches_allow("read", &[at(&other, "x.txt")], &main));
+
+        // Unanchored (no project known) keeps the old floating behaviour, and
+        // deny is never anchored.
+        let floating = ResourceRule::parse("write(src/**)").unwrap();
+        assert!(floating.matches_allow("write", &[at(&other, "src/a.rs")], &main));
+        let deny = ResourceRule::parse("write(src/**)").unwrap().anchored_to(&root);
+        assert!(deny.matches_deny("write", &[at(&other, "src/a.rs")], &main));
     }
 
     #[test]
