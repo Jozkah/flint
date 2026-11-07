@@ -18,7 +18,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -267,6 +267,10 @@ function ModelDiscoverRoute() {
     ]
   )
 
+  // The pending scroll after opening a card, cleared on unmount.
+  const scrollTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(scrollTimer.current), [])
+
   const toggleExpanded = async (repo: string) => {
     const opening = !expanded[repo]
     // One card open at a time, so long variant lists never stack.
@@ -274,7 +278,8 @@ function ModelDiscoverRoute() {
     if (!opening) return
     const index = visible.findIndex((m) => m.id === repo)
     if (index >= 0) {
-      window.setTimeout(
+      window.clearTimeout(scrollTimer.current)
+      scrollTimer.current = window.setTimeout(
         () => rowVirtualizer.scrollToIndex(index, { align: 'auto' }),
         60
       )

@@ -2,6 +2,7 @@
   "activityModelSwapped": "Model swapped",
   "activitySwapDetail": "{{from}} to {{to}}",
   "activityModelLoaded": "Model loaded",
+  "activityModelUnloaded": "Model unloaded",
   "title": "Overview",
   "morning": "Good morning",
   "afternoon": "Good afternoon",

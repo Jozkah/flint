@@ -28,6 +28,7 @@ export type ActivityKind =
   | 'tool-denied'
   | 'tool-failed'
   | 'model-loaded'
+  | 'model-unloaded'
   | 'model-swapped'
   | 'compaction'
   | 'run-finished'
@@ -39,7 +40,22 @@ export type ActivityItem = {
   kind: ActivityKind
   title: string
   detail?: string
+  /** i18n keys shown instead of `title` / `detail`, so the text follows the UI language. */
+  titleKey?: string
+  detailKey?: string
+  detailVars?: Record<string, string>
   at: number
+}
+
+/** An item's title and detail in the current language. */
+export function activityText(
+  item: ActivityItem,
+  t: (key: string, vars?: Record<string, string>) => string
+): { title: string; detail?: string } {
+  return {
+    title: item.titleKey ? t(item.titleKey) : item.title,
+    detail: item.detailKey ? t(item.detailKey, item.detailVars) : item.detail,
+  }
 }
 
 type UsageStatsState = {

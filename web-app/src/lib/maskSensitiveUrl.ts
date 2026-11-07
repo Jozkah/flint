@@ -16,7 +16,18 @@ const SENSITIVE_PARAMS = [
   'private_key',
   'signature',
   'hash',
+  'x-api-key',
+  'sig',
+  'code',
+  'session',
+  'session_id',
+  'sessionid',
 ]
+
+// A path segment that looks like a token rather than a word: long, and made
+// of letters mixed with digits (or a long hex / base64 run).
+const looksLikeToken = (segment: string) =>
+  segment.length >= 20 && /\d/.test(segment) && /[a-z]/i.test(segment)
 
 /** A server URL for display, with secret query values and credentials masked. */
 export const maskSensitiveUrl = (url: string) => {
@@ -37,6 +48,11 @@ export const maskSensitiveUrl = (url: string) => {
     // Credentials embedded as user:pass@host are secrets too.
     if (urlObj.username) urlObj.username = '******'
     if (urlObj.password) urlObj.password = '******'
+
+    urlObj.pathname = urlObj.pathname
+      .split('/')
+      .map((s) => (looksLikeToken(s) ? '******' : s))
+      .join('/')
 
     urlObj.search = params.toString()
     return urlObj.toString()

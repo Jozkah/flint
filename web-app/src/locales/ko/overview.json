@@ -63,5 +63,6 @@
   "usage": "사용량",
   "activityModelSwapped": "Model swapped",
   "activitySwapDetail": "{{from}} to {{to}}",
-  "activityModelLoaded": "Model loaded"
+  "activityModelLoaded": "Model loaded",
+  "activityModelUnloaded": "모델 언로드됨"
 }

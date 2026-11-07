@@ -119,6 +119,21 @@ describe('DataFolderCard', () => {
     expect(hub.emit).toHaveBeenCalled()
   })
 
+  it('clears the copied-mark timer on unmount', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    const clear = vi.spyOn(globalThis, 'clearTimeout')
+    const { unmount } = render(
+      <DataFolderCard janDataFolder="/data" setJanDataFolder={vi.fn()} unavailableDataFolder={undefined} />
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('settings:general.copyPath'))
+    })
+    clear.mockClear()
+    unmount()
+    expect(clear).toHaveBeenCalled()
+    clear.mockRestore()
+  })
+
   it('picking the same folder does nothing', async () => {
     hub.open.mockResolvedValue('/data')
     render(<DataFolderCard janDataFolder="/data" setJanDataFolder={vi.fn()} unavailableDataFolder={undefined} />)

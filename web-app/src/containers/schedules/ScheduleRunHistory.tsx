@@ -89,9 +89,7 @@ export function ScheduleRunHistory({ taskId, version }: Props) {
               )}
             </span>
           </div>
-          {run.summary && (
-            <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">{run.summary}</p>
-          )}
+          {run.summary && <RunSummary text={run.summary} />}
           {run.error && <p className="text-muted-foreground">{run.error}</p>}
           {run.branch && (
             <p className="font-mono text-muted-foreground">
@@ -114,5 +112,29 @@ export function ScheduleRunHistory({ taskId, version }: Props) {
         </li>
       ))}
     </ul>
+  )
+}
+
+/** A run's summary, clamped to three lines with a toggle when it is longer. */
+function RunSummary({ text }: { text: string }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const long = text.length > 240 || text.split('\n').length > 3
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <p className={`${open ? '' : 'line-clamp-3 '}whitespace-pre-wrap text-muted-foreground`}>
+        {text}
+      </p>
+      {long && (
+        <button
+          type="button"
+          className="cursor-pointer text-xs font-medium text-primary hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? t('common:tasks.showLess') : t('common:tasks.showMore')}
+        </button>
+      )}
+    </div>
   )
 }

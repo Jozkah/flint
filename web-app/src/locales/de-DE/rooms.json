@@ -83,6 +83,7 @@
     "sectionModel": "Modell & Denken",
     "sectionTools": "Werkzeuge",
     "lockedWhileRunning": "Pausiere den Raum, um Einstellungen zu ändern.",
+    "unsavedInvalid": "Die Raumänderungen wurden nicht gespeichert, weil einige Felder ungültig sind.",
     "title": "Titel",
     "objective": "Ziel",
     "workingFolder": "Arbeitsordner",

@@ -78,19 +78,22 @@ export default class JanAssistantExtension extends AssistantExtension {
 
     if (currentVersion < 1) {
       logger.info('Running migration v1: Update assistant instructions')
-      await this.migrateAssistantInstructions()
+      // A failed write leaves the version alone so the next launch retries.
+      if (!(await this.migrateAssistantInstructions())) return
       if (!(await this.saveMigrationVersion(1))) return
     }
 
     if (currentVersion < 2) {
       logger.info('Running migration v2: Update to Menlo Research instructions')
-      await this.migrateToMenloInstructions()
+      // A failed write leaves the version alone so the next launch retries.
+      if (!(await this.migrateToMenloInstructions())) return
       if (!(await this.saveMigrationVersion(2))) return
     }
 
     if (currentVersion < 3) {
       logger.info('Running migration v3: Strip identity preamble from default assistant')
-      await this.migrateStripIdentityPreamble()
+      // A failed write leaves the version alone so the next launch retries.
+      if (!(await this.migrateStripIdentityPreamble())) return
       if (!(await this.saveMigrationVersion(3))) return
     }
 
@@ -117,13 +120,15 @@ export default class JanAssistantExtension extends AssistantExtension {
   /**
    * Migration v1: Update assistant instructions from old format to new format
    */
-  private async migrateAssistantInstructions(): Promise<void> {
+  private async migrateAssistantInstructions(): Promise<boolean> {
     const OLD_INSTRUCTION = 'You are a helpful AI assistant.'
     const NEW_INSTRUCTION = 'You are Jan, a helpful AI assistant.' // TODO: Update with new instruction
 
     if (!(await fs.existsSync('file://assistants'))) {
-      return
+      return true
     }
+
+    let ok = true
 
     const assistants = await this.getAssistants()
 
@@ -151,15 +156,17 @@ export default class JanAssistantExtension extends AssistantExtension {
           logger.info(`Migrated instructions for assistant: ${assistant.id}`)
         } catch (error) {
           logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
+          ok = false
         }
       }
     }
+    return ok
   }
 
   /**
    * Migration v2: Update assistant instructions to Menlo Research format and set default parameters
    */
-  private async migrateToMenloInstructions(): Promise<void> {
+  private async migrateToMenloInstructions(): Promise<boolean> {
     const OLD_INSTRUCTION_PREFIX = 'You are Jan, a helpful AI assistant.'
     const NEW_INSTRUCTION = `${V2_IDENTITY_LINE}
 
@@ -189,8 +196,10 @@ Current date: {{current_date}}`
     }
 
     if (!(await fs.existsSync('file://assistants'))) {
-      return
+      return true
     }
+
+    let ok = true
 
     const assistants = await this.getAssistants()
 
@@ -222,19 +231,23 @@ Current date: {{current_date}}`
           )
         } catch (error) {
           logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
+          ok = false
         }
       }
     }
+    return ok
   }
 
   /**
    * Migration v3: Strip the identity preamble from assistants whose instructions
    * are still the verbatim v2 default. Leaves user-customized prompts untouched.
    */
-  private async migrateStripIdentityPreamble(): Promise<void> {
+  private async migrateStripIdentityPreamble(): Promise<boolean> {
     if (!(await fs.existsSync('file://assistants'))) {
-      return
+      return true
     }
+
+    let ok = true
 
     const expectedOldInstructions = `${V2_IDENTITY_LINE}\n\n${this.defaultAssistant.instructions}`
     const assistants = await this.getAssistants()
@@ -255,8 +268,10 @@ Current date: {{current_date}}`
         logger.info(`Stripped identity preamble for assistant: ${assistant.id}`)
       } catch (error) {
         logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
+        ok = false
       }
     }
+    return ok
   }
 
   /**

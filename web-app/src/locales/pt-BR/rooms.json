@@ -85,6 +85,7 @@
     "sectionModel": "Modelo e raciocínio",
     "sectionTools": "Ferramentas",
     "lockedWhileRunning": "Pause a sala para alterar as configurações.",
+    "unsavedInvalid": "As alterações da sala não foram salvas porque alguns campos são inválidos.",
     "title": "Título",
     "objective": "Objetivo",
     "workingFolder": "Pasta de trabalho",

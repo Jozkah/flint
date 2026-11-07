@@ -85,6 +85,7 @@
     "sectionModel": "Model i raonament",
     "sectionTools": "Eines",
     "lockedWhileRunning": "Posa la sala en pausa per canviar la configuració.",
+    "unsavedInvalid": "Els canvis de la sala no s'han desat perquè alguns camps no són vàlids.",
     "title": "Títol",
     "objective": "Objectiu",
     "workingFolder": "Carpeta de treball",

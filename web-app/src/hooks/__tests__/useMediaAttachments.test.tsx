@@ -116,7 +116,7 @@ describe('useMediaAttachments', () => {
         target: { files: [file] },
       } as unknown as React.ChangeEvent<HTMLInputElement>)
     )
-    expect(h.prepareAudioFiles).toHaveBeenCalledWith([file])
+    expect(h.prepareAudioFiles).toHaveBeenCalledWith([file], { maxBytes: expect.any(Number) })
     expect(focusComposer).toHaveBeenCalled()
   })
 })

@@ -85,6 +85,7 @@
     "sectionModel": "Mô hình & suy luận",
     "sectionTools": "Công cụ",
     "lockedWhileRunning": "Hãy tạm dừng phòng để thay đổi cài đặt.",
+    "unsavedInvalid": "Thay đổi phòng chưa được lưu vì một số trường không hợp lệ.",
     "title": "Tiêu đề",
     "objective": "Mục tiêu",
     "workingFolder": "Thư mục làm việc",

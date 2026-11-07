@@ -23,7 +23,9 @@ export function useRoomAutosave(roomId: string) {
   const [tick, setTick] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const saveRef = useRef<(auto: boolean) => Promise<void>>(async () => {})
+  const saveRef = useRef<(auto: boolean, leaving?: boolean) => Promise<void>>(
+    async () => {}
+  )
 
   /** An edit happened: start (or restart) the debounce. */
   const markEdited = () => {
@@ -39,10 +41,11 @@ export function useRoomAutosave(roomId: string) {
     return () => clearTimeout(timer)
   }, [tick])
 
-  // Leaving the editor (another room, another page) still saves the edit.
+  // Leaving the editor (another room, another page) still saves the edit;
+  // `leaving` lets the editor say so when the draft cannot be saved.
   useEffect(
     () => () => {
-      if (dirty.current) void saveRef.current(true)
+      if (dirty.current) void saveRef.current(true, true)
     },
     []
   )

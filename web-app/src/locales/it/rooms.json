@@ -85,6 +85,7 @@
     "sectionModel": "Modello e ragionamento",
     "sectionTools": "Strumenti",
     "lockedWhileRunning": "Metti in pausa la stanza per cambiare le impostazioni.",
+    "unsavedInvalid": "Le modifiche alla stanza non sono state salvate perché alcuni campi non sono validi.",
     "title": "Titolo",
     "objective": "Obiettivo",
     "workingFolder": "Cartella di lavoro",

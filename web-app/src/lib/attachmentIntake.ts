@@ -57,6 +57,20 @@ export function withoutSent<T extends Keyed>(current: T[], sent: Keyed[]): T[] {
 export const AUDIO_MAX_BYTES = 25 * 1024 * 1024
 export const VIDEO_MAX_BYTES = 100 * 1024 * 1024
 
+/**
+ * The size cap for audio or video: the built-in cap, lowered to the user's
+ * "max file size" setting when that is smaller.
+ */
+export const mediaMaxBytes = (
+  kind: 'audio' | 'video',
+  maxFileSizeMB?: number
+): number => {
+  const builtIn = kind === 'audio' ? AUDIO_MAX_BYTES : VIDEO_MAX_BYTES
+  return typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
+    ? Math.min(builtIn, maxFileSizeMB * 1024 * 1024)
+    : builtIn
+}
+
 // Video containers llama-server can decode via ffmpeg/ffprobe into frames.
 export const VIDEO_EXTS = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']
 
@@ -129,15 +143,17 @@ export type MediaBatch = {
 
 type ReadFn = (file: Blob) => Promise<string>
 
-/** WAV and MP3 under 25MB become audio attachments. */
+/** WAV and MP3 under the size cap (25MB by default) become audio attachments. */
 export async function prepareAudioFiles(
   files: File[],
   deps: {
     read?: ReadFn
     duration?: (dataUrl: string) => Promise<number | undefined>
     hash?: (base64: string) => Promise<string>
+    maxBytes?: number
   } = {}
 ): Promise<MediaBatch> {
+  const maxBytes = deps.maxBytes ?? AUDIO_MAX_BYTES
   const read = deps.read ?? readAsDataUrl
   const duration = deps.duration ?? decodeAudioDuration
   const hash = deps.hash ?? hashBase64
@@ -152,7 +168,7 @@ export async function prepareAudioFiles(
       batch.invalid.push(file.name)
       continue
     }
-    if (file.size > AUDIO_MAX_BYTES) {
+    if (file.size > maxBytes) {
       batch.oversized.push(file.name)
       continue
     }
@@ -174,11 +190,16 @@ export async function prepareAudioFiles(
   return batch
 }
 
-/** Video files under 100MB become video attachments. */
+/** Video files under the size cap (100MB by default) become video attachments. */
 export async function prepareVideoFiles(
   files: File[],
-  deps: { read?: ReadFn; hash?: (base64: string) => Promise<string> } = {}
+  deps: {
+    read?: ReadFn
+    hash?: (base64: string) => Promise<string>
+    maxBytes?: number
+  } = {}
 ): Promise<MediaBatch> {
+  const maxBytes = deps.maxBytes ?? VIDEO_MAX_BYTES
   const read = deps.read ?? readAsDataUrl
   const hash = deps.hash ?? hashBase64
   const batch: MediaBatch = { prepared: [], invalid: [], oversized: [] }
@@ -190,7 +211,7 @@ export async function prepareVideoFiles(
       batch.invalid.push(file.name)
       continue
     }
-    if (file.size > VIDEO_MAX_BYTES) {
+    if (file.size > maxBytes) {
       batch.oversized.push(file.name)
       continue
     }
@@ -221,11 +242,12 @@ type Translate = (key: string, options?: Record<string, unknown>) => string
 export function mediaBatchErrors(
   kind: 'audio' | 'video',
   batch: MediaBatch,
-  t?: Translate
+  t?: Translate,
+  maxBytes: number = mediaMaxBytes(kind)
 ): string[] {
   const errors: string[] = []
   const label = kind === 'audio' ? 'Audio' : 'Video'
-  const limit = kind === 'audio' ? '25MB' : '100MB'
+  const limit = `${Math.round(maxBytes / (1024 * 1024))}MB`
   if (batch.oversized.length > 0) {
     errors.push(
       t

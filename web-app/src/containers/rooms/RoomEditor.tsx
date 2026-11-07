@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useId, useMemo, useReducer, useState } from 'react'
 import { Lock, Plus, Settings2, Users } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 import { LIMIT_KEYS, budgetFromDraft, draftFromRoom, parsePricing, roomDraftReducer, type DraftField, type DraftParticipant, type RoomDraft } from '@/lib/rooms/roomDraft'
@@ -120,15 +121,19 @@ export function RoomEditor({ room }: { room: Room }) {
     dispatch({ type: 'updateParticipant', id, patch })
   }
 
-  const save = async (auto = false) => {
+  const save = async (auto = false, leaving = false) => {
     // Never write one room's draft onto another room.
     if (room.id !== draftRoomId.current) return
     if (auto && (!dirty.current || locked)) return
     setShowErrors(true)
     const keys = Object.keys(errors)
     if (keys.length > 0) {
-      // An autosave only shows the problems; it does not move the view.
-      if (auto) return
+      // An autosave only shows the problems; it does not move the view. When
+      // the editor is going away the draft is lost, so say so.
+      if (auto) {
+        if (leaving) toast.warning(t('rooms:editor.unsavedInvalid'))
+        return
+      }
       // Bring every problem into view: open the participants that have one and
       // switch to the settings tab that holds the first settings error.
       const bad = participants.filter((p) => keys.some((k) => k.startsWith(`${p.id}:`)))
