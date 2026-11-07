@@ -382,11 +382,15 @@ describe('TauriMCPService', () => {
         arguments: {},
       }
 
-      const result = await mcpService.callTool(toolArgs)
-
-      expect(result).toBeUndefined()
-
-      window.core = originalCore
+      try {
+        const result = await mcpService.callTool(toolArgs)
+        expect(result).toEqual({
+          error: 'MCP bridge unavailable',
+          content: [],
+        })
+      } finally {
+        window.core = originalCore
+      }
     })
 
     it('should handle empty arguments object', async () => {
