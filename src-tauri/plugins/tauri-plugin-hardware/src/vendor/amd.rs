@@ -202,7 +202,8 @@ impl GpuInfo {
 mod windows_impl {
     use super::AdlUsage;
     use libc;
-    use libloading::{Library, Symbol};
+    use libloading::Library;
+    use std::sync::Mutex;
     use std::ffi::{c_char, c_int, c_void, CStr};
     use std::mem::{self, MaybeUninit};
     use std::ptr;
@@ -246,13 +247,45 @@ mod windows_impl {
         libc::malloc(i_size as usize)
     }
 
-    pub fn get_gpu_usage() -> Result<Vec<AdlUsage>, Box<dyn std::error::Error>> {
-        unsafe {
+    /// The loaded ADL library and its two contexts, kept for the process
+    /// lifetime. `get_usage_amd` runs per GPU on every poll; loading the DLL
+    /// and creating and destroying both contexts each time was pure overhead.
+    /// The fn pointers stay valid while `_lib` is held, which is as long as
+    /// this value lives (`Drop::drop` runs before the fields are dropped).
+    struct Adl {
+        _lib: Library,
+        destroy: AdlMainControlDestroy,
+        adl2_destroy: Adl2MainControlDestroy,
+        number_of_adapters: AdlAdapterNumberofadaptersGet,
+        adapter_info: AdlAdapterAdapterinfoGet,
+        active: AdlAdapterActiveGet,
+        vram_usage: AdlGetDedicatedVramUsage,
+        ctx: *mut c_void,
+    }
+
+    // Only ever used under `ADL`'s lock.
+    unsafe impl Send for Adl {}
+
+    impl Drop for Adl {
+        fn drop(&mut self) {
+            unsafe {
+                (self.adl2_destroy)(self.ctx);
+                (self.destroy)();
+            }
+        }
+    }
+
+    /// `None` until the first successful open, and again after a failed read
+    /// (a driver reset invalidates the contexts) so the next poll reopens.
+    static ADL: Mutex<Option<Adl>> = Mutex::new(None);
+
+    impl Adl {
+        unsafe fn open() -> Result<Self, Box<dyn std::error::Error>> {
             let lib = Library::new("atiadlxx.dll").or_else(|_| Library::new("atiadlxy.dll"))?;
 
             macro_rules! get_sym {
                 ($lib:expr, $name:literal, $ty:ty) => {{
-                    $lib.get::<$ty>($name).map_err(|e| {
+                    *$lib.get::<$ty>($name).map_err(|e| {
                         log::error!(
                             "Failed to resolve AMD ADL symbol '{}': {e}",
                             std::str::from_utf8($name).unwrap_or("?")
@@ -262,33 +295,30 @@ mod windows_impl {
                 }};
             }
 
-            let adlmaincontrolcreate: Symbol<AdlMainControlCreate> =
+            let create: AdlMainControlCreate =
                 get_sym!(lib, b"ADL_Main_Control_Create\0", AdlMainControlCreate);
-            let adlmaincontroldestroy: Symbol<AdlMainControlDestroy> =
+            let destroy: AdlMainControlDestroy =
                 get_sym!(lib, b"ADL_Main_Control_Destroy\0", AdlMainControlDestroy);
-            let adl_adapter_number_of_adapters_get: Symbol<AdlAdapterNumberofadaptersGet> =
+            let number_of_adapters: AdlAdapterNumberofadaptersGet =
                 get_sym!(lib, b"ADL_Adapter_NumberOfAdapters_Get\0", AdlAdapterNumberofadaptersGet);
-            let adl_adapter_adapter_info_get: Symbol<AdlAdapterAdapterinfoGet> =
+            let adapter_info: AdlAdapterAdapterinfoGet =
                 get_sym!(lib, b"ADL_Adapter_AdapterInfo_Get\0", AdlAdapterAdapterinfoGet);
-            let adl_adapter_active_get: Symbol<AdlAdapterActiveGet> =
+            let active: AdlAdapterActiveGet =
                 get_sym!(lib, b"ADL_Adapter_Active_Get\0", AdlAdapterActiveGet);
-            let adl2_create: Symbol<Adl2MainControlCreate> =
+            let adl2_create: Adl2MainControlCreate =
                 get_sym!(lib, b"ADL2_Main_Control_Create\0", Adl2MainControlCreate);
-            let adl2_destroy: Symbol<Adl2MainControlDestroy> =
+            let adl2_destroy: Adl2MainControlDestroy =
                 get_sym!(lib, b"ADL2_Main_Control_Destroy\0", Adl2MainControlDestroy);
-            let adl_get_dedicated_vram_usage: Symbol<AdlGetDedicatedVramUsage> =
+            let vram_usage: AdlGetDedicatedVramUsage =
                 get_sym!(lib, b"ADL2_Adapter_DedicatedVRAMUsage_Get\0", AdlGetDedicatedVramUsage);
 
             // TODO: try to put nullptr here. then we don't need direct libc dep
-            if adlmaincontrolcreate(Some(adl_malloc), 1) != 0 {
+            if create(Some(adl_malloc), 1) != 0 {
                 return Err("ADL initialization error!".into());
             }
-            // After a successful create, ADL_Main_Control_Destroy must run on
-            // every exit path, including the early error returns below. The
-            // guard is declared after `lib` and the symbols, so it drops (and
-            // destroys the context) before they are unloaded.
-            let _destroy = super::CallOnDrop::new(|| {
-                adlmaincontroldestroy();
+            // A failed ADL2 create must still destroy the legacy context.
+            let legacy = super::CallOnDrop::new(|| {
+                destroy();
             });
 
             // ADL2 calls need a real context; a null one makes them fail.
@@ -296,12 +326,23 @@ mod windows_impl {
             if adl2_create(Some(adl_malloc), 1, &mut ctx) != 0 || ctx.is_null() {
                 return Err("ADL2 initialization error!".into());
             }
-            let _destroy2 = super::CallOnDrop::new(|| {
-                adl2_destroy(ctx);
-            });
+            // From here `Adl`'s own Drop destroys both contexts.
+            mem::forget(legacy);
+            Ok(Self {
+                _lib: lib,
+                destroy,
+                adl2_destroy,
+                number_of_adapters,
+                adapter_info,
+                active,
+                vram_usage,
+                ctx,
+            })
+        }
 
+        unsafe fn read_usage(&self) -> Result<Vec<AdlUsage>, Box<dyn std::error::Error>> {
             let mut num_adapters: c_int = 0;
-            if adl_adapter_number_of_adapters_get(&mut num_adapters as *mut _) != 0 {
+            if (self.number_of_adapters)(&mut num_adapters as *mut _) != 0 {
                 return Err("Cannot get number of adapters".into());
             }
 
@@ -310,7 +351,7 @@ mod windows_impl {
             if num_adapters > 0 {
                 let mut adapter_info: Vec<AdapterInfo> =
                     vec![MaybeUninit::zeroed().assume_init(); num_adapters as usize];
-                let ret = adl_adapter_adapter_info_get(
+                let ret = (self.adapter_info)(
                     adapter_info.as_mut_ptr(),
                     mem::size_of::<AdapterInfo>() as i32 * num_adapters,
                 );
@@ -320,14 +361,11 @@ mod windows_impl {
 
                 for adapter in adapter_info.iter() {
                     let mut is_active = 0;
-                    if adl_adapter_active_get(adapter.iAdapterIndex, &mut is_active) != 0
-                        || is_active == 0
-                    {
+                    if (self.active)(adapter.iAdapterIndex, &mut is_active) != 0 || is_active == 0 {
                         continue;
                     }
                     let mut vram_mb = 0;
-                    let ret =
-                        adl_get_dedicated_vram_usage(ctx, adapter.iAdapterIndex, &mut vram_mb);
+                    let ret = (self.vram_usage)(self.ctx, adapter.iAdapterIndex, &mut vram_mb);
                     // A failed call is unknown, not 0 MB used.
                     let used_mb = if ret == 0 && vram_mb >= 0 {
                         Some(vram_mb as u64)
@@ -350,6 +388,22 @@ mod windows_impl {
 
             Ok(vram_usages)
         }
+    }
+
+    pub fn get_gpu_usage() -> Result<Vec<AdlUsage>, Box<dyn std::error::Error>> {
+        let mut guard = ADL.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Some(unsafe { Adl::open()? });
+        }
+        let result = match guard.as_ref() {
+            Some(adl) => unsafe { adl.read_usage() },
+            None => return Err("ADL is not available".into()),
+        };
+        if result.is_err() {
+            // Drop (and destroy) the contexts; the next poll starts fresh.
+            *guard = None;
+        }
+        result
     }
 }
 

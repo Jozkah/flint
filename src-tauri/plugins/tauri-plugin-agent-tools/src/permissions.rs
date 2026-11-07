@@ -242,6 +242,19 @@ impl ToolPermissions {
         }
     }
 
+    /// Anchor the allow rules' relative path patterns to the project root, so
+    /// `write(src/**)` allows this project's `src` and not every folder named
+    /// `src` on the machine. Deny and ask rules keep matching at any depth:
+    /// that side may be broad.
+    pub fn with_root(mut self, root: &std::path::Path) -> Self {
+        for list in [&mut self.allow, &mut self.allow_write] {
+            for rule in list.iter_mut() {
+                *rule = rule.clone().anchored_to(root);
+            }
+        }
+        self
+    }
+
     /// Turn the built-in read-only shell allowlist on or off. On by default;
     /// it only ever removes a prompt, in the modes that prompt.
     pub fn with_readonly_shell(mut self, on: bool) -> Self {

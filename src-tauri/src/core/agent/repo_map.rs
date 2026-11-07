@@ -34,21 +34,23 @@ const MAX_TASK_BONUS: u32 = 60;
 const HEADER: &str = "# Repository map\n\nThe project's most relevant files and their top-level symbols, \
 ranked for this task. Orientation only: read a file before relying on it.\n\n";
 
-/// Directory names whose contents are vendored, built or generated.
+/// Directory names whose contents are vendored, built or generated wherever
+/// they appear.
 const EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
-    "target",
     "dist",
-    "build",
     ".git",
-    "vendor",
     ".next",
-    "out",
     "coverage",
     "__pycache__",
     ".venv",
     "venv",
 ];
+
+/// Directory names that are build output only at the project root: deeper
+/// down they are as often source (`src/build/`, `internal/target/`,
+/// `cmd/out/`, a Go package named `vendor` under `pkg/`).
+const ROOT_EXCLUDED_DIRS: &[&str] = &["target", "build", "vendor", "out"];
 
 /// Lockfiles and the like: large, symbol-free and never what a task is about.
 const EXCLUDED_FILES: &[&str] = &[
@@ -104,9 +106,12 @@ fn prompt_safe(text: &str) -> String {
 fn excluded(path: &str) -> bool {
     let path = normalized(path).to_ascii_lowercase();
     let mut parts = path.split('/').peekable();
+    let mut depth = 0usize;
     while let Some(part) = parts.next() {
+        let at_root = depth == 0;
+        depth += 1;
         if parts.peek().is_some() {
-            if EXCLUDED_DIRS.contains(&part) {
+            if EXCLUDED_DIRS.contains(&part) || (at_root && ROOT_EXCLUDED_DIRS.contains(&part)) {
                 return true;
             }
         } else if EXCLUDED_FILES.contains(&part)
@@ -444,7 +449,7 @@ mod tests {
             ("node_modules/pkg/index.js", entry(NEW, f("a"))),
             ("target/debug/x.rs", entry(NEW, f("b"))),
             ("dist/app.js", entry(NEW, f("c"))),
-            ("web/build/out.js", entry(NEW, f("d"))),
+            ("build/out.js", entry(NEW, f("d"))),
             (".git/hooks/h.js", entry(NEW, f("e"))),
             ("vendor/lib.go", entry(NEW, f("f"))),
             ("Cargo.lock", entry(NEW, f("g"))),
@@ -560,6 +565,19 @@ mod tests {
             entry(OLD, vec![sym("x", SymbolKind::Function, 1)]),
         )]);
         assert_eq!(render(&only_excluded, &input("", &changed, 500)), None);
+    }
+
+    #[test]
+    fn build_named_dirs_are_output_only_at_the_root() {
+        for path in ["target/debug/x.rs", "build/gen.js", "vendor/lib.go", "out/a.js", "OUT/a.js"] {
+            assert!(excluded(path), "{path}");
+        }
+        for path in ["pkg/node_modules/x.js", "web/dist/a.js", "a/.git/x", "src\\__pycache__\\m.py"] {
+            assert!(excluded(path), "{path}");
+        }
+        for path in ["src/build/mod.rs", "internal/target/t.go", "pkg/vendor/v.go", "cmd/out/main.go"] {
+            assert!(!excluded(path), "{path}");
+        }
     }
 
     #[test]

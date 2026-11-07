@@ -803,7 +803,7 @@ pub(crate) fn prepare_agent_session(
     validate_tool_flags(&flags.allow_tools, &flags.deny_tools)?;
     // `--deny-tool` only adds to the project's denies; it can never lift one.
     cfg.tools.deny.extend(flags.deny_tools.iter().cloned());
-    let permissions = permissions_from(&cfg);
+    let permissions = permissions_from(&cfg).with_root(&project_root);
 
     let model = resolve_model(model_override, &cfg, &overrides, &flags, &project_root)?;
     // AH-194: the project's own rules about which model answers what. Read

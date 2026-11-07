@@ -47,7 +47,14 @@ impl Redactor {
                     // `\\?` before each quote: inside a JSON string (every
                     // messages.jsonl message and tool argument) the quotes are
                     // escaped (Jozkah/jan#276).
-                    r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic|token|apikey|api-key|digest|negotiate|ntlm)\s+)[A-Za-z0-9._~+/\-=]+"#,
+                    // Second branch: `AWS4-HMAC-SHA256 Credential=AKIA.../...,
+                    // SignedHeaders=..., Signature=...` runs on past spaces
+                    // and commas, so everything up to the end of the header
+                    // value goes; its kept label is the second group.
+                    concat!(
+                        r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic|token|apikey|api-key|digest|negotiate|ntlm)\s+)[A-Za-z0-9._~+/\-=]+"#,
+                        r#"|((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?aws4-hmac-sha256\s+)[^"'\\\r\n]+"#,
+                    ),
                 )
                 .expect("auth header regex"),
             },
@@ -245,7 +252,10 @@ fn apply(re: &Regex, text: &str, hits: Option<&mut usize>) -> Option<String> {
         .captures_iter(text)
         .filter_map(|c| {
             let whole = c.get(0)?;
-            let from = c.get(1).map_or(whole.start(), |label| label.end());
+            // The kept label is the first group that took part: a rule with
+            // alternative branches gives each branch its own label group.
+            let label = c.iter().skip(1).flatten().next();
+            let from = label.map_or(whole.start(), |label| label.end());
             Some((from, whole.end()))
         })
         .collect();
@@ -411,6 +421,16 @@ mod tests {
             assert!(!out.contains(secret), "leaked {secret}: {out}");
             assert!(out.contains("<redacted>"), "not marked: {out}");
         }
+        let aws = "Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7";
+        let out = SHARED.scrub(aws);
+        assert!(!out.contains("AKIDEXAMPLE"), "leaked credential: {out}");
+        assert!(!out.contains("5d672d79c15b"), "leaked signature: {out}");
+        assert!(out.contains("<redacted>"), "not marked: {out}");
+        let json = SHARED.scrub(
+            r#"{"Authorization":"AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/x, Signature=abc"}"#,
+        );
+        assert!(!json.contains("AKIDEXAMPLE"), "leaked in json: {json}");
+        serde_json::from_str::<serde_json::Value>(&json).expect("still valid JSON");
         let quoted = SHARED.scrub(r#"{"password": "correct horse battery"}"#);
         serde_json::from_str::<serde_json::Value>(&quoted).expect("still valid JSON");
         for prose in ["token count: 5", "the authorization: pending review", "set a password later"] {

@@ -198,6 +198,7 @@ pub fn load_under_trust(
         &tools.allow_write,
     )
     .with_ask(&tools.ask)
+    .with_root(root)
     .with_readonly_shell(tools.readonly_shell.unwrap_or(true));
     // The load still succeeds -- a typo must not brick a session -- but a
     // dropped `deny` is a restriction that silently vanished, so say so here

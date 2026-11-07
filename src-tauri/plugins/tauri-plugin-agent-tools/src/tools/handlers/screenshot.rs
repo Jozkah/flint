@@ -344,7 +344,17 @@ pub(super) async fn render_html_png_opts(
             String::new()
         }
     };
-    let _ = tokio::fs::remove_dir_all(&profile).await;
+    // Helpers that outlived the kill can still hold profile files open for a
+    // moment (Windows refuses to delete them), so retry off the runtime.
+    let removed = {
+        let profile = profile.clone();
+        tokio::task::spawn_blocking(move || crate::browser::launch::remove_dir_with_retries(&profile))
+            .await
+            .unwrap_or(false)
+    };
+    if !removed {
+        log::warn!("screenshot: could not remove temp Chrome profile {}", profile.display());
+    }
     let _ = tokio::fs::remove_file(&page).await;
 
     let png = match tokio::fs::read(&shot).await {
