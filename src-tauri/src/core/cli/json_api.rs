@@ -491,6 +491,22 @@ impl Runner for AgentRunner {
     }
 }
 
+/// Disconnects a run's MCP servers, refuses its pending approvals and removes
+/// its scratch directory. Every exit of `run_agent` past preparation calls it.
+async fn release_run_resources(
+    args: &crate::core::agent::r#loop::OrchestrationArgs,
+    permission_requests: &PermissionRegistry,
+) {
+    let names: Vec<String> = args.mcp_servers.lock().await.keys().cloned().collect();
+    for name in names {
+        super::mcp::disconnect(&name, &args.mcp_servers).await;
+    }
+    permission_requests.lock().await.clear();
+    if let Some(session) = args.session_id.as_deref() {
+        let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(session).await;
+    }
+}
+
 async fn run_agent(
     run: String,
     spec: RunSpec,
@@ -537,6 +553,12 @@ async fn run_agent(
         ) {
             Ok(writer) => Some(writer),
             Err(e) => {
+                // The servers were already connecting and the scratch space
+                // exists: let the connect settle, then release both.
+                if let Some(task) = mcp_task {
+                    let _ = task.await;
+                }
+                release_run_resources(&args, &permission_requests).await;
                 return serde_json::to_value(
                     RunReport::setup_failure(e.message()).finish(None, &persist.model, started.elapsed().as_millis(), None),
                 )
@@ -586,14 +608,7 @@ async fn run_agent(
 
     // Whatever happened, this run's servers, scratch space and pending
     // approvals end with it.
-    let names: Vec<String> = args.mcp_servers.lock().await.keys().cloned().collect();
-    for name in names {
-        super::mcp::disconnect(&name, &args.mcp_servers).await;
-    }
-    permission_requests.lock().await.clear();
-    if let Some(session) = args.session_id.as_deref() {
-        let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(session).await;
-    }
+    release_run_resources(&args, &permission_requests).await;
 
     let elapsed = started.elapsed().as_millis();
     let model = persist.model.clone();

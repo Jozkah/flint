@@ -81,6 +81,19 @@ fn wants_help(args: &[String]) -> bool {
     args.iter().any(|a| a == "-h" || a == "--help")
 }
 
+/// `git apply` patches the working tree unless it only checks or reports
+/// (`--check`, `--stat` and friends without `--apply`) or targets the index
+/// alone (`--cached` without `--index`).
+fn apply(rest: &[String]) -> Option<&'static str> {
+    if wants_help(rest) {
+        return None;
+    }
+    let has = |name: &str| flags(rest).any(|f| f == name);
+    let reports_only = (has("--stat") || has("--numstat") || has("--summary")) && !has("--apply");
+    let index_only = has("--cached") && !has("--index");
+    (!has("--check") && !reports_only && !index_only).then_some("apply")
+}
+
 fn checkout(rest: &[String], probe: &dyn Probe) -> Option<&'static str> {
     if wants_help(rest) {
         return None;
@@ -274,6 +287,11 @@ pub fn classify_args(program: &str, args: &[String], probe: &dyn Probe) -> Optio
         )
         .then_some("sparse-checkout"),
         "submodule" => (positionals(&rest).first().copied() == Some("update")).then_some("submodule-update"),
+        "apply" => apply(&rest),
+        // A rename moves tracked files out from under other sessions.
+        "mv" => (!wants_help(&rest)
+            && !flags(&rest).any(|f| f == "--dry-run" || short_cluster_has(f, 'n')))
+        .then_some("mv"),
         _ => None,
     }?;
     Some(TreeChange { kind, dir })
@@ -370,6 +388,9 @@ mod tests {
             ("git submodule update --init", "submodule-update"),
             ("git rm -r .", "rm"),
             ("git rm -r -- :/", "rm"),
+            ("git apply fix.patch", "apply"),
+            ("git apply --index --3way fix.patch", "apply"),
+            ("git mv src/a.ts src/b.ts", "mv"),
         ] {
             assert_eq!(hit(command), vec![kind], "{command}");
         }
@@ -386,6 +407,10 @@ mod tests {
         assert!(hit("git rm src/a.ts").is_empty());
         assert!(hit("git read-tree HEAD").is_empty());
         assert!(hit("git submodule status").is_empty());
+        assert!(hit("git apply --check fix.patch").is_empty());
+        assert!(hit("git apply --stat fix.patch").is_empty());
+        assert!(hit("git apply --cached fix.patch").is_empty());
+        assert!(hit("git mv -n a b").is_empty());
     }
 
     /// Passed: read-only, or confined to a named file.

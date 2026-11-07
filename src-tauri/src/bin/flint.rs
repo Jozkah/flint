@@ -2055,6 +2055,9 @@ enum ThreadsCommands {
         /// A file, or a folder to get a file named after the thread
         #[arg(long)]
         out: Option<String>,
+        /// Replace the output file if it already exists
+        #[arg(long)]
+        force: bool,
         /// Read a thread saved by the terminal console for this project
         /// (default: the threads the desktop app saved)
         #[arg(long)]
@@ -3739,7 +3742,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
         ThreadsCommands::Unfavorite { id } => {
             print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, false))
         }
-        ThreadsCommands::Export { id, format, verbose, all_versions, out, project } => {
+        ThreadsCommands::Export { id, format, verbose, all_versions, out, force, project } => {
             let result = app_lib::core::cli::thread_export::Format::parse(&format).and_then(|f| {
                 app_lib::core::cli::thread_export::export_thread(
                     &match project.as_deref() {
@@ -3751,6 +3754,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
                     verbose,
                     all_versions,
                     out.as_deref().map(std::path::Path::new),
+                    force,
                 )
             });
             match result {

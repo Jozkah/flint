@@ -2042,7 +2042,7 @@ pub(super) fn export_command(app: &mut App, arg: &str) {
         app.note(&format!("{} already exists; add --force to overwrite it", out.display()));
         return;
     }
-    match export_thread(&app.agent_dir, &id, format, false, false, Some(&out)) {
+    match export_thread(&app.agent_dir, &id, format, false, false, Some(&out), parsed.force) {
         Ok(Some(written)) => app.note(&format!("exported to {}", written.display())),
         Ok(None) => {}
         Err(e) => app.note(&format!("export failed: {e}")),
