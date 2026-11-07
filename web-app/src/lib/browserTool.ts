@@ -11,6 +11,7 @@
  * vouch for, so nothing here is trusted to have asked.
  */
 import { invokeCommand as invoke } from '@/lib/backend'
+import { truncate } from '@/lib/text'
 
 export const BROWSER_TOOL_NAME = 'browser'
 
@@ -79,9 +80,6 @@ export function browserOpenRefusal(input: unknown): string | null {
   return null
 }
 
-const clip = (s: string, n: number): string =>
-  s.length > n ? `${s.slice(0, n - 1)}…` : s
-
 /** What the user is shown when the backend cannot name the target. */
 export function localBrowserSummary(input: unknown): string {
   const a = (input && typeof input === 'object' ? input : {}) as Record<
@@ -92,13 +90,13 @@ export function localBrowserSummary(input: unknown): string {
   const action = s('action') || '?'
   switch (action) {
     case 'open':
-      return `browser open ${clip(s('url') || '?', 200)}`
+      return `browser open ${truncate(s('url') || '?', 200)}`
     case 'type':
       return `browser type into ${s('ref') || '?'} (${s('text').length} characters)`
     case 'press':
-      return `browser press ${clip(s('key') || '?', 40)}`
+      return `browser press ${truncate(s('key') || '?', 40)}`
     case 'evaluate':
-      return `browser evaluate script in the page: ${clip(s('expression') || '?', 300)}`
+      return `browser evaluate script in the page: ${truncate(s('expression') || '?', 300)}`
     default:
       return s('ref') ? `browser ${action} ${s('ref')}` : `browser ${action}`
   }

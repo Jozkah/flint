@@ -5,7 +5,14 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => 'progress'),
+    dismiss: vi.fn(),
+  },
 }))
 vi.mock('@/containers/Card', () => ({
   Card: ({ title, children }: { title?: string; children: React.ReactNode }) => (
@@ -74,7 +81,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
 
 import { toast } from 'sonner'
 import { DataFolderCard } from '../DataFolderCard'
-import { DataImportCard } from '../DataImportCard'
+import { DataImportCard, MAX_CHATGPT_EXPORT_BYTES } from '../DataImportCard'
 import { FactoryResetCard } from '../FactoryResetCard'
 
 beforeEach(() => {
@@ -144,6 +151,23 @@ describe('DataImportCard', () => {
       expect.objectContaining({ description: 'Not valid JSON' })
     )
     expect(hub.createThread).not.toHaveBeenCalled()
+  })
+
+  it('refuses an export over the size limit without reading it', async () => {
+    render(<DataImportCard />)
+    const file = new File(['[]'], 'c.json')
+    Object.defineProperty(file, 'size', { value: MAX_CHATGPT_EXPORT_BYTES + 1 })
+    const text = vi.spyOn(file, 'text')
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('import-chatgpt-file'), {
+        target: { files: [file] },
+      })
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'settings:general.importChatGptTooLarge',
+      expect.anything()
+    )
+    expect(text).not.toHaveBeenCalled()
   })
 })
 

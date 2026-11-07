@@ -4,6 +4,7 @@
  * and which MCP server ran it.
  */
 import { formatDuration } from '@/lib/utils'
+import { truncate } from '@/lib/text'
 
 /** Input keys that name what a call acted on, most telling first. */
 const MAIN_ARG_KEYS = [
@@ -21,9 +22,6 @@ const MAIN_ARG_KEYS = [
 
 const MAX_ARG_LENGTH = 60
 
-const truncate = (text: string, max = MAX_ARG_LENGTH) =>
-  text.length > max ? `${text.slice(0, max - 1)}…` : text
-
 /** The one argument that says what a tool call was about, on one line. */
 export function mainArgOf(input: unknown): string {
   if (!input || typeof input !== 'object') return ''
@@ -31,9 +29,9 @@ export function mainArgOf(input: unknown): string {
   for (const key of MAIN_ARG_KEYS) {
     const value = record[key]
     if (typeof value === 'string' && value.trim())
-      return truncate(value.trim().replace(/\s+/g, ' '))
+      return truncate(value.trim().replace(/\s+/g, ' '), MAX_ARG_LENGTH)
     if (Array.isArray(value) && value.every((v) => typeof v === 'string'))
-      return truncate(value.join(' '))
+      return truncate(value.join(' '), MAX_ARG_LENGTH)
   }
   return ''
 }

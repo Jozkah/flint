@@ -535,20 +535,17 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
     () => claimedSessionIds(campaignGroups),
     [campaignGroups]
   )
-  const sessionIds = useMemo(
-    () => sessions.filter((x) => !claimed.has(x.id)).map((x) => x.id),
-    [sessions, claimed]
-  )
-  const byId = useMemo(
-    () => new Map(sessions.map((x) => [x.id, x])),
-    [sessions]
-  )
   // Forks nest under the session they were forked from (AH-201's
   // `forkedFrom`). A chat converted to a session has its chat in another
   // list, and campaign sessions are grouped above, so neither nests here.
   const listed = useMemo(
     () => sessions.filter((x) => !claimed.has(x.id)),
     [sessions, claimed]
+  )
+  const sessionIds = useMemo(() => listed.map((x) => x.id), [listed])
+  const byId = useMemo(
+    () => new Map(sessions.map((x) => [x.id, x])),
+    [sessions]
   )
   const selectedId = onCowork ? (currentId ?? undefined) : undefined
   const nestStatusOf = useCoworkNestStatus(listed, selectedId)

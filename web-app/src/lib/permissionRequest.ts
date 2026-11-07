@@ -21,6 +21,7 @@ import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
 import { ENTER_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
 import { phaseSizes } from '@/lib/workflowLaunchGate'
+import { truncate as truncateText } from '@/lib/text'
 import {
   GIT_TOOL_NAME,
   gitAlwaysAsks,
@@ -182,8 +183,7 @@ export { REDACTED, namesASecret, redactSecrets }
 // ---------------------------------------------------------------------------
 
 export function truncate(text: string, max = MAX_RESOURCE_LENGTH): string {
-  if (text.length <= max) return text
-  return `${text.slice(0, Math.max(0, max - 1))}…`
+  return truncateText(text, max)
 }
 
 /** One line, secrets redacted, bounded. */

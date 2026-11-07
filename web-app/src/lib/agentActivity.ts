@@ -1,5 +1,6 @@
 import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { truncate } from '@/lib/text'
 
 export type ActivityLabel = { text: string; startedAt: number } | null
 
@@ -9,10 +10,6 @@ function basename(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
   const idx = normalized.lastIndexOf('/')
   return idx === -1 ? normalized : normalized.slice(idx + 1) || normalized
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
 function stringArg(input: unknown, key: string): string | undefined {

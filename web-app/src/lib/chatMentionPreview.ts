@@ -15,6 +15,7 @@ import {
   type MentionKind,
 } from '@/lib/chatMentions'
 import { parsePromptForReferences } from '@/lib/path-references'
+import { truncate } from '@/lib/text'
 
 export type MentionPreview = {
   /** The token after `@`, as typed. */
@@ -35,7 +36,7 @@ const RECENT_CHARS = 160
 
 const clip = (text: string) => {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > RECENT_CHARS ? `${flat.slice(0, RECENT_CHARS - 1)}…` : flat
+  return truncate(flat, RECENT_CHARS)
 }
 
 export async function previewMentions(
