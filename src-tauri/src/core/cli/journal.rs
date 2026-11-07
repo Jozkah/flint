@@ -99,6 +99,17 @@ pub fn write_journal(path: &Path, entries: &[DisplayEntry]) -> Result<(), String
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
+/// Write the journal; log the first failure only (`warned`), so a disk that
+/// stays full does not flood the log at every persist.
+fn write_logged(path: &Path, entries: &[DisplayEntry], warned: &mut bool) {
+    if let Err(e) = write_journal(path, entries) {
+        if !*warned {
+            *warned = true;
+            log::warn!("the display journal could not be written to {}: {e}", path.display());
+        }
+    }
+}
+
 /// Read a journal, skipping any line that no longer parses (a truncated tail, or
 /// an entry written by a newer build) so a resume degrades instead of failing.
 pub fn read_journal(path: &Path) -> Vec<DisplayEntry> {
@@ -119,8 +130,8 @@ pub fn read_journal(path: &Path) -> Vec<DisplayEntry> {
 /// long conversation's rewrite. One thread rather than one per dump because
 /// `persist` fires several times a turn: concurrent writers renaming the same
 /// path could land out of order and leave a stale journal as the final state.
-/// Failures are silent, like the rest of persistence -- a lost dump costs the
-/// resume its detail, which is not worth interrupting the session over.
+/// Failures do not interrupt the session -- a lost dump costs the resume its
+/// detail -- but the first one is logged, so a full disk is not invisible.
 pub struct Writer {
     tx: Option<std::sync::mpsc::Sender<(PathBuf, Vec<DisplayEntry>)>>,
     handle: Option<std::thread::JoinHandle<()>>,
@@ -130,11 +141,12 @@ impl Writer {
     pub fn new() -> Self {
         let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, Vec<DisplayEntry>)>();
         let handle = std::thread::spawn(move || {
+            let mut warned = false;
             while let Ok(job) = rx.recv() {
                 let mut batch = vec![job];
                 batch.extend(rx.try_iter());
                 for (path, entries) in newest_per_path(batch) {
-                    let _ = write_journal(&path, &entries);
+                    write_logged(&path, &entries, &mut warned);
                 }
             }
         });
@@ -261,6 +273,22 @@ mod tests {
 
     fn tmp_dir() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
+    }
+
+    #[test]
+    fn a_failed_journal_write_is_reported_once() {
+        let dir = tmp_dir();
+        let blocker = dir.path().join("file");
+        std::fs::write(&blocker, "x").unwrap();
+        // The journal's parent is a file, so the write must fail.
+        let path = blocker.join("display.jsonl");
+        let mut warned = false;
+        write_logged(&path, &[], &mut warned);
+        assert!(warned);
+        let ok = dir.path().join("t").join("display.jsonl");
+        let mut fresh = false;
+        write_logged(&ok, &[], &mut fresh);
+        assert!(!fresh);
     }
 
     #[test]

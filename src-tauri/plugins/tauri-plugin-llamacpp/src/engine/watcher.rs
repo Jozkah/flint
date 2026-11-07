@@ -17,10 +17,18 @@ const UNLOADED_EVENT: &str = "llamacpp-model-unloaded";
 /// the end of the feed.
 const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Consecutive failed connects before giving up. Bounded so a worker that is
-/// gone (or too old for the endpoint) costs a handful of attempts rather than a
-/// task reconnecting forever.
-const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+/// Longest pause between failed connects. Failures back off from
+/// [`RECONNECT_DELAY`] up to this instead of giving up: a busy worker or a
+/// machine waking from sleep is transient, and the task is aborted when the
+/// worker stops, so a worker that is really gone costs one attempt per cap.
+const MAX_RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The pause after `failures` consecutive failed connects (0 after a stream
+/// that was reached and ended): doubling from [`RECONNECT_DELAY`], capped.
+fn reconnect_delay(failures: u32) -> std::time::Duration {
+    let factor = 1u32 << failures.saturating_sub(1).min(5);
+    (RECONNECT_DELAY * factor).min(MAX_RECONNECT_DELAY)
+}
 
 #[derive(serde::Serialize, Clone)]
 struct UnloadPayload {
@@ -37,20 +45,20 @@ pub fn spawn<R: Runtime>(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut failures = 0u32;
-        while failures < MAX_CONSECUTIVE_FAILURES {
+        loop {
             match subscribe_once(&app_handle, port, &api_key).await {
                 Ok(()) => failures = 0,
                 Err(e) => {
-                    failures += 1;
-                    log::debug!("/models/sse watcher could not subscribe ({failures}): {e}");
+                    failures = failures.saturating_add(1);
+                    if failures == 5 {
+                        log::warn!("/models/sse watcher keeps failing to subscribe; retrying with backoff: {e}");
+                    } else {
+                        log::debug!("/models/sse watcher could not subscribe ({failures}): {e}");
+                    }
                 }
             }
-            tokio::time::sleep(RECONNECT_DELAY).await;
+            tokio::time::sleep(reconnect_delay(failures)).await;
         }
-        log::warn!(
-            "giving up on /models/sse after {MAX_CONSECUTIVE_FAILURES} failed attempts; \
-             evictions will not be reported to the UI until the engine restarts"
-        );
     })
 }
 
@@ -159,5 +167,16 @@ mod tests {
         assert!(parse_unload("data: not json\n\n").is_none());
         assert!(parse_unload(": keepalive\n\n").is_none());
         assert!(parse_unload("").is_none());
+    }
+
+    #[test]
+    fn reconnects_back_off_and_never_stop() {
+        use std::time::Duration;
+        assert_eq!(reconnect_delay(0), Duration::from_secs(1));
+        assert_eq!(reconnect_delay(1), Duration::from_secs(1));
+        assert_eq!(reconnect_delay(2), Duration::from_secs(2));
+        assert_eq!(reconnect_delay(4), Duration::from_secs(8));
+        assert_eq!(reconnect_delay(6), Duration::from_secs(30));
+        assert_eq!(reconnect_delay(u32::MAX), Duration::from_secs(30));
     }
 }

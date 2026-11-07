@@ -97,11 +97,18 @@ impl ChildSpec {
 }
 
 /// Where a spec is written: the owner's worker area, named by the dispatch.
+/// Every byte outside `[A-Za-z0-9_-]` is written as `%XX`, so distinct ids
+/// never share a file, and an id made only of those characters keeps the name
+/// it always had.
 pub fn spec_path(data_folder: &Path, dispatch_id: &str) -> PathBuf {
-    let safe: String = dispatch_id
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect();
+    let mut safe = String::with_capacity(dispatch_id.len());
+    for b in dispatch_id.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+            safe.push(b as char);
+        } else {
+            safe.push_str(&format!("%{b:02X}"));
+        }
+    }
     tauri_plugin_agent_tools::worker::worker_dir(data_folder).join(format!("{safe}.subagent.json"))
 }
 
@@ -478,5 +485,18 @@ mod tests {
         let path = spec_path(dir.path(), "../../escape");
         assert!(path.starts_with(tauri_plugin_agent_tools::worker::worker_dir(dir.path())));
         assert!(!path.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn distinct_dispatch_ids_never_share_a_spec_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = spec_path(dir.path(), "job.1");
+        let b = spec_path(dir.path(), "job_1");
+        let c = spec_path(dir.path(), "job%2E1");
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+        // Plain ids keep their historical file name.
+        assert!(spec_path(dir.path(), "sub-run_7").ends_with("sub-run_7.subagent.json"));
     }
 }

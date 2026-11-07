@@ -109,6 +109,11 @@ pub async fn load_mlx_model_impl(
     is_embedding: bool,
     timeout: u64,
 ) -> ServerResult<SessionInfo> {
+    // A model already resident (a double-click, a second window) is returned
+    // as is rather than started again with a second copy of its weights.
+    if let Some(info) = resident(&*process_map_arc.lock().await, &model_id) {
+        return Ok(info);
+    }
     let attempts = if port == 0 { PORT_PICK_ATTEMPTS } else { 1 };
     let mut attempt = 1;
     loop {
@@ -134,6 +139,11 @@ pub async fn load_mlx_model_impl(
             other => return other,
         }
     }
+}
+
+/// The session already serving `model_id`, if any.
+fn resident(map: &HashMap<i32, MlxBackendSession>, model_id: &str) -> Option<SessionInfo> {
+    map.values().find(|s| s.info.model_id == model_id).map(|s| s.info.clone())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -462,7 +472,15 @@ async fn launch_mlx_model_once(
         api_key,
     };
 
-    process_map_arc.lock().await.insert(
+    let mut map = process_map_arc.lock().await;
+    // A concurrent load of the same model finished first: keep that one and
+    // stop this duplicate.
+    if let Some(existing) = resident(&map, &session_info.model_id) {
+        drop(map);
+        let _ = child.kill().await;
+        return Ok(existing);
+    }
+    map.insert(
         pid,
         MlxBackendSession {
             child,
@@ -676,6 +694,22 @@ mod load_lock_tests {
         .await
         .expect("the fake server signals readiness");
         assert!(map.lock().await.contains_key(&info.pid));
+
+        // Loading the same model again returns the resident session.
+        let again = load_mlx_model_impl(
+            map.clone(),
+            &bin,
+            "m".into(),
+            model.display().to_string(),
+            0,
+            MlxConfig { ctx_size: 0 },
+            HashMap::new(),
+            false,
+            5,
+        )
+        .await;
+        assert_eq!(again.ok().map(|s| s.pid), Some(info.pid));
+        assert_eq!(map.lock().await.len(), 1);
 
         let unloaded = unload_mlx_model_impl(map, info.pid).await;
         assert!(unloaded.success);

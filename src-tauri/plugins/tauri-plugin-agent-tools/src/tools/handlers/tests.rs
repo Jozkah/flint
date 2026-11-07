@@ -5139,3 +5139,20 @@ fn memory_propose_is_advertised_with_a_usable_schema() {
     let description = schema["function"]["description"].as_str().unwrap();
     assert!(description.contains("credentials"), "{description}");
 }
+
+#[test]
+fn stale_edit_tracking_forgets_the_least_recently_used_session() {
+    let mut all: HashMap<String, u8> = HashMap::new();
+    let mut order = std::collections::VecDeque::new();
+    for key in ["a", "b", "c"] {
+        touch_session(&mut all, &mut order, key, 2);
+        all.insert(key.to_string(), 0);
+    }
+    assert!(!all.contains_key("a"));
+    // Touching `b` makes `c` the oldest.
+    touch_session(&mut all, &mut order, "b", 2);
+    touch_session(&mut all, &mut order, "d", 2);
+    all.insert("d".to_string(), 0);
+    assert!(all.contains_key("b") && all.contains_key("d"));
+    assert!(!all.contains_key("c"));
+}
