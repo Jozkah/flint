@@ -1,3 +1,4 @@
+import { truncate } from '@/lib/text'
 /**
  * Who else is working in the same turn.
  *
@@ -18,7 +19,7 @@ const MAX_ERRAND_CHARS = 120
 export function errandLine(title: string | undefined, description: string): string {
   const source = title?.trim() || description.split('\n').find((l) => l.trim()) || ''
   const one = source.replace(/\s+/g, ' ').trim()
-  return one.length > MAX_ERRAND_CHARS ? `${one.slice(0, MAX_ERRAND_CHARS - 1)}…` : one
+  return truncate(one, MAX_ERRAND_CHARS)
 }
 
 /** The other children now active in `runId`, then record this one. Returns the release. */

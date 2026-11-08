@@ -1,4 +1,5 @@
 import type { GalleryItem } from '@/lib/studio/studio'
+import { truncate } from '@/lib/text'
 
 /** A Studio result as the Library lists it, next to Cowork's artifacts. */
 export type StudioLibraryEntry = {
@@ -22,7 +23,7 @@ export function splitPath(p: string): { dir: string; name: string } {
 
 export function studioTitle(prompt: string): string {
   const t = prompt.replace(/\s+/g, ' ').trim() || 'Untitled'
-  return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1)}…` : t
+  return truncate(t, TITLE_MAX)
 }
 
 export function studioLibraryEntries(items: readonly GalleryItem[]): StudioLibraryEntry[] {

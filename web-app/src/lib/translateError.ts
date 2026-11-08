@@ -1,3 +1,4 @@
+import { truncate } from '@/lib/text'
 /**
  * Maps a raw provider failure to a plain-language category so the Translate
  * page can say what to do instead of dumping an SDK error. Unknown messages
@@ -49,7 +50,7 @@ export function summarizeProviderBody(body: unknown, max = 160): string {
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+  return truncate(text, max)
 }
 
 export type FailureInfo = { message: string; status?: number; reason: string }
