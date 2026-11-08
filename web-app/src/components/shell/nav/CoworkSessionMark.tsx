@@ -17,7 +17,7 @@ export function SessionMark({
   running,
   selected,
 }: {
-  session: CoworkSession
+  session: Pick<CoworkSession, 'id' | 'folder' | 'updated'>
   running: boolean
   selected: boolean
 }) {
