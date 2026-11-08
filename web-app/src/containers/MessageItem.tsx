@@ -1,10 +1,7 @@
 import { useSecondClock } from '@/lib/sharedClock'
-import { memo, useState, useCallback, useEffect, useMemo } from 'react'
-import { SlashInvocation } from '@/components/SlashInvocation'
-import { parseSlashMarker } from '@/lib/slashCommands'
+import { memo, useState, useCallback, useMemo } from 'react'
 import type { UIMessage, ChatStatus } from 'ai'
-import { RenderMarkdown } from './RenderMarkdown'
-import { explainRawToolCall, hasRawToolCall } from '@/lib/rawToolCallText'
+import { hasRawToolCall } from '@/lib/rawToolCallText'
 import { EnableToolsCard } from '@/containers/message/EnableToolsCard'
 import { useModelToolsEnabled, useThreadToolGrants } from '@/hooks/useThreadToolGrants'
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
@@ -16,28 +13,23 @@ import {
   type ActivityLabel,
 } from '@/lib/agentActivity'
 import type { SubagentRun } from '@/types/coworkSession'
-import { GitFork, Loader, Play, RefreshCw, TriangleAlert } from 'lucide-react'
+import { Loader, RefreshCw, TriangleAlert } from 'lucide-react'
 
-/**
- * Message actions appear on hover or keyboard focus, and stay visible on a
- * touch screen, which has no hover to reveal them.
- */
-const REVEAL_ACTIONS =
-  'opacity-0 motion-safe:transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100'
-
-/** Icon actions: compact with a mouse, 44px with a finger. */
-const ACTION_BUTTON =
-  'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
 import { AssistantMessageHeader } from './message/AssistantMessageHeader'
-import { SkillsUsedPopover } from './message/SkillsUsedPopover'
-import { SentFileChips } from './message/SentFileChips'
 import { MessageContextMenu } from './message/MessageContextMenu'
 import {
-  assistantTextOf,
+  AssistantMessageActions,
+  UserMessageActions,
+} from './message/MessageActionBars'
+import {
+  renderMessageFilePart,
+  renderMessageTextPart,
+} from './message/renderMessageParts'
+import { useMessageCitations } from './message/useMessageCitations'
+import {
   attachedFilesOf,
   awaitsApproval,
-  collectToolCitations,
   copyTextOf,
   hasPendingToolPart,
   imageUrlsOf,
@@ -51,16 +43,12 @@ import {
   type MessagePartLike,
   type PartEntry,
 } from './message/types'
-import { CopyButton } from './CopyButton'
-import { ReadAloudButton } from './ReadAloudButton'
 import { thoughtSecondsFromMetadata } from '@/lib/reasoningClock'
 import { docFromUIMessage } from '@/lib/exportDoc'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
-import { formatMessageTime } from '@/utils/formatMessageTime'
 import { toMs } from '@/lib/messageTime'
 import {
   useConversationModel,
@@ -68,28 +56,12 @@ import {
 } from '@/hooks/useConversationPane'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
-import { tidySummaryMarkdown } from '@/lib/continueFromSummary'
 import { useMessageErrors } from '@/stores/message-errors'
-import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
-import {
-  AgentMessageHeader,
-  agentMessageOf,
-} from '@/containers/AgentMessageHeader'
-import { unwrapForDisplay } from '@/lib/sessionMailbox'
-import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
-import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
-import { extractFilesFromPrompt } from '@/lib/fileMetadata'
-import { nameMentions, splitMentionBlocks } from '@/lib/chatMentions'
-import { SentMentions } from '@/containers/SentMentions'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
 import { modelWaitStatus } from '@/lib/runStatus'
-import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import { useGroundingStore } from '@/stores/grounding-store'
-import { useWebCitationStore } from '@/stores/web-citation-store'
 import { WebSourcesRow } from '@/components/WebSourcesRow'
-import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
@@ -346,48 +318,8 @@ export const MessageItem = memo(
         emptyRunFallback((runParts ?? message.parts) as MessagePartLike[]) !==
           null)
 
-    // Aggregate RAG citations in part order and record each rag tool part's
-    // base offset, so its card numbers/anchors continue the same global
-    // sequence the inline superscript markers use.
-    const { ragCitations, citationOffsets, webCitations, webReads } = useMemo(
-      () => collectToolCitations(message.role, message.parts),
-      [message.parts, message.role]
-    )
-
-    const serviceHub = useServiceHub()
-    const grounding = useGroundingStore((s) => s.byMessageId[message.id])
-    const ensureGrounding = useGroundingStore((s) => s.ensure)
-
-    const assistantText = useMemo(
-      () => assistantTextOf(message.role, message.parts),
-      [message.parts, message.role]
-    )
-
-    useEffect(() => {
-      if (isStreaming) return
-      if (!assistantText || !ragCitations.length) return
-      const rag = serviceHub.rag()
-      if (!rag.embed) return
-      ensureGrounding(
-        message.id,
-        assistantText,
-        ragCitations,
-        rag.embed.bind(rag)
-      )
-    }, [
-      isStreaming,
-      assistantText,
-      ragCitations,
-      message.id,
-      ensureGrounding,
-      serviceHub,
-    ])
-
-    const setWebCitations = useWebCitationStore((s) => s.setForMessage)
-    useEffect(() => {
-      if (!webCitations.length) return
-      setWebCitations(message.id, webCitations)
-    }, [webCitations, message.id, setWebCitations])
+    const { citationOffsets, webCitations, webReads, grounding } =
+      useMessageCitations(message, isStreaming)
 
     // Extract file metadata from message text (for user messages with attachments)
     const attachedFiles = useMemo(
@@ -404,191 +336,21 @@ export const MessageItem = memo(
     const renderTextPart = (
       part: { type: 'text'; text: string },
       partIndex: number
-    ) => {
-      if (!part.text || part.text.trim() === '') {
-        return null
-      }
+    ) =>
+      renderMessageTextPart(part, partIndex, {
+        message,
+        metadata,
+        attachedFiles,
+        coloredUserBubble,
+        renderUserMarkdown,
+        grounding,
+        isStreaming,
+        isAnimating,
+        t,
+      })
 
-      const isLastPart = partIndex === message.parts.length - 1
-
-      // For user messages, extract and clean the text from file metadata, and
-      // fold the mentioned-conversation blocks into chips.
-      const mentioned =
-        message.role === 'user'
-          ? splitMentionBlocks(part.text)
-          : { clean: part.text, mentions: [] }
-      // Mail from another session reaches the model fenced; the bubble shows
-      // only its text, under the "Message from <name>" header (live test 1b).
-      const displayText =
-        message.role === 'user'
-          ? agentMessageOf(metadata)
-            ? unwrapForDisplay(part.text)
-            : nameMentions(
-                extractFilesFromPrompt(mentioned.clean).cleanPrompt,
-                mentioned.mentions
-              )
-          : part.text
-
-      // A `/command` the user sent reads as typed; the expansion folds away.
-      const slashInvocation =
-        message.role === 'user' ? parseSlashMarker(displayText) : null
-
-      if (
-        !displayText.trim() &&
-        message.role === 'user' &&
-        attachedFiles.length === 0
-      ) {
-        return null
-      }
-
-      return (
-        <div key={`${message.id}-${partIndex}`} data-message-id={message.id} className="w-full">
-          {message.role === 'user' ? (
-            <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
-              <div
-                data-slot="user-bubble"
-                className={cn(
-                  'relative inline-block max-w-[min(85%,36rem)] rounded-[14px] rounded-br-[4px] px-3 py-2.5 text-[calc(var(--text-base)*0.8125)] leading-normal text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
-                  coloredUserBubble
-                    ? // The accent tint, only when the setting asks for it.
-                      'bg-acc-tint'
-                    : // A neutral block otherwise: the right-aligned column
-                      // and the tone are enough to find the user's own turns.
-                      'bg-muted'
-                )}
-              >
-                {/* janhq/jan#8864: typed while the agent worked and handed to
-                    it mid-run, not the start of a run of its own. */}
-                {metadata?.steered === true && partIndex === 0 && (
-                  <div
-                    data-testid="steered-label"
-                    className="mb-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
-                  >
-                    {t('common:steering.delivered')}
-                  </div>
-                )}
-                {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
-                {mentioned.mentions.length > 0 && (
-                  <SentMentions mentions={mentioned.mentions} />
-                )}
-                {/* Show attached files if any */}
-                {attachedFiles.length > 0 && (
-                  <SentFileChips files={attachedFiles} metadata={metadata} />
-                )}
-                {displayText &&
-                  (slashInvocation ? (
-                    <SlashInvocation
-                      invocation={slashInvocation.invocation}
-                      body={slashInvocation.body}
-                    />
-                  ) : renderUserMarkdown || metadata?.continuedFrom ? (
-                    // The continue-from-summary seed is model-written Markdown;
-                    // other messages only when the user opted in, since pasted
-                    // logs and code read better exactly as typed.
-                    <div dir="auto" className="select-text" data-testid="user-markdown">
-                      <RenderMarkdown
-                        content={
-                          // Seeds written before the summary was tidied still
-                          // read well.
-                          metadata?.continuedFrom
-                            ? tidySummaryMarkdown(displayText)
-                            : displayText
-                        }
-                        isUser
-                        isAnimating={false}
-                        messageId={message.id}
-                      />
-                    </div>
-                  ) : (
-                    <div dir="auto" className="select-text whitespace-pre-wrap">
-                      {displayText}
-                    </div>
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              <RenderMarkdown
-                content={
-                  grounding && !isStreaming
-                    ? injectCitationMarkers(
-                        explainRawToolCall(part.text, t('chat:rawToolCallNotice')),
-                        grounding.sentenceCitations,
-                        `cite-${message.id}`
-                      )
-                    : message.role === 'assistant'
-                      ? explainRawToolCall(part.text, t('chat:rawToolCallNotice'))
-                      : part.text
-                }
-                isStreaming={isStreaming && isLastPart}
-                messageId={message.id}
-                isAnimating={isAnimating}
-              />
-            </>
-          )}
-        </div>
-      )
-    }
-
-    const renderFilePart = (part: MessagePartLike, partIndex: number) => {
-      const isImage = part.mediaType?.startsWith('image/')
-      const isAudio =
-        part.mediaType === 'audio/wav' || part.mediaType === 'audio/mpeg'
-      const isVideo = part.mediaType?.startsWith('video/')
-
-      if (isAudio && part.url) {
-        const justify =
-          message.role === 'user' ? 'justify-end' : 'justify-start'
-        return (
-          <div
-            key={`${message.id}-${partIndex}`}
-            className={`flex ${justify} w-full my-2`}
-          >
-            <audio controls src={part.url} className="max-w-[80%] rounded-md" />
-          </div>
-        )
-      }
-
-      if (isVideo && part.url) {
-        const justify =
-          message.role === 'user' ? 'justify-end' : 'justify-start'
-        return (
-          <div
-            key={`${message.id}-${partIndex}`}
-            className={`flex ${justify} w-full my-2`}
-          >
-            <video
-              controls
-              src={part.url}
-              className="max-w-[80%] max-h-80 rounded-md border border-border"
-            />
-          </div>
-        )
-      }
-
-      // A user's images are shown together, above their text (see `userImages`).
-      if (message.role === 'user' && isImage && part.url) return null
-
-      if (message.role === 'assistant' && isImage && part.url) {
-        return (
-          <div key={`${message.id}-${partIndex}`} className="my-2">
-            <img
-              src={part.url}
-              alt={part.filename || t('chat:messageItem.generatedImage')}
-              className="max-w-full rounded-md cursor-pointer"
-              onClick={() =>
-                setViewer({
-                  images: [{ url: part.url!, name: part.filename }],
-                  index: 0,
-                })
-              }
-            />
-          </div>
-        )
-      }
-
-      return null
-    }
+    const renderFilePart = (part: MessagePartLike, partIndex: number) =>
+      renderMessageFilePart(part, partIndex, { message, t, setViewer })
 
     const persistedThoughtSeconds = thoughtSecondsFromMetadata(metadata)
     const renderedParts = useMemo(() => {
@@ -837,64 +599,22 @@ export const MessageItem = memo(
 
         {/* Message actions for user messages */}
         {message.role === 'user' && !hideActions && (
-          <div
-            className={cn(
-              'mt-1 flex flex-wrap items-center justify-end gap-0.5 text-muted-foreground text-xs',
-              REVEAL_ACTIONS
-            )}
-          >
-            {createdAt !== undefined && (
-              <span
-                className="mr-1 text-muted-foreground tabular-nums"
-                title={new Date(createdAt).toLocaleString()}
-              >
-                {formatMessageTime(createdAt)}
-              </span>
-            )}
-            {versionNav}
-            <span className="inline-flex pointer-coarse:[&_button]:size-11">
-              <CopyButton text={getFullTextContent()} />
-            </span>
-
-            {onEdit &&
-              status !== CHAT_STATUS.STREAMING &&
-              status !== CHAT_STATUS.SUBMITTED && (
-                <EditMessageDialog
-                  message={getFullTextContent()}
-                  imageUrls={imageUrls.length > 0 ? imageUrls : undefined}
-                  onSave={handleEdit}
-                />
-              )}
-
-            {onDelete &&
-              status !== CHAT_STATUS.STREAMING &&
-              status !== CHAT_STATUS.SUBMITTED && (
-                <DeleteMessageDialog onDelete={handleDelete} />
-              )}
-
-            {/* Last with no reply (the reply was deleted, or never came):
-                ask for one (C092). */}
-            {selectedModel &&
-              onRegenerate &&
-              isLastMessage &&
-              status !== CHAT_STATUS.STREAMING &&
-              status !== CHAT_STATUS.SUBMITTED && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className={ACTION_BUTTON}
-                      onClick={handleRegenerate}
-                      aria-label={t('chat:actions.regenerate')}
-                    >
-                      <RefreshCw className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
-                </Tooltip>
-              )}
-          </div>
+          <UserMessageActions
+            createdAt={createdAt}
+            versionNav={versionNav}
+            getFullTextContent={getFullTextContent}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            status={status}
+            imageUrls={imageUrls}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+            selectedModel={selectedModel}
+            onRegenerate={onRegenerate}
+            isLastMessage={isLastMessage}
+            handleRegenerate={handleRegenerate}
+            t={t}
+          />
         )}
 
         {/* A reply cut at the output limit ends mid-sentence: say so (L-002). */}
@@ -917,108 +637,29 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && !(hideActions && midReply) && (
-            <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-0.5 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
-              {/* The time is on the header line above. */}
-              <div
-                className={cn(
-                  'flex items-center gap-0.5',
-                  // Every reply shows only its speed and tokens until hovered;
-                  // the actions then take their room and the figures move
-                  // right. Touch has no hover, so it always shows them.
-                  isStreaming || hideActions
-                    ? 'hidden'
-                    : 'hidden group-hover/message:flex group-focus-within/message:flex pointer-coarse:flex'
-                )}
-              >
-                {versionNav}
-                <span className="inline-flex pointer-coarse:[&_button]:size-11">
-                  <CopyButton text={getFullTextContent()} />
-                </span>
-                <ReadAloudButton
-                  messageId={message.id}
-                  text={getFullTextContent()}
-                />
-
-                {onEdit && !isStreaming && (
-                  <EditMessageDialog
-                    message={getFullTextContent()}
-                    onSave={handleEdit}
-                  />
-                )}
-
-              {onDelete && !isStreaming && (
-                <DeleteMessageDialog onDelete={handleDelete} />
-              )}
-
-              {onFork && !isStreaming && (
-                <Tooltip>
-<TooltipTrigger asChild>
-<Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className={ACTION_BUTTON}
-                  onClick={() => onFork(message.id)}
-                  aria-label={t('chat:actions.fork')}
-                >
-                  <GitFork className="size-3.5" />
-                </Button>
-</TooltipTrigger>
-<TooltipContent>{t('chat:actions.fork')}</TooltipContent>
-</Tooltip>
-              )}
-
-                {selectedModel &&
-                  onContinue &&
-                  !isStreaming &&
-                  isLastMessage &&
-                  canContinue && (
-                    <Tooltip>
-<TooltipTrigger asChild>
-<Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className={ACTION_BUTTON}
-                      onClick={handleContinue}
-                      aria-label={t('chat:actions.continue')}
-                    >
-                      <Play className="size-3.5" />
-                    </Button>
-</TooltipTrigger>
-<TooltipContent>{t('chat:actions.continue')}</TooltipContent>
-</Tooltip>
-                  )}
-
-              {selectedModel &&
-                onRegenerate &&
-                !isStreaming &&
-                isLastMessage && (
-                  <Tooltip>
-<TooltipTrigger asChild>
-<Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className={ACTION_BUTTON}
-                    onClick={handleRegenerate}
-                    aria-label={t('chat:actions.regenerate')}
-                  >
-                    <RefreshCw className="size-3.5" />
-                  </Button>
-</TooltipTrigger>
-<TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
-</Tooltip>
-                )}
-            </div>
-
-            {!midReply && (
-              <TokenSpeedIndicator
-                streaming={isStreaming}
-                metadata={metadata}
-              />
-            )}
-            {!isStreaming && usedSkills.length > 0 && (
-              <SkillsUsedPopover skills={usedSkills} />
-            )}
-          </div>
+          <AssistantMessageActions
+            isStreaming={isStreaming}
+            hideActions={hideActions}
+            versionNav={versionNav}
+            getFullTextContent={getFullTextContent}
+            messageId={message.id}
+            onEdit={onEdit}
+            handleEdit={handleEdit}
+            onDelete={onDelete}
+            handleDelete={handleDelete}
+            onFork={onFork}
+            selectedModel={selectedModel}
+            onContinue={onContinue}
+            isLastMessage={isLastMessage}
+            canContinue={canContinue}
+            handleContinue={handleContinue}
+            onRegenerate={onRegenerate}
+            handleRegenerate={handleRegenerate}
+            midReply={midReply}
+            metadata={metadata}
+            usedSkills={usedSkills}
+            t={t}
+          />
         )}
 
         {/* Right-click context menu */}
