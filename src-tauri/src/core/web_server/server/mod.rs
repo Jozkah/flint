@@ -601,7 +601,7 @@ enum Auth {
 /// The routes served before the session gate. Anything not listed here is
 /// behind it, including every route added later.
 fn route_auth(method: &Method, path: &str) -> Auth {
-    let public = (path == "/healthz" && method == Method::GET)
+    let public = ((path == "/healthz" || path == "/readyz") && method == Method::GET)
         || (path == "/api/v1/shutdown" && method == Method::POST)
         || (path == "/api/v1/token" && method == Method::POST)
         || (path == "/login" && method == Method::GET)
@@ -618,6 +618,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     let path = req.uri().path().to_string();
     if path == "/healthz" && method == Method::GET {
         return healthz();
+    }
+    if path == "/readyz" && method == Method::GET {
+        return readyz(&state);
     }
     if path == "/api/v1/shutdown" && method == Method::POST {
         return shutdown_route(&state, &req);
@@ -745,6 +748,16 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
     }
     serve_asset(&state, &method, &path).await
+}
+
+/// Readiness for supervisors: 200 `ready` while the data folder is there to
+/// serve from, 503 `not ready` otherwise. No versions, paths or counts.
+fn readyz(state: &State) -> Resp {
+    if state.data_folder.is_dir() {
+        text(StatusCode::OK, "ready")
+    } else {
+        text(StatusCode::SERVICE_UNAVAILABLE, "not ready")
+    }
 }
 
 fn healthz() -> Resp {
