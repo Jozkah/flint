@@ -607,6 +607,57 @@ fn self_signed_certificate_is_reused_for_the_same_address() {
 }
 
 #[test]
+fn self_signed_certificate_is_bounded_and_replaced_near_its_end() {
+    use super::tls::{self_signed_at, self_signed_expiry, SELF_SIGNED_VALIDITY_DAYS};
+    let dir = tempfile::tempdir().unwrap();
+    let day = chrono::Duration::days(1);
+    let t0 = chrono::Utc::now();
+    let a = self_signed_at(dir.path(), "192.168.1.20", None, t0).unwrap();
+    let expiry = self_signed_expiry(dir.path()).unwrap();
+    assert!(expiry <= t0 + day * SELF_SIGNED_VALIDITY_DAYS as i32 + day);
+    assert!(expiry > t0 + day * 365);
+    assert!(SELF_SIGNED_VALIDITY_DAYS <= 825, "Apple refuses longer server certificates");
+
+    // Kept for most of its life, so a trusting phone keeps trusting it.
+    let b = self_signed_at(dir.path(), "192.168.1.20", None, t0 + day * 300).unwrap();
+    assert_eq!(a.fingerprint, b.fingerprint);
+    // Replaced once inside the renewal window, then kept again.
+    let c = self_signed_at(dir.path(), "192.168.1.20", None, expiry - day * 10).unwrap();
+    assert_ne!(a.fingerprint, c.fingerprint);
+    assert!(self_signed_expiry(dir.path()).unwrap() > expiry + day * 300);
+    let d = self_signed_at(dir.path(), "192.168.1.20", None, expiry - day * 9).unwrap();
+    assert_eq!(c.fingerprint, d.fingerprint);
+}
+
+/// A certificate made before expiry dates were recorded counts from the day
+/// it was written, so an upgrade does not replace a recent one at once.
+#[test]
+fn a_certificate_without_a_recorded_expiry_counts_from_when_it_was_made() {
+    use super::tls::{self_signed_at, self_signed_expiry, SELF_SIGNED_VALIDITY_DAYS};
+    let dir = tempfile::tempdir().unwrap();
+    let now = chrono::Utc::now();
+    let a = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    std::fs::remove_file(dir.path().join("lan-cert.expires")).unwrap();
+    let derived = self_signed_expiry(dir.path()).unwrap();
+    let made = derived - chrono::Duration::days(SELF_SIGNED_VALIDITY_DAYS);
+    assert!((made - now).num_minutes().abs() < 5, "{made} vs {now}");
+    let b = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    assert_eq!(a.fingerprint, b.fingerprint);
+
+    // One written long ago is replaced.
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(400 * 24 * 3600);
+    std::fs::File::options()
+        .write(true)
+        .open(dir.path().join("lan-cert.pem"))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let c = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    assert_ne!(a.fingerprint, c.fingerprint);
+    assert!(dir.path().join("lan-cert.expires").exists());
+}
+
+#[test]
 fn custom_host_name_is_normalized_and_validated() {
     let with = |h: &str| RemoteConfig {
         custom_host: Some(h.into()),
