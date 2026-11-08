@@ -305,6 +305,12 @@ fn as_worktree(record: &ChildRecord) -> WorktreeRecord {
     }
 }
 
+/// The child's worktree, if it is still the one that was recorded: under
+/// `roots`, the same repository, on the recorded branch.
+pub(crate) fn checked_worktree(record: &ChildRecord, roots: &Path) -> Result<WorktreeRecord, ChildError> {
+    verify(record, roots)
+}
+
 /// The child's worktree, if it is still the one that was recorded.
 fn verify(record: &ChildRecord, roots: &Path) -> Result<WorktreeRecord, ChildError> {
     let path = Path::new(&record.worktree_path);
@@ -490,6 +496,13 @@ pub fn settle(
     record.ended_at = Some(now());
     record.fingerprint = print;
     save(data_folder, &record)?;
+    // A run's children ending is when earlier failed or cancelled children's
+    // empty worktrees are looked at again; this child's own grace starts now.
+    #[cfg(not(test))]
+    crate::core::agent::child_reaper::reap_in_background(
+        data_folder.to_path_buf(),
+        std::time::Duration::ZERO,
+    );
     Ok(record)
 }
 
@@ -562,6 +575,29 @@ fn prune_at(data_folder: &Path, retention_days: i64, at: chrono::DateTime<chrono
     removed
 }
 
+/// Every readable child record, in no particular order. Unreadable files are
+/// skipped.
+pub(crate) fn all_records(data_folder: &Path) -> Vec<ChildRecord> {
+    let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|t| serde_json::from_str::<ChildRecord>(&t).ok())
+        .collect()
+}
+
+/// Test hook: backdate a settled child's end time.
+#[cfg(test)]
+pub(crate) fn set_ended_at_for_test(data_folder: &Path, owner_id: &str, ended_at: &str) {
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    let mut record = load(data_folder, owner_id).expect("recorded child");
+    record.ended_at = Some(ended_at.to_string());
+    save(data_folder, &record).expect("saved child");
+}
+
 fn state_of(record: &ChildRecord) -> ChildState {
     match record.status {
         ChildStatus::Running if record.instance == instance() => ChildState::Running,
@@ -597,15 +633,9 @@ pub fn list(
     session: Option<&str>,
 ) -> Vec<ChildView> {
     prune(data_folder, 30);
-    let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
-        return Vec::new();
-    };
     let project = Path::new(project);
-    let mut records: Vec<ChildRecord> = entries
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
-        .filter_map(|t| serde_json::from_str::<ChildRecord>(&t).ok())
+    let mut records: Vec<ChildRecord> = all_records(data_folder)
+        .into_iter()
         .filter(|r| session.is_none_or(|s| r.parent_session == s))
         .filter(|r| same_dir(Path::new(&r.source_root), project))
         .collect();
