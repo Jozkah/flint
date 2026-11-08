@@ -19,23 +19,12 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
-import { middleTruncate, modelNameTail } from '@/lib/modelDisplayName'
-import {
-  buildDisambiguation,
-  buildPickerGroups,
-  buildSearchableItems,
-  filterBySearch,
-  findAmbiguousModelIds,
-  isFavoriteItem,
-  locationKind,
-  makeRemoteLabeler,
-  type SearchableModel,
-} from '@/lib/modelPickerItems'
+import { modelNameTail } from '@/lib/modelDisplayName'
+import { locationKind, type SearchableModel } from '@/lib/modelPickerItems'
 import { useModelPickerKeyNav } from '@/hooks/useModelPickerKeyNav'
 import { MiddleText } from '@/components/ui/middle-text'
 import { effectiveContextLength } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
-import Capabilities from './Capabilities'
 import {
   ArrowUpDown,
   Search,
@@ -50,17 +39,15 @@ import { ModelSetting } from '@/containers/ModelSetting'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { ModelAvatar } from '@/containers/ModelAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
-import { ModelEvidenceBadges } from '@/containers/ModelEvidenceBadges'
-import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useProviderReachability } from '@/hooks/useProviderReachability'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
-import { isOffline, modelAvailability, OFFLINE_ROW_CLASS } from '@/lib/modelAvailability'
+import { isOffline, modelAvailability } from '@/lib/modelAvailability'
 import { providerHasRemoteApiKeys as hasRemoteKeys } from '@/lib/provider-api-keys'
 import { useModelOrder } from '@/hooks/useModelOrder'
-import { MODEL_SORT_OPTIONS, sortModels, type ModelSortOption } from '@/lib/modelSort'
+import { MODEL_SORT_OPTIONS, type ModelSortOption } from '@/lib/modelSort'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,17 +56,22 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { modelsNeedingVisionProbe } from '@/lib/visionProbe'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { OfflineBadge, ProcessingLocationLabel } from '@/containers/dropdownModelParts'
+import { ProcessingLocationLabel } from '@/containers/dropdownModelParts'
 import {
   SECTION_HEADING,
   SORT_LABEL_KEYS,
   setLastUsedModel,
 } from '@/containers/dropdownModelConsts'
+import {
+  useCheckModelVisionCapability,
+  useInitializeModelSelection,
+  useLlamacppVisionProbe,
+  useModelPickerLists,
+} from '@/containers/dropdownModelHooks'
+import { renderModelPickerRow } from '@/containers/dropdownModelRow'
 
 type DropdownModelProviderProps = {
   model?: ThreadModel
@@ -215,59 +207,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   }, [selectedModel, selectedProvider, getProviderByName])
 
   // Function to check if a llamacpp model has vision capabilities and update model capabilities
-  const checkAndUpdateModelVisionCapability = useCallback(
-    async (modelId: string) => {
-      try {
-        const hasVision = await serviceHub.models().checkMmprojExists(modelId)
-        if (hasVision) {
-          // Update the model capabilities to include 'vision'
-          const provider = getProviderByName('llamacpp')
-          if (provider) {
-            const modelIndex = provider.models.findIndex(
-              (m) => m.id === modelId
-            )
-            if (modelIndex !== -1) {
-              const model = provider.models[modelIndex]
-              const capabilities = model.capabilities || []
-
-              // Add 'vision' capability if not already present AND if user hasn't manually configured capabilities
-              // Check if model has a custom capabilities config flag
-
-              const hasUserConfiguredCapabilities =
-                model._userConfiguredCapabilities === true
-
-              if (
-                !capabilities.includes('vision') &&
-                !hasUserConfiguredCapabilities
-              ) {
-                const updatedModels = [...provider.models]
-                updatedModels[modelIndex] = {
-                  ...model,
-                  capabilities: [...capabilities, 'vision'],
-                  // Mark this as auto-detected, not user-configured
-                  _autoDetectedVision: true,
-                }
-
-                updateProvider('llamacpp', { models: updatedModels })
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.debug('Error checking mmproj for model:', modelId, error)
-      }
-    },
-    [getProviderByName, updateProvider, serviceHub]
+  const checkAndUpdateModelVisionCapability = useCheckModelVisionCapability(
+    getProviderByName,
+    updateProvider,
+    serviceHub
   )
 
   // Initialize model provider - avoid race conditions with manual selections.
-  //
-  // The effect reads the store and the helpers through `latestRef`, so it
-  // re-runs only when what it decides on changes (the target model, whether it
-  // exists yet, whether any model has loaded) and not on every providers
-  // write. A capability probe writes back through `updateProvider`; re-running
-  // on that re-probed the same model with fresh IPC calls each time.
-  const latestRef = useRef({
+  useInitializeModelSelection({
     model,
     checkModelExists,
     getProviderByName,
@@ -275,118 +222,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     checkAndUpdateModelVisionCapability,
     selectModelProvider,
     serviceHub,
-  })
-  latestRef.current = {
-    model,
-    checkModelExists,
-    getProviderByName,
-    updateProvider,
-    checkAndUpdateModelVisionCapability,
-    selectModelProvider,
-    serviceHub,
-  }
-  const probedModelsRef = useRef<Set<string>>(new Set())
-  const targetProvider = model?.provider
-  const targetId = model?.id
-  const targetExists = model
-    ? Boolean(checkModelExists(model.provider, model.id))
-    : false
-  const anyModelLoaded = providers.some((p) => p.active && p.models.length > 0)
-  const paneSplit = pane?.isSplit
-  const paneActive = pane?.isActive
-
-  useEffect(() => {
-    let cancelled = false
-    const initializeModel = async () => {
-      const h = latestRef.current
-      const target = h.model
-      // A split pane the user is not working in leaves the global picker to
-      // the pane they are; it becomes the one deciding when it is activated.
-      if (paneSplit && !paneActive) return
-      // Probe a model's mmproj and vision support once per mount.
-      const probe = async (provider: string, id: string) => {
-        if (provider !== 'llamacpp') return
-        const key = `${provider}:${id}`
-        if (probedModelsRef.current.has(key)) return
-        probedModelsRef.current.add(key)
-        await h.serviceHub
-          .models()
-          .checkMmprojExistsAndUpdateOffloadMMprojSetting(
-            id,
-            h.updateProvider,
-            h.getProviderByName
-          )
-        if (cancelled) return
-        // Also check vision capability
-        await h.checkAndUpdateModelVisionCapability(id)
-      }
-      // Auto select model when existing thread is passed
-      if (target) {
-        // A caller that owns its model shows it from the prop; the global
-        // selection is not the place to record it.
-        if (drivesGlobalSelection) {
-          h.selectModelProvider(target.provider as string, target.id as string)
-          if (!h.checkModelExists(target.provider, target.id)) {
-            h.selectModelProvider('', '')
-          }
-        }
-        // Check mmproj existence for llamacpp models
-        await probe(target.provider as string, target.id as string)
-      } else if (useLastUsedModel) {
-        // Initialise, never re-decide. This effect used to re-run on every
-        // change to `providers` -- a model list refreshing, a capability probe
-        // writing back through `updateProvider` -- and re-deciding each time
-        // cleared a model the user had just picked whenever it was momentarily
-        // missing from an active provider's list. The picker kept showing it
-        // (that is local display state), while the composer's selection was
-        // empty and it refused to send: no run, no turn, nothing in the
-        // transcript. An existing selection stays. If the model really is
-        // gone, sending fails with an error the user can act on, which is
-        // better than a composer that silently does nothing.
-        if (useModelProvider.getState().selectedModel) return
-        // A default the user set wins over whatever was used last; when it is
-        // no longer available, the last-used model applies as before.
-        const preferred = useModelEvidence.getState().preferredModel
-        const lastUsed =
-          preferred && h.checkModelExists(preferred.provider, preferred.model)
-            ? preferred
-            : getLastUsedModel()
-        if (lastUsed && h.checkModelExists(lastUsed.provider, lastUsed.model)) {
-          h.selectModelProvider(lastUsed.provider, lastUsed.model)
-          await probe(lastUsed.provider, lastUsed.model)
-        } else {
-          // Fallback: auto-select first llamacpp model if available
-          const llamacppProvider = useModelProvider
-            .getState()
-            .providers.find(
-              (p) => p.provider === 'llamacpp' && p.active && p.models.length > 0
-            )
-          if (llamacppProvider && llamacppProvider.models.length > 0) {
-            const firstModel = llamacppProvider.models[0]
-            h.selectModelProvider('llamacpp', firstModel.id)
-            setLastUsedModel('llamacpp', firstModel.id)
-          } else {
-            h.selectModelProvider('', '')
-          }
-        }
-      }
-    }
-
-    void initializeModel()
-    return () => {
-      cancelled = true
-    }
-    // selectedModel and selectedProvider intentionally excluded to prevent race conditions
-  }, [
-    targetProvider,
-    targetId,
-    targetExists,
-    anyModelLoaded,
+    providers,
+    pane,
     drivesGlobalSelection,
     useLastUsedModel,
-    paneSplit,
-    paneActive,
-  ])
+  })
 
   // The chat's or session's own model, when its provider (or the model) is
   // gone: removed, or turned off. The picker names it as unavailable rather
@@ -407,31 +247,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     }
   }, [selectedProvider, selectedModel, unavailableModel, t])
 
-  // Models already probed for vision while the dropdown is open. The effect
-  // below re-runs on every providers-store change (including the ones the
-  // probe itself makes), and each probe is an uncached IPC/filesystem call,
-  // so a model is probed at most once per opening.
-  const visionProbedRef = useRef<Set<string>>(new Set())
-
   // Check vision capabilities for all llamacpp models
-  useEffect(() => {
-    if (!open) {
-      visionProbedRef.current = new Set()
-      return
-    }
-    const llamacppProvider = providers.find(
-      (p) => p.provider === 'llamacpp' && p.active
-    )
-    if (!llamacppProvider) return
-    const toProbe = modelsNeedingVisionProbe(
-      llamacppProvider.models,
-      visionProbedRef.current
-    )
-    for (const id of toProbe) visionProbedRef.current.add(id)
-    void Promise.allSettled(
-      toProbe.map((id) => checkAndUpdateModelVisionCapability(id))
-    )
-  }, [open, providers, checkAndUpdateModelVisionCapability])
+  useLlamacppVisionProbe(open, providers, checkAndUpdateModelVisionCapability)
 
   // Reset search value when dropdown closes
   const onOpenChange = useCallback((open: boolean) => {
@@ -452,87 +269,26 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     searchInputRef.current?.focus()
   }, [])
 
-  // Create searchable items from all models
-  const searchableItems = useMemo(
-    () =>
-      buildSearchableItems(providers, {
-        hideProvider,
-        selectedProvider,
-        selectedModelId: selectedModel?.id,
-      }),
-    [providers, hideProvider, selectedProvider, selectedModel?.id]
-  )
-
-  const ambiguousModelIds = useMemo(
-    () => findAmbiguousModelIds(searchableItems),
-    [searchableItems]
-  )
-
-  const disambiguation = useMemo(
-    () => buildDisambiguation(searchableItems),
-    [searchableItems]
-  )
-
-  const remoteLabel = useMemo(
-    () => makeRemoteLabeler(searchableItems),
-    [searchableItems]
-  )
-
-  // Get favorite models that are currently available
-  const favoriteItems = useMemo(
-    () =>
-      searchableItems.filter((item) => isFavoriteItem(favoriteModels, item)),
-    [searchableItems, favoriteModels]
-  )
-
-  // Filter models based on search value
-  const filteredItems = useMemo(
-    () => filterBySearch(searchableItems, searchValue),
-    [searchableItems, searchValue]
-  )
-
-  /**
-   * Provider sections are one of the orders, and a search has an order of its
-   * own — relevance — that an alphabet would bury the best match under.
-   */
-  const wantsFlatList = !searchValue && sort !== 'provider'
-
-  // The browsable list in the order the user chose. Favorites are pinned above
-  // it, so they are not repeated here.
-  const flatItems = useMemo(() => {
-    if (!wantsFlatList) return []
-    // Models from a provider that did not answer go last.
-    return sortModels(filteredItems, sort, lastUsed, modelIsOffline).filter(
-      (item) => !isFavoriteItem(favoriteModels, item)
-    )
-  }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels, modelIsOffline])
-
-  // With nothing to list, the provider sections are still worth showing: their
-  // headers are how a user reaches a provider's settings to add a model.
-  const isGrouped = !wantsFlatList || flatItems.length === 0
-
-  // Group filtered items by provider, excluding favorites when not searching
-  const groupedItems = useMemo(
-    () =>
-      buildPickerGroups({
-        filteredItems,
-        providers,
-        searchValue,
-        favoriteModels,
-        unreachableOrigins,
-        hideProvider,
-        selectedProvider,
-      }),
-    [
-      filteredItems,
-      providers,
-      searchValue,
-      favoriteModels,
-      unreachableOrigins,
-      hideProvider,
-      selectedProvider,
-    ]
-  )
+  const {
+    ambiguousModelIds,
+    disambiguation,
+    remoteLabel,
+    favoriteItems,
+    flatItems,
+    isGrouped,
+    groupedItems,
+  } = useModelPickerLists({
+    providers,
+    hideProvider,
+    selectedProvider,
+    selectedModelId: selectedModel?.id,
+    favoriteModels,
+    searchValue,
+    sort,
+    lastUsed,
+    modelIsOffline,
+    unreachableOrigins,
+  })
 
   const handleSelect = useCallback(
     async (searchableModel: SearchableModel) => {
@@ -614,119 +370,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
   const onPickerKeyDown = useModelPickerKeyNav(pickerRef, searchInputRef)
 
-  /** Rows are selectable with Enter or Space, not only with a pointer. */
-  const selectableRow = (item: SearchableModel, isSelected: boolean) => ({
-    role: 'button' as const,
-    'data-model-row': '',
-    tabIndex: 0,
-    'aria-pressed': isSelected,
-    onClick: () => handleSelect(item),
-    onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        handleSelect(item)
-      }
-    },
-  })
-
-  /**
-   * One model: its mark, its name over its identifier, what is known about it
-   * here, and what it can do. The same row in every list, so a model looks
-   * the same whether it is a favourite, in a provider's section or in the
-   * single sorted list.
-   */
-  const renderRow = (
-    item: SearchableModel,
-    list: 'fav' | 'flat' | 'group'
-  ) => {
-    const isSelected =
-      selectedModel?.id === item.model.id &&
-      selectedProvider === item.provider.provider
-    const capabilities = item.model.capabilities || []
-    const modelName = getModelDisplayName(item.model)
-    const disambiguator = disambiguation.get(item.value)
-    const offline = modelIsOffline(item)
-    // A single list has no provider header, so the row carries the provider.
-    // So does any row that could be mistaken for another remote's copy of the
-    // same model, and every favourite (pinned above the provider sections).
-    const showRemote =
-      list === 'flat' ||
-      list === 'fav' ||
-      ambiguousModelIds.has(item.model.id)
-    const secondary = showRemote
-      ? `${remoteLabel(item.provider)}${modelName !== item.model.id ? ` · ${item.model.id}` : ''}`
-      : modelName !== item.model.id
-        ? item.model.id
-        : undefined
-    return (
-      <div
-        key={`${list}-${item.value}`}
-        {...selectableRow(item, isSelected)}
-        aria-label={secondary ? `${modelName}, ${secondary}` : modelName}
-        className={cn(
-          'group/mrow flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color,transform] duration-150 motion-safe:animate-mi-in motion-safe:active:scale-[.985]',
-          'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-          offline && OFFLINE_ROW_CLASS,
-          isSelected && 'bg-accent'
-        )}
-      >
-        <ModelAvatar
-          modelId={item.model.id}
-          name={modelName}
-          provider={item.provider.provider}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="min-w-0 flex-1">
-              <span className="flex items-center text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                <MiddleText
-                  text={modelName}
-                  tail={modelNameTail(modelName)}
-                  data-testid="model-row-name"
-                />
-                {disambiguator && (
-                  <span
-                    className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-muted-foreground"
-                    data-testid="model-disambiguator"
-                  >
-                    {disambiguator.label}
-                  </span>
-                )}
-                {offline && (
-                  <OfflineBadge
-                    label={t('common:modelOffline.badge')}
-                    tooltip={t('common:modelOffline.tooltip')}
-                  />
-                )}
-              </span>
-              {secondary && (
-                <span
-                  className={cn(
-                    'block truncate text-subtle-foreground',
-                    list === 'flat' ? 'text-[length:calc(var(--ui-font-base)*0.6875)]' : 'font-mono text-[length:calc(var(--ui-font-base)*0.6875)]'
-                  )}
-                >
-                  {middleTruncate(secondary, 44)}
-                </span>
-              )}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            {item.model.id} · {remoteLabel(item.provider)}
-          </TooltipContent>
-        </Tooltip>
-        <ModelEvidenceBadges
-          provider={item.provider.provider}
-          model={item.model}
-        />
-        {capabilities.length > 0 && (
-          <span className="ml-1 shrink-0">
-            <Capabilities capabilities={capabilities} compact />
-          </span>
-        )}
-      </div>
-    )
-  }
+  const renderRow = (item: SearchableModel, list: 'fav' | 'flat' | 'group') =>
+    renderModelPickerRow(item, list, {
+      selectedModel,
+      selectedProvider,
+      disambiguation,
+      modelIsOffline,
+      ambiguousModelIds,
+      remoteLabel,
+      t,
+      handleSelect,
+    })
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
