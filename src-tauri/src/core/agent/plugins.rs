@@ -1722,93 +1722,9 @@ fn install_git_pinned(
     ctx.check()?;
     let tmp = new_staging(&plugins);
 
-    let mut cmd = git_command();
-    // A repository's symbolic links are checked out as plain files holding
-    // the link text, never as links. A link in a plugin would otherwise lead
-    // out of it: a skill file pointing at the project's `.env` is read and
-    // handed to the model by `skill_read`, and a directory link named in a
-    // tree URL's subdirectory makes the installer move a real directory from
-    // outside the clone into the plugin store. The local-folder install
-    // already skips links for the same reason.
-    // A server that drips under ~1 KB/s for a minute is abandoned instead of
-    // growing the staging folder until the user notices (P2A-012).
-    cmd.args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60"]);
-    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
-    if let Some(r#ref) = r#ref {
-        cmd.args(["--branch", r#ref]);
-    }
-    // `--` ends option parsing: a positional can never be read as a git option.
-    cmd.arg("--").arg(&source.url).arg(&tmp);
-    if !ctx.terminal_prompts {
-        // No terminal to answer a credential prompt: fail instead of hanging.
-        cmd.env("GIT_TERMINAL_PROMPT", "0");
-    }
-    if let Err(e) = run_cancellable_within(cmd, &ctx.cancel, Some(CLONE_DEADLINE)) {
-        remove_staging(&tmp);
-        return Err(match e {
-            RunError::Cancelled => cancelled_error(),
-            RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
-                PluginErrorCode::GitUnavailable,
-                "git is not installed or not on PATH",
-            ),
-            RunError::Spawn(e) => {
-                PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}"))
-            }
-            RunError::Failed(stderr) => {
-                PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
-            }
-        });
-    }
-
-    if dir_bytes_over(&tmp, MAX_CLONE_BYTES) {
-        remove_staging(&tmp);
-        return Err(PluginError::new(
-            PluginErrorCode::GitFailed,
-            format!(
-                "the repository is larger than {} MB; it is not installed as a plugin",
-                MAX_CLONE_BYTES / (1024 * 1024)
-            ),
-        ));
-    }
-    let commit_sha = git_output_in(&tmp, &["rev-parse", "HEAD"])
-        .ok()
-        .filter(|s| !s.is_empty());
-    if let Some(pinned) = pin.sha.as_deref() {
-        let actual = commit_sha.clone().unwrap_or_default();
-        if !sha_matches(pinned, &actual) {
-            remove_staging(&tmp);
-            return Err(sha_mismatch(pinned, &actual));
-        }
-    }
-    // The commit is recorded; the history is not part of the plugin. Keeping
-    // it would install the whole object store and a config git may later read.
-    if let Err(e) = std::fs::remove_dir_all(tmp.join(".git")) {
-        if e.kind() != io::ErrorKind::NotFound {
-            log::warn!("plugins: could not remove .git from staging: {e}");
-        }
-    }
-    let payload_root = source
-        .subdir
-        .as_deref()
-        .map(|subdir| tmp.join(subdir))
-        .unwrap_or_else(|| tmp.clone());
-    // Whatever the checkout holds, the payload must resolve inside the clone.
-    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
-        (Ok(p), Ok(t)) => p.starts_with(&t),
-        // A subdirectory that does not exist is reported as such below.
-        (Err(_), _) => true,
-        (Ok(_), Err(_)) => false,
-    };
-    if !inside {
-        remove_staging(&tmp);
-        return Err(PluginError::new(
-            PluginErrorCode::InvalidSource,
-            format!(
-                "plugin subdirectory leads outside the repository: '{}'",
-                source.subdir.as_deref().unwrap_or("")
-            ),
-        ));
-    }
+    clone_into_staging(&source.url, r#ref, &tmp, ctx)?;
+    let commit_sha = check_clone(&tmp, pin)?;
+    let payload_root = clone_payload_root(&tmp, source.subdir.as_deref())?;
     let staged = Staged {
         tmp,
         payload_root,
@@ -1833,6 +1749,113 @@ fn install_git_pinned(
         },
     };
     finish_install(scope, &plugins, staged, collection, ctx, &source.url)
+}
+
+/// Shallow-clone `repo_url` (at `r#ref`) into the staging dir `tmp`. On
+/// failure the staging dir is removed.
+fn clone_into_staging(
+    repo_url: &str,
+    r#ref: Option<&str>,
+    tmp: &Path,
+    ctx: &InstallCtx,
+) -> Result<(), PluginError> {
+    let mut cmd = git_command();
+    // A repository's symbolic links are checked out as plain files holding
+    // the link text, never as links. A link in a plugin would otherwise lead
+    // out of it: a skill file pointing at the project's `.env` is read and
+    // handed to the model by `skill_read`, and a directory link named in a
+    // tree URL's subdirectory makes the installer move a real directory from
+    // outside the clone into the plugin store. The local-folder install
+    // already skips links for the same reason.
+    // A server that drips under ~1 KB/s for a minute is abandoned instead of
+    // growing the staging folder until the user notices (P2A-012).
+    cmd.args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60"]);
+    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
+    if let Some(r#ref) = r#ref {
+        cmd.args(["--branch", r#ref]);
+    }
+    // `--` ends option parsing: a positional can never be read as a git option.
+    cmd.arg("--").arg(repo_url).arg(tmp);
+    if !ctx.terminal_prompts {
+        // No terminal to answer a credential prompt: fail instead of hanging.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+    }
+    if let Err(e) = run_cancellable_within(cmd, &ctx.cancel, Some(CLONE_DEADLINE)) {
+        remove_staging(tmp);
+        return Err(match e {
+            RunError::Cancelled => cancelled_error(),
+            RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
+                PluginErrorCode::GitUnavailable,
+                "git is not installed or not on PATH",
+            ),
+            RunError::Spawn(e) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}"))
+            }
+            RunError::Failed(stderr) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
+            }
+        });
+    }
+    Ok(())
+}
+
+/// Check a fresh clone in `tmp` (size cap, pinned commit) and drop its
+/// history. Returns the cloned commit. On failure the staging dir is removed.
+fn check_clone(tmp: &Path, pin: &GitPin) -> Result<Option<String>, PluginError> {
+    if dir_bytes_over(tmp, MAX_CLONE_BYTES) {
+        remove_staging(tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::GitFailed,
+            format!(
+                "the repository is larger than {} MB; it is not installed as a plugin",
+                MAX_CLONE_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
+    let commit_sha = git_output_in(tmp, &["rev-parse", "HEAD"])
+        .ok()
+        .filter(|s| !s.is_empty());
+    if let Some(pinned) = pin.sha.as_deref() {
+        let actual = commit_sha.clone().unwrap_or_default();
+        if !sha_matches(pinned, &actual) {
+            remove_staging(tmp);
+            return Err(sha_mismatch(pinned, &actual));
+        }
+    }
+    // The commit is recorded; the history is not part of the plugin. Keeping
+    // it would install the whole object store and a config git may later read.
+    if let Err(e) = std::fs::remove_dir_all(tmp.join(".git")) {
+        if e.kind() != io::ErrorKind::NotFound {
+            log::warn!("plugins: could not remove .git from staging: {e}");
+        }
+    }
+    Ok(commit_sha)
+}
+
+/// The payload dir inside the clone `tmp`: the clone itself or `subdir`.
+/// Whatever the checkout holds, it must resolve inside the clone; otherwise
+/// the staging dir is removed and the install refused.
+fn clone_payload_root(tmp: &Path, subdir: Option<&str>) -> Result<PathBuf, PluginError> {
+    let payload_root = subdir
+        .map(|subdir| tmp.join(subdir))
+        .unwrap_or_else(|| tmp.to_path_buf());
+    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
+        (Ok(p), Ok(t)) => p.starts_with(&t),
+        // A subdirectory that does not exist is reported as such later.
+        (Err(_), _) => true,
+        (Ok(_), Err(_)) => false,
+    };
+    if !inside {
+        remove_staging(tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin subdirectory leads outside the repository: '{}'",
+                subdir.unwrap_or("")
+            ),
+        ));
+    }
+    Ok(payload_root)
 }
 
 /// Copy a local folder into a staging dir, then install from it. Nothing is
@@ -1937,7 +1960,6 @@ fn select_targets(
     staged: &Staged,
     collection: CollectionChoice,
 ) -> Result<Selected, PluginError> {
-    let url = staged.display.as_str();
     let payload_root = &staged.payload_root;
     if !payload_root.is_dir() {
         return Err(PluginError::new(
@@ -1951,143 +1973,162 @@ fn select_targets(
 
     // Decide which payload directory(ies) to install, as
     // (dir, fallback name, is a subdir of the staging dir, relative path).
-    let mut targets: Vec<InstallTarget> = Vec::new();
     if plugin_has_content(payload_root) {
-        // A single plugin: either the source root or an explicit subdir.
-        let fallback = staged
-            .subdir
-            .as_deref()
-            .and_then(|subdir| subdir.rsplit('/').next())
-            .map(str::to_string)
-            .or_else(|| staged.fallback_name.clone());
-        targets.push((
-            payload_root.clone(),
-            fallback,
-            staged.subdir.is_some(),
-            staged.subdir.clone(),
-        ));
-    } else {
-        // A collection has no payload at its root; plugins can be nested any
-        // number of dirs deep (`plugins/` and `external_plugins/` are only
-        // wrapper dirs). Relative paths are always `/`-separated: they are
-        // offered back to the user as the tail of a spec, so a Windows `\`
-        // would print a suggestion that does not work when pasted back in.
-        let rel_of = |p: &Path| {
-            p.strip_prefix(payload_root)
-                .map(|rel| {
-                    rel.components()
-                        .map(|c| c.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join("/")
-                })
-                .unwrap_or_default()
-        };
-        let mut candidates = find_plugin_dirs(payload_root);
-        candidates.sort_by_key(|p| rel_of(p));
-        let rels: Vec<String> = candidates.iter().map(|p| rel_of(p)).collect();
-        let already = || -> Vec<bool> {
-            candidates
-                .iter()
-                .map(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|n| plugins.join(n).exists())
-                        .unwrap_or(false)
-                })
-                .collect()
-        };
-        let picked: Vec<usize> = match candidates.len() {
-            0 => {
+        return Ok(Selected::Targets(vec![single_target(staged)]));
+    }
+    collection_targets(plugins, staged, collection)
+}
+
+/// A single plugin: either the source root or an explicit subdir.
+fn single_target(staged: &Staged) -> InstallTarget {
+    let fallback = staged
+        .subdir
+        .as_deref()
+        .and_then(|subdir| subdir.rsplit('/').next())
+        .map(str::to_string)
+        .or_else(|| staged.fallback_name.clone());
+    (
+        staged.payload_root.clone(),
+        fallback,
+        staged.subdir.is_some(),
+        staged.subdir.clone(),
+    )
+}
+
+/// A collection has no payload at its root; plugins can be nested any number
+/// of dirs deep (`plugins/` and `external_plugins/` are only wrapper dirs).
+fn collection_targets(
+    plugins: &Path,
+    staged: &Staged,
+    collection: CollectionChoice,
+) -> Result<Selected, PluginError> {
+    let url = staged.display.as_str();
+    let payload_root = &staged.payload_root;
+    let mut candidates = find_plugin_dirs(payload_root);
+    candidates.sort_by_key(|p| collection_rel_path(payload_root, p));
+    let rels: Vec<String> = candidates
+        .iter()
+        .map(|p| collection_rel_path(payload_root, p))
+        .collect();
+    let picked: Vec<usize> = match candidates.len() {
+        0 => {
+            return Err(PluginError::new(
+                PluginErrorCode::NoPluginContent,
+                format!(
+                    "'{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                ),
+            ));
+        }
+        // Exactly one plugin in the collection: no ambiguity, install it.
+        1 => vec![0],
+        n => match &collection {
+            CollectionChoice::ListError => {
                 return Err(PluginError::new(
-                    PluginErrorCode::NoPluginContent,
+                    PluginErrorCode::Collection,
                     format!(
-                        "'{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                        "'{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {}",
+                        rels.join(", "),
+                        staged.collection_hint
                     ),
                 ));
             }
-            // Exactly one plugin in the collection: no ambiguity, install it.
-            1 => vec![0],
-            n => match &collection {
-                CollectionChoice::ListError => {
-                    return Err(PluginError::new(
-                        PluginErrorCode::Collection,
-                        format!(
-                            "'{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {}",
-                            rels.join(", "),
-                            staged.collection_hint
-                        ),
-                    ));
-                }
-                CollectionChoice::Prompt => {
-                    // Mark plugins already installed so the user can see why a
-                    // pick will be skipped.
-                    prompt_multi_choice(url, &rels, &already(), &mut io::stdin().lock()).map_err(
-                        |e| {
-                            PluginError::new(
-                                PluginErrorCode::Cancelled,
-                                e.strip_prefix("ERROR: ").unwrap_or(&e).to_string(),
-                            )
-                        },
-                    )?
-                }
-                // The TUI owns stdin, so it cannot prompt inline: return the
-                // candidate list untouched and let the caller present its own
-                // picker, then re-invoke with `Only` for the chosen paths.
-                CollectionChoice::List => {
-                    return Ok(Selected::Listing(GitInstall::Collection(
-                        rels.into_iter()
-                            .zip(already())
-                            .map(|(path, installed)| CollectionPlugin { path, installed })
-                            .collect(),
-                    )));
-                }
-                // A picker selection: install exactly the payload-root-relative
-                // paths the caller chose. A caller that never supplied any (or
-                // supplied paths matching no candidate) is a user error -- the
-                // collection was re-scanned since the picker's listing, so that
-                // is surfaced immediately instead of falling through to the
-                // confusing "already installed: (nothing)" message below.
-                CollectionChoice::Only(paths) => {
-                    if paths.is_empty() {
-                        return Err(PluginError::new(
-                            PluginErrorCode::InvalidSource,
-                            format!("no matching plugins in '{url}' to install: (none selected)"),
-                        ));
-                    }
-                    let unmatched: Vec<&String> =
-                        paths.iter().filter(|p| !rels.contains(p)).collect();
-                    if !unmatched.is_empty() {
-                        return Err(PluginError::new(
-                            PluginErrorCode::InvalidSource,
-                            format!(
-                                "no matching plugins in '{url}' to install: {}",
-                                unmatched
-                                    .into_iter()
-                                    .map(|s| s.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                        ));
-                    }
-                    rels.iter()
-                        .enumerate()
-                        .filter(|(_, rel)| paths.contains(rel))
-                        .map(|(idx, _)| idx)
-                        .collect()
-                }
-            },
-        };
-        for idx in picked {
-            let dir = candidates[idx].clone();
-            let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
-            let rel = Some(match staged.subdir.as_deref() {
-                Some(sub) => format!("{sub}/{}", rels[idx]),
-                None => rels[idx].clone(),
-            });
-            targets.push((dir, fallback, true, rel));
-        }
+            CollectionChoice::Prompt => {
+                // Mark plugins already installed so the user can see why a
+                // pick will be skipped.
+                let already = installed_flags(plugins, &candidates);
+                prompt_multi_choice(url, &rels, &already, &mut io::stdin().lock()).map_err(|e| {
+                    PluginError::new(
+                        PluginErrorCode::Cancelled,
+                        e.strip_prefix("ERROR: ").unwrap_or(&e).to_string(),
+                    )
+                })?
+            }
+            // The TUI owns stdin, so it cannot prompt inline: return the
+            // candidate list untouched and let the caller present its own
+            // picker, then re-invoke with `Only` for the chosen paths.
+            CollectionChoice::List => {
+                return Ok(Selected::Listing(GitInstall::Collection(
+                    rels.into_iter()
+                        .zip(installed_flags(plugins, &candidates))
+                        .map(|(path, installed)| CollectionPlugin { path, installed })
+                        .collect(),
+                )));
+            }
+            CollectionChoice::Only(paths) => only_indices(url, &rels, paths)?,
+        },
+    };
+    let mut targets: Vec<InstallTarget> = Vec::new();
+    for idx in picked {
+        let dir = candidates[idx].clone();
+        let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
+        let rel = Some(match staged.subdir.as_deref() {
+            Some(sub) => format!("{sub}/{}", rels[idx]),
+            None => rels[idx].clone(),
+        });
+        targets.push((dir, fallback, true, rel));
     }
     Ok(Selected::Targets(targets))
+}
+
+/// A candidate's path relative to the payload root. Always `/`-separated:
+/// it is offered back to the user as the tail of a spec, so a Windows `\`
+/// would print a suggestion that does not work when pasted back in.
+fn collection_rel_path(payload_root: &Path, p: &Path) -> String {
+    p.strip_prefix(payload_root)
+        .map(|rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_default()
+}
+
+/// For each candidate, whether a plugin of that dir name is already installed.
+fn installed_flags(plugins: &Path, candidates: &[PathBuf]) -> Vec<bool> {
+    candidates
+        .iter()
+        .map(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| plugins.join(n).exists())
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// A picker selection: install exactly the payload-root-relative paths the
+/// caller chose. A caller that never supplied any (or supplied paths matching
+/// no candidate) is a user error -- the collection was re-scanned since the
+/// picker's listing, so that is surfaced immediately instead of falling
+/// through to the confusing "already installed: (nothing)" message later.
+fn only_indices(url: &str, rels: &[String], paths: &[String]) -> Result<Vec<usize>, PluginError> {
+    if paths.is_empty() {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("no matching plugins in '{url}' to install: (none selected)"),
+        ));
+    }
+    let unmatched: Vec<&String> = paths.iter().filter(|p| !rels.contains(p)).collect();
+    if !unmatched.is_empty() {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "no matching plugins in '{url}' to install: {}",
+                unmatched
+                    .into_iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+    Ok(rels
+        .iter()
+        .enumerate()
+        .filter(|(_, rel)| paths.contains(rel))
+        .map(|(idx, _)| idx)
+        .collect())
 }
 
 /// Phase 2: install each chosen payload.
@@ -2737,6 +2778,25 @@ pub(crate) async fn update_plugin_scoped(
     query: &str,
     ctx: InstallCtx,
 ) -> Result<UpdateReport, PluginError> {
+    let target = updatable_install(scope, query)?;
+    let (spec, r#ref, pin) = update_source(&target.record, &ctx).await?;
+    let scope = scope.clone();
+    spawn_blocking(move || reinstall_if_changed(&scope, &target, &spec, r#ref, &pin, &ctx)).await
+}
+
+/// An installed plugin an update can re-resolve.
+struct UpdateTarget {
+    /// The plugin's directory name under the plugin root.
+    directory: String,
+    plugins: PathBuf,
+    /// `plugins/<directory>`.
+    current: PathBuf,
+    record: InstallRecord,
+}
+
+/// The installed plugin `query` names, refused unless it has an install
+/// record from a git or marketplace source.
+fn updatable_install(scope: &PluginScope, query: &str) -> Result<UpdateTarget, PluginError> {
     let (directory, _) = find_installed_scoped(scope, query).ok_or_else(|| {
         PluginError::new(
             PluginErrorCode::NotInstalled,
@@ -2757,9 +2817,15 @@ pub(crate) async fn update_plugin_scoped(
             format!("'{directory}' was installed from a local folder; reinstall it to update"),
         ));
     }
+    Ok(UpdateTarget { directory, plugins, current, record })
+}
 
-    // Where the source points now. A marketplace install asks its index again,
-    // so a moved ref or a new pin in the index takes effect.
+/// Where the source points now: (spec, ref, pin). A marketplace install asks
+/// its index again, so a moved ref or a new pin in the index takes effect.
+async fn update_source(
+    record: &InstallRecord,
+    ctx: &InstallCtx,
+) -> Result<(String, Option<String>, GitPin), PluginError> {
     let mut spec = record.source.clone();
     let mut r#ref = record.git_ref.clone();
     let mut pin = GitPin {
@@ -2772,7 +2838,7 @@ pub(crate) async fn update_plugin_scoped(
             record.marketplace.as_deref(),
             record.marketplace_entry.as_deref(),
         ) {
-            let mut index = fetch_all_indexes(&[url.to_string()], Some(&ctx)).await?;
+            let mut index = fetch_all_indexes(&[url.to_string()], Some(ctx)).await?;
             index.retain(|e| e.name == entry_name);
             let entry = index.into_iter().next().ok_or_else(|| {
                 PluginError::new(
@@ -2786,73 +2852,82 @@ pub(crate) async fn update_plugin_scoped(
             pin.sha = entry.sha;
         }
     }
+    Ok((spec, r#ref, pin))
+}
 
-    let scope = scope.clone();
-    spawn_blocking(move || {
-        let parsed = parse_git_source(&spec)?;
-        let effective_ref = r#ref.clone().or(parsed.r#ref.clone());
-        let remote = remote_sha(&parsed.url, effective_ref.as_deref(), &ctx)?;
-        if let Some(pinned) = pin.sha.as_deref() {
-            validate_pin(pinned)?;
-            if !sha_matches(pinned, &remote) {
-                return Err(sha_mismatch(pinned, &remote));
-            }
+/// Reinstall `target` from `spec` only when the remote commit changed. A
+/// failed reinstall puts the previous install back.
+fn reinstall_if_changed(
+    scope: &PluginScope,
+    target: &UpdateTarget,
+    spec: &str,
+    r#ref: Option<String>,
+    pin: &GitPin,
+    ctx: &InstallCtx,
+) -> Result<UpdateReport, PluginError> {
+    let UpdateTarget { directory, plugins, current, record } = target;
+    let parsed = parse_git_source(spec)?;
+    let effective_ref = r#ref.clone().or(parsed.r#ref.clone());
+    let remote = remote_sha(&parsed.url, effective_ref.as_deref(), ctx)?;
+    if let Some(pinned) = pin.sha.as_deref() {
+        validate_pin(pinned)?;
+        if !sha_matches(pinned, &remote) {
+            return Err(sha_mismatch(pinned, &remote));
         }
-        if record.commit_sha.as_deref() == Some(remote.as_str()) {
-            return Ok(UpdateReport {
-                id: directory.clone(),
-                updated: false,
-                from_sha: record.commit_sha.clone(),
-                to_sha: Some(remote.clone()),
-                message: format!("{directory} is up to date at {}", short_sha(Some(&remote))),
+    }
+    if record.commit_sha.as_deref() == Some(remote.as_str()) {
+        return Ok(UpdateReport {
+            id: directory.clone(),
+            updated: false,
+            from_sha: record.commit_sha.clone(),
+            to_sha: Some(remote.clone()),
+            message: format!("{directory} is up to date at {}", short_sha(Some(&remote))),
+        });
+    }
+    // Move the old install aside (a staging-prefixed name is never listed),
+    // install fresh, and restore the old one if that fails.
+    let aside = new_staging(plugins);
+    std::fs::rename(current, &aside).map_err(PluginError::io)?;
+    let choice = match (&parsed.subdir, &record.subdir) {
+        (None, Some(rel)) => CollectionChoice::Only(vec![rel.clone()]),
+        _ => CollectionChoice::ListError,
+    };
+    let installed = install_git_pinned(
+        scope,
+        spec,
+        r#ref.as_deref(),
+        choice,
+        ctx,
+        &record.source_kind,
+        pin,
+    );
+    let id = match installed {
+        Ok(GitInstall::Installed(list)) if !list.is_empty() => list[0].id.clone(),
+        other => {
+            let _ = std::fs::remove_dir_all(current);
+            std::fs::rename(&aside, current).map_err(PluginError::io)?;
+            return Err(match other {
+                Err(e) => e,
+                _ => PluginError::new(
+                    PluginErrorCode::NoPluginContent,
+                    format!("update of '{directory}' produced no plugin; kept the installed one"),
+                ),
             });
         }
-        // Move the old install aside (a staging-prefixed name is never listed),
-        // install fresh, and restore the old one if that fails.
-        let aside = new_staging(&plugins);
-        std::fs::rename(&current, &aside).map_err(PluginError::io)?;
-        let choice = match (&parsed.subdir, &record.subdir) {
-            (None, Some(rel)) => CollectionChoice::Only(vec![rel.clone()]),
-            _ => CollectionChoice::ListError,
-        };
-        let installed = install_git_pinned(
-            &scope,
-            &spec,
-            r#ref.as_deref(),
-            choice,
-            &ctx,
-            &record.source_kind,
-            &pin,
-        );
-        let id = match installed {
-            Ok(GitInstall::Installed(list)) if !list.is_empty() => list[0].id.clone(),
-            other => {
-                let _ = std::fs::remove_dir_all(&current);
-                std::fs::rename(&aside, &current).map_err(PluginError::io)?;
-                return Err(match other {
-                    Err(e) => e,
-                    _ => PluginError::new(
-                        PluginErrorCode::NoPluginContent,
-                        format!("update of '{directory}' produced no plugin; kept the installed one"),
-                    ),
-                });
-            }
-        };
-        remove_staging(&aside);
-        let to = read_install_record(&plugins.join(&id)).and_then(|r| r.commit_sha);
-        Ok(UpdateReport {
-            message: format!(
-                "updated {id}: {} -> {}",
-                short_sha(record.commit_sha.as_deref()),
-                short_sha(to.as_deref())
-            ),
-            id,
-            updated: true,
-            from_sha: record.commit_sha.clone(),
-            to_sha: to,
-        })
+    };
+    remove_staging(&aside);
+    let to = read_install_record(&plugins.join(&id)).and_then(|r| r.commit_sha);
+    Ok(UpdateReport {
+        message: format!(
+            "updated {id}: {} -> {}",
+            short_sha(record.commit_sha.as_deref()),
+            short_sha(to.as_deref())
+        ),
+        id,
+        updated: true,
+        from_sha: record.commit_sha.clone(),
+        to_sha: to,
     })
-    .await
 }
 
 /// [`update_plugin_scoped`] for the CLI's string errors.
