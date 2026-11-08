@@ -29,7 +29,8 @@ import {
   type ToolSchema,
   type WorkspaceScope,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { Channel, invoke } from '@tauri-apps/api/core'
+import { Channel } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import {
   SECRET_WRITE_STOPPED,
@@ -219,7 +220,7 @@ function advertisedFor(
   scope: WorkspaceScope | undefined
 ): Promise<AdvertisedTools> {
   if (!scope) return advertisedToolSchemas(projectRoot, reported)
-  return invoke<AdvertisedTools>('plugin:agent-tools|advertised_tool_schemas', {
+  return invokeCommand<AdvertisedTools>('plugin:agent-tools|advertised_tool_schemas', {
     projectRoot,
     reported,
     scope,

@@ -5,6 +5,7 @@
 // passes through the browser vendor's push service (encrypted, but still).
 
 import { pt } from './text'
+import { truncate } from '../text'
 import { useAppState } from '@/hooks/useAppState'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -29,7 +30,7 @@ export type PushEmit = (event: RemoteEvent) => void
 /** The phone app's path for a conversation. */
 export const pushUrl = (kind: SessionKind, id: string) => `/m/#/${kind}/${encodeURIComponent(id)}`
 
-const clip = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+const clip = (s: string, n = 60) => truncate(s, n)
 
 export function approvalNotice(a: { requestId: string; toolName: string; threadId: string }, where: { kind: SessionKind; title?: string }): PushNotice {
   return {

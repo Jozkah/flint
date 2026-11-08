@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { listen } from '@tauri-apps/api/event'
+import { invokeCommand } from '@/lib/backend'
 
 /**
  * Any CSS colour (rgb, oklch, ...) as 0xRRGGBB, by painting it on a 1x1
@@ -35,16 +36,12 @@ export function ThemeProvider() {
         const bg = rgbOf(getComputedStyle(root).backgroundColor)
         const fg = rgbOf(getComputedStyle(root).color)
         if (bg === null || fg === null) return
-        import('@tauri-apps/api/core')
-          .then(({ invoke }) =>
-            invoke('set_titlebar_colors', { background: bg, text: fg })
-          )
+        invokeCommand('set_titlebar_colors', { background: bg, text: fg })
           .catch((err) => console.error('set_titlebar_colors failed:', err))
       })
     }
     if (IS_LINUX && isPlatformTauri()) {
-      import('@tauri-apps/api/core')
-        .then(({ invoke }) => invoke('set_gtk_prefer_dark', { dark: isDark }))
+      invokeCommand('set_gtk_prefer_dark', { dark: isDark })
         .catch((err) => console.error('set_gtk_prefer_dark failed:', err))
     }
   }, [isDark])
@@ -69,11 +66,8 @@ export function ThemeProvider() {
       // On Linux, WebKitGTK's prefers-color-scheme does not reliably track the
       // XDG Desktop Portal. Source-of-truth is the Rust-side portal read +
       // SettingChanged signal, re-emitted as the `theme-changed` event.
-      Promise.all([
-        Promise.resolve({ listen }),
-        import('@tauri-apps/api/core'),
-      ])
-        .then(async ([{ listen }, { invoke }]) => {
+      Promise.resolve({ listen })
+        .then(async ({ listen }) => {
           const unlisten = await listen<string>('theme-changed', (event) => {
             applyIfAuto(event.payload === 'dark')
           })
@@ -84,7 +78,7 @@ export function ThemeProvider() {
           unlistenTauri = unlisten
 
           try {
-            const initial = await invoke<string>('get_system_theme')
+            const initial = await invokeCommand<string>('get_system_theme')
             if (!cancelled) applyIfAuto(initial === 'dark')
           } catch (err) {
             console.error('get_system_theme failed:', err)

@@ -15,6 +15,7 @@
  */
 import { redactSecrets } from '@/lib/redact'
 import { stripSummaryScaffolding } from '@/lib/summaryText'
+import { truncate } from '@/lib/text'
 
 export type MentionKind = 'chat' | 'session' | 'room'
 
@@ -204,7 +205,7 @@ const attr = (value: string) =>
 
 const oneLine = (text: string, max: number) => {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
+  return truncate(flat, max)
 }
 
 /** Cut a message to `max`, saying so. */
