@@ -622,26 +622,84 @@ pub fn verify_prepare(
             format!("task {task_id} is {:?}; only a completed task is verified", t.status),
         ));
     }
-    let blocked = |reason: String| -> Result<VerifyRequest, CampaignError> {
-        campaign::update(data_folder, id, |c| {
-            let task = c.task_mut(task_id)?;
-            task.verdict = Some(TaskVerdict::Blocked);
-            task.detail = clip_text(&format!("verification blocked: {reason}"), 1000);
-            Ok(((), vec![("task-verify-blocked".into(), Some(task_id.to_string()), reason.clone())]))
-        })?;
-        Err(invalid(format!("verification blocked: {reason}")))
-    };
     let record = match task_record(&c, &t, roots) {
         Ok(r) => r,
-        Err(e) => return blocked(e.message),
+        Err(e) => return verify_blocked(data_folder, id, task_id, e.message),
     };
-    // Evidence is the task's whole work against where it began: commits made
-    // by an earlier attempt and what is still uncommitted. It is read from the
-    // task's own worktree (the working tree against the base), so a retry that
-    // found its work already committed still has a diff to show.
     let dir = Path::new(&record.path);
-    let declared = declared_paths(&c);
-    let base = task_base(&c, &t, &record);
+    let mut evidence = task_diff_evidence(&c, &t, &record);
+
+    // The objective check is evidence for the verifier and also a signal of
+    // its own: a PASS cannot stand against a check that failed.
+    let (tests, check) = task_check_evidence(&c, &record, run_checks);
+    let is_empty = evidence.diff.trim().is_empty() && evidence.fresh_chars == 0 && !evidence.has_leftover;
+    let markers = resolver_markers(&t, dir, &evidence.changed, &evidence.fresh);
+    let facts = TaskEvidence { empty: is_empty, markers: markers.clone(), check: check.clone(), at: campaign::now() };
+    if !markers.is_empty() {
+        evidence.diffs.push_str(&format!("\n[conflict markers remain in: {}]", markers.join(", ")));
+    }
+
+    let claims = campaign::context(data_folder, id, &[task_id.to_string()])
+        .ok()
+        .and_then(|ctx| ctx.handoffs.into_iter().next())
+        .map(|h| h.text)
+        .unwrap_or_else(|| "(the worker left no handoff)".to_string());
+
+    let input =
+        VerificationInput { task_spec: task_spec(&t), diffs: evidence.diffs, test_build_output: tests, worker_claims: claims };
+    let note = format!(
+        "{} changed file lines in the stat, {} diff characters, checks {}",
+        evidence.stat.lines().count(),
+        evidence.diff.chars().count(),
+        if run_checks { "run" } else { "skipped" }
+    );
+    campaign::update(data_folder, id, |c| {
+        let task = c.task_mut(task_id)?;
+        transition_task(task, TaskStatus::Verifying, None)?;
+        task.evidence = Some(facts.clone());
+        Ok(((), vec![("task-verify-started".into(), Some(task_id.to_string()), note.clone())]))
+    })?;
+    Ok(VerifyRequest { task_id: task_id.to_string(), request: verification::build_request(model_id, &input), evidence_note: note })
+}
+
+/// A worktree that cannot be trusted: the task keeps `completed` with a
+/// BLOCKED verdict and the reason, and nothing is sent to a model.
+fn verify_blocked(data_folder: &Path, id: &str, task_id: &str, reason: String) -> Result<VerifyRequest, CampaignError> {
+    campaign::update(data_folder, id, |c| {
+        let task = c.task_mut(task_id)?;
+        task.verdict = Some(TaskVerdict::Blocked);
+        task.detail = clip_text(&format!("verification blocked: {reason}"), 1000);
+        Ok(((), vec![("task-verify-blocked".into(), Some(task_id.to_string()), reason.clone())]))
+    })?;
+    Err(invalid(format!("verification blocked: {reason}")))
+}
+
+/// What a task's worktree shows against its base, for the verifier.
+struct DiffEvidence {
+    /// `git diff --stat` against the base.
+    stat: String,
+    /// The full diff against the base.
+    diff: String,
+    /// The fenced evidence text: stat, clipped diff, new files and notes.
+    diffs: String,
+    /// Tracked paths changed against the base.
+    changed: String,
+    /// Untracked paths git has not seen yet.
+    fresh: String,
+    /// Characters of new-file bodies shown in `diffs`.
+    fresh_chars: usize,
+    /// Whether wanted files are still uncommitted in the worktree.
+    has_leftover: bool,
+}
+
+/// Evidence is the task's whole work against where it began: commits made by
+/// an earlier attempt and what is still uncommitted. It is read from the
+/// task's own worktree (the working tree against the base), so a retry that
+/// found its work already committed still has a diff to show.
+fn task_diff_evidence(c: &Campaign, t: &CampaignTask, record: &WorktreeRecord) -> DiffEvidence {
+    let dir = Path::new(&record.path);
+    let declared = declared_paths(c);
+    let base = task_base(c, t, record);
     let git = |args: &[&str]| worktree::run(dir, args).unwrap_or_default();
     let changed = git(&["-c", "core.quotepath=false", "diff", "--name-only", "--no-renames", &base, "--"]);
     let excluded: Vec<String> = changed
@@ -659,15 +717,36 @@ pub fn verify_prepare(
     }
     let stat = git(&stat_args);
     let diff = git(&diff_args);
-    let pending = worktree::pending(&record);
+    let pending = worktree::pending(record);
     let mut diffs = format!("{stat}\n\n{}", clip_text(&diff, MAX_DIFF));
     if diff.chars().count() > MAX_DIFF {
         diffs.push_str("\n[diff cut]");
     }
     // New files git has not seen yet are part of the work; show what they hold.
-    let mut fresh_chars = 0usize;
     let fresh = git(&["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]);
-    for rel in fresh.lines().filter(|p| safe_rel(p) && !worktree::is_unwanted_cache(p, &declared)) {
+    let fresh_chars = append_untracked_files(&mut diffs, dir, &fresh, &declared);
+    let leftover: Vec<&String> = pending.iter().filter(|p| !worktree::is_unwanted_cache(p, &declared)).collect();
+    if !leftover.is_empty() {
+        diffs.push_str(&format!(
+            "\n[uncommitted in the worktree: {}]",
+            leftover.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    if diff.trim().is_empty() && fresh_chars == 0 {
+        diffs.push_str(&format!(
+            "\n[no change against {base}: the task branch {} holds nothing the base does not]",
+            record.branch
+        ));
+    }
+    let has_leftover = !leftover.is_empty();
+    DiffEvidence { stat, diff, diffs, changed, fresh, fresh_chars, has_leftover }
+}
+
+/// Append the readable text of each wanted untracked file to `diffs`, within
+/// the evidence budget. Returns how many body characters were appended.
+fn append_untracked_files(diffs: &mut String, dir: &Path, fresh: &str, declared: &[String]) -> usize {
+    let mut fresh_chars = 0usize;
+    for rel in fresh.lines().filter(|p| safe_rel(p) && !worktree::is_unwanted_cache(p, declared)) {
         let full = dir.join(rel);
         let readable = std::fs::symlink_metadata(&full)
             .map(|m| m.is_file() && m.len() <= MAX_UNTRACKED_READ)
@@ -684,104 +763,69 @@ pub fn verify_prepare(
         fresh_chars += body.chars().count();
         diffs.push_str(&format!("\n\n[new file, not committed yet: {rel}]\n{body}"));
     }
-    let leftover: Vec<&String> = pending.iter().filter(|p| !worktree::is_unwanted_cache(p, &declared)).collect();
-    if !leftover.is_empty() {
-        diffs.push_str(&format!(
-            "\n[uncommitted in the worktree: {}]",
-            leftover.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
-        ));
-    }
-    if diff.trim().is_empty() && fresh_chars == 0 {
-        diffs.push_str(&format!(
-            "\n[no change against {base}: the task branch {} holds nothing the base does not]",
-            record.branch
-        ));
-    }
+    fresh_chars
+}
 
-    // The objective check is evidence for the verifier and also a signal of
-    // its own: a PASS cannot stand against a check that failed.
-    let mut check: Option<TaskCheck> = None;
-    let tests = if run_checks {
-        match gate_command_with_checkout(Path::new(&record.path), Some(Path::new(&c.source_root))) {
-            GateChoice { command: Some(command), source, blocked: Some(why) } => {
-                check = Some(TaskCheck {
-                    command: command.clone(),
-                    source: source.clone(),
-                    exit_code: None,
-                    timed_out: false,
-                    passed: false,
-                    output: why.clone(),
-                    at: campaign::now(),
-                });
-                format!("$ {command}  ({source})\n{why}")
-            }
-            GateChoice { command: Some(command), source, blocked: None } => {
-                match run_command(Path::new(&record.path), &command, TASK_CHECK_SECS) {
-                    Ok(run) => {
-                        let text = format!(
-                            "$ {command}  ({source})\nexit: {}{}\n{}",
-                            run.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".into()),
-                            if run.timed_out { " (timed out)" } else { "" },
-                            tail(&run.output, MAX_CHECK_OUTPUT)
-                        );
-                        check = Some(TaskCheck {
-                            command: command.clone(),
-                            source: source.clone(),
-                            exit_code: run.exit_code,
-                            timed_out: run.timed_out,
-                            passed: !run.timed_out && run.exit_code == Some(0),
-                            output: tail(&run.output, MAX_TASK_CHECK_OUTPUT),
-                            at: campaign::now(),
-                        });
-                        text
-                    }
-                    Err(e) => format!("the check `{command}` could not be run: {}", e.message),
-                }
-            }
-            _ => "no build or test command is configured or detectable; nothing was run".to_string(),
+/// Run (or explain not running) the task's objective check. Returns the text
+/// for the verifier and the recorded check, if one was attempted.
+fn task_check_evidence(c: &Campaign, record: &WorktreeRecord, run_checks: bool) -> (String, Option<TaskCheck>) {
+    if !run_checks {
+        return ("checks were not run for this verification".to_string(), None);
+    }
+    match gate_command_with_checkout(Path::new(&record.path), Some(Path::new(&c.source_root))) {
+        GateChoice { command: Some(command), source, blocked: Some(why) } => {
+            let check = TaskCheck {
+                command: command.clone(),
+                source: source.clone(),
+                exit_code: None,
+                timed_out: false,
+                passed: false,
+                output: why.clone(),
+                at: campaign::now(),
+            };
+            (format!("$ {command}  ({source})\n{why}"), Some(check))
         }
-    } else {
-        "checks were not run for this verification".to_string()
-    };
-    let is_empty = diff.trim().is_empty() && fresh_chars == 0 && leftover.is_empty();
-    // A resolver's output must not still hold conflict markers.
-    let markers = if t.resolver.is_some() {
-        let mut names: Vec<String> = changed.lines().map(str::to_string).collect();
-        names.extend(fresh.lines().map(str::to_string));
-        names.sort();
-        names.dedup();
-        names
-            .into_iter()
-            .filter(|p| safe_rel(p) && has_conflict_markers(&dir.join(p)))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let facts = TaskEvidence { empty: is_empty, markers: markers.clone(), check: check.clone(), at: campaign::now() };
-    if !markers.is_empty() {
-        diffs.push_str(&format!("\n[conflict markers remain in: {}]", markers.join(", ")));
+        GateChoice { command: Some(command), source, blocked: None } => {
+            match run_command(Path::new(&record.path), &command, TASK_CHECK_SECS) {
+                Ok(run) => {
+                    let text = format!(
+                        "$ {command}  ({source})\nexit: {}{}\n{}",
+                        run.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".into()),
+                        if run.timed_out { " (timed out)" } else { "" },
+                        tail(&run.output, MAX_CHECK_OUTPUT)
+                    );
+                    let check = TaskCheck {
+                        command: command.clone(),
+                        source: source.clone(),
+                        exit_code: run.exit_code,
+                        timed_out: run.timed_out,
+                        passed: !run.timed_out && run.exit_code == Some(0),
+                        output: tail(&run.output, MAX_TASK_CHECK_OUTPUT),
+                        at: campaign::now(),
+                    };
+                    (text, Some(check))
+                }
+                Err(e) => (format!("the check `{command}` could not be run: {}", e.message), None),
+            }
+        }
+        _ => ("no build or test command is configured or detectable; nothing was run".to_string(), None),
     }
+}
 
-    let claims = campaign::context(data_folder, id, &[task_id.to_string()])
-        .ok()
-        .and_then(|ctx| ctx.handoffs.into_iter().next())
-        .map(|h| h.text)
-        .unwrap_or_else(|| "(the worker left no handoff)".to_string());
-
-    let input = VerificationInput { task_spec: task_spec(&t), diffs, test_build_output: tests, worker_claims: claims };
-    let note = format!(
-        "{} changed file lines in the stat, {} diff characters, checks {}",
-        stat.lines().count(),
-        diff.chars().count(),
-        if run_checks { "run" } else { "skipped" }
-    );
-    campaign::update(data_folder, id, |c| {
-        let task = c.task_mut(task_id)?;
-        transition_task(task, TaskStatus::Verifying, None)?;
-        task.evidence = Some(facts.clone());
-        Ok(((), vec![("task-verify-started".into(), Some(task_id.to_string()), note.clone())]))
-    })?;
-    Ok(VerifyRequest { task_id: task_id.to_string(), request: verification::build_request(model_id, &input), evidence_note: note })
+/// A resolver's output must not still hold conflict markers: the changed and
+/// new files that do. Empty for a task that is not a resolver's.
+fn resolver_markers(t: &CampaignTask, dir: &Path, changed: &str, fresh: &str) -> Vec<String> {
+    if t.resolver.is_none() {
+        return Vec::new();
+    }
+    let mut names: Vec<String> = changed.lines().map(str::to_string).collect();
+    names.extend(fresh.lines().map(str::to_string));
+    names.sort();
+    names.dedup();
+    names
+        .into_iter()
+        .filter(|p| safe_rel(p) && has_conflict_markers(&dir.join(p)))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
