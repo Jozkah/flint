@@ -2063,4 +2063,37 @@ async fn a_chat_thread_reads_its_attached_folders_read_only() {
 
     let _ = std::fs::remove_dir_all(&data);
     let _ = std::fs::remove_dir_all(&outside);
-}
+}
+
+/// One request type carries a call from the execute commands into
+/// `execute_tool_inner` and into an unsandboxed-retry offer, so the retried
+/// call is exactly the one that failed. Only a sandboxed `bash` call keeps one.
+#[test]
+fn only_a_sandboxed_bash_call_keeps_a_retry_copy() {
+    let request = ToolCallRequest {
+        data_folder: "data".into(),
+        thread_id: "t1".into(),
+        project: Some("proj".into()),
+        name: "bash".into(),
+        args: json!({ "command": "ls" }),
+        enabled_skills: None,
+        allow_network: Some(false),
+        read_only_project: None,
+        write_grant: Some("grant-1".into()),
+        scope: None,
+        call_id: Some("c1".into()),
+        undo_run: Some("run-1".into()),
+        actor: None,
+        extra_projects: Some(vec!["other".into()]),
+    };
+    let copy = request.retry_copy(false).expect("a sandboxed bash call keeps a copy");
+    assert_eq!(copy.thread_id, "t1");
+    assert_eq!(copy.args, json!({ "command": "ls" }));
+    assert_eq!(copy.write_grant.as_deref(), Some("grant-1"));
+    assert_eq!(copy.call_id.as_deref(), Some("c1"));
+    assert_eq!(copy.undo_run.as_deref(), Some("run-1"));
+    assert_eq!(copy.extra_projects, Some(vec!["other".to_string()]));
+    assert!(request.retry_copy(true).is_none(), "an unsandboxed run is not offered again");
+    let read = ToolCallRequest { name: "read".into(), ..request };
+    assert!(read.retry_copy(false).is_none());
+}
