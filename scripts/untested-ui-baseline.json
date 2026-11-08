@@ -1,0 +1,12 @@
+{
+  "web-app/src/components/shell/AppSidebar.tsx": 845,
+  "web-app/src/components/shell/nav/CoworkNav.tsx": 871,
+  "web-app/src/containers/SplitConversation.tsx": 1215,
+  "web-app/src/containers/ThreadConversation.tsx": 2163,
+  "web-app/src/hooks/providers/useProviderFrames.tsx": 907,
+  "web-app/src/lib/cowork/run/runRequest.ts": 1362,
+  "web-app/src/lib/remote/protocolTypes.ts": 953,
+  "web-app/src/routes/cowork.tsx": 1488,
+  "web-app/src/routes/overview.tsx": 827,
+  "web-app/src/routes/settings/mcp-servers.tsx": 886
+}

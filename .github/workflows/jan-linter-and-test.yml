@@ -206,6 +206,11 @@ jobs:
       - name: Unwrap ratchet
         run: node scripts/unwrap-ratchet.mjs
 
+      # No new web-app source file over 800 lines without a test named after
+      # it. The existing ones are the baseline; paying them down never fails.
+      - name: Untested UI ratchet
+        run: node scripts/untested-ui-ratchet.mjs
+
       - name: Install Tauri dependencies
         run: |
           sudo apt update
