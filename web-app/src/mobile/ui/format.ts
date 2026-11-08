@@ -1,23 +1,30 @@
 // Formatting helpers shared by the phone's screens.
 import type { RemoteToolStep, RoomDetail } from '@/lib/remote/protocol'
 import { t } from '../i18n'
+import { ageParts, type AgeUnit } from '@/lib/time'
 
 export const asset = (path: string) => `${import.meta.env.BASE_URL}${path}`
 export const MARK = asset('images/flint-mark.png')
 
 /** "3 minutes ago", "Yesterday", "12 Sep". */
 export function ago(ms: number, now = Date.now()): string {
-  const s = Math.max(0, Math.round((now - ms) / 1000))
-  if (s < 45) return t('format.justNow')
-  const m = Math.round(s / 60)
-  if (m < 60) return t('format.minAgo', { n: m })
-  const h = Math.round(m / 60)
-  if (h < 24) return t('format.hoursAgo', { n: h })
-  const d = Math.round(h / 24)
-  if (d === 1) return t('format.yesterday')
-  if (d < 7) return t('format.daysAgo', { n: d })
+  const { value, unit } = ageParts(ms, { now, units: PHONE_AGE_UNITS, cascade: true, pastOnly: true })
+  const n = Math.abs(value)
+  if (unit === 'second') return t('format.justNow')
+  if (unit === 'minute') return t('format.minAgo', { n })
+  if (unit === 'hour') return t('format.hoursAgo', { n })
+  if (unit === 'day') return n === 1 ? t('format.yesterday') : t('format.daysAgo', { n })
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
+
+/** Just now under 45 s, then minutes, hours, days for a week; then a date. */
+const PHONE_AGE_UNITS: readonly AgeUnit[] = [
+  { unit: 'second', seconds: 1, until: 45 },
+  { unit: 'minute', seconds: 60 },
+  { unit: 'hour', seconds: 3600 },
+  { unit: 'day', seconds: 86_400, until: 7 * 86_400 },
+  { unit: 'week', seconds: 7 * 86_400 },
+]
 
 export function clock(ms: number): string {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })

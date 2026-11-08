@@ -1,7 +1,7 @@
 import { useSecondClock } from '@/lib/sharedClock'
 import { memo } from 'react'
 import { cn } from '@/lib/utils'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 

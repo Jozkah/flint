@@ -17,6 +17,7 @@
  * rest of a cut answer is read back with `await_task(task_id, offset)`.
  */
 import type { ToolOutcome } from '@/lib/coworkRunner'
+import { formatDuration } from '@/lib/time'
 
 /** Characters of a cut answer returned per `await_task` read. */
 export const RETAINED_WINDOW_CHARS = 14_000
@@ -235,7 +236,8 @@ export const BACKGROUND_TASK_TOOLS = new Set([
   CANCEL_TASK_TOOL_NAME,
 ])
 
-const ago = (ms: number) => `${Math.round(ms / 1000)}s`
+const ago = (ms: number) =>
+  formatDuration(ms, { style: 'units', largest: 'second' })
 
 /** `task_status`, for the model: one task, or every task of the run. */
 export function renderTaskStatus(

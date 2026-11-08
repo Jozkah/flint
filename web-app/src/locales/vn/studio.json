@@ -135,11 +135,6 @@
     "downloading": "Đang tải xuống…",
     "button": "Tải xuống ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} giây",
-    "min": "{{count}} phút",
-    "minS": "{{minutes}} phút {{seconds}} giây"
-  },
   "phase": {
     "queued": "Đang chờ",
     "encoding": "Đang đọc prompt",

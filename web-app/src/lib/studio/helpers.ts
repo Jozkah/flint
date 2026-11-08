@@ -1,5 +1,6 @@
 import type { StudioFile } from '@/lib/studio/studio'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { formatDuration } from '@/lib/time'
 
 /** Pure pieces of the Studio page, kept out of the component so they can be tested. */
 
@@ -187,13 +188,11 @@ export function phaseLabel(phase: string): string {
   return i18n.t(`studio:phase.${PHASES.includes(phase) ? phase : 'working'}`)
 }
 
-/** `3 s`, `1 min 20 s`: how long a generation took. */
+/** `3s`, `1m 20s`: how long a generation took (the desktop Studio's wording). */
 export function durationText(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000))
-  if (seconds < 60) return i18n.t('studio:duration.s', { count: seconds })
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
-  return rest === 0
-    ? i18n.t('studio:duration.min', { count: minutes })
-    : i18n.t('studio:duration.minS', { minutes, seconds: rest })
+  return formatDuration(ms, {
+    style: 'words',
+    t: (key, options) => i18n.t(key, options),
+    largest: 'minute',
+  })
 }

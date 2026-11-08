@@ -187,7 +187,7 @@ describe('CampaignBoard', () => {
       await screen.findByText(/Wrote 2 files, \+176 −0 lines/)
     ).toBeInTheDocument()
     expect(await screen.findByTestId('campaign-task-time-a')).toHaveTextContent(
-      'Worked for 3 min'
+      'Worked for 3m'
     )
     expect(screen.getByTestId('campaign-wrapup')).toBeInTheDocument()
   })

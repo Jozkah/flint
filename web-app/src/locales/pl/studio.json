@@ -138,11 +138,6 @@
     "downloading": "Pobieranie…",
     "button": "Pobierz ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} min",
-    "minS": "{{minutes}} min {{seconds}} s"
-  },
   "phase": {
     "queued": "Oczekiwanie",
     "encoding": "Czytanie promptu",

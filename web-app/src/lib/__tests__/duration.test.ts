@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCompactDuration } from '../duration'
+import { formatCompactDuration } from '../time'
 
 // Mirrors the compact unit strings in locales/en/common.json.
 const t = (key: string, options?: Record<string, unknown>) => {

@@ -2,19 +2,8 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn, formatTokenCount } from '@/lib/utils'
 import type { ContextSegment } from '@/lib/contextBreakdown'
-import { contextUsage } from '@/lib/contextUsage'
+import { contextAge, contextUsage } from '@/lib/contextUsage'
 import { InfoTip } from '@/components/TokenUsageSummary'
-
-/** How long ago, in words: "2 hours ago". Nothing under a minute. */
-function ago(ms: number): string | null {
-  const minutes = Math.floor(ms / 60_000)
-  if (minutes < 1) return null
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  const days = Math.floor(hours / 24)
-  return `${days} days ago`
-}
 
 /** A share (0 to 1) as a percentage; anything under a tenth of a percent says so. */
 const pctText = (share: number) => {
@@ -94,7 +83,7 @@ export function ContextWindowCard({
       : []),
   ]
 
-  const age = updatedAt ? ago(now - updatedAt) : null
+  const age = updatedAt ? contextAge(now - updatedAt) : null
 
   return (
     <div className="text-xs" data-testid="context-window-card">

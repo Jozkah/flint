@@ -2,7 +2,7 @@
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import type { SubagentStats } from '@/lib/coworkSubagentStats'
 
 /** `900`, `12.0K`, `1.3M`: a count with its unit letter once it needs one. */

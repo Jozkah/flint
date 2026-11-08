@@ -135,11 +135,6 @@
     "downloading": "Baixant…",
     "button": "Baixa ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} min",
-    "minS": "{{minutes}} min {{seconds}} s"
-  },
   "phase": {
     "queued": "Esperant",
     "encoding": "Llegint el prompt",

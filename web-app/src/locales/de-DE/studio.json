@@ -132,11 +132,6 @@
     "downloading": "Wird heruntergeladen…",
     "button": "Herunterladen ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} Min.",
-    "minS": "{{minutes}} Min. {{seconds}} s"
-  },
   "phase": {
     "queued": "Wartet",
     "encoding": "Prompt wird gelesen",

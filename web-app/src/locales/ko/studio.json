@@ -129,11 +129,6 @@
     "downloading": "다운로드 중…",
     "button": "다운로드 ({{size}})"
   },
-  "duration": {
-    "s": "{{count}}초",
-    "min": "{{count}}분",
-    "minS": "{{minutes}}분 {{seconds}}초"
-  },
   "phase": {
     "queued": "대기 중",
     "encoding": "프롬프트 읽는 중",

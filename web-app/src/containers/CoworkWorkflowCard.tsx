@@ -21,7 +21,7 @@ import {
   WorkflowResumeButton,
   WorkflowSaveButton,
 } from '@/containers/WorkflowRunControls'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import {
   groupByWorkflowPhase,
   isCheckFailure,

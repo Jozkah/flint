@@ -79,9 +79,9 @@ describe('text helpers', () => {
   it('names phases and formats durations', () => {
     expect(phaseLabel('sampling')).toBe('Drawing')
     expect(phaseLabel('nonsense')).toBe('Working')
-    expect(durationText(3400)).toBe('3 s')
-    expect(durationText(80_000)).toBe('1 min 20 s')
-    expect(durationText(120_000)).toBe('2 min')
+    expect(durationText(3400)).toBe('3s')
+    expect(durationText(80_000)).toBe('1m 20s')
+    expect(durationText(120_000)).toBe('2m')
   })
 })
 

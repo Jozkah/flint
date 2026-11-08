@@ -4,6 +4,7 @@ import type { Node, Position } from 'unist'
 import type { Code, Paragraph, Parent, Text } from 'mdast'
 import { visit } from 'unist-util-visit'
 import { ExtensionManager } from './extension'
+import { formatDuration as formatTime } from '@/lib/time'
 import type { VFile } from 'vfile'
 
 export { cn } from './cn'
@@ -250,22 +251,11 @@ export function formatDuration(startTime: number, endTime?: number): string {
     return 'Invalid duration (start time is in the future)'
   }
 
-  const seconds = Math.floor(durationMs / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) {
-    return `${days}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`
-  } else if (hours > 0) {
-    return `${hours}h ${minutes % 60}m ${seconds % 60}s`
-  } else if (minutes > 0) {
-    return `${minutes}m ${seconds % 60}s`
-  } else if (seconds > 0) {
-    return `${seconds}s`
-  } else {
-    return `${durationMs}ms`
-  }
+  return formatTime(durationMs, {
+    style: 'units',
+    rounding: 'floor',
+    milliseconds: true,
+  })
 }
 
 /** Compact token count for badges and labels, e.g. 24567 -> "24.6K". */

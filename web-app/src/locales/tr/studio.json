@@ -132,11 +132,6 @@
     "downloading": "İndiriliyor…",
     "button": "İndir ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} sn",
-    "min": "{{count}} dk",
-    "minS": "{{minutes}} dk {{seconds}} sn"
-  },
   "phase": {
     "queued": "Bekliyor",
     "encoding": "İstem okunuyor",
