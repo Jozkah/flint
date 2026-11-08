@@ -2778,6 +2778,25 @@ pub(crate) async fn update_plugin_scoped(
     query: &str,
     ctx: InstallCtx,
 ) -> Result<UpdateReport, PluginError> {
+    let target = updatable_install(scope, query)?;
+    let (spec, r#ref, pin) = update_source(&target.record, &ctx).await?;
+    let scope = scope.clone();
+    spawn_blocking(move || reinstall_if_changed(&scope, &target, &spec, r#ref, &pin, &ctx)).await
+}
+
+/// An installed plugin an update can re-resolve.
+struct UpdateTarget {
+    /// The plugin's directory name under the plugin root.
+    directory: String,
+    plugins: PathBuf,
+    /// `plugins/<directory>`.
+    current: PathBuf,
+    record: InstallRecord,
+}
+
+/// The installed plugin `query` names, refused unless it has an install
+/// record from a git or marketplace source.
+fn updatable_install(scope: &PluginScope, query: &str) -> Result<UpdateTarget, PluginError> {
     let (directory, _) = find_installed_scoped(scope, query).ok_or_else(|| {
         PluginError::new(
             PluginErrorCode::NotInstalled,
@@ -2798,9 +2817,15 @@ pub(crate) async fn update_plugin_scoped(
             format!("'{directory}' was installed from a local folder; reinstall it to update"),
         ));
     }
+    Ok(UpdateTarget { directory, plugins, current, record })
+}
 
-    // Where the source points now. A marketplace install asks its index again,
-    // so a moved ref or a new pin in the index takes effect.
+/// Where the source points now: (spec, ref, pin). A marketplace install asks
+/// its index again, so a moved ref or a new pin in the index takes effect.
+async fn update_source(
+    record: &InstallRecord,
+    ctx: &InstallCtx,
+) -> Result<(String, Option<String>, GitPin), PluginError> {
     let mut spec = record.source.clone();
     let mut r#ref = record.git_ref.clone();
     let mut pin = GitPin {
@@ -2813,7 +2838,7 @@ pub(crate) async fn update_plugin_scoped(
             record.marketplace.as_deref(),
             record.marketplace_entry.as_deref(),
         ) {
-            let mut index = fetch_all_indexes(&[url.to_string()], Some(&ctx)).await?;
+            let mut index = fetch_all_indexes(&[url.to_string()], Some(ctx)).await?;
             index.retain(|e| e.name == entry_name);
             let entry = index.into_iter().next().ok_or_else(|| {
                 PluginError::new(
@@ -2827,73 +2852,82 @@ pub(crate) async fn update_plugin_scoped(
             pin.sha = entry.sha;
         }
     }
+    Ok((spec, r#ref, pin))
+}
 
-    let scope = scope.clone();
-    spawn_blocking(move || {
-        let parsed = parse_git_source(&spec)?;
-        let effective_ref = r#ref.clone().or(parsed.r#ref.clone());
-        let remote = remote_sha(&parsed.url, effective_ref.as_deref(), &ctx)?;
-        if let Some(pinned) = pin.sha.as_deref() {
-            validate_pin(pinned)?;
-            if !sha_matches(pinned, &remote) {
-                return Err(sha_mismatch(pinned, &remote));
-            }
+/// Reinstall `target` from `spec` only when the remote commit changed. A
+/// failed reinstall puts the previous install back.
+fn reinstall_if_changed(
+    scope: &PluginScope,
+    target: &UpdateTarget,
+    spec: &str,
+    r#ref: Option<String>,
+    pin: &GitPin,
+    ctx: &InstallCtx,
+) -> Result<UpdateReport, PluginError> {
+    let UpdateTarget { directory, plugins, current, record } = target;
+    let parsed = parse_git_source(spec)?;
+    let effective_ref = r#ref.clone().or(parsed.r#ref.clone());
+    let remote = remote_sha(&parsed.url, effective_ref.as_deref(), ctx)?;
+    if let Some(pinned) = pin.sha.as_deref() {
+        validate_pin(pinned)?;
+        if !sha_matches(pinned, &remote) {
+            return Err(sha_mismatch(pinned, &remote));
         }
-        if record.commit_sha.as_deref() == Some(remote.as_str()) {
-            return Ok(UpdateReport {
-                id: directory.clone(),
-                updated: false,
-                from_sha: record.commit_sha.clone(),
-                to_sha: Some(remote.clone()),
-                message: format!("{directory} is up to date at {}", short_sha(Some(&remote))),
+    }
+    if record.commit_sha.as_deref() == Some(remote.as_str()) {
+        return Ok(UpdateReport {
+            id: directory.clone(),
+            updated: false,
+            from_sha: record.commit_sha.clone(),
+            to_sha: Some(remote.clone()),
+            message: format!("{directory} is up to date at {}", short_sha(Some(&remote))),
+        });
+    }
+    // Move the old install aside (a staging-prefixed name is never listed),
+    // install fresh, and restore the old one if that fails.
+    let aside = new_staging(plugins);
+    std::fs::rename(current, &aside).map_err(PluginError::io)?;
+    let choice = match (&parsed.subdir, &record.subdir) {
+        (None, Some(rel)) => CollectionChoice::Only(vec![rel.clone()]),
+        _ => CollectionChoice::ListError,
+    };
+    let installed = install_git_pinned(
+        scope,
+        spec,
+        r#ref.as_deref(),
+        choice,
+        ctx,
+        &record.source_kind,
+        pin,
+    );
+    let id = match installed {
+        Ok(GitInstall::Installed(list)) if !list.is_empty() => list[0].id.clone(),
+        other => {
+            let _ = std::fs::remove_dir_all(current);
+            std::fs::rename(&aside, current).map_err(PluginError::io)?;
+            return Err(match other {
+                Err(e) => e,
+                _ => PluginError::new(
+                    PluginErrorCode::NoPluginContent,
+                    format!("update of '{directory}' produced no plugin; kept the installed one"),
+                ),
             });
         }
-        // Move the old install aside (a staging-prefixed name is never listed),
-        // install fresh, and restore the old one if that fails.
-        let aside = new_staging(&plugins);
-        std::fs::rename(&current, &aside).map_err(PluginError::io)?;
-        let choice = match (&parsed.subdir, &record.subdir) {
-            (None, Some(rel)) => CollectionChoice::Only(vec![rel.clone()]),
-            _ => CollectionChoice::ListError,
-        };
-        let installed = install_git_pinned(
-            &scope,
-            &spec,
-            r#ref.as_deref(),
-            choice,
-            &ctx,
-            &record.source_kind,
-            &pin,
-        );
-        let id = match installed {
-            Ok(GitInstall::Installed(list)) if !list.is_empty() => list[0].id.clone(),
-            other => {
-                let _ = std::fs::remove_dir_all(&current);
-                std::fs::rename(&aside, &current).map_err(PluginError::io)?;
-                return Err(match other {
-                    Err(e) => e,
-                    _ => PluginError::new(
-                        PluginErrorCode::NoPluginContent,
-                        format!("update of '{directory}' produced no plugin; kept the installed one"),
-                    ),
-                });
-            }
-        };
-        remove_staging(&aside);
-        let to = read_install_record(&plugins.join(&id)).and_then(|r| r.commit_sha);
-        Ok(UpdateReport {
-            message: format!(
-                "updated {id}: {} -> {}",
-                short_sha(record.commit_sha.as_deref()),
-                short_sha(to.as_deref())
-            ),
-            id,
-            updated: true,
-            from_sha: record.commit_sha.clone(),
-            to_sha: to,
-        })
+    };
+    remove_staging(&aside);
+    let to = read_install_record(&plugins.join(&id)).and_then(|r| r.commit_sha);
+    Ok(UpdateReport {
+        message: format!(
+            "updated {id}: {} -> {}",
+            short_sha(record.commit_sha.as_deref()),
+            short_sha(to.as_deref())
+        ),
+        id,
+        updated: true,
+        from_sha: record.commit_sha.clone(),
+        to_sha: to,
     })
-    .await
 }
 
 /// [`update_plugin_scoped`] for the CLI's string errors.
