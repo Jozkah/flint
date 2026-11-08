@@ -39,7 +39,7 @@ describe('FolderTrustBanner', () => {
 
   it('is mounted over the composers, not in the transcript or the page header', () => {
     const src = (p: string) => readFileSync(resolve(__dirname, p), 'utf8')
-    const chat = src('../ThreadConversation.tsx')
+    const chat = src('../threadConversation/ThreadConversationView.tsx')
     expect(chat.indexOf('<FolderTrustBanner')).toBeGreaterThan(chat.indexOf('Chat Input - Fixed at bottom'))
     // Cowork's composer area moved out of routes/cowork.tsx into its own container.
     const cowork = src('../CoworkComposerArea.tsx')

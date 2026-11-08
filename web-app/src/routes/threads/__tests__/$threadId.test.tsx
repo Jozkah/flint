@@ -389,6 +389,8 @@ vi.mock('@/hooks/use-chat', () => ({
       addToolOutput: h.mockAddToolOutput,
       updateRagToolsAvailability: h.mockUpdateRag,
       setContinueFromContent: h.mockSetContinueFromContent,
+      compactNow: (...args: any[]) => (h as any).mockCompactNow?.(...args),
+      sideQuestion: (...args: any[]) => (h as any).mockSideQuestion?.(...args),
     }
   },
 }))
@@ -1421,5 +1423,140 @@ describe('ThreadDetail route', () => {
     const args = h.mockUpdateRag.mock.calls[0]
     expect(args[1]).toBe(true) // modelSupportsTools
     expect(args[2]).toBe(true) // ragFeatureAvailable
+  })
+
+  // Characterization of the conversation's pieces, written before they moved
+  // into their own hooks and view: what it renders, what the queue sends and
+  // holds, what compaction and side questions do, and where errors land.
+  describe('characterization', () => {
+    // useId values differ by tree position; they are not what is pinned here.
+    const normalized = (html: string) =>
+      html.replace(/(«|:)r[0-9a-z]+(»|:)/g, 'ID')
+
+    it('renders the same tree', () => {
+      h.chatState.messages = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+        { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
+      ]
+      const { container } = renderComponent()
+      expect(normalized(container.innerHTML)).toMatchSnapshot()
+    })
+
+    it('renders the same tree with a context banner', () => {
+      h.chatState.messages = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      ]
+      h.chatState.status = 'error'
+      h.chatState.error = new Error(
+        'the request exceeds the available context size, try increasing it'
+      )
+      const { container } = renderComponent()
+      expect(normalized(container.innerHTML)).toMatchSnapshot()
+    })
+
+    it('holds the queue when the stream errors', () => {
+      h.chatState.status = 'error'
+      renderComponent()
+      expect(h.messageQueueState.holdQueue).toHaveBeenCalledWith('thread-1')
+    })
+
+    it('sends the next queued message once the chat is ready', async () => {
+      h.messageQueueState.dequeueReady = vi
+        .fn()
+        .mockReturnValueOnce({ text: 'queued one' })
+        .mockReturnValue(undefined)
+      renderComponent()
+      await waitFor(() => {
+        expect(h.mockSendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ parts: [{ type: 'text', text: 'queued one' }] })
+        )
+      })
+      expect(h.messagesState.addMessage).toHaveBeenCalled()
+      h.messageQueueState.dequeueReady = vi.fn(() => undefined)
+    })
+
+    it('marks steering taken from the queue as steered', async () => {
+      h.messageQueueState.takeSteering = vi
+        .fn()
+        .mockReturnValueOnce([{ text: 'a' }, { text: 'b' }])
+        .mockReturnValue([])
+      renderComponent()
+      await waitFor(() => {
+        expect(h.mockSendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            parts: [{ type: 'text', text: 'a\n\nb' }],
+            metadata: expect.objectContaining({ steered: true }),
+          })
+        )
+      })
+      h.messageQueueState.takeSteering = vi.fn(() => [])
+    })
+
+    it('waits while the turn still has tools to settle', () => {
+      h.appStateState.busyThreads = { 'thread-1': true }
+      h.messageQueueState.dequeueReady = vi.fn(() => ({ text: 'later' }))
+      renderComponent()
+      expect(h.messageQueueState.dequeueReady).not.toHaveBeenCalled()
+      h.appStateState.busyThreads = {}
+      h.messageQueueState.dequeueReady = vi.fn(() => undefined)
+    })
+
+    it('registers a compactor that compacts the shown messages', async () => {
+      const { requestChatCompaction } = await import('@/lib/chatCompaction')
+      h.chatState.messages = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      ]
+      ;(h as any).mockCompactNow = vi.fn().mockResolvedValue(null)
+      const { unmount } = renderComponent()
+      expect(requestChatCompaction('thread-1', 'the plan')).toBe(true)
+      await waitFor(() =>
+        expect((h as any).mockCompactNow).toHaveBeenCalledWith(
+          h.chatState.messages,
+          'the plan'
+        )
+      )
+      unmount()
+      expect(requestChatCompaction('thread-1')).toBe(false)
+    })
+
+    it('registers a side question that asks from the shown messages', async () => {
+      const { requestChatSideQuestion } = await import('@/lib/chatCompaction')
+      ;(h as any).mockSideQuestion = vi.fn().mockResolvedValue('an answer')
+      const { unmount } = renderComponent()
+      expect(requestChatSideQuestion('thread-1', 'why?')).toBe(true)
+      await waitFor(() =>
+        expect((h as any).mockSideQuestion).toHaveBeenCalledWith(
+          h.chatState.messages,
+          'why?'
+        )
+      )
+      unmount()
+    })
+
+    it('stamps a stream error on the reply it belongs to', async () => {
+      const { useMessageErrors } = await import('@/stores/message-errors')
+      const stored = {
+        id: 'a1',
+        role: 'assistant',
+        content: [{ type: 'text', text: { value: 'hello', annotations: [] } }],
+        metadata: {},
+      }
+      h.messagesState.getMessages = vi.fn(() => [stored])
+      h.chatState.messages = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+        { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'he' }] },
+      ]
+      h.chatState.status = 'error'
+      h.chatState.error = new Error('provider said no')
+      renderComponent()
+      expect(useMessageErrors.getState().errors['a1']).toBeTruthy()
+      expect(h.messagesState.updateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'a1',
+          metadata: expect.objectContaining({ error: expect.any(String) }),
+        })
+      )
+      useMessageErrors.getState().clearError('a1')
+    })
   })
 })
