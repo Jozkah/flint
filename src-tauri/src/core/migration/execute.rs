@@ -490,29 +490,10 @@ fn execute_reuse(
 }
 
 fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut MigrationResult) {
-    // #67: the same schema gate as execute_reuse. Refuse before creating or
-    // writing anything, so data from a newer, unsupported schema is never
-    // copied or moved into the profile.
-    if !plan.compatible {
+    if let Some(refusal) = copy_or_move_refusal(plan) {
         result.status = Status::Failed;
-        result.error = Some("source schema newer than supported; copy/move refused".to_string());
+        result.error = Some(refusal);
         return;
-    }
-
-    // A Move deletes the source, but copying skips directory links, so what a
-    // link points to would be lost. Refuse before writing anything.
-    if plan.mode == Mode::Move {
-        for item in &plan.items {
-            if let Some(link) = fsutil::find_linked_dir(&item.source) {
-                result.status = Status::Failed;
-                result.error = Some(format!(
-                    "move refused: {} contains a directory link ({}); copy instead, or remove the link first",
-                    item.name,
-                    link.display()
-                ));
-                return;
-            }
-        }
     }
 
     let flint_config = plan.dest_config_dir.clone();
@@ -534,6 +515,65 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
     run.seed_from(&m);
     let _ = std::fs::create_dir_all(&run.staging_root);
 
+    if !copy_categories(plan, opts, &mut m, &mut run, &quarantine_dir, result) {
+        return;
+    }
+
+    // Move: back up the source, then remove it (only after a clean copy).
+    if plan.mode == Mode::Move && !back_up_and_remove_source(plan, opts, &mut m, &run, result) {
+        return;
+    }
+
+    run.cleanup_scratch();
+    m.mark_complete();
+    if let Err(e) = manifest::write(&flint_config, &m) {
+        // The data is in place, but without a Complete manifest the run would
+        // look interrupted. Say so rather than report success.
+        log::error!("final migration manifest write failed: {e}");
+        result.status = Status::Failed;
+        result.error = Some(format!("migration finished but its record could not be saved: {e}"));
+        return;
+    }
+    result.status = Status::Complete;
+}
+
+/// Why a copy or move must not start, checked before anything is created or
+/// written.
+fn copy_or_move_refusal(plan: &MigrationPlan) -> Option<String> {
+    // #67: the same schema gate as execute_reuse. Refuse before creating or
+    // writing anything, so data from a newer, unsupported schema is never
+    // copied or moved into the profile.
+    if !plan.compatible {
+        return Some("source schema newer than supported; copy/move refused".to_string());
+    }
+
+    // A Move deletes the source, but copying skips directory links, so what a
+    // link points to would be lost. Refuse before writing anything.
+    if plan.mode == Mode::Move {
+        for item in &plan.items {
+            if let Some(link) = fsutil::find_linked_dir(&item.source) {
+                return Some(format!(
+                    "move refused: {} contains a directory link ({}); copy instead, or remove the link first",
+                    item.name,
+                    link.display()
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Places every selected category's items, checkpointing as it goes. Returns
+/// false when it failed and already rolled back.
+fn copy_categories(
+    plan: &MigrationPlan,
+    opts: &ExecuteOpts,
+    m: &mut manifest::MigrationManifest,
+    run: &mut RunState,
+    quarantine_dir: &Path,
+    result: &mut MigrationResult,
+) -> bool {
+    let flint_config = &plan.dest_config_dir;
     // Group planned items by category, preserving plan order.
     for &category in &plan.selected_categories {
         // Idempotency: skip categories already done.
@@ -554,12 +594,12 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
         if opts.fail_on_category == Some(category) {
             fail_and_rollback(
                 plan,
-                &mut m,
-                &run,
+                m,
+                run,
                 result,
                 &format!("forced failure at category {}", category.as_str()),
             );
-            return;
+            return false;
         }
 
         let items: Vec<&PlannedItem> =
@@ -570,7 +610,7 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
         let mut cat_skipped: Vec<SkippedItem> = Vec::new();
 
         for item in items {
-            match place_item(plan, item, &quarantine_dir, &mut run, &mut cat_skipped) {
+            match place_item(plan, item, quarantine_dir, run, &mut cat_skipped) {
                 Ok(placed) => {
                     if placed {
                         ok_count += 1;
@@ -579,18 +619,18 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
                     }
                     // Persist the undo ledger per item, so a crash mid-category
                     // still leaves a rollback that knows what was written.
-                    run.sync_into(&mut m);
-                    checkpoint(&flint_config, &m);
+                    run.sync_into(m);
+                    checkpoint(flint_config, m);
                 }
                 Err(e) => {
                     fail_and_rollback(
                         plan,
-                        &mut m,
-                        &run,
+                        m,
+                        run,
                         result,
                         &format!("failed on {}: {e}", item.name),
                     );
-                    return;
+                    return false;
                 }
             }
         }
@@ -614,7 +654,7 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
         m.upsert_result(rec.clone());
         // Checkpoint the manifest after each category so an interruption resumes
         // cleanly.
-        checkpoint(&flint_config, &m);
+        checkpoint(flint_config, m);
 
         result.per_category.push(CategoryResult {
             category,
@@ -624,86 +664,84 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
             done: true,
         });
     }
+    true
+}
 
-    // Move: back up the source, then remove it (only after a clean copy).
-    if plan.mode == Mode::Move {
-        let backup_root = opts
-            .backup_root
-            .clone()
-            .unwrap_or_else(|| flint_config.join(BACKUP_DIR_NAME));
-        match backup_source(plan, &backup_root) {
-            Ok(()) => {
-                m.backup_path = Some(backup_root.clone());
-                result.backup_path = Some(backup_root.clone());
-                checkpoint(&flint_config, &m);
-            }
-            Err(e) => {
-                fail_and_rollback(plan, &mut m, &run, result, &format!("backup failed: {e}"));
-                return;
-            }
+/// The Move tail: back up the source, then remove it, restoring it from the
+/// backup when removal fails. Returns false when the run ended here.
+fn back_up_and_remove_source(
+    plan: &MigrationPlan,
+    opts: &ExecuteOpts,
+    m: &mut manifest::MigrationManifest,
+    run: &RunState,
+    result: &mut MigrationResult,
+) -> bool {
+    let flint_config = &plan.dest_config_dir;
+    let backup_root = opts
+        .backup_root
+        .clone()
+        .unwrap_or_else(|| flint_config.join(BACKUP_DIR_NAME));
+    match backup_source(plan, &backup_root) {
+        Ok(()) => {
+            m.backup_path = Some(backup_root.clone());
+            result.backup_path = Some(backup_root.clone());
+            checkpoint(flint_config, m);
         }
+        Err(e) => {
+            fail_and_rollback(plan, m, run, result, &format!("backup failed: {e}"));
+            return false;
+        }
+    }
 
-        if opts.fail_before_source_removal {
-            // Rollback: source is untouched; remove flint writes and the backup.
-            let _ = std::fs::remove_dir_all(&backup_root);
-            fail_and_rollback(
+    if opts.fail_before_source_removal {
+        // Rollback: source is untouched; remove flint writes and the backup.
+        let _ = std::fs::remove_dir_all(&backup_root);
+        fail_and_rollback(
+            plan,
+            m,
+            run,
+            result,
+            "forced failure before source removal",
+        );
+        return false;
+    }
+
+    if let Err(e) = remove_source(plan, opts.fail_mid_source_removal) {
+        // Restore the source from the backup (overwriting what is left of a
+        // half-deleted item). Only once that worked is it safe to roll the
+        // Flint copy back.
+        let restored = if opts.fail_source_restore {
+            Err("forced restore failure".to_string())
+        } else {
+            restore_source_from_backup(plan, &backup_root)
+        };
+        match restored {
+            Ok(()) => fail_and_rollback(
                 plan,
-                &mut m,
-                &run,
+                m,
+                run,
                 result,
-                "forced failure before source removal",
-            );
-            return;
-        }
-
-        if let Err(e) = remove_source(plan, opts.fail_mid_source_removal) {
-            // Restore the source from the backup (overwriting what is left of a
-            // half-deleted item). Only once that worked is it safe to roll the
-            // Flint copy back.
-            let restored = if opts.fail_source_restore {
-                Err("forced restore failure".to_string())
-            } else {
-                restore_source_from_backup(plan, &backup_root)
-            };
-            match restored {
-                Ok(()) => fail_and_rollback(
-                    plan,
-                    &mut m,
-                    &run,
-                    result,
-                    &format!("source removal failed (JAN data restored from backup): {e}"),
-                ),
-                Err(re) => {
-                    // The JAN source may be partly deleted. Keep Flint's
-                    // complete copy and the backup, and say where the backup is.
-                    log::error!("migration: source removal failed ({e}) and restore failed ({re})");
-                    run.cleanup_scratch();
-                    m.mark_complete();
-                    let _ = manifest::write(&flint_config, &m);
-                    result.status = Status::Failed;
-                    result.error = Some(format!(
-                        "removing the JAN data failed ({e}) and restoring it failed ({re}). \
-                         Your data is safe in the new location: Flint's migrated copy was kept. \
-                         The old JAN location may be partial; a full copy of it is kept in {}.",
-                        backup_root.display()
-                    ));
-                }
+                &format!("source removal failed (JAN data restored from backup): {e}"),
+            ),
+            Err(re) => {
+                // The JAN source may be partly deleted. Keep Flint's
+                // complete copy and the backup, and say where the backup is.
+                log::error!("migration: source removal failed ({e}) and restore failed ({re})");
+                run.cleanup_scratch();
+                m.mark_complete();
+                let _ = manifest::write(flint_config, m);
+                result.status = Status::Failed;
+                result.error = Some(format!(
+                    "removing the JAN data failed ({e}) and restoring it failed ({re}). \
+                     Your data is safe in the new location: Flint's migrated copy was kept. \
+                     The old JAN location may be partial; a full copy of it is kept in {}.",
+                    backup_root.display()
+                ));
             }
-            return;
         }
+        return false;
     }
-
-    run.cleanup_scratch();
-    m.mark_complete();
-    if let Err(e) = manifest::write(&flint_config, &m) {
-        // The data is in place, but without a Complete manifest the run would
-        // look interrupted. Say so rather than report success.
-        log::error!("final migration manifest write failed: {e}");
-        result.status = Status::Failed;
-        result.error = Some(format!("migration finished but its record could not be saved: {e}"));
-        return;
-    }
-    result.status = Status::Complete;
+    true
 }
 
 fn fail_and_rollback(
