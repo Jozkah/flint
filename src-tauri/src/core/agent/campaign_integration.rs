@@ -1047,23 +1047,58 @@ fn diff_tree(
         }
     }
 
-    let mut files: Vec<TaskDiffFile> = Vec::new();
-    let mut truncated = false;
-    let mut budget = MAX_TOTAL_PATCH;
-    let mut take_patch = |patch: Option<String>| -> (Option<String>, bool) {
+    let mut budget = PatchBudget { left: MAX_TOTAL_PATCH };
+    let (mut files, mut truncated) = tracked_diff_files(entries, &declared, &base, patches, &mut budget, &git);
+
+    // Files the task made but has not added to git yet.
+    let mut uncommitted = !worktree::pending(record).is_empty();
+    let untracked = git(&["ls-files", "-z", "--others", "--exclude-standard"]).unwrap_or_default();
+    let (made, cut) = append_untracked_diff_files(dir, &untracked, &declared, patches, &mut budget, &mut files);
+    uncommitted |= made;
+    truncated |= cut;
+
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let added = files.iter().map(|f| f.added).sum();
+    let removed = files.iter().map(|f| f.removed).sum();
+    Ok(TaskDiff { files, added, removed, truncated, uncommitted })
+}
+
+/// What is left of the patch characters one diff may return.
+struct PatchBudget {
+    left: usize,
+}
+
+impl PatchBudget {
+    /// Cut `patch` to the per-file and remaining budget. Returns the patch to
+    /// send (none once the budget is spent) and whether it was cut.
+    fn take(&mut self, patch: Option<String>) -> (Option<String>, bool) {
         let Some(patch) = patch else { return (None, false) };
-        if budget == 0 {
+        if self.left == 0 {
             return (None, true);
         }
-        let (cut, was_cut) = cut_chars(&patch, MAX_FILE_PATCH.min(budget));
-        budget = budget.saturating_sub(cut.chars().count());
+        let (cut, was_cut) = cut_chars(&patch, MAX_FILE_PATCH.min(self.left));
+        self.left = self.left.saturating_sub(cut.chars().count());
         (Some(cut), was_cut)
-    };
+    }
+}
+
+/// The tracked files changed against `base`, skipping unsafe paths and
+/// unwanted caches. Returns the files and whether anything was cut.
+fn tracked_diff_files(
+    entries: Vec<DiffEntry>,
+    declared: &[String],
+    base: &str,
+    patches: bool,
+    budget: &mut PatchBudget,
+    git: &dyn Fn(&[&str]) -> Result<String, CampaignError>,
+) -> (Vec<TaskDiffFile>, bool) {
+    let mut files: Vec<TaskDiffFile> = Vec::new();
+    let mut truncated = false;
     for e in entries {
         if !safe_rel(&e.path) || e.old.as_deref().is_some_and(|o| !safe_rel(o)) {
             continue;
         }
-        if worktree::is_unwanted_cache(&e.path, &declared) {
+        if worktree::is_unwanted_cache(&e.path, declared) {
             continue;
         }
         if files.len() >= MAX_DIFF_FILES {
@@ -1073,12 +1108,12 @@ fn diff_tree(
         let (patch, cut) = if e.binary || !patches {
             (None, false)
         } else {
-            let mut args: Vec<&str> = vec!["diff", "--no-color", "-M", &base, "--"];
+            let mut args: Vec<&str> = vec!["diff", "--no-color", "-M", base, "--"];
             if let Some(o) = &e.old {
                 args.push(o);
             }
             args.push(&e.path);
-            take_patch(from_first_hunk(&git(&args).unwrap_or_default()))
+            budget.take(from_first_hunk(&git(&args).unwrap_or_default()))
         };
         truncated |= cut;
         files.push(TaskDiffFile {
@@ -1092,13 +1127,24 @@ fn diff_tree(
             truncated: cut,
         });
     }
+    (files, truncated)
+}
 
-    // Files the task made but has not added to git yet.
-    let mut uncommitted = !worktree::pending(record).is_empty();
-    let untracked = git(&["ls-files", "-z", "--others", "--exclude-standard"]).unwrap_or_default();
+/// Add the untracked files in `untracked` (NUL-separated) to `files` as new
+/// files. Returns whether any was added and whether anything was cut.
+fn append_untracked_diff_files(
+    dir: &Path,
+    untracked: &str,
+    declared: &[String],
+    patches: bool,
+    budget: &mut PatchBudget,
+    files: &mut Vec<TaskDiffFile>,
+) -> (bool, bool) {
+    let mut uncommitted = false;
+    let mut truncated = false;
     let canon_dir = dir.canonicalize().ok();
     for rel in untracked.split('\0').filter(|p| !p.is_empty()) {
-        if !safe_rel(rel) || files.iter().any(|f| f.path == rel) || worktree::is_unwanted_cache(rel, &declared) {
+        if !safe_rel(rel) || files.iter().any(|f| f.path == rel) || worktree::is_unwanted_cache(rel, declared) {
             continue;
         }
         if files.len() >= MAX_DIFF_FILES {
@@ -1125,7 +1171,7 @@ fn diff_tree(
                     lines.len(),
                     lines.iter().map(|l| format!("+{l}")).collect::<Vec<_>>().join("\n")
                 );
-                let (p, cut) = if patches { take_patch(Some(patch)) } else { (None, false) };
+                let (p, cut) = if patches { budget.take(Some(patch)) } else { (None, false) };
                 (lines.len() as u32, p, cut)
             }
             None => (0, None, false),
@@ -1142,11 +1188,7 @@ fn diff_tree(
             truncated: cut,
         });
     }
-
-    files.sort_by(|a, b| a.path.cmp(&b.path));
-    let added = files.iter().map(|f| f.added).sum();
-    let removed = files.iter().map(|f| f.removed).sum();
-    Ok(TaskDiff { files, added, removed, truncated, uncommitted })
+    (uncommitted, truncated)
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
