@@ -1722,93 +1722,9 @@ fn install_git_pinned(
     ctx.check()?;
     let tmp = new_staging(&plugins);
 
-    let mut cmd = git_command();
-    // A repository's symbolic links are checked out as plain files holding
-    // the link text, never as links. A link in a plugin would otherwise lead
-    // out of it: a skill file pointing at the project's `.env` is read and
-    // handed to the model by `skill_read`, and a directory link named in a
-    // tree URL's subdirectory makes the installer move a real directory from
-    // outside the clone into the plugin store. The local-folder install
-    // already skips links for the same reason.
-    // A server that drips under ~1 KB/s for a minute is abandoned instead of
-    // growing the staging folder until the user notices (P2A-012).
-    cmd.args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60"]);
-    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
-    if let Some(r#ref) = r#ref {
-        cmd.args(["--branch", r#ref]);
-    }
-    // `--` ends option parsing: a positional can never be read as a git option.
-    cmd.arg("--").arg(&source.url).arg(&tmp);
-    if !ctx.terminal_prompts {
-        // No terminal to answer a credential prompt: fail instead of hanging.
-        cmd.env("GIT_TERMINAL_PROMPT", "0");
-    }
-    if let Err(e) = run_cancellable_within(cmd, &ctx.cancel, Some(CLONE_DEADLINE)) {
-        remove_staging(&tmp);
-        return Err(match e {
-            RunError::Cancelled => cancelled_error(),
-            RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
-                PluginErrorCode::GitUnavailable,
-                "git is not installed or not on PATH",
-            ),
-            RunError::Spawn(e) => {
-                PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}"))
-            }
-            RunError::Failed(stderr) => {
-                PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
-            }
-        });
-    }
-
-    if dir_bytes_over(&tmp, MAX_CLONE_BYTES) {
-        remove_staging(&tmp);
-        return Err(PluginError::new(
-            PluginErrorCode::GitFailed,
-            format!(
-                "the repository is larger than {} MB; it is not installed as a plugin",
-                MAX_CLONE_BYTES / (1024 * 1024)
-            ),
-        ));
-    }
-    let commit_sha = git_output_in(&tmp, &["rev-parse", "HEAD"])
-        .ok()
-        .filter(|s| !s.is_empty());
-    if let Some(pinned) = pin.sha.as_deref() {
-        let actual = commit_sha.clone().unwrap_or_default();
-        if !sha_matches(pinned, &actual) {
-            remove_staging(&tmp);
-            return Err(sha_mismatch(pinned, &actual));
-        }
-    }
-    // The commit is recorded; the history is not part of the plugin. Keeping
-    // it would install the whole object store and a config git may later read.
-    if let Err(e) = std::fs::remove_dir_all(tmp.join(".git")) {
-        if e.kind() != io::ErrorKind::NotFound {
-            log::warn!("plugins: could not remove .git from staging: {e}");
-        }
-    }
-    let payload_root = source
-        .subdir
-        .as_deref()
-        .map(|subdir| tmp.join(subdir))
-        .unwrap_or_else(|| tmp.clone());
-    // Whatever the checkout holds, the payload must resolve inside the clone.
-    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
-        (Ok(p), Ok(t)) => p.starts_with(&t),
-        // A subdirectory that does not exist is reported as such below.
-        (Err(_), _) => true,
-        (Ok(_), Err(_)) => false,
-    };
-    if !inside {
-        remove_staging(&tmp);
-        return Err(PluginError::new(
-            PluginErrorCode::InvalidSource,
-            format!(
-                "plugin subdirectory leads outside the repository: '{}'",
-                source.subdir.as_deref().unwrap_or("")
-            ),
-        ));
-    }
+    clone_into_staging(&source.url, r#ref, &tmp, ctx)?;
+    let commit_sha = check_clone(&tmp, pin)?;
+    let payload_root = clone_payload_root(&tmp, source.subdir.as_deref())?;
     let staged = Staged {
         tmp,
         payload_root,
@@ -1833,6 +1749,113 @@ fn install_git_pinned(
         },
     };
     finish_install(scope, &plugins, staged, collection, ctx, &source.url)
+}
+
+/// Shallow-clone `repo_url` (at `r#ref`) into the staging dir `tmp`. On
+/// failure the staging dir is removed.
+fn clone_into_staging(
+    repo_url: &str,
+    r#ref: Option<&str>,
+    tmp: &Path,
+    ctx: &InstallCtx,
+) -> Result<(), PluginError> {
+    let mut cmd = git_command();
+    // A repository's symbolic links are checked out as plain files holding
+    // the link text, never as links. A link in a plugin would otherwise lead
+    // out of it: a skill file pointing at the project's `.env` is read and
+    // handed to the model by `skill_read`, and a directory link named in a
+    // tree URL's subdirectory makes the installer move a real directory from
+    // outside the clone into the plugin store. The local-folder install
+    // already skips links for the same reason.
+    // A server that drips under ~1 KB/s for a minute is abandoned instead of
+    // growing the staging folder until the user notices (P2A-012).
+    cmd.args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60"]);
+    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
+    if let Some(r#ref) = r#ref {
+        cmd.args(["--branch", r#ref]);
+    }
+    // `--` ends option parsing: a positional can never be read as a git option.
+    cmd.arg("--").arg(repo_url).arg(tmp);
+    if !ctx.terminal_prompts {
+        // No terminal to answer a credential prompt: fail instead of hanging.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+    }
+    if let Err(e) = run_cancellable_within(cmd, &ctx.cancel, Some(CLONE_DEADLINE)) {
+        remove_staging(tmp);
+        return Err(match e {
+            RunError::Cancelled => cancelled_error(),
+            RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
+                PluginErrorCode::GitUnavailable,
+                "git is not installed or not on PATH",
+            ),
+            RunError::Spawn(e) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}"))
+            }
+            RunError::Failed(stderr) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
+            }
+        });
+    }
+    Ok(())
+}
+
+/// Check a fresh clone in `tmp` (size cap, pinned commit) and drop its
+/// history. Returns the cloned commit. On failure the staging dir is removed.
+fn check_clone(tmp: &Path, pin: &GitPin) -> Result<Option<String>, PluginError> {
+    if dir_bytes_over(tmp, MAX_CLONE_BYTES) {
+        remove_staging(tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::GitFailed,
+            format!(
+                "the repository is larger than {} MB; it is not installed as a plugin",
+                MAX_CLONE_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
+    let commit_sha = git_output_in(tmp, &["rev-parse", "HEAD"])
+        .ok()
+        .filter(|s| !s.is_empty());
+    if let Some(pinned) = pin.sha.as_deref() {
+        let actual = commit_sha.clone().unwrap_or_default();
+        if !sha_matches(pinned, &actual) {
+            remove_staging(tmp);
+            return Err(sha_mismatch(pinned, &actual));
+        }
+    }
+    // The commit is recorded; the history is not part of the plugin. Keeping
+    // it would install the whole object store and a config git may later read.
+    if let Err(e) = std::fs::remove_dir_all(tmp.join(".git")) {
+        if e.kind() != io::ErrorKind::NotFound {
+            log::warn!("plugins: could not remove .git from staging: {e}");
+        }
+    }
+    Ok(commit_sha)
+}
+
+/// The payload dir inside the clone `tmp`: the clone itself or `subdir`.
+/// Whatever the checkout holds, it must resolve inside the clone; otherwise
+/// the staging dir is removed and the install refused.
+fn clone_payload_root(tmp: &Path, subdir: Option<&str>) -> Result<PathBuf, PluginError> {
+    let payload_root = subdir
+        .map(|subdir| tmp.join(subdir))
+        .unwrap_or_else(|| tmp.to_path_buf());
+    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
+        (Ok(p), Ok(t)) => p.starts_with(&t),
+        // A subdirectory that does not exist is reported as such later.
+        (Err(_), _) => true,
+        (Ok(_), Err(_)) => false,
+    };
+    if !inside {
+        remove_staging(tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin subdirectory leads outside the repository: '{}'",
+                subdir.unwrap_or("")
+            ),
+        ));
+    }
+    Ok(payload_root)
 }
 
 /// Copy a local folder into a staging dir, then install from it. Nothing is
