@@ -5,6 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 fn only_the_listed_routes_are_public() {
     let public = [
         (Method::GET, "/healthz"),
+        (Method::GET, "/readyz"),
         (Method::POST, "/api/v1/shutdown"),
         (Method::POST, "/api/v1/token"),
         (Method::GET, "/login"),
@@ -16,6 +17,7 @@ fn only_the_listed_routes_are_public() {
     // Same paths under another method, and everything else, sit behind the gate.
     for (method, path) in [
         (Method::POST, "/healthz"),
+        (Method::POST, "/readyz"),
         (Method::GET, "/api/v1/shutdown"),
         (Method::GET, "/api/v1/token"),
         (Method::POST, "/login"),
@@ -109,9 +111,15 @@ async fn all_non_public_routes_require_auth() {
 
     // The public routes do not ask for one.
     assert_eq!(status(&addr, "GET", "/healthz").await, 200);
+    assert_eq!(status(&addr, "GET", "/readyz").await, 200);
     assert_eq!(status(&addr, "GET", "/login").await, 200);
     // The shutdown route is public but needs its own token.
     assert_eq!(status(&addr, "POST", "/api/v1/shutdown").await, 403);
+
+    // Readiness follows the data folder: gone means 503.
+    std::fs::remove_dir_all(&data).unwrap();
+    assert_eq!(status(&addr, "GET", "/readyz").await, 503);
+    assert_eq!(status(&addr, "GET", "/healthz").await, 200);
 
     server.abort();
 }

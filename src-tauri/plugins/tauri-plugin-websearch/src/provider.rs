@@ -1231,6 +1231,14 @@ impl SearchProvider for YouComProvider {
     }
 }
 
+/// `page_age` of a raw result as `published_at`; empty means none.
+fn page_age(r: &serde_json::Value) -> Option<String> {
+    r.get("page_age")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// `/v1/search` groups results into sections. `web` is the section jan's
 /// `web_search` contract maps to, so a response carrying no `web` section
 /// (news-only, or empty) yields no results rather than falling back to `news`.
@@ -1260,11 +1268,7 @@ fn normalize_youcom_search(body: &Value) -> Vec<SearchResult> {
                 })
                 .map(|s| clip_chars(s, 500))
                 .unwrap_or_default();
-            let published_at = r
-                .get("page_age")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string);
+            let published_at = page_age(r);
             SearchResult {
                 title: title.to_string(),
                 url: url.to_string(),
@@ -1484,11 +1488,7 @@ fn normalize_brave_search(body: &Value, count: u32) -> Vec<SearchResult> {
                 .and_then(|v| v.as_str())
                 .map(|t| clip_chars(&strip_html_tags(t), 500))
                 .unwrap_or_default();
-            let published_at = r
-                .get("page_age")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string);
+            let published_at = page_age(r);
             SearchResult {
                 title: title.to_string(),
                 url: url.to_string(),

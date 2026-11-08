@@ -316,7 +316,7 @@ pub async fn memory_record_propose(
         .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
         let existing = super::store::load(&store_root, scope).records;
-        let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
+        let id = new_memory_id(&content);
 
         let mut proposal = create::propose(
             id,
@@ -412,7 +412,7 @@ pub async fn memory_record_propose_inferred(
         // down the other -- including the order the reasons are checked in, which
         // is what stops "automatically save" silently resolving a conflict.
         let decision = inferred::decide(
-            MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content))),
+            new_memory_id(&content),
             &content,
             &existing,
             &inferred::Context {
@@ -691,7 +691,7 @@ pub async fn memory_record_commit(
         }
 
         let existing = super::store::load(&store_root, scope).records;
-        let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
+        let id = new_memory_id(&content);
         let mut proposal = create::propose(
             id,
             &content,
@@ -1184,6 +1184,10 @@ fn fnv(text: &str) -> u64 {
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }
     hash
+}
+
+fn new_memory_id(content: &str) -> MemoryId {
+    MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(content)))
 }
 
 /// What one dispatch is allowed to remember, and which records that was.

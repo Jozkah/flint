@@ -577,6 +577,19 @@ pub(crate) fn find_installed(root: &Path, query: &str) -> Option<(String, Instal
     entries.into_iter().find(|(_, plugin)| plugin.name == query)
 }
 
+/// Plugin folders in a plugins directory: directories only, staging folders
+/// left out, each with its name.
+fn plugin_dirs(rd: std::fs::ReadDir) -> Vec<(PathBuf, String)> {
+    rd.flatten()
+        .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|entry| {
+            let path = entry.path();
+            let directory = path.file_name().and_then(|s| s.to_str())?.to_string();
+            (!directory.starts_with(STAGING_PREFIX)).then_some((path, directory))
+        })
+        .collect()
+}
+
 fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
     let dir = skills::plugins_dir(root);
     let Ok(rd) = std::fs::read_dir(&dir) else {
@@ -589,17 +602,8 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
     let all_commands = crate::core::agent::plugin_commands::discover_including_disabled(root);
     let disabled = crate::core::agent::project::disabled_plugins(root);
     let mut out = Vec::new();
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let Some(directory) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if directory.starts_with(STAGING_PREFIX) {
-            continue;
-        }
+    for (path, directory) in plugin_dirs(rd) {
+        let directory = directory.as_str();
         let manifest = read_manifest(&path);
         let record = read_install_record(&path);
         let plugin_skills = all_skills
@@ -658,17 +662,8 @@ fn installed_entries_scoped(scope: &PluginScope) -> Vec<(String, InstalledPlugin
         return Vec::new();
     };
     let mut out = Vec::new();
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let Some(directory) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if directory.starts_with(STAGING_PREFIX) {
-            continue;
-        }
+    for (path, directory) in plugin_dirs(rd) {
+        let directory = directory.as_str();
         let manifest = read_manifest(&path);
         let record = read_install_record(&path);
         out.push((
