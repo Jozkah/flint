@@ -344,9 +344,9 @@ actor ModelRunner {
             )
         } else {
             usage = UsageInfo(
-                prompt_tokens: completionTokenCount,
+                prompt_tokens: 0,
                 completion_tokens: completionTokenCount,
-                total_tokens: completionTokenCount + completionTokenCount
+                total_tokens: completionTokenCount
             )
         }
 
