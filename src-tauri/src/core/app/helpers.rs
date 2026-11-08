@@ -1,4 +1,7 @@
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 /// Recursively copy a directory from src to dst. `exclude_dirs` names are
 /// matched against top-level entries of `src` only, so a user folder that
@@ -8,7 +11,8 @@ pub fn copy_dir_recursive(
     dst: &PathBuf,
     exclude_dirs: &[&str],
 ) -> Result<(), io::Error> {
-    copy_tree(src, dst, exclude_dirs, true, false)
+    let skips = CopySkips { top: exclude_dirs, ..CopySkips::default() };
+    copy_tree(src, dst, &skips, true, false)
 }
 
 /// Like `copy_dir_recursive`, but a file is copied only when the destination
@@ -20,7 +24,27 @@ pub fn copy_dir_newer(
     dst: &PathBuf,
     exclude_dirs: &[&str],
 ) -> Result<(), io::Error> {
-    copy_tree(src, dst, exclude_dirs, true, true)
+    let skips = CopySkips { top: exclude_dirs, ..CopySkips::default() };
+    copy_tree(src, dst, &skips, true, true)
+}
+
+/// What a tree copy leaves out. Directory links are never followed, whatever
+/// this says.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CopySkips<'a> {
+    /// Entry names skipped at the top level of the source only.
+    pub top: &'a [&'a str],
+    /// Entry names skipped at every level.
+    pub anywhere: &'a [&'a str],
+    /// Skip file links (and Windows reparse points) too, instead of copying
+    /// what they point at: a link can pull in a file from outside the source.
+    pub file_links: bool,
+}
+
+/// Copy the tree at `src` into `dst` (created), leaving out what `skips`
+/// names.
+pub fn copy_dir_skipping(src: &Path, dst: &Path, skips: &CopySkips) -> Result<(), io::Error> {
+    copy_tree(&src.to_path_buf(), &dst.to_path_buf(), skips, true, false)
 }
 
 /// True for a Windows reparse point (junction or symlink); always false elsewhere.
@@ -43,7 +67,7 @@ fn is_reparse_point(path: &std::path::Path) -> bool {
 fn copy_tree(
     src: &PathBuf,
     dst: &PathBuf,
-    exclude_dirs: &[&str],
+    skips: &CopySkips,
     top: bool,
     only_newer: bool,
 ) -> Result<(), io::Error> {
@@ -57,11 +81,9 @@ fn copy_tree(
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
-        if top {
-            if let Some(name) = entry.file_name().to_str() {
-                if exclude_dirs.contains(&name) {
-                    continue;
-                }
+        if let Some(name) = entry.file_name().to_str() {
+            if (top && skips.top.contains(&name)) || skips.anywhere.contains(&name) {
+                continue;
             }
         }
 
@@ -74,13 +96,16 @@ fn copy_tree(
             log::warn!("Skipping directory link: {src_path:?}");
             continue;
         }
+        if skips.file_links && (file_type.is_symlink() || is_reparse_point(&src_path)) {
+            continue;
+        }
         // The destination may sit inside the source; never copy it into itself.
         if file_type.is_dir() && &src_path == dst {
             continue;
         }
 
         if file_type.is_dir() {
-            copy_tree(&src_path, &dst_path, exclude_dirs, false, only_newer)?;
+            copy_tree(&src_path, &dst_path, skips, false, only_newer)?;
         } else if file_type.is_file() || file_type.is_symlink() {
             if only_newer {
                 let src_time = fs::metadata(&src_path).and_then(|m| m.modified());
@@ -288,6 +313,43 @@ mod tests {
         assert!(dst.join("f.txt").exists());
         if made {
             assert!(!dst.join("loop").exists());
+        }
+    }
+
+    #[test]
+    fn skips_names_at_every_level_and_file_links_when_asked() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let outside = tmp.path().join("secret.txt");
+        write_file(&outside, "not yours");
+        write_file(&src.join("keep.txt"), "k");
+        write_file(&src.join(".git/HEAD"), "h");
+        write_file(&src.join("deep/node_modules/x.js"), "x");
+        write_file(&src.join("deep/keep.md"), "m");
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&outside, src.join("deep/link.txt")).is_ok();
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_file(&outside, src.join("deep/link.txt")).is_ok();
+
+        let skipping = tmp.path().join("skipping");
+        let skips = CopySkips {
+            top: &[],
+            anywhere: &[".git", "node_modules"],
+            file_links: true,
+        };
+        copy_dir_skipping(&src, &skipping, &skips).unwrap();
+        assert!(skipping.join("keep.txt").exists());
+        assert!(skipping.join("deep/keep.md").exists());
+        assert!(!skipping.join(".git").exists());
+        assert!(!skipping.join("deep/node_modules").exists());
+        assert!(!skipping.join("deep/link.txt").exists());
+
+        // The data-folder copy keeps copying what a file link points at.
+        let following = tmp.path().join("following");
+        copy_dir_recursive(&src, &following, &[]).unwrap();
+        assert!(following.join(".git/HEAD").exists());
+        if linked {
+            assert_eq!(fs::read_to_string(following.join("deep/link.txt")).unwrap(), "not yours");
         }
     }
 

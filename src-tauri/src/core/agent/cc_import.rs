@@ -315,30 +315,20 @@ fn copy_file_unlinked(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::copy(src, dst).map(|_| ())
 }
 
+/// The app's one tree copy, with `.git` and `node_modules` left out at every
+/// level. Links (file or folder, and Windows reparse points) are skipped: a
+/// folder link back up the tree would recurse until the stack overflows, and
+/// a file link can pull in files from outside the source.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_name = entry.file_name();
-        let name_str = file_name.to_string_lossy();
-        if name_str == ".git" || name_str == "node_modules" {
-            continue;
-        }
-        // Links (file or folder, and Windows reparse points) are skipped: a
-        // folder link back up the tree would recurse until the stack
-        // overflows, and a file link can pull in files from outside the source.
-        if cc_links::is_link(&entry) {
-            continue;
-        }
-        let src_path = entry.path();
-        let dst_path = dst.join(&file_name);
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else if src_path.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
+    crate::core::app::helpers::copy_dir_skipping(
+        src,
+        dst,
+        &crate::core::app::helpers::CopySkips {
+            top: &[],
+            anywhere: &[".git", "node_modules"],
+            file_links: true,
+        },
+    )
 }
 
 fn remove_target_if_present(target: &Path) -> std::io::Result<()> {
