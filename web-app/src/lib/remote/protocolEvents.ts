@@ -1,13 +1,10 @@
 // The remote-access wire protocol: events, socket messages and pairing. Re-exported by protocol.ts.
 // Kept free of app imports so the phone bundle can use it as is.
 
-import type {
-  SessionKind,
-  RemoteToolStep,
-  RemotePrompt,
-  StudioJobWire,
-  PushNotice,
-} from './protocolTypes'
+import type { SessionKind, RemoteToolStep } from './protocolTypes'
+import type { RemotePrompt } from './protocolActing'
+import type { StudioJobWire } from './protocolStudio'
+import type { PushNotice } from './protocolPush'
 
 // ---------------------------------------------------------------------------
 // Events (desktop -> phone)

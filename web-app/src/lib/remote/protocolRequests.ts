@@ -19,6 +19,8 @@ import type {
   ToolsListResult,
   SettingsSnapshot,
   AppearanceResult,
+} from './protocolTypes'
+import type {
   RoomCreateParams,
   RoomUpdateParams,
   RoomMutationResult,
@@ -44,6 +46,8 @@ import type {
   CoworkChanges,
   CoworkActivity,
   LibraryResult,
+} from './protocolActing'
+import type {
   ChatDetails,
   ChatEffortParams,
   ChatAssistantParams,
@@ -63,9 +67,9 @@ import type {
   HfSearchResult,
   HfDownloadParams,
   DownloadTaskWire,
-  CampaignWire,
-  CampaignDetailResult,
-  CampaignActParams,
+} from './protocolDesktop'
+import type { CampaignWire, CampaignDetailResult, CampaignActParams } from './protocolCampaigns'
+import type {
   StudioKindWire,
   StudioStatusResult,
   StudioItemWire,
@@ -77,9 +81,8 @@ import type {
   ArchiveListResult,
   ArchiveKeyParams,
   ArchiveEmptyResult,
-  PushPrefs,
-  PushSubscriptionJson,
-} from './protocolTypes'
+} from './protocolStudio'
+import type { PushPrefs, PushSubscriptionJson } from './protocolPush'
 
 export type RemoteMethods = {
   'push.vapidKey': { params: Record<string, never>; result: { key: string } }
