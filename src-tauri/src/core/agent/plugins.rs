@@ -1937,7 +1937,6 @@ fn select_targets(
     staged: &Staged,
     collection: CollectionChoice,
 ) -> Result<Selected, PluginError> {
-    let url = staged.display.as_str();
     let payload_root = &staged.payload_root;
     if !payload_root.is_dir() {
         return Err(PluginError::new(
@@ -1951,143 +1950,162 @@ fn select_targets(
 
     // Decide which payload directory(ies) to install, as
     // (dir, fallback name, is a subdir of the staging dir, relative path).
-    let mut targets: Vec<InstallTarget> = Vec::new();
     if plugin_has_content(payload_root) {
-        // A single plugin: either the source root or an explicit subdir.
-        let fallback = staged
-            .subdir
-            .as_deref()
-            .and_then(|subdir| subdir.rsplit('/').next())
-            .map(str::to_string)
-            .or_else(|| staged.fallback_name.clone());
-        targets.push((
-            payload_root.clone(),
-            fallback,
-            staged.subdir.is_some(),
-            staged.subdir.clone(),
-        ));
-    } else {
-        // A collection has no payload at its root; plugins can be nested any
-        // number of dirs deep (`plugins/` and `external_plugins/` are only
-        // wrapper dirs). Relative paths are always `/`-separated: they are
-        // offered back to the user as the tail of a spec, so a Windows `\`
-        // would print a suggestion that does not work when pasted back in.
-        let rel_of = |p: &Path| {
-            p.strip_prefix(payload_root)
-                .map(|rel| {
-                    rel.components()
-                        .map(|c| c.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join("/")
-                })
-                .unwrap_or_default()
-        };
-        let mut candidates = find_plugin_dirs(payload_root);
-        candidates.sort_by_key(|p| rel_of(p));
-        let rels: Vec<String> = candidates.iter().map(|p| rel_of(p)).collect();
-        let already = || -> Vec<bool> {
-            candidates
-                .iter()
-                .map(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|n| plugins.join(n).exists())
-                        .unwrap_or(false)
-                })
-                .collect()
-        };
-        let picked: Vec<usize> = match candidates.len() {
-            0 => {
+        return Ok(Selected::Targets(vec![single_target(staged)]));
+    }
+    collection_targets(plugins, staged, collection)
+}
+
+/// A single plugin: either the source root or an explicit subdir.
+fn single_target(staged: &Staged) -> InstallTarget {
+    let fallback = staged
+        .subdir
+        .as_deref()
+        .and_then(|subdir| subdir.rsplit('/').next())
+        .map(str::to_string)
+        .or_else(|| staged.fallback_name.clone());
+    (
+        staged.payload_root.clone(),
+        fallback,
+        staged.subdir.is_some(),
+        staged.subdir.clone(),
+    )
+}
+
+/// A collection has no payload at its root; plugins can be nested any number
+/// of dirs deep (`plugins/` and `external_plugins/` are only wrapper dirs).
+fn collection_targets(
+    plugins: &Path,
+    staged: &Staged,
+    collection: CollectionChoice,
+) -> Result<Selected, PluginError> {
+    let url = staged.display.as_str();
+    let payload_root = &staged.payload_root;
+    let mut candidates = find_plugin_dirs(payload_root);
+    candidates.sort_by_key(|p| collection_rel_path(payload_root, p));
+    let rels: Vec<String> = candidates
+        .iter()
+        .map(|p| collection_rel_path(payload_root, p))
+        .collect();
+    let picked: Vec<usize> = match candidates.len() {
+        0 => {
+            return Err(PluginError::new(
+                PluginErrorCode::NoPluginContent,
+                format!(
+                    "'{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                ),
+            ));
+        }
+        // Exactly one plugin in the collection: no ambiguity, install it.
+        1 => vec![0],
+        n => match &collection {
+            CollectionChoice::ListError => {
                 return Err(PluginError::new(
-                    PluginErrorCode::NoPluginContent,
+                    PluginErrorCode::Collection,
                     format!(
-                        "'{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                        "'{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {}",
+                        rels.join(", "),
+                        staged.collection_hint
                     ),
                 ));
             }
-            // Exactly one plugin in the collection: no ambiguity, install it.
-            1 => vec![0],
-            n => match &collection {
-                CollectionChoice::ListError => {
-                    return Err(PluginError::new(
-                        PluginErrorCode::Collection,
-                        format!(
-                            "'{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {}",
-                            rels.join(", "),
-                            staged.collection_hint
-                        ),
-                    ));
-                }
-                CollectionChoice::Prompt => {
-                    // Mark plugins already installed so the user can see why a
-                    // pick will be skipped.
-                    prompt_multi_choice(url, &rels, &already(), &mut io::stdin().lock()).map_err(
-                        |e| {
-                            PluginError::new(
-                                PluginErrorCode::Cancelled,
-                                e.strip_prefix("ERROR: ").unwrap_or(&e).to_string(),
-                            )
-                        },
-                    )?
-                }
-                // The TUI owns stdin, so it cannot prompt inline: return the
-                // candidate list untouched and let the caller present its own
-                // picker, then re-invoke with `Only` for the chosen paths.
-                CollectionChoice::List => {
-                    return Ok(Selected::Listing(GitInstall::Collection(
-                        rels.into_iter()
-                            .zip(already())
-                            .map(|(path, installed)| CollectionPlugin { path, installed })
-                            .collect(),
-                    )));
-                }
-                // A picker selection: install exactly the payload-root-relative
-                // paths the caller chose. A caller that never supplied any (or
-                // supplied paths matching no candidate) is a user error -- the
-                // collection was re-scanned since the picker's listing, so that
-                // is surfaced immediately instead of falling through to the
-                // confusing "already installed: (nothing)" message below.
-                CollectionChoice::Only(paths) => {
-                    if paths.is_empty() {
-                        return Err(PluginError::new(
-                            PluginErrorCode::InvalidSource,
-                            format!("no matching plugins in '{url}' to install: (none selected)"),
-                        ));
-                    }
-                    let unmatched: Vec<&String> =
-                        paths.iter().filter(|p| !rels.contains(p)).collect();
-                    if !unmatched.is_empty() {
-                        return Err(PluginError::new(
-                            PluginErrorCode::InvalidSource,
-                            format!(
-                                "no matching plugins in '{url}' to install: {}",
-                                unmatched
-                                    .into_iter()
-                                    .map(|s| s.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                        ));
-                    }
-                    rels.iter()
-                        .enumerate()
-                        .filter(|(_, rel)| paths.contains(rel))
-                        .map(|(idx, _)| idx)
-                        .collect()
-                }
-            },
-        };
-        for idx in picked {
-            let dir = candidates[idx].clone();
-            let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
-            let rel = Some(match staged.subdir.as_deref() {
-                Some(sub) => format!("{sub}/{}", rels[idx]),
-                None => rels[idx].clone(),
-            });
-            targets.push((dir, fallback, true, rel));
-        }
+            CollectionChoice::Prompt => {
+                // Mark plugins already installed so the user can see why a
+                // pick will be skipped.
+                let already = installed_flags(plugins, &candidates);
+                prompt_multi_choice(url, &rels, &already, &mut io::stdin().lock()).map_err(|e| {
+                    PluginError::new(
+                        PluginErrorCode::Cancelled,
+                        e.strip_prefix("ERROR: ").unwrap_or(&e).to_string(),
+                    )
+                })?
+            }
+            // The TUI owns stdin, so it cannot prompt inline: return the
+            // candidate list untouched and let the caller present its own
+            // picker, then re-invoke with `Only` for the chosen paths.
+            CollectionChoice::List => {
+                return Ok(Selected::Listing(GitInstall::Collection(
+                    rels.into_iter()
+                        .zip(installed_flags(plugins, &candidates))
+                        .map(|(path, installed)| CollectionPlugin { path, installed })
+                        .collect(),
+                )));
+            }
+            CollectionChoice::Only(paths) => only_indices(url, &rels, paths)?,
+        },
+    };
+    let mut targets: Vec<InstallTarget> = Vec::new();
+    for idx in picked {
+        let dir = candidates[idx].clone();
+        let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
+        let rel = Some(match staged.subdir.as_deref() {
+            Some(sub) => format!("{sub}/{}", rels[idx]),
+            None => rels[idx].clone(),
+        });
+        targets.push((dir, fallback, true, rel));
     }
     Ok(Selected::Targets(targets))
+}
+
+/// A candidate's path relative to the payload root. Always `/`-separated:
+/// it is offered back to the user as the tail of a spec, so a Windows `\`
+/// would print a suggestion that does not work when pasted back in.
+fn collection_rel_path(payload_root: &Path, p: &Path) -> String {
+    p.strip_prefix(payload_root)
+        .map(|rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_default()
+}
+
+/// For each candidate, whether a plugin of that dir name is already installed.
+fn installed_flags(plugins: &Path, candidates: &[PathBuf]) -> Vec<bool> {
+    candidates
+        .iter()
+        .map(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| plugins.join(n).exists())
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// A picker selection: install exactly the payload-root-relative paths the
+/// caller chose. A caller that never supplied any (or supplied paths matching
+/// no candidate) is a user error -- the collection was re-scanned since the
+/// picker's listing, so that is surfaced immediately instead of falling
+/// through to the confusing "already installed: (nothing)" message later.
+fn only_indices(url: &str, rels: &[String], paths: &[String]) -> Result<Vec<usize>, PluginError> {
+    if paths.is_empty() {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("no matching plugins in '{url}' to install: (none selected)"),
+        ));
+    }
+    let unmatched: Vec<&String> = paths.iter().filter(|p| !rels.contains(p)).collect();
+    if !unmatched.is_empty() {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "no matching plugins in '{url}' to install: {}",
+                unmatched
+                    .into_iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+    Ok(rels
+        .iter()
+        .enumerate()
+        .filter(|(_, rel)| paths.contains(rel))
+        .map(|(idx, _)| idx)
+        .collect())
 }
 
 /// Phase 2: install each chosen payload.
