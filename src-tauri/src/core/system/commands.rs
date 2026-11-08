@@ -2394,6 +2394,7 @@ mod tests {
     fn test_full_wipe_list_includes_the_secret_index() {
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.enc"));
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.index.json"));
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.key"));
     }
 
     #[test]
