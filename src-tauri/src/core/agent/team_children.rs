@@ -640,7 +640,31 @@ pub fn list(
         .filter(|r| same_dir(Path::new(&r.source_root), project))
         .collect();
     records.sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.task_id.cmp(&b.task_id)));
-    records.into_iter().map(|r| view(r, roots)).collect()
+    views(records, roots)
+}
+
+/// How many records are looked at on disk at once when listing.
+const LIST_WORKERS: usize = 4;
+
+/// [`view`] of every record, in order. Each view runs several git commands,
+/// so they run on up to [`LIST_WORKERS`] threads instead of one after another.
+/// Nothing is cached: every view reads the worktree as it is now, so a change
+/// made after a child finished is caught exactly as it was before.
+fn views(records: Vec<ChildRecord>, roots: &Path) -> Vec<ChildView> {
+    if records.len() < 2 {
+        return records.into_iter().map(|r| view(r, roots)).collect();
+    }
+    let chunk = records.len().div_ceil(LIST_WORKERS);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = records
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || part.iter().cloned().map(|r| view(r, roots)).collect::<Vec<_>>()))
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
+            .collect()
+    })
 }
 
 fn view(record: ChildRecord, roots: &Path) -> ChildView {
@@ -1106,5 +1130,37 @@ mod tests {
             propose(&f.data, &f.roots, "sess", "alpha", true).unwrap_err().kind,
             ChildErrorKind::LinkEscape
         );
+    }
+
+    /// Listing looks at records on several threads, and still returns them in
+    /// order, each exactly as a one-at-a-time look would see it -- including
+    /// a worktree changed after its child finished.
+    #[test]
+    fn listing_in_parallel_matches_a_sequential_look() {
+        let f = fixture("parallel");
+        let tasks = ["t1", "t2", "t3", "t4", "t5", "t6"];
+        for task in tasks {
+            let rec = start(&f, task);
+            std::fs::write(Path::new(&rec.worktree_path).join(format!("{task}.txt")), task).unwrap();
+            settle(&f.data, &f.roots, "sess", task, ChildStatus::Completed, "").unwrap();
+        }
+        let changed = load(&f.data, &tauri_plugin_agent_tools::child_session_id("sess", "t4")).unwrap();
+        std::fs::write(Path::new(&changed.worktree_path).join("late.txt"), "late").unwrap();
+
+        let listed = list(&f.data, &f.roots, &f.src.to_string_lossy(), Some("sess"));
+        let order: Vec<&str> = listed.iter().map(|v| v.record.task_id.as_str()).collect();
+        let mut expected_records: Vec<ChildRecord> = all_records(&f.data);
+        expected_records
+            .sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.task_id.cmp(&b.task_id)));
+        let sequential: Vec<ChildView> =
+            expected_records.into_iter().map(|r| view(r, &f.roots)).collect();
+        assert_eq!(listed, sequential);
+        assert_eq!(order.len(), tasks.len());
+        let flagged: Vec<&str> = listed
+            .iter()
+            .filter(|v| v.problem.as_ref().map(|p| p.kind) == Some(ChildErrorKind::ModifiedAfterFinish))
+            .map(|v| v.record.task_id.as_str())
+            .collect();
+        assert_eq!(flagged, ["t4"]);
     }
 }
