@@ -2,7 +2,7 @@ import { CoreRoutes, APIRoutes } from '@janhq/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform'
 import { hasProviderTransport } from '@/lib/providerFetch'
-import { invoke as serverInvoke } from '@tauri-apps/api/core'
+import { invokeCommand as serverInvoke } from '@/lib/backend'
 import type { InvokeArgs } from '@/services/core/types'
 
 export const AppRoutes = [

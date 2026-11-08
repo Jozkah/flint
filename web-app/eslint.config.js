@@ -2,7 +2,13 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import tseslint from 'typescript-eslint'
+
+// Accessibility rules, advisory for now: every recommended rule at 'warn'.
+const a11yWarnRules = Object.fromEntries(
+  Object.keys(jsxA11y.flatConfigs.recommended.rules).map((name) => [name, 'warn'])
+)
 
 export default tseslint.config(
   { ignores: ['dist', 'coverage', '**/__tests__/**', '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'] },
@@ -24,6 +30,12 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
+  },
+  {
+    files: ['**/*.{jsx,tsx}'],
+    plugins: { 'jsx-a11y': jsxA11y },
+    languageOptions: jsxA11y.flatConfigs.recommended.languageOptions,
+    rules: a11yWarnRules,
   },
   {
     // The phone app (src/mobile) runs in a phone's browser, not in Tauri.

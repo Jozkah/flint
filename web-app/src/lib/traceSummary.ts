@@ -8,6 +8,7 @@
 import { toolKind } from '@/lib/toolKind'
 import { parseBashOutput } from '@/lib/toolPresentation'
 import { basename } from './path'
+import { truncate } from './text'
 
 export type TraceSummaryPart = {
   type: string
@@ -314,7 +315,7 @@ export function summaryDetails(parts: TraceSummaryPart[]): string {
 
 const clip = (text: string, max = 80): string => {
   const one = text.replace(/\s+/g, ' ').trim()
-  return one.length > max ? `${one.slice(0, max - 1)}…` : one
+  return truncate(one, max)
 }
 
 /** What a bash call ran, without the verb: the command, or "a command". */
