@@ -1256,69 +1256,13 @@ pub fn verify_finish(
         let mut evidence = said_evidence.clone();
         let mut downgraded: Option<String> = None;
         if said == TaskVerdict::Pass {
-            if let Some(facts) = t.evidence.clone() {
-                let mut why: Option<(TaskVerdict, String)> = None;
-                if !facts.markers.is_empty() {
-                    why = Some((
-                        TaskVerdict::Fail,
-                        format!("conflict markers remain in {}", facts.markers.join(", ")),
-                    ));
-                } else if let Some(check) = facts.check.as_ref().filter(|k| !k.passed) {
-                    why = Some(if check.timed_out {
-                        (TaskVerdict::Blocked, format!("the objective check `{}` timed out, so it decided nothing", check.command))
-                    } else {
-                        (
-                            TaskVerdict::Fail,
-                            format!(
-                                "the objective check `{}` failed (exit {})\n{}",
-                                check.command,
-                                check.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".into()),
-                                clip_text(&check.output, 1500)
-                            ),
-                        )
-                    });
-                } else if facts.empty && t.expects_changes() && mentions_files(&t.acceptance) {
-                    why = Some((
-                        TaskVerdict::Blocked,
-                        "the work changed nothing against its base, yet its acceptance criteria name files".to_string(),
-                    ));
-                }
-                if let Some((v, reason)) = why {
-                    verdict = v;
-                    evidence = clip_text(&format!("{reason}. The verifier had said PASS: {said_evidence}"), 4000);
-                    downgraded = Some(reason);
-                }
+            if let Some((v, reason)) = pass_downgrade(t) {
+                verdict = v;
+                evidence = clip_text(&format!("{reason}. The verifier had said PASS: {said_evidence}"), 4000);
+                downgraded = Some(reason);
             }
         }
-        let next = match verdict {
-            TaskVerdict::Pass => {
-                transition_task(t, TaskStatus::Verified, Some(TaskVerdict::Pass))?;
-                t.detail = "verified".to_string();
-                VerifyNext::Verified
-            }
-            TaskVerdict::Fail | TaskVerdict::Partial => {
-                let mut budget = RepairBudget::new(REPAIR_ROUNDS);
-                budget.used = t.attempt;
-                let label = if verdict == TaskVerdict::Fail { "FAIL" } else { "PARTIAL" };
-                let detail = clip_text(&format!("verification {label}: {evidence}"), 1000);
-                if budget.may_retry() && t.session_id.is_some() {
-                    transition_task(t, TaskStatus::Queued, Some(verdict))?;
-                    t.detail = detail;
-                    VerifyNext::Repair
-                } else {
-                    transition_task(t, TaskStatus::Failed, Some(verdict))?;
-                    t.detail = detail;
-                    VerifyNext::Failed
-                }
-            }
-            TaskVerdict::Blocked => {
-                // Back to the claim, with the verdict on record. Never merged.
-                transition_task(t, TaskStatus::Completed, None)?;
-                t.verdict = Some(TaskVerdict::Blocked);
-                t.detail = clip_text(&format!("verification blocked: {evidence}"), 1000);
-                VerifyNext::Blocked
-            }
-        };
+        let next = apply_verdict(t, verdict, &evidence)?;
         let kind = match next {
             VerifyNext::Verified => "task-verified",
             VerifyNext::Repair => "task-repair",
@@ -1346,6 +1290,70 @@ pub fn verify_finish(
         downgraded,
         check,
         campaign: c,
+    })
+}
+
+/// Why a verifier PASS cannot stand against the evidence the backend gathered
+/// (markers left, a failed or timed-out check, no change for criteria that
+/// name files), with the verdict it becomes. `None` keeps the PASS.
+fn pass_downgrade(t: &CampaignTask) -> Option<(TaskVerdict, String)> {
+    let facts = t.evidence.clone()?;
+    if !facts.markers.is_empty() {
+        Some((TaskVerdict::Fail, format!("conflict markers remain in {}", facts.markers.join(", "))))
+    } else if let Some(check) = facts.check.as_ref().filter(|k| !k.passed) {
+        Some(if check.timed_out {
+            (TaskVerdict::Blocked, format!("the objective check `{}` timed out, so it decided nothing", check.command))
+        } else {
+            (
+                TaskVerdict::Fail,
+                format!(
+                    "the objective check `{}` failed (exit {})\n{}",
+                    check.command,
+                    check.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".into()),
+                    clip_text(&check.output, 1500)
+                ),
+            )
+        })
+    } else if facts.empty && t.expects_changes() && mentions_files(&t.acceptance) {
+        Some((
+            TaskVerdict::Blocked,
+            "the work changed nothing against its base, yet its acceptance criteria name files".to_string(),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Move the task on by its final verdict and record the detail.
+fn apply_verdict(t: &mut CampaignTask, verdict: TaskVerdict, evidence: &str) -> Result<VerifyNext, CampaignError> {
+    Ok(match verdict {
+        TaskVerdict::Pass => {
+            transition_task(t, TaskStatus::Verified, Some(TaskVerdict::Pass))?;
+            t.detail = "verified".to_string();
+            VerifyNext::Verified
+        }
+        TaskVerdict::Fail | TaskVerdict::Partial => {
+            let mut budget = RepairBudget::new(REPAIR_ROUNDS);
+            budget.used = t.attempt;
+            let label = if verdict == TaskVerdict::Fail { "FAIL" } else { "PARTIAL" };
+            let detail = clip_text(&format!("verification {label}: {evidence}"), 1000);
+            if budget.may_retry() && t.session_id.is_some() {
+                transition_task(t, TaskStatus::Queued, Some(verdict))?;
+                t.detail = detail;
+                VerifyNext::Repair
+            } else {
+                transition_task(t, TaskStatus::Failed, Some(verdict))?;
+                t.detail = detail;
+                VerifyNext::Failed
+            }
+        }
+        TaskVerdict::Blocked => {
+            // Back to the claim, with the verdict on record. Never merged.
+            transition_task(t, TaskStatus::Completed, None)?;
+            t.verdict = Some(TaskVerdict::Blocked);
+            t.detail = clip_text(&format!("verification blocked: {evidence}"), 1000);
+            VerifyNext::Blocked
+        }
     })
 }
 
