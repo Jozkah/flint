@@ -2,15 +2,10 @@ import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import type { ParentPersona } from '@/lib/subagentChoice'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import { jsonSchema, type Tool, type UIMessage } from 'ai'
-import {
-  CustomChatTransport,
-  isValidToolName,
-  normalizeToolInputSchema,
-} from '@/lib/custom-chat-transport'
+import type { Tool, UIMessage } from 'ai'
+import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import {
   loadLiveMcpTools,
   mcpServerLabels,
@@ -31,24 +26,9 @@ import {
   applyWebSearchToTools,
   buildCoworkTools,
   coworkToolSignature,
-  type CoworkToolOptions,
 } from '@/lib/coworkTools'
-import {
-  ENABLE_TOOLS_NAME,
-  TOOL_GROUPS,
-  enableToolsTool,
-  groupOf,
-  groupsToOffer,
-  splitToolGroups,
-  withoutEnable,
-  type ToolGroupId,
-} from '@/lib/coworkToolGroups'
-import {
-  buildCoworkSystemPrompt,
-  environmentOptions,
-  type CoworkEnvironmentOptions,
-  type PromptFolderAccess,
-} from '@/lib/coworkPrompt'
+import { groupOf, withoutEnable, type ToolGroupId } from '@/lib/coworkToolGroups'
+import { buildCoworkSystemPrompt, environmentOptions } from '@/lib/coworkPrompt'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import {
   latestUserText,
@@ -61,50 +41,20 @@ import type { ContextAccounting } from '@/lib/coworkReadiness'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { lastUserText, latestUserMessage } from '@/lib/coworkTransportMessages'
 
-export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
-  /**
-   * The model this run is sent with, captured from its session when the run
-   * started (janhq/jan#8905). Every step of the run uses it, whatever the
-   * global picker says by then; absent, the global selection is used.
-   */
-  model?: { provider: string; id: string }
-  workspacePath: string | null
-  readOnlyFolder: string | null
-  /** The session's additional attached folders, frozen with the run. */
-  extraFolders?: readonly string[]
-  /** The `extraFolders` this run's write grant covers; the rest are read-only. */
-  writableExtraFolders?: readonly string[]
-  /**
-   * Whether this run may write to the attached folder.
-   *
-   * Frozen with the run, from its effective access — so the prompt describes
-   * the destination the dispatcher will actually use.
-   */
-  folderAccess?: PromptFolderAccess
-  /** The managed worktree's own branch, when `folderAccess` is `worktree`. */
-  worktreeBranch?: string | null
-  /** The attached project's git branch, surfaced in the system prompt. */
-  gitBranch?: string | null
-  /** Verbatim `JAN.md` from the attached folder, when it has one. */
-  projectInstructions?: string | null
-  /**
-   * Compatibility instructions the resolver made active for this run.
-   *
-   * Frozen with the run like everything else here: configuration edited while
-   * a run is going applies to the next one.
-   */
-  compatInstructions?: readonly { name: string; content: string }[]
-  /** The backend's project tooling block, frozen with the run. */
-  projectTooling?: string | null
-  /**
-   * The opening turn reads and proposes rather than acting.
-   *
-   * Decided per request from what the user typed, and frozen with the run like
-   * everything else here.
-   */
-  openingInspection?: boolean
-}
+import type { CoworkRunConfig } from '@/lib/coworkRunConfig'
+import {
+  advertisedGroupsOf,
+  assistantProfileBlock,
+  collectMcpOverlay,
+  composeFrozenTools,
+  configWithSkillGroups,
+  heldBackToolsOf,
+  heldGroupsOf,
+  leanBuiltinTools,
+  memoryInstructionsOf,
+} from '@/lib/coworkTransportTools'
 
+export type { CoworkRunConfig }
 export { lastUserText }
 
 /**
@@ -129,13 +79,7 @@ export class CoworkChatTransport extends CustomChatTransport {
    * is withheld only for disagreeing with something the model is told.
    */
   protected override memoryInstructions() {
-    const out: { source: 'jan-md' | 'compat' | 'skill'; name: string; text: string }[] = []
-    const jan = this.config.projectInstructions?.trim()
-    if (jan) out.push({ source: 'jan-md', name: 'FLINT.md', text: jan })
-    for (const one of this.config.compatInstructions ?? []) {
-      if (one.content.trim()) out.push({ source: 'compat', name: one.name, text: one.content })
-    }
-    return out
+    return memoryInstructionsOf(this.config)
   }
   private config: CoworkRunConfig
   /**
@@ -267,22 +211,12 @@ export class CoworkChatTransport extends CustomChatTransport {
 
   /** Held groups with a tool present that nothing has opened yet. */
   get heldGroups(): ToolGroupId[] {
-    const ids = new Set<ToolGroupId>()
-    for (const name of Object.keys(this.heldTools)) {
-      const id = groupOf(name)
-      if (id && !this.openGroups.has(id)) ids.add(id)
-    }
-    return (Object.keys(TOOL_GROUPS) as ToolGroupId[]).filter((id) => ids.has(id))
+    return heldGroupsOf(this.heldTools, this.openGroups)
   }
 
   /** Groups with a tool in the advertised set right now (started with, or opened). */
   get advertisedGroups(): ReadonlySet<ToolGroupId> {
-    const ids = new Set<ToolGroupId>()
-    for (const name of Object.keys(this.frozenTools ?? this.tools)) {
-      const id = groupOf(name)
-      if (id) ids.add(id)
-    }
-    return ids
+    return advertisedGroupsOf(this.frozenTools ?? this.tools)
   }
 
   get openedGroups(): ReadonlySet<ToolGroupId> {
@@ -291,16 +225,7 @@ export class CoworkChatTransport extends CustomChatTransport {
 
   /** The held-back tools, for the context popover. */
   get heldBackTools(): { name: string; group: ToolGroupId; schema: unknown }[] {
-    return Object.entries(this.heldTools)
-      .filter(([name]) => !this.openGroups.has(groupOf(name) as ToolGroupId))
-      .map(([name, tool]) => ({
-        name,
-        group: groupOf(name) as ToolGroupId,
-        schema: {
-          description: (tool as { description?: string }).description,
-          inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
-        },
-      }))
+    return heldBackToolsOf(this.heldTools, this.openGroups)
   }
 
   /**
@@ -328,14 +253,7 @@ export class CoworkChatTransport extends CustomChatTransport {
 
   /** Lean set plus opened groups, with `enable_tools` last (or gone when none is held). */
   private composeFrozen(base: Record<string, Tool>): Record<string, Tool> {
-    const next: Record<string, Tool> = withoutEnable(base)
-    for (const [name, tool] of Object.entries(this.heldTools)) {
-      const id = groupOf(name)
-      if (id && this.openGroups.has(id)) next[name] = tool
-    }
-    const held = this.heldGroups
-    if (held.length > 0) next[ENABLE_TOOLS_NAME] = enableToolsTool(held)
-    return next
+    return composeFrozenTools(base, this.heldTools, this.openGroups)
   }
 
   /**
@@ -551,12 +469,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   protected override buildSystemPrompt(messages: UIMessage[]): string {
-    const assistantProfile = this.routedAssistantInstructions?.trim()
-      ? [
-          'Assistant profile for this turn (behaviour only; Cowork policy, permissions, and project instructions take precedence):',
-          this.routedAssistantInstructions.trim(),
-        ].join('\n')
-      : undefined
+    const assistantProfile = assistantProfileBlock(this.routedAssistantInstructions)
     const self = this.threadId
       ? useCoworkSessions.getState().sessions.find((s) => s.id === this.threadId)
       : undefined
@@ -673,21 +586,7 @@ export class CoworkChatTransport extends CustomChatTransport {
         const live = await loadLiveMcpTools(mcp)
         this.mcpStarting = live.starting
         const isDisabled = useToolAvailable.getState().isToolDisabled
-        for (const tool of live.tools) {
-          const server = tool.server || 'unknown'
-          if (!isValidToolName(tool.name)) continue
-          if (isDisabled(server, tool.name)) continue
-          if (isSelfApprovalTool(tool.name)) continue
-          // A built-in, or the first server to offer a name, wins.
-          if (base[tool.name] || servers.has(tool.name)) continue
-          servers.set(tool.name, server)
-          overlay[tool.name] = {
-            description: tool.description,
-            inputSchema: jsonSchema(
-              normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
-            ),
-          } as Tool
-        }
+        collectMcpOverlay(live.tools, base, isDisabled, overlay, servers)
         const offered = [...servers].map(([name, server]) => ({ name, server }))
         const availability = mcpAvailability(
           live.tools,
@@ -720,17 +619,6 @@ export class CoworkChatTransport extends CustomChatTransport {
     this.tools = this.advertised ?? base
   }
 
-  /** The config with groups the activated skills' text calls for added to the offer. */
-  private configWithSkillGroups(): CoworkRunConfig {
-    const offer = this.config.offerGroups
-    if (!offer) return this.config
-    const skillText = this.activeSkills.map((s) => `${s.name}\n${s.body}`).join('\n')
-    if (!skillText.trim()) return this.config
-    const extra = groupsToOffer({ text: '', skillText })
-    const merged = [...new Set([...offer, ...extra])]
-    return merged.length === offer.length ? this.config : { ...this.config, offerGroups: merged }
-  }
-
   private async refreshBuiltins(): Promise<void> {
     // Frozen means frozen: once a run is under way the advertised set is fixed
     // even if the config changed, because rebuilding it would change the tool
@@ -740,7 +628,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       this.tools = this.frozenTools
       return
     }
-    const config = this.configWithSkillGroups()
+    const config = configWithSkillGroups(this.config, this.activeSkills)
     const sig = coworkToolSignature(config, sandboxEnforces())
     // Between runs, skip the rebuild when nothing that shapes the set changed.
     if (this.builtTools && this.builtSig === sig) {
@@ -751,14 +639,8 @@ export class CoworkChatTransport extends CustomChatTransport {
       return
     }
     const built = await buildCoworkTools(config)
-    const split = splitToolGroups(
-      built,
-      config.offerGroups ? new Set(config.offerGroups) : undefined
-    )
-    const tools: Record<string, Tool> = { ...split.lean }
-    if (split.heldGroups.length > 0) {
-      tools[ENABLE_TOOLS_NAME] = enableToolsTool(split.heldGroups)
-    }
+    const split = leanBuiltinTools(built, config)
+    const tools: Record<string, Tool> = split.tools
     // No built-in at all means the backend list failed to load. Use it for this
     // turn but do not freeze or cache it, so the next turn asks again instead
     // of keeping a run without file or messaging tools until restart.
