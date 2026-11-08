@@ -56,3 +56,14 @@ export async function renderRoute(path: string) {
   await new Promise((r) => setTimeout(r, 50))
   return utils
 }
+
+/**
+ * Accessibility violations axe finds in `container`, as rule ids with a node
+ * count each. Colour contrast is off: jsdom has no layout or computed colour.
+ */
+export async function a11yViolations(container: Element) {
+  const { configureAxe } = await import('vitest-axe')
+  const axe = configureAxe({ rules: { 'color-contrast': { enabled: false } } })
+  const results = await axe(container as HTMLElement)
+  return results.violations.map((v) => ({ id: v.id, nodes: v.nodes.length }))
+}

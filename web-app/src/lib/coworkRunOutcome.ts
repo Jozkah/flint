@@ -28,6 +28,7 @@ import {
 import { parseBashOutput } from '@/lib/toolPresentation'
 import { PLAN_DENIED_TOOLS } from '@/lib/coworkTools'
 import { redactSecrets } from '@/lib/redact'
+import { truncate } from '@/lib/text'
 
 export type RunStatus =
   | 'completed'
@@ -563,10 +564,7 @@ export function claimsFromText(text: string): CheckClaim[] {
     if (!subject) continue
     claims.push({
       kind: subject.kind,
-      text:
-        sentence.length > MAX_CLAIM_LENGTH
-          ? `${sentence.slice(0, MAX_CLAIM_LENGTH - 1)}…`
-          : sentence,
+      text: truncate(sentence, MAX_CLAIM_LENGTH),
       evidence: 'assistant-text',
       verified: false,
     })
@@ -923,9 +921,7 @@ const MAX_CONTINUE_TARGET = 180
 
 function compactContinueTarget(value: string): string {
   const clean = value.replace(/\s+/g, ' ').trim()
-  return clean.length > MAX_CONTINUE_TARGET
-    ? `${clean.slice(0, MAX_CONTINUE_TARGET - 1)}…`
-    : clean
+  return truncate(clean, MAX_CONTINUE_TARGET)
 }
 
 /**

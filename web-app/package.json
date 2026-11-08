@@ -159,6 +159,7 @@
     "vite": "6.3.2",
     "vite-plugin-node-polyfills": "0.23.0",
     "vite-plugin-pwa": "1.0.3",
-    "vitest": "3.2.4"
+    "vitest": "3.2.4",
+    "vitest-axe": "0.1.0"
   }
 }

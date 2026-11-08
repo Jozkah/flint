@@ -28,6 +28,7 @@ import {
   type ConversationMessage,
   type ConversationSnapshot,
 } from '@/lib/chatMentions'
+import { truncate } from '@/lib/text'
 
 // ── Pure builders ────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ const toMs = (t: number): number => (t < 1e12 ? t * 1000 : t)
 
 const oneLine = (text: string, max = 110) => {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
+  return truncate(flat, max)
 }
 
 // ── Stores ───────────────────────────────────────────────────────────────────
