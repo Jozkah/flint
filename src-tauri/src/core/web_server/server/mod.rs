@@ -616,66 +616,96 @@ fn route_auth(method: &Method, path: &str) -> Auth {
 async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net::IpAddr) -> Resp {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
-    if path == "/healthz" && method == Method::GET {
-        return healthz();
+    let req = match before_session_gate(&state, &method, &path, req, client).await {
+        Ok(response) => return response,
+        Err(req) => req,
+    };
+    debug_assert_eq!(route_auth(&method, &path), Auth::Session);
+    let session = match authorize(&state, &req, &method) {
+        Ok(session) => session,
+        Err(response) => return response,
+    };
+    session_routes(&state, &method, &path, session.as_deref(), client, req).await
+}
+
+/// Everything decided before a session is looked at: the `Public` routes and
+/// the origin checks. Hands the request back when it must pass the gate.
+async fn before_session_gate(
+    state: &State,
+    method: &Method,
+    path: &str,
+    req: Request<Incoming>,
+    client: std::net::IpAddr,
+) -> Result<Resp, Request<Incoming>> {
+    if path == "/healthz" && *method == Method::GET {
+        return Ok(healthz());
     }
-    if path == "/readyz" && method == Method::GET {
-        return readyz(&state);
+    if path == "/readyz" && *method == Method::GET {
+        return Ok(readyz(state));
     }
-    if path == "/api/v1/shutdown" && method == Method::POST {
-        return shutdown_route(&state, &req);
+    if path == "/api/v1/shutdown" && *method == Method::POST {
+        return Ok(shutdown_route(state, &req));
     }
     // A page on another site can post well-formed junk to a local server and
     // use up the sign-in attempts of the person it is open for. A request that
     // names a foreign origin never gets as far as the limiter. (`Origin: null`
     // is what a browser sends on some legitimate form posts, so it passes.)
     if (path == "/api/v1/token" || path == "/api/v1/session")
-        && method == Method::POST
-        && foreign_origin(&state, req.headers())
+        && *method == Method::POST
+        && foreign_origin(state, req.headers())
     {
-        return text(StatusCode::FORBIDDEN, "Invalid origin");
+        return Ok(text(StatusCode::FORBIDDEN, "Invalid origin"));
     }
     // A bearer token is sent on purpose, never added by the browser, so a
     // request carrying one cannot be a cross-site forgery and needs no Origin.
     let has_bearer = bearer_token(req.headers()).is_some();
-    if path == "/api/v1/token" && method == Method::POST {
-        return token_sign_in(&state, req, client).await;
+    if path == "/api/v1/token" && *method == Method::POST {
+        return Ok(token_sign_in(state, req, client).await);
     }
     // Signing in is exempt: its body carries the administrator credential, which
     // a forged cross-site post cannot supply, and browsers send `Origin: null`
     // on a form post in several situations (referrer policy, privacy settings,
     // extensions) that would otherwise lock a legitimate user out.
-    let sign_in = path == "/api/v1/session" && method == Method::POST;
-    if method != Method::GET
-        && method != Method::HEAD
+    let sign_in = path == "/api/v1/session" && *method == Method::POST;
+    if *method != Method::GET
+        && *method != Method::HEAD
         && !has_bearer
         && !sign_in
-        && !same_origin(&state, req.headers())
+        && !same_origin(state, req.headers())
     {
-        // Said once on the console: the usual cause is a client reaching the
-        // server under a name that was not passed with --allowed-host.
-        let seen = |name| {
-            req.headers()
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("(none)")
-                .to_owned()
-        };
-        eprintln!(
-            "refused {method} {path}: Origin {:?}, Host {:?}",
-            seen(header::ORIGIN),
-            seen(header::HOST)
-        );
-        return text(StatusCode::FORBIDDEN, "Invalid origin");
+        return Ok(refuse_cross_origin(&req, method, path));
     }
-    if path == "/login" && method == Method::GET {
-        return login_form(&req);
+    if path == "/login" && *method == Method::GET {
+        return Ok(login_form(&req));
     }
     if sign_in {
-        return session_sign_in(&state, req, client).await;
+        return Ok(session_sign_in(state, req, client).await);
     }
-    debug_assert_eq!(route_auth(&method, &path), Auth::Session);
+    Err(req)
+}
 
+/// The 403 for a state-changing request from another origin.
+fn refuse_cross_origin(req: &Request<Incoming>, method: &Method, path: &str) -> Resp {
+    // Said once on the console: the usual cause is a client reaching the
+    // server under a name that was not passed with --allowed-host.
+    let seen = |name| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("(none)")
+            .to_owned()
+    };
+    eprintln!(
+        "refused {method} {path}: Origin {:?}, Host {:?}",
+        seen(header::ORIGIN),
+        seen(header::HOST)
+    );
+    text(StatusCode::FORBIDDEN, "Invalid origin")
+}
+
+/// The session gate. Returns the presented token when it is valid, otherwise
+/// the redirect or 401 to send.
+fn authorize(state: &State, req: &Request<Incoming>, method: &Method) -> Result<Option<String>, Resp> {
     // An Authorization header decides on its own: a bad token is never
     // rescued by a cookie that happens to ride along.
     let presented_bearer = req.headers().contains_key(header::AUTHORIZATION);
@@ -689,41 +719,53 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         .as_deref()
         .is_some_and(|token| state.auth.lock().unwrap_or_else(|p| p.into_inner()).authorize(token));
     if !authorized {
-        return unauthenticated(presented_bearer, &method);
+        return Err(unauthenticated(presented_bearer, method));
     }
-    if path == "/api/v1/sessions" && method == Method::DELETE {
-        return end_all_sessions(&state);
+    Ok(session)
+}
+
+/// The routes behind the session gate, ending in the static bundle.
+async fn session_routes(
+    state: &State,
+    method: &Method,
+    path: &str,
+    session: Option<&str>,
+    client: std::net::IpAddr,
+    req: Request<Incoming>,
+) -> Resp {
+    if path == "/api/v1/sessions" && *method == Method::DELETE {
+        return end_all_sessions(state);
     }
     if path == "/api/v1/session" {
-        if let Some(response) = session_route(&state, &method, session.as_deref()) {
+        if let Some(response) = session_route(state, method, session) {
             return response;
         }
     }
-    let req = match thread_write_routes(&state, &method, &path, req).await {
+    let req = match thread_write_routes(state, method, path, req).await {
         Ok(response) => return response,
         Err(req) => req,
     };
-    if method == Method::GET && path.starts_with("/api/v1/agent/sessions/") && path.ends_with("/events") {
-        return agent_events(&state, &req, &path).await;
+    if *method == Method::GET && path.starts_with("/api/v1/agent/sessions/") && path.ends_with("/events") {
+        return agent_events(state, &req, path).await;
     }
-    if path == "/api/v1/events" && method == Method::GET {
+    if path == "/api/v1/events" && *method == Method::GET {
         return events::stream(&state.events);
     }
-    if path == "/api/v1/provider/stream" && method == Method::POST {
+    if path == "/api/v1/provider/stream" && *method == Method::POST {
         return provider::stream(req).await;
     }
-    if path == "/api/v1/provider/cancel" && method == Method::POST {
+    if path == "/api/v1/provider/cancel" && *method == Method::POST {
         return provider::cancel(req).await;
     }
-    let req = match upload_routes(&state, &method, &path, req).await {
+    let req = match upload_routes(state, method, path, req).await {
         Ok(response) => return response,
         Err(req) => req,
     };
     if let Some(command) = path.strip_prefix("/api/v1/rpc/") {
-        return rpc_entry(&state, &method, command, session.as_deref(), client, req).await;
+        return rpc_entry(state, method, command, session, client, req).await;
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
-        return mcp_route(&state, &method, rest, req).await;
+        return mcp_route(state, method, rest, req).await;
     }
     if path.starts_with("/api/v1/projects")
         || path.starts_with("/api/v1/assistants")
@@ -733,24 +775,24 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         || path.starts_with("/api/v1/provider-keys/")
         || path == "/api/v1/secret-values"
     {
-        return resource_route(&state, &method, &path, req).await;
+        return resource_route(state, method, path, req).await;
     }
-    if let Some(response) = thread_read_routes(&state, &method, &path).await {
+    if let Some(response) = thread_read_routes(state, method, path).await {
         return response;
     }
-    if let Some(resp) = phone_client_page(&path) {
+    if let Some(resp) = phone_client_page(path) {
         return resp;
     }
     if path.starts_with("/api/") {
         return text(StatusCode::NOT_FOUND, "Unknown API route");
     }
-    if method != Method::GET && method != Method::HEAD {
+    if *method != Method::GET && *method != Method::HEAD {
         return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    serve_asset(&state, &method, &path).await
+    serve_asset(state, method, path).await
 }
 
-/// Readiness for supervisors: 200 `ready` while the data folder is there to
+// Readiness for supervisors: 200 `ready` while the data folder is there to
 /// serve from, 503 `not ready` otherwise. No versions, paths or counts.
 fn readyz(state: &State) -> Resp {
     if state.data_folder.is_dir() {
@@ -1215,8 +1257,9 @@ fn login_page(error: Option<&str>) -> String {
     LOGIN_HTML.replace("{{NOTICE}}", &html)
 }
 
-pub async fn serve(options: Options) -> io::Result<()> {
-    let loopback = options.bind.ip().is_loopback();
+/// Checks the options that need no socket: allowed hosts and origins, the web
+/// bundle, and that no other server already runs on this data folder.
+fn check_options(options: &Options, loopback: bool) -> io::Result<()> {
     if !loopback && options.allowed_hosts.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -1250,8 +1293,12 @@ pub async fn serve(options: Options) -> io::Result<()> {
             ),
         ));
     }
-    let listener = TcpListener::bind(options.bind).await?;
-    let port = listener.local_addr()?.port();
+    Ok(())
+}
+
+/// The Host header values the server answers to once bound to `local`.
+fn host_allowlist(options: &Options, local: SocketAddr) -> io::Result<HashSet<String>> {
+    let port = local.port();
     let mut hosts = HashSet::from([
         format!("localhost:{port}"),
         format!("127.0.0.1:{port}"),
@@ -1272,7 +1319,17 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // The server's own address as an IP literal, which `flint stop` and the
     // background starter use to reach it. A name an attacker controls can never
     // be this, so it does not weaken the check against DNS rebinding.
-    hosts.insert(listener.local_addr()?.to_string());
+    hosts.insert(local.to_string());
+    Ok(hosts)
+}
+
+/// Opens the stores and services the server holds for its lifetime. Returns
+/// the shared state and the first-run credential, when one was just made.
+fn build_state(
+    options: Options,
+    hosts: HashSet<String>,
+    shutdown_token: String,
+) -> io::Result<(Arc<State>, Option<String>)> {
     let bus = events::Bus::new();
     let agent = agent::Agent::open_with(&options.data_folder, &options.agent_roots, options.agent_run)
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?
@@ -1281,9 +1338,6 @@ pub async fn serve(options: Options) -> io::Result<()> {
     let settings_store = settings::Store::new(&options.data_folder);
     // Agent runs on this server use the providers its browser client added.
     crate::core::cli::providers::use_server_settings(settings_store.file().to_path_buf());
-    let shutdown = Arc::new(tokio::sync::Notify::new());
-    let shutdown_token = control::new_token();
-    let data_folder_for_run = options.data_folder.clone();
     let state = Arc::new(State {
         auth: Mutex::new(auth),
         assets: options.assets,
@@ -1297,51 +1351,63 @@ pub async fn serve(options: Options) -> io::Result<()> {
         engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
         events: bus,
         settings: settings_store,
-        shutdown: shutdown.clone(),
-        shutdown_token: shutdown_token.clone(),
+        shutdown: Arc::new(tokio::sync::Notify::new()),
+        shutdown_token,
         trust_proxy: options.trust_proxy,
     });
-    // Campaigns the records say this server drives continue on their own,
-    // with no client connected (P3 of the server runner).
-    if let Some(agent) = &state.agent {
-        agent.start_driver();
-    }
-    eprintln!(
-        "Flint web server listening on http://{}",
-        listener.local_addr()?
-    );
-    if !loopback {
-        eprintln!(
-            "Warning: listening beyond loopback. Sessions travel in the clear unless a TLS proxy fronts this server."
-        );
-    }
-    control::write_run_file(
-        &data_folder_for_run,
-        &control::RunFile {
-            pid: std::process::id(),
-            listen: listener.local_addr()?,
-            shutdown_token,
-        },
-    )?;
-    if let Some(credential) = bootstrap {
-        match &options.credential_file {
-            // Started in the background: the starter shows it once and removes
-            // the file, so it never lands in the log.
-            Some(path) => {
-                let mut file = control::create_private(path, false)?;
-                io::Write::write_all(&mut file, credential.as_bytes())?;
-                eprintln!("First-run administrator credential written for the starter; it is shown only once.");
-            }
-            None => {
-                eprintln!("First-run administrator credential: {credential}");
-                eprintln!("Store this credential securely; it is shown only once.");
-            }
+    Ok((state, bootstrap))
+}
+
+/// Shows the first-run credential once: into the starter's file when started in
+/// the background, otherwise on the console.
+fn hand_over_credential(credential: &str, credential_file: Option<&std::path::Path>) -> io::Result<()> {
+    match credential_file {
+        // Started in the background: the starter shows it once and removes
+        // the file, so it never lands in the log.
+        Some(path) => {
+            let mut file = control::create_private(path, false)?;
+            io::Write::write_all(&mut file, credential.as_bytes())?;
+            eprintln!("First-run administrator credential written for the starter; it is shown only once.");
+        }
+        None => {
+            eprintln!("First-run administrator credential: {credential}");
+            eprintln!("Store this credential securely; it is shown only once.");
         }
     }
-    uploads::sweep(&data_folder_for_run);
+    Ok(())
+}
+
+/// Serves one accepted connection over HTTP/1 until the client goes away.
+fn spawn_connection(
+    state: Arc<State>,
+    socket: tokio::net::TcpStream,
+    peer: SocketAddr,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    tokio::spawn(async move {
+        let _permit = permit;
+        let io = TokioIo::new(socket);
+        let service = service_fn(move |req| {
+            let state = state.clone();
+            async move { Ok::<_, std::convert::Infallible>(route(state, req, peer.ip()).await) }
+        });
+        // The header timeout needs a timer. Without it a client that opens
+        // a socket and says nothing would hold it for ever.
+        let _ = http1::Builder::new()
+            .timer(hyper_util::rt::TokioTimer::new())
+            .header_read_timeout(std::time::Duration::from_secs(15))
+            .serve_connection(io, service)
+            .await;
+    });
+}
+
+/// Accepts connections until Ctrl-C, a terminate signal or `flint stop`, then
+/// stops the engine.
+async fn accept_loop(listener: TcpListener, state: Arc<State>, loopback: bool) {
     // At most this many connections at once, so idle sockets cannot use up the
     // process's file descriptors and take the server down with them.
     let connections = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    let shutdown = state.shutdown.clone();
     let mut term_signal = term_signal();
     loop {
         let (socket, peer) = tokio::select! {
@@ -1376,23 +1442,46 @@ pub async fn serve(options: Options) -> io::Result<()> {
         let Ok(permit) = connections.clone().try_acquire_owned() else {
             continue; // dropped: the server is at its connection limit
         };
-        let state = state.clone();
-        tokio::spawn(async move {
-            let _permit = permit;
-            let io = TokioIo::new(socket);
-            let service = service_fn(move |req| {
-                let state = state.clone();
-                async move { Ok::<_, std::convert::Infallible>(route(state, req, peer.ip()).await) }
-            });
-            // The header timeout needs a timer. Without it a client that opens
-            // a socket and says nothing would hold it for ever.
-            let _ = http1::Builder::new()
-                .timer(hyper_util::rt::TokioTimer::new())
-                .header_read_timeout(std::time::Duration::from_secs(15))
-                .serve_connection(io, service)
-                .await;
-        });
+        spawn_connection(state.clone(), socket, peer, permit);
     }
+}
+
+pub async fn serve(options: Options) -> io::Result<()> {
+    let loopback = options.bind.ip().is_loopback();
+    check_options(&options, loopback)?;
+    let listener = TcpListener::bind(options.bind).await?;
+    let hosts = host_allowlist(&options, listener.local_addr()?)?;
+    let shutdown_token = control::new_token();
+    let data_folder_for_run = options.data_folder.clone();
+    let credential_file = options.credential_file.clone();
+    let (state, bootstrap) = build_state(options, hosts, shutdown_token.clone())?;
+    // Campaigns the records say this server drives continue on their own,
+    // with no client connected (P3 of the server runner).
+    if let Some(agent) = &state.agent {
+        agent.start_driver();
+    }
+    eprintln!(
+        "Flint web server listening on http://{}",
+        listener.local_addr()?
+    );
+    if !loopback {
+        eprintln!(
+            "Warning: listening beyond loopback. Sessions travel in the clear unless a TLS proxy fronts this server."
+        );
+    }
+    control::write_run_file(
+        &data_folder_for_run,
+        &control::RunFile {
+            pid: std::process::id(),
+            listen: listener.local_addr()?,
+            shutdown_token,
+        },
+    )?;
+    if let Some(credential) = bootstrap {
+        hand_over_credential(&credential, credential_file.as_deref())?;
+    }
+    uploads::sweep(&data_folder_for_run);
+    accept_loop(listener, state, loopback).await;
     control::remove_run_file(&data_folder_for_run, std::process::id());
     Ok(())
 }

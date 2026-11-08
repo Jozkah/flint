@@ -142,17 +142,7 @@ pub fn attribute(
     cutoff: Option<&str>,
 ) -> Attribution {
     let in_window = |e: &Envelope| cutoff.is_none_or(|c| e.at.as_str() >= c);
-
-    // Child run id to the subagent that ran it.
-    let mut agent_of_run: BTreeMap<&str, String> = BTreeMap::new();
-    for e in envelopes.iter().filter(|e| e.kind == "agent.dispatched") {
-        if let (Some(child), Some(agent)) = (
-            e.payload.get("child").and_then(|v| v.as_str()),
-            e.payload.get("agent").and_then(|v| v.as_str()),
-        ) {
-            agent_of_run.insert(child, agent.to_string());
-        }
-    }
+    let agent_of_run = agent_of_run(envelopes);
 
     let mut skills: BTreeMap<String, Bucket> = BTreeMap::new();
     let mut mcp: BTreeMap<String, Bucket> = BTreeMap::new();
@@ -243,9 +233,43 @@ pub fn attribute(
         }
     }
 
+    let unused = unused_items(configured, &skills, &mcp, &plugins, &subagents);
+    Attribution {
+        since: cutoff.map(str::to_string),
+        skills: by_calls(skills),
+        mcp_servers: by_calls(mcp),
+        plugins: by_calls(plugins),
+        subagents: by_calls(subagents),
+        unused,
+    }
+}
+
+/// Child run id to the subagent that ran it, from every dispatch (in or out of
+/// the window, so usage inside it is still credited).
+fn agent_of_run(envelopes: &[Envelope]) -> BTreeMap<&str, String> {
+    let mut agent_of_run: BTreeMap<&str, String> = BTreeMap::new();
+    for e in envelopes.iter().filter(|e| e.kind == "agent.dispatched") {
+        if let (Some(child), Some(agent)) = (
+            e.payload.get("child").and_then(|v| v.as_str()),
+            e.payload.get("agent").and_then(|v| v.as_str()),
+        ) {
+            agent_of_run.insert(child, agent.to_string());
+        }
+    }
+    agent_of_run
+}
+
+/// Configured skills, plugins, MCP servers and subagents with no bucket.
+fn unused_items(
+    configured: &Configured,
+    skills: &BTreeMap<String, Bucket>,
+    mcp: &BTreeMap<String, Bucket>,
+    plugins: &BTreeMap<String, Bucket>,
+    subagents: &BTreeMap<String, Bucket>,
+) -> Vec<Unused> {
     let used = |map: &BTreeMap<String, Bucket>| -> BTreeSet<String> { map.keys().cloned().collect() };
     let (used_skills, used_mcp, used_plugins, used_agents) =
-        (used(&skills), used(&mcp), used(&plugins), used(&subagents));
+        (used(skills), used(mcp), used(plugins), used(subagents));
     let mut unused = Vec::new();
     let mut seen_plugins = BTreeSet::new();
     for (name, plugin, chars) in &configured.skills {
@@ -272,20 +296,14 @@ pub fn attribute(
             unused.push(Unused { kind: "subagent".into(), name: name.clone(), context_tokens: None });
         }
     }
+    unused
+}
 
-    let sorted = |map: BTreeMap<String, Bucket>| -> Vec<Bucket> {
-        let mut v: Vec<Bucket> = map.into_values().collect();
-        v.sort_by(|a, b| b.calls.cmp(&a.calls).then_with(|| a.name.cmp(&b.name)));
-        v
-    };
-    Attribution {
-        since: cutoff.map(str::to_string),
-        skills: sorted(skills),
-        mcp_servers: sorted(mcp),
-        plugins: sorted(plugins),
-        subagents: sorted(subagents),
-        unused,
-    }
+/// Most-called first, then by name.
+fn by_calls(map: BTreeMap<String, Bucket>) -> Vec<Bucket> {
+    let mut v: Vec<Bucket> = map.into_values().collect();
+    v.sort_by(|a, b| b.calls.cmp(&a.calls).then_with(|| a.name.cmp(&b.name)));
+    v
 }
 
 /// The attribution for a data folder over a window like `7d`.

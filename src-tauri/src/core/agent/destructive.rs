@@ -302,39 +302,7 @@ fn check_segment(
         return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
     }
     if rules.powershells.contains(&cmd) {
-        if lower_args.iter().any(|a| {
-            matches!(
-                a.as_str(),
-                "-e" | "-ec" | "-en" | "-enc" | "-encodedcommand"
-            ) || a.starts_with("-encodedc")
-        }) {
-            return Some("runs an encoded PowerShell command, which cannot be checked".into());
-        }
-        if let Some(at) = lower_args
-            .iter()
-            .position(|a| a == "-c" || a.starts_with("-com"))
-        {
-            return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
-        }
-        if lower_args.iter().any(|a| a.len() >= 2 && "-file".starts_with(a.as_str())) {
-            return None;
-        }
-        // `pwsh -NoProfile "Remove-Item ..."`: the first word that is not an
-        // option starts the command, and the rest of the line belongs to it.
-        let mut k = 0;
-        while k < lower_args.len() {
-            let a = lower_args[k].as_str();
-            if !a.starts_with('-') {
-                return reason_at_depth(&args[k..].join(" "), workspace, depth + 1);
-            }
-            if PS_VALUE_OPTIONS.contains(&a) {
-                k += 1;
-            } else if !PS_SWITCHES.contains(&a) {
-                return Some(PS_UNCHECKABLE.into());
-            }
-            k += 1;
-        }
-        return piped.then(|| READS_INPUT.to_string());
+        return check_powershell(args, &lower_args, workspace, depth, piped);
     }
 
     match cmd.as_str() {
@@ -418,86 +386,7 @@ fn check_segment(
                     )
                 })
         }
-        "git" => {
-            let sub = git_subcommand(&lower_args)?;
-            let rest = &lower_args[sub + 1..];
-            let has = |f: &str| rest.iter().any(|a| a == f);
-            // Original case: `-D`/`-S`/`-W` differ from their lowercase forms.
-            let raw = &args[sub + 1..];
-            let raw_has = |f: &str| raw.iter().any(|a| a == f);
-            match lower_args[sub].as_str() {
-                "reset" if has("--hard") => {
-                    Some("`git reset --hard` discards uncommitted work".into())
-                }
-                "clean" => {
-                    let short: String = rest
-                        .iter()
-                        .filter(|a| a.starts_with('-') && !a.starts_with("--"))
-                        .map(|a| a.trim_start_matches('-'))
-                        .collect();
-                    (short.contains('f') || has("--force"))
-                        .then(|| "`git clean` deletes untracked files".to_string())
-                }
-                "checkout"
-                    if has("--")
-                        || has(".")
-                        || has("--force")
-                        || rest.iter().any(|a| {
-                            short_cluster_has(a, 'f') || a.starts_with("--pathspec-from-file")
-                        }) =>
-                {
-                    Some("`git checkout` of paths discards uncommitted changes".into())
-                }
-                "restore"
-                    if !(raw_has("--staged") || raw_has("-S"))
-                        || raw_has("--worktree")
-                        || raw_has("-W") =>
-                {
-                    Some("`git restore` discards uncommitted changes".into())
-                }
-                "branch"
-                    if raw.iter().any(|a| {
-                        a.strip_prefix('-').is_some_and(|b| {
-                            !b.is_empty()
-                                && b.chars().all(|c| c.is_ascii_alphabetic())
-                                && b.contains('D')
-                        })
-                    }) || (has("--delete")
-                        && (has("--force") || rest.iter().any(|a| short_cluster_has(a, 'f')))) =>
-                {
-                    Some("`git branch -D` deletes a branch that may be unmerged".into())
-                }
-                "stash" if matches!(rest.first().map(String::as_str), Some("drop" | "clear")) => {
-                    Some("`git stash drop` discards stashed changes".into())
-                }
-                "rebase" if !has("--continue") && !has("--abort") && !has("--quit") => {
-                    Some("`git rebase` rewrites history".into())
-                }
-                name @ ("filter-branch" | "filter-repo") => {
-                    Some(format!("`git {name}` rewrites history"))
-                }
-                "push"
-                    if has("--force")
-                        || rest.iter().any(|a| {
-                            short_cluster_has(a, 'f')
-                                || a.starts_with("--force-with-lease")
-                                || a.starts_with("--mirror")
-                                || a.starts_with('+')
-                        }) =>
-                {
-                    Some("`git push --force` rewrites remote history".into())
-                }
-                "push"
-                    if has("--delete")
-                        || rest.iter().any(|a| {
-                            short_cluster_has(a, 'd') || (a.starts_with(':') && a.len() > 1)
-                        }) =>
-                {
-                    Some("`git push --delete` removes a remote branch".into())
-                }
-                _ => None,
-            }
-        }
+        "git" => check_git(args, &lower_args),
         c if c == "mkfs" || c.starts_with("mkfs.") => Some("`mkfs` formats a filesystem".into()),
         "dd" if lower_args.iter().any(|a| a.starts_with("of=/dev/")) => {
             Some("`dd` writes to a raw device".into())
@@ -507,6 +396,132 @@ fn check_segment(
         }
         _ => None,
     }
+}
+
+/// `powershell` / `pwsh`: an encoded command cannot be checked; `-Command` and
+/// a bare command line are checked one level down.
+fn check_powershell(
+    args: &[String],
+    lower_args: &[String],
+    workspace: &Scope,
+    depth: usize,
+    piped: bool,
+) -> Option<String> {
+    if lower_args.iter().any(|a| {
+        matches!(
+            a.as_str(),
+            "-e" | "-ec" | "-en" | "-enc" | "-encodedcommand"
+        ) || a.starts_with("-encodedc")
+    }) {
+        return Some("runs an encoded PowerShell command, which cannot be checked".into());
+    }
+    if let Some(at) = lower_args
+        .iter()
+        .position(|a| a == "-c" || a.starts_with("-com"))
+    {
+        return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
+    }
+    if lower_args.iter().any(|a| a.len() >= 2 && "-file".starts_with(a.as_str())) {
+        return None;
+    }
+    // `pwsh -NoProfile "Remove-Item ..."`: the first word that is not an
+    // option starts the command, and the rest of the line belongs to it.
+    let mut k = 0;
+    while k < lower_args.len() {
+        let a = lower_args[k].as_str();
+        if !a.starts_with('-') {
+            return reason_at_depth(&args[k..].join(" "), workspace, depth + 1);
+        }
+        if PS_VALUE_OPTIONS.contains(&a) {
+            k += 1;
+        } else if !PS_SWITCHES.contains(&a) {
+            return Some(PS_UNCHECKABLE.into());
+        }
+        k += 1;
+    }
+    piped.then(|| READS_INPUT.to_string())
+}
+
+/// The git subcommands and flags that discard work or rewrite history.
+fn check_git(args: &[String], lower_args: &[String]) -> Option<String> {
+    let sub = git_subcommand(lower_args)?;
+    let rest = &lower_args[sub + 1..];
+    let has = |f: &str| rest.iter().any(|a| a == f);
+    // Original case: `-D`/`-S`/`-W` differ from their lowercase forms.
+    let raw = &args[sub + 1..];
+    let raw_has = |f: &str| raw.iter().any(|a| a == f);
+    match lower_args[sub].as_str() {
+    "reset" if has("--hard") => {
+        Some("`git reset --hard` discards uncommitted work".into())
+    }
+    "clean" => {
+        let short: String = rest
+            .iter()
+            .filter(|a| a.starts_with('-') && !a.starts_with("--"))
+            .map(|a| a.trim_start_matches('-'))
+            .collect();
+        (short.contains('f') || has("--force"))
+            .then(|| "`git clean` deletes untracked files".to_string())
+    }
+    "checkout"
+        if has("--")
+            || has(".")
+            || has("--force")
+            || rest.iter().any(|a| {
+                short_cluster_has(a, 'f') || a.starts_with("--pathspec-from-file")
+            }) =>
+    {
+        Some("`git checkout` of paths discards uncommitted changes".into())
+    }
+    "restore"
+        if !(raw_has("--staged") || raw_has("-S"))
+            || raw_has("--worktree")
+            || raw_has("-W") =>
+    {
+        Some("`git restore` discards uncommitted changes".into())
+    }
+    "branch"
+        if raw.iter().any(|a| {
+            a.strip_prefix('-').is_some_and(|b| {
+                !b.is_empty()
+                    && b.chars().all(|c| c.is_ascii_alphabetic())
+                    && b.contains('D')
+            })
+        }) || (has("--delete")
+            && (has("--force") || rest.iter().any(|a| short_cluster_has(a, 'f')))) =>
+    {
+        Some("`git branch -D` deletes a branch that may be unmerged".into())
+    }
+    "stash" if matches!(rest.first().map(String::as_str), Some("drop" | "clear")) => {
+        Some("`git stash drop` discards stashed changes".into())
+    }
+    "rebase" if !has("--continue") && !has("--abort") && !has("--quit") => {
+        Some("`git rebase` rewrites history".into())
+    }
+    name @ ("filter-branch" | "filter-repo") => {
+        Some(format!("`git {name}` rewrites history"))
+    }
+    "push"
+        if has("--force")
+            || rest.iter().any(|a| {
+                short_cluster_has(a, 'f')
+                    || a.starts_with("--force-with-lease")
+                    || a.starts_with("--mirror")
+                    || a.starts_with('+')
+            }) =>
+    {
+        Some("`git push --force` rewrites remote history".into())
+    }
+    "push"
+        if has("--delete")
+            || rest.iter().any(|a| {
+                short_cluster_has(a, 'd') || (a.starts_with(':') && a.len() > 1)
+            }) =>
+    {
+        Some("`git push --delete` removes a remote branch".into())
+    }
+    _ => None,
+}
 }
 
 /// Whether this segment moves the shell to a directory not known to be inside
