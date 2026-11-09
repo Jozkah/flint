@@ -149,6 +149,9 @@ pub(crate) struct CompactOptions {
     pub live_request: Option<Value>,
     /// The input window the live prefix plus the summary request must fit in.
     pub live_window: Option<u64>,
+    /// The folder the run works in, whose `git status` the summary lists
+    /// under files touched. `None` lists only the write/edit record.
+    pub project_root: Option<std::path::PathBuf>,
 }
 
 /// The fewest messages a token-capped tail is cut to.
@@ -185,6 +188,7 @@ impl Default for CompactOptions {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
         }
     }
 }
@@ -207,6 +211,7 @@ impl CompactOptions {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
         }
     }
 
@@ -250,6 +255,10 @@ impl CompactOptions {
             live_window: body
                 .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
                 .and_then(Value::as_u64),
+            project_root: body
+                .get(crate::core::agent::r#loop::BODY_PROJECT_ROOT)
+                .and_then(Value::as_str)
+                .map(std::path::PathBuf::from),
         }
     }
 }
@@ -388,6 +397,15 @@ pub(crate) async fn compact_conversation_with(
     }
 
     let mut content = format!("{SUMMARY_HEADER}{summary}");
+    // Built by code from the record, never paraphrased by the summarizer, so a
+    // later pass carries the same list on rather than eroding it.
+    let git_status = options
+        .project_root
+        .as_deref()
+        .and_then(crate::core::agent::git::workspace_status);
+    if let Some(block) = files_touched_block(&prior.files, &rest[..cut], git_status.as_deref()) {
+        content.push_str(&block);
+    }
     // Pinned blocks of the summaries this one replaces travel on verbatim.
     content.push_str(&prior.pinned);
     for (index, label) in &pins {
@@ -472,17 +490,26 @@ const SUMMARY_HEADER: &str = "[Summary of earlier conversation, condensed to sav
 struct PriorSummaries {
     brief: Option<String>,
     pinned: String,
+    /// The paths earlier summaries listed under files touched, in order.
+    files: Vec<String>,
 }
 
 impl PriorSummaries {
     fn from(system_msgs: &[Value]) -> Self {
         let mut briefs: Vec<String> = Vec::new();
         let mut pinned = String::new();
+        let mut files: Vec<String> = Vec::new();
         for msg in system_msgs.iter().filter(|m| is_compaction_summary(m)) {
             let text = content_text(msg);
             let body = text.strip_prefix(SUMMARY_HEADER).unwrap_or(&text);
             let split = body.find(&format!("\n\n{PIN_HEADER}")).unwrap_or(body.len());
             let (brief, pins) = body.split_at(split);
+            let (brief, listed) = split_files_block(brief);
+            for path in listed {
+                if !files.contains(&path) {
+                    files.push(path);
+                }
+            }
             if !brief.trim().is_empty() {
                 briefs.push(brief.trim().to_string());
             }
@@ -491,6 +518,7 @@ impl PriorSummaries {
         Self {
             brief: (!briefs.is_empty()).then(|| briefs.join("\n\n---\n\n")),
             pinned,
+            files,
         }
     }
 
@@ -501,6 +529,121 @@ impl PriorSummaries {
             None => note.to_string(),
         }
     }
+}
+
+/// Opens the harness-built files touched block inside a summary node.
+const FILES_HEADER: &str =
+    "[Files touched, recorded by the harness: written with write/edit, oldest first]";
+
+/// Opens the `git status` part of that block (see `git::workspace_status`).
+const FILES_GIT_LINE: &str = "Workspace `git status --short`:";
+
+/// The most paths the block lists. A run that wrote hundreds of files keeps
+/// its newest ones and says how many earlier ones are not listed.
+const FILES_MAX: usize = 100;
+
+/// Paths a span wrote through `write` and `edit` calls whose result did not
+/// fail, in first-write order. From the record, so it survives the next pass.
+fn files_written(span: &[Value]) -> Vec<String> {
+    let mut calls: std::collections::HashMap<&str, (&str, &str)> =
+        std::collections::HashMap::new();
+    let mut paths: Vec<String> = Vec::new();
+    for msg in span {
+        match role(msg) {
+            "assistant" => {
+                for call in msg
+                    .get("tool_calls")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let id = call.get("id").and_then(Value::as_str).unwrap_or("");
+                    let function = call.get("function");
+                    let name = function
+                        .and_then(|f| f.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let args = function
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    calls.insert(id, (name, args));
+                }
+            }
+            "tool" => {
+                let id = msg.get("tool_call_id").and_then(Value::as_str).unwrap_or("");
+                let Some((name, args)) = calls.get(id).copied() else {
+                    continue;
+                };
+                if !matches!(name, "write" | "edit")
+                    || crate::core::agent::r#loop::tool_outcome_failed(name, &content_text(msg))
+                {
+                    continue;
+                }
+                let path = serde_json::from_str::<Value>(args)
+                    .ok()
+                    .and_then(|a| a.get("path").and_then(Value::as_str).map(str::to_string));
+                if let Some(path) = path.map(|p| p.trim().replace(['\n', '\r'], " ")) {
+                    if !path.is_empty() && !paths.contains(&path) {
+                        paths.push(path);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    paths
+}
+
+/// The files touched block for a summary node: earlier summaries' paths, then
+/// this span's, then the workspace's `git status`. `None` with nothing to say.
+fn files_touched_block(
+    prior: &[String],
+    span: &[Value],
+    git_status: Option<&str>,
+) -> Option<String> {
+    let mut paths: Vec<String> = prior.to_vec();
+    for path in files_written(span) {
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    if paths.is_empty() && git_status.is_none() {
+        return None;
+    }
+    let mut out = format!("\n\n{FILES_HEADER}\n");
+    let skip = paths.len().saturating_sub(FILES_MAX);
+    if skip > 0 {
+        out.push_str(&format!("[{skip} earlier paths not listed]\n"));
+    }
+    for path in &paths[skip..] {
+        // A path is model-chosen text, now under the system role.
+        let path = tauri_plugin_agent_tools::control_tags::neutralize(path).0;
+        out.push_str(&format!("- {path}\n"));
+    }
+    if let Some(status) = git_status {
+        // Opens with FILES_GIT_LINE, which ends the path list when read back.
+        let status = tauri_plugin_agent_tools::control_tags::neutralize(status.trim_end()).0;
+        out.push_str(&status);
+    }
+    Some(out.trim_end().to_string())
+}
+
+/// Split a prior brief into the model-written text and the paths its files
+/// touched block listed (the `git status` part is rebuilt, never carried).
+fn split_files_block(brief: &str) -> (&str, Vec<String>) {
+    let Some(at) = brief.find(&format!("\n\n{FILES_HEADER}")) else {
+        return (brief, Vec::new());
+    };
+    let paths = brief[at..]
+        .lines()
+        .skip_while(|line| !line.starts_with(FILES_HEADER))
+        .skip(1)
+        .take_while(|line| !line.starts_with(FILES_GIT_LINE))
+        .filter_map(|line| line.strip_prefix("- "))
+        .map(str::to_string)
+        .collect();
+    (&brief[..at], paths)
 }
 
 /// Opens each pinned block inside a summary node; also how a later pass knows
@@ -760,6 +903,25 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
     if full_transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
     }
+    // Too long for one request: summarized part by part rather than losing its
+    // middle to the clamp. When not even the first part gets a summary, the
+    // single clamped request below runs as before (it also shrinks on overflow
+    // and falls back from a separate summary model).
+    if full_transcript.chars().count() > SUMMARY_INPUT_CHARS {
+        if let Some(summary) = summarize_in_chunks(
+            &full_transcript,
+            summary_model.unwrap_or(model_id),
+            model,
+            max_tokens,
+            &system_prompt,
+            prior,
+            task,
+        )
+        .await
+        {
+            return Ok(summary);
+        }
+    }
     // An earlier summary leads the transcript, so the clamp keeps it and a
     // retry that halves the input cuts from the middle of the new history.
     let system_prompt = if let Some(prior) = prior {
@@ -854,6 +1016,118 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
             }
         }
     }
+}
+
+/// The most requests one chunked summary makes. Past `MAX_CHUNKS` full parts
+/// the span loses its middle, as the single request used to past one.
+const MAX_CHUNKS: usize = 8;
+
+/// Added to the summarizer's prompt when the span arrives in parts.
+const CHUNK_INSTRUCTION: &str = "The transcript is too long for one request, so it arrives in parts, oldest first. When the user turn opens with a SUMMARY SO FAR (written from the earlier parts, or an earlier checkpoint), write one summary under the same headings that keeps what is still true from it and adds what the next part shows. Do not mention the parts.";
+
+/// Split `text` into pieces of at most `max` characters, each ending at a line
+/// break when one falls in its last eighth (so a piece is never shorter than
+/// seven eighths of `max`, except the last).
+fn split_into_chunks(text: &str, max: usize) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let mut end = (start + max).min(chars.len());
+        if end < chars.len() {
+            let floor = start + max - max / 8;
+            if let Some(nl) = (floor..end).rev().find(|&i| chars[i] == '\n') {
+                end = nl + 1;
+            }
+        }
+        chunks.push(chars[start..end].iter().collect());
+        start = end;
+    }
+    chunks
+}
+
+/// The fallback summarizer for a span too long for one request: its rendered
+/// text split into at most [`MAX_CHUNKS`] parts, each summarized with the
+/// summary written so far, so every part is read rather than only both ends.
+/// A part that gets no answer ends the run with what the earlier parts gave
+/// and a note of what is missing; `None` when the first part got none, which
+/// leaves the caller to its single clamped request.
+async fn summarize_in_chunks(
+    transcript: &str,
+    model_id: &str,
+    model: &dyn ModelInvoker,
+    max_tokens: u64,
+    system_prompt: &str,
+    prior: Option<&str>,
+    task: Option<&str>,
+) -> Option<String> {
+    // Seven eighths per part, the least a part holds (see `split_into_chunks`),
+    // so the clamped text never needs more than MAX_CHUNKS of them.
+    let budget = MAX_CHUNKS * SUMMARY_INPUT_CHARS * 7 / 8;
+    let chunks = split_into_chunks(&clamp_middle(transcript, budget), SUMMARY_INPUT_CHARS);
+    let system_prompt = format!("{system_prompt}\n\n{CHUNK_INSTRUCTION}");
+    let mut running: Option<String> = prior.map(str::to_string);
+    let mut done = 0usize;
+    for (index, chunk) in chunks.iter().enumerate() {
+        let mut user = String::new();
+        if let Some(task) = task {
+            user.push_str(&format!(
+                "THE USER'S ORIGINAL TASK (kept in full elsewhere; do not copy it, use it to say how far the work has got toward it, which parts remain, and the next step):\n{task}\n\n"
+            ));
+        }
+        if let Some(so_far) = &running {
+            user.push_str(&format!("SUMMARY SO FAR:\n{so_far}\n\n"));
+        }
+        user.push_str(&format!(
+            "NEXT PART OF THE TRANSCRIPT ({} of {}):\n{chunk}",
+            index + 1,
+            chunks.len()
+        ));
+        let request = json!({
+            "model": model_id,
+            "messages": [
+                { "role": "system", "content": system_prompt },
+                { "role": "user", "content": user },
+            ],
+            "max_tokens": max_tokens,
+        });
+        let (sink, _rx) = mpsc::unbounded_channel();
+        let answer = match model.invoke(&request, &sink).await {
+            Ok(completion) => extract_choice_message(&completion)
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            Err(e) => {
+                log::warn!(
+                    "compaction: part {} of {} got no summary ({})",
+                    index + 1,
+                    chunks.len(),
+                    e.message()
+                );
+                None
+            }
+        };
+        match answer {
+            Some(summary) => {
+                running = Some(summary);
+                done += 1;
+            }
+            None => break,
+        }
+    }
+    if done == 0 {
+        return None;
+    }
+    let mut summary = running?;
+    if done < chunks.len() {
+        summary.push_str(&format!(
+            "\n\n[Only the first {done} of {} parts of the compacted conversation could be summarized; what came after them is not reflected above.]",
+            chunks.len()
+        ));
+    }
+    Some(summary)
 }
 
 #[cfg(test)]
@@ -1075,6 +1349,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             },
         )
         .await
@@ -1103,6 +1378,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             },
         )
         .await
@@ -1136,6 +1412,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             }
         );
         assert_eq!(
@@ -1294,31 +1571,107 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn summary_input_is_clamped_to_a_budget() {
-        let model = StubModel {
-            summary: "CONDENSED".into(),
-            calls: StdMutex::new(0),
-            requests: tokio::sync::Mutex::new(Vec::new()),
-        };
+    fn long_convo(messages: usize) -> Vec<Value> {
         let mut input = vec![json!({ "role": "system", "content": "sys" })];
-        for i in 0..40 {
+        for i in 0..messages {
             let r = if i % 2 == 0 { "user" } else { "assistant" };
-            input.push(json!({ "role": r, "content": "x".repeat(8_000) }));
+            input.push(json!({ "role": r, "content": format!("m{i:03}{}", "x".repeat(8_000)) }));
         }
+        input
+    }
 
-        compact_conversation(&input, "m", &model, 4)
-            .await
-            .expect("successful summary must not fail");
-
+    /// A span past one request's budget is summarized in parts, each within the
+    /// budget and each carrying the summary so far, and none of it is elided.
+    #[tokio::test]
+    async fn a_long_span_is_summarized_in_parts_and_read_whole() {
+        let model = stub("CONDENSED");
+        compact_conversation(&long_convo(40), "m", &model, 4).await.unwrap();
         let requests = model.requests.lock().await;
-        let transcript = requests[0]["messages"][1]["content"].as_str().unwrap();
-        assert!(
-            transcript.chars().count() <= SUMMARY_INPUT_CHARS,
-            "transcript must fit the budget: {}",
-            transcript.chars().count()
-        );
-        assert!(transcript.contains(SUMMARY_ELISION.trim()));
+        assert!((2..=MAX_CHUNKS).contains(&requests.len()), "{} requests", requests.len());
+        let users: Vec<&str> =
+            requests.iter().map(|r| r["messages"][1]["content"].as_str().unwrap()).collect();
+        for (i, user) in users.iter().enumerate() {
+            let part = user.split_once("NEXT PART OF THE TRANSCRIPT (").unwrap().1;
+            let part = part.split_once("):\n").unwrap().1;
+            assert!(part.chars().count() <= SUMMARY_INPUT_CHARS, "part {i}");
+            assert!(!user.contains(SUMMARY_ELISION.trim()), "part {i}");
+            assert_eq!(user.contains("SUMMARY SO FAR:\nCONDENSED"), i > 0, "part {i}");
+        }
+        // Every dropped message reached the summarizer (the first is pinned).
+        let all = users.concat();
+        for i in 1..36 {
+            assert!(all.contains(&format!("m{i:03}")), "message {i} was never sent");
+        }
+        assert!(requests[0]["messages"][0]["content"].as_str().unwrap().contains(CHUNK_INSTRUCTION));
+    }
+
+    /// A span past MAX_CHUNKS parts takes exactly that many requests and loses
+    /// only its middle.
+    #[tokio::test]
+    async fn a_huge_span_is_capped_at_the_most_parts() {
+        let model = stub("CONDENSED");
+        compact_conversation(&long_convo(120), "m", &model, 4).await.unwrap();
+        let requests = model.requests.lock().await;
+        assert_eq!(requests.len(), MAX_CHUNKS);
+        let all: String =
+            requests.iter().map(|r| r["messages"][1]["content"].as_str().unwrap()).collect();
+        assert!(all.contains(SUMMARY_ELISION.trim()));
+        assert!(all.contains("m001") && all.contains("m115"));
+    }
+
+    /// Answers the first `ok` requests with "summary N", then fails.
+    struct FailsAfter {
+        ok: usize,
+        calls: StdMutex<usize>,
+    }
+
+    #[async_trait]
+    impl ModelInvoker for FailsAfter {
+        async fn invoke(
+            &self,
+            _request: &Value,
+            _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+        ) -> Result<Value, HarnessError> {
+            let mut calls = self.calls.lock().unwrap();
+            *calls += 1;
+            if *calls > self.ok {
+                return Err("boom".to_string().into());
+            }
+            Ok(json!({ "choices": [{ "message": { "content": format!("summary {}", *calls) } }] }))
+        }
+    }
+
+    /// A part that fails keeps what the earlier parts gave, and says so.
+    #[tokio::test]
+    async fn a_failed_part_keeps_the_earlier_parts_summary() {
+        let model = FailsAfter { ok: 2, calls: StdMutex::new(0) };
+        let out = compact_conversation(&long_convo(40), "m", &model, 4).await.unwrap();
+        let text = content_text(&out[1]);
+        assert!(text.contains("summary 2"), "{text}");
+        assert!(text.contains("Only the first 2 of"), "{text}");
+        assert!(!text.contains(FALLBACK_NOTE), "{text}");
+        assert_eq!(*model.calls.lock().unwrap(), 3, "no request after the failed part");
+    }
+
+    /// With no part summarized, the single clamped request runs as before.
+    #[tokio::test]
+    async fn no_summarized_part_falls_back_to_one_clamped_request() {
+        let model = FailsAfter { ok: 0, calls: StdMutex::new(0) };
+        let out = compact_conversation(&long_convo(40), "m", &model, 4).await.unwrap();
+        assert!(content_text(&out[1]).contains(FALLBACK_NOTE));
+        assert_eq!(*model.calls.lock().unwrap(), 2, "the first part, then the clamped request");
+    }
+
+    #[test]
+    fn chunks_end_on_line_breaks_and_never_exceed_the_size() {
+        let text = (0..100).map(|i| format!("line {i} {}\n", "y".repeat(i % 12))).collect::<String>();
+        let chunks = split_into_chunks(&text, 200);
+        assert_eq!(chunks.concat(), text);
+        for chunk in &chunks[..chunks.len() - 1] {
+            assert!(chunk.chars().count() <= 200 && chunk.chars().count() >= 175);
+            assert!(chunk.ends_with('\n'), "{chunk:?}");
+        }
+        assert_eq!(split_into_chunks(&"\u{e9}".repeat(10), 4).len(), 3);
     }
 
     #[test]
@@ -1930,5 +2283,105 @@ mod tests {
         assert!(text.contains("keep API names"));
         assert!(text.contains("earlier summary"));
         assert!(!live_prefix_instruction(3, None, false).contains("earlier summary"));
+    }
+
+    /// One write/edit call and its result, as the record holds them.
+    fn file_call(id: &str, name: &str, path: &str, result: &str) -> [Value; 2] {
+        [
+            json!({ "role": "assistant", "content": "", "tool_calls": [{
+                "id": id, "type": "function",
+                "function": { "name": name, "arguments": json!({ "path": path }).to_string() }
+            }] }),
+            json!({ "role": "tool", "tool_call_id": id, "content": result }),
+        ]
+    }
+
+    fn with_file_calls(calls: &[[Value; 2]], tail: usize) -> Vec<Value> {
+        let mut v = vec![
+            json!({ "role": "system", "content": "sys" }),
+            json!({ "role": "user", "content": "do the task" }),
+        ];
+        for pair in calls {
+            v.extend(pair.iter().cloned());
+        }
+        for i in 0..tail {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            v.push(json!({ "role": r, "content": format!("later{i}") }));
+        }
+        v
+    }
+
+    /// The summary lists what the compacted span wrote, built by code: failed
+    /// writes and reads are left out, and the model never had to recall them.
+    #[tokio::test]
+    async fn the_summary_lists_the_files_the_span_wrote() {
+        let convo = with_file_calls(
+            &[
+                file_call("w1", "write", "src/a.rs", "Wrote 3 lines to src/a.rs"),
+                file_call("e1", "edit", "src/b.rs", "Applied 1 edit to src/b.rs"),
+                file_call("w2", "write", "src/denied.rs", "ERROR: permission denied"),
+                file_call("r1", "read", "src/read_only.rs", "1: fn x() {}"),
+                file_call("e2", "edit", "src/a.rs", "Applied 1 edit to src/a.rs"),
+            ],
+            4,
+        );
+        let opts = CompactOptions { keep_recent: 4, ..CompactOptions::default() };
+        let out = compact_conversation_with(&convo, "m", &stub("BRIEF"), &opts).await.unwrap();
+        let summary = content_text(out.iter().find(|m| is_compaction_summary(m)).unwrap());
+        let block = summary.split(FILES_HEADER).nth(1).expect("a files block");
+        let block = block.split(PIN_HEADER).next().unwrap();
+        assert_eq!(block.trim(), "- src/a.rs\n- src/b.rs", "{summary}");
+        assert!(summary.find("BRIEF").unwrap() < summary.find(FILES_HEADER).unwrap());
+    }
+
+    /// A second compaction carries the first one's list on (the brief is
+    /// re-summarized, the list is not), adds what was written since, and does
+    /// not show the list to the summarizer as part of the brief to merge.
+    #[tokio::test]
+    async fn a_later_compaction_carries_the_files_list_on() {
+        let opts = CompactOptions { keep_recent: 4, ..CompactOptions::default() };
+        let first = compact_conversation_with(
+            &with_file_calls(&[file_call("w1", "write", "one.txt", "ok")], 4),
+            "m",
+            &stub("FIRST"),
+            &opts,
+        )
+        .await
+        .unwrap();
+        let mut grown = first.clone();
+        grown.extend(file_call("w2", "write", "two.txt", "ok"));
+        for i in 0..4 {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            grown.push(json!({ "role": r, "content": format!("more{i}") }));
+        }
+        let model = stub("SECOND");
+        let second = compact_conversation_with(&grown, "m", &model, &opts).await.unwrap();
+        let summaries: Vec<String> =
+            second.iter().filter(|m| is_compaction_summary(m)).map(content_text).collect();
+        assert_eq!(summaries.len(), 1, "{summaries:?}");
+        let block = summaries[0].split(FILES_HEADER).nth(1).expect("a files block");
+        assert!(block.contains("- one.txt\n- two.txt"), "{}", summaries[0]);
+        assert_eq!(summaries[0].matches(FILES_HEADER).count(), 1);
+        let requests = model.requests.lock().await;
+        let sent = requests.last().unwrap().to_string();
+        assert!(!sent.contains(FILES_HEADER), "the list is not the model's to merge: {sent}");
+    }
+
+    /// The `git status` part is rebuilt on every pass and never read back as
+    /// paths; a path cannot smuggle a line break into the block.
+    #[test]
+    fn the_files_block_reads_back_only_its_paths() {
+        let span: Vec<Value> = file_call("w", "write", "evil\n- injected", "ok").to_vec();
+        let block = files_touched_block(
+            &["kept.rs".to_string()],
+            &span,
+            Some("Workspace `git status --short`:\n M kept.rs\n?? new.rs"),
+        )
+        .unwrap();
+        let brief = format!("BRIEF{block}");
+        let (text, paths) = split_files_block(&brief);
+        assert_eq!(text, "BRIEF");
+        assert_eq!(paths, vec!["kept.rs".to_string(), "evil - injected".to_string()]);
+        assert!(files_touched_block(&[], &[], None).is_none());
     }
 }

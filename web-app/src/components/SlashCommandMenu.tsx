@@ -7,7 +7,7 @@
  * and a click picks it.
  */
 import { useEffect, useRef } from 'react'
-import { FileText, Puzzle, Sparkles, TerminalSquare } from 'lucide-react'
+import { FileText, Plug, Puzzle, Sparkles, TerminalSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { slashOptionId, type SlashItem } from '@/lib/slashCommands'
@@ -17,6 +17,7 @@ const ICONS = {
   skill: Sparkles,
   builtin: TerminalSquare,
   prompt: FileText,
+  mcp: Plug,
 } as const
 
 type Props = {

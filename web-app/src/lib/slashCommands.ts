@@ -13,6 +13,8 @@
  * (`/usr/bin/env`, `/nope`) is sent exactly as typed.
  */
 
+import type { MCPPromptInfo } from '@/services/mcp/types'
+
 /** A row of `agent_slash_catalog` (mirrors `SlashEntry` in `slash.rs`). */
 export interface SlashCatalogEntry {
   kind: 'command' | 'skill'
@@ -38,10 +40,15 @@ export interface SlashBuiltin {
    * composer (asking for its variables first) instead of leaving `/name`.
    */
   promptId?: string
+  /**
+   * Set for a prompt an MCP server offers: picking it asks for the prompt's
+   * arguments and inserts what the server returns instead of `/name`.
+   */
+  mcpPrompt?: MCPPromptInfo
   run: (args: string) => void | Promise<void>
 }
 
-export type SlashSource = 'plugin' | 'skill' | 'builtin' | 'prompt'
+export type SlashSource = 'plugin' | 'skill' | 'builtin' | 'prompt' | 'mcp'
 
 /** One row of the `/` menu. */
 export interface SlashItem {
@@ -86,7 +93,7 @@ export function buildSlashItems(
     aliases: [b.name],
     kind: 'builtin',
     // A prompt-library entry is the user's own, not a built-in command.
-    source: b.promptId ? 'prompt' : 'builtin',
+    source: b.promptId ? 'prompt' : b.mcpPrompt ? 'mcp' : 'builtin',
     description: b.description,
     argumentHint: b.argumentHint,
     builtin: b,

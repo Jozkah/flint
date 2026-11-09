@@ -10,7 +10,8 @@
     "pluginNamed": "plugin {{plugin}}",
     "skill": "dovednost",
     "builtin": "vestavěný",
-    "prompt": "prompt"
+    "prompt": "prompt",
+    "mcp": "výzva MCP"
   },
   "scope": {
     "project": "projekt",

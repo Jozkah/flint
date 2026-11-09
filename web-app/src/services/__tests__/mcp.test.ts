@@ -536,4 +536,36 @@ describe('TauriMCPService', () => {
       await expect(mcpService.getServerSummaries()).rejects.toThrow('no servers')
     })
   })
+
+  // ─── MCP prompts ─────────────────────────────────────────────────────────
+
+  describe('listPrompts / getPrompt', () => {
+    it('lists prompts with list_mcp_prompts', async () => {
+      const prompts = [
+        { server: 'fs', name: 'review', arguments: [{ name: 'path', required: true }] },
+      ]
+      mockInvoke.mockResolvedValue(prompts)
+      await expect(mcpService.listPrompts()).resolves.toEqual(prompts)
+      expect(mockInvoke).toHaveBeenCalledWith('list_mcp_prompts')
+    })
+
+    it('fetches one prompt with its arguments, and none when there are none', async () => {
+      const content = { messages: [{ role: 'user', text: 'hi' }], omitted: 0 }
+      mockInvoke.mockResolvedValue(content)
+      await expect(
+        mcpService.getPrompt('fs', 'review', { path: 'a.ts' })
+      ).resolves.toEqual(content)
+      expect(mockInvoke).toHaveBeenCalledWith('get_mcp_prompt', {
+        server: 'fs',
+        name: 'review',
+        arguments: { path: 'a.ts' },
+      })
+      await mcpService.getPrompt('fs', 'plain', {})
+      expect(mockInvoke).toHaveBeenLastCalledWith('get_mcp_prompt', {
+        server: 'fs',
+        name: 'plain',
+        arguments: undefined,
+      })
+    })
+  })
 })
