@@ -1,0 +1,64 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`large module exports > ChatInput 1`] = `
+{
+  "default": "object",
+}
+`;
+
+exports[`large module exports > coworkRunner 1`] = `
+{
+  "NO_ARG_TOOLS": "object",
+  "__testing": "object",
+  "abortAll": "function",
+  "abortRun": "function",
+  "abortSubagent": "function",
+  "answerAsk": "function",
+  "assistantMessageFor": "function",
+  "beginRun": "function",
+  "consumeStep": "function",
+  "endRun": "function",
+  "ensureRun": "function",
+  "getRunHandle": "function",
+  "harnessNote": "function",
+  "hasSubagent": "function",
+  "isAbortLike": "function",
+  "isRunning": "function",
+  "looksTruncatedArgs": "function",
+  "maskedFailure": "function",
+  "recoverToolArgs": "function",
+  "refusalKindOf": "function",
+  "registerSubagent": "function",
+  "runTurn": "function",
+  "salvageToolArgs": "function",
+  "schemaIssues": "function",
+  "turnsFor": "function",
+  "unregisterSubagent": "function",
+  "untilStopped": "function",
+}
+`;
+
+exports[`large module exports > custom-chat-transport 1`] = `
+{
+  "CustomChatTransport": "function",
+  "PRIMARY_DOWN_MS": "number",
+  "SHELL_ROUTING_GUIDANCE": "string",
+  "SHELL_ROUTING_GUIDANCE_NO_BASH": "string",
+  "buildLlamacppReasoningParams": "function",
+  "coalesceMessagesForAlternation": "function",
+  "effectiveContextWindow": "function",
+  "extractContextInfoFromError": "function",
+  "extractModelSamplingDefaults": "function",
+  "hasGenuineUserQuery": "function",
+  "isLocalChatServer": "function",
+  "isValidToolName": "function",
+  "normalizeToolInputSchema": "function",
+  "resetPrimaryDown": "function",
+  "resolveContextShift": "function",
+  "resolveOrphanToolCalls": "function",
+  "splitAssistantToolWaves": "function",
+  "stripRetryErrorWrapper": "function",
+  "stripUnsupportedImageParts": "function",
+  "unwrapRetryError": "function",
+}
+`;
