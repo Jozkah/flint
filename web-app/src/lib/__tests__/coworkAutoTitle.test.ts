@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const setTitle = vi.fn()
-let sessions: Array<{ id: string; title: string }> = []
+let sessions: Array<{ id: string; title: string; titleManual?: boolean }> = []
 let autoGenerateTitle = true
 
 vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
@@ -41,6 +41,14 @@ describe('autoTitleCoworkSession', () => {
 
   it('leaves a session the user renamed alone', async () => {
     sessions = [{ id: 's1', title: 'My own name' }]
+    autoTitleCoworkSession('s1', 'prompt', 'prompt')
+    await flush()
+    expect(setTitle).not.toHaveBeenCalled()
+  })
+
+  // The user may type the very text the placeholder holds; it is still theirs.
+  it('leaves a renamed session alone even when its name equals the placeholder', async () => {
+    sessions = [{ id: 's1', title: 'prompt', titleManual: true }]
     autoTitleCoworkSession('s1', 'prompt', 'prompt')
     await flush()
     expect(setTitle).not.toHaveBeenCalled()

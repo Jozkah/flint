@@ -281,7 +281,7 @@ async function runLocked(
   const requestStart = deps.now()
   try {
     const response = await deps.fetch(
-      `http://localhost:${session.port}/v1/chat/completions`,
+      `http://127.0.0.1:${session.port}/v1/chat/completions`,
       {
         method: 'POST',
         signal,

@@ -195,6 +195,7 @@
   "forkedSession": "Duplicata. La nuova sessione ha questa conversazione e nessuno dei suoi accessi.",
   "forkRefused": "Non è stato possibile duplicare questa sessione.",
   "deleteSession": "Elimina sessione",
+  "renameSession": "Rinomina sessione",
   "deleteSessionTitle": "Eliminare la sessione?",
   "deleteSessionBody": "\"{{title}}\" e la sua trascrizione verranno eliminati definitivamente. L'operazione non può essere annullata.",
   "newChat": "Nuova chat",

@@ -706,8 +706,10 @@ export class ModelFactory {
         Authorization: `Bearer ${sessionInfo.api_key}`,
         Origin: 'tauri://localhost',
       }),
+      // 127.0.0.1, not localhost: the engine binds IPv4 only, and Windows
+      // tries ::1 first for `localhost`, which costs a failed connect.
       url: ({ path }: { path: string }) => {
-        const url = new URL(`http://localhost:${sessionInfo.port}/v1${path}`)
+        const url = new URL(`http://127.0.0.1:${sessionInfo.port}/v1${path}`)
         return url.toString()
       },
       includeUsage: true,
@@ -772,7 +774,7 @@ export class ModelFactory {
       throw new Error(`No running MLX session found for model: ${modelId}`)
     }
 
-    const baseUrl = `http://localhost:${sessionInfo.port}`
+    const baseUrl = `http://127.0.0.1:${sessionInfo.port}`
     const authHeaders = {
       Authorization: `Bearer ${sessionInfo.api_key}`,
       Origin: 'tauri://localhost',

@@ -606,7 +606,10 @@ export function useTraySettingsSync(serviceHub: ServiceHub) {
   }, [serviceHub, downloadLimitMBps])
 }
 
-/** Auto-start the Local API Server on app startup if enabled. */
+/**
+ * Reflect the Local API Server's real state on app startup, and start it if
+ * auto-start is enabled and it is not already running.
+ */
 export function useLocalApiAutoStart(serviceHub: ServiceHub) {
   const getProviderByName = useModelProvider((s) => s.getProviderByName)
   const {
@@ -627,101 +630,108 @@ export function useLocalApiAutoStart(serviceHub: ServiceHub) {
   } = useLocalApiServer()
   const setServerStatus = useAppState((state) => state.setServerStatus)
   useEffect(() => {
-    if (enableOnStartup && !solo) {
-      // Check if server is already running
-      serviceHub
-        .app()
-        .getServerStatus()
-        .then(async (isRunning) => {
-          if (isRunning) {
-            console.log('Local API Server is already running')
-            setServerStatus('running')
-            return
+    if (solo) return
+    // Only a start this effect began may be rolled back to 'stopped': a failed
+    // status query must not clobber a start the user began elsewhere.
+    let startedPending = false
+    // Reconcile with the backend on every boot, auto-start or not: the
+    // server outlives the webview (a reload, a hide-to-tray recovery), and
+    // a page that assumed 'stopped' showed a running server as off.
+    serviceHub
+      .app()
+      .getServerStatus()
+      .then(async (isRunning) => {
+        if (isRunning) {
+          console.log('Local API Server is already running')
+          setServerStatus('running')
+          return
+        }
+
+        if (!enableOnStartup) return
+
+        setServerStatus('pending')
+        startedPending = true
+
+        // Start model(s): prefer user-configured default, fall back to last session's models
+        const modelsToStart = (() => {
+          if (defaultModelLocalApiServer) {
+            return [defaultModelLocalApiServer]
           }
+          return lastServerModels
+        })()
 
-          setServerStatus('pending')
-
-          // Start model(s): prefer user-configured default, fall back to last session's models
-          const modelsToStart = (() => {
-            if (defaultModelLocalApiServer) {
-              return [defaultModelLocalApiServer]
-            }
-            return lastServerModels
-          })()
-
-          if (modelsToStart.length > 0) {
-            // Removed together after every start settled: each failure
-            // filtering the list captured at mount kept only its own removal
-            // (LIBC-035).
-            const unloadable: { model: string; provider: string }[] = []
-            await Promise.allSettled(
-              modelsToStart.map(async ({ model, provider: providerName }) => {
-                const provider = getProviderByName(providerName)
-                if (!provider) return
-                try {
-                  await withTimeout(
-                    serviceHub.models().startModel(provider, model, true),
-                    MODEL_LOAD_WATCHDOG_MS,
-                    `Timed out waiting for model ${model} to load.`
-                  )
-                  console.log(`Auto-started server model: ${model}`)
-                } catch (err) {
-                  console.warn(`Failed to auto-start server model ${model}:`, err)
-                  // A picture or video model cannot load in the chat engine, so
-                  // trying it again at every launch only repeats the error.
-                  // errorText: JSON.stringify of an Error is `{}` (LIBC-034).
-                  if (/image or video generation model/.test(errorText(err))) {
-                    unloadable.push({ model, provider: providerName })
-                  }
-                }
-              })
-            )
-            if (unloadable.length > 0) {
-              setLastServerModels(
-                useLocalApiServer
-                  .getState()
-                  .lastServerModels.filter(
-                    (m) =>
-                      !unloadable.some(
-                        (u) => u.model === m.model && u.provider === m.provider
-                      )
-                  )
-              )
-            }
-          }
-
-          return startLocalApiServer({
-              serverHost,
-              serverPort,
-              apiPrefix,
-              apiKey,
-              trustedHosts,
-              corsEnabled,
-              verboseLogs,
-              proxyTimeout,
-              enableServerToolExecution,
-            })
-            .then(async (actualPort: number | undefined) => {
-              // Track the port actually bound (mobile port 0, or a fallback)
-              // without overwriting the user's configured port.
-              if (actualPort) setActiveServerPort(actualPort)
-              setServerStatus('running')
-              // Persist whichever models are actually running so next startup can restore them
-              const activeModels = await serviceHub.models().getActiveModels().catch(() => [] as string[])
-              if (activeModels.length > 0) {
-                const serverModels = serverModelsFromActive(
-                  activeModels,
-                  useModelProvider.getState().providers
+        if (modelsToStart.length > 0) {
+          // Removed together after every start settled: each failure
+          // filtering the list captured at mount kept only its own removal
+          // (LIBC-035).
+          const unloadable: { model: string; provider: string }[] = []
+          await Promise.allSettled(
+            modelsToStart.map(async ({ model, provider: providerName }) => {
+              const provider = getProviderByName(providerName)
+              if (!provider) return
+              try {
+                await withTimeout(
+                  serviceHub.models().startModel(provider, model, true),
+                  MODEL_LOAD_WATCHDOG_MS,
+                  `Timed out waiting for model ${model} to load.`
                 )
-                if (serverModels.length > 0) setLastServerModels(serverModels)
+                console.log(`Auto-started server model: ${model}`)
+              } catch (err) {
+                console.warn(`Failed to auto-start server model ${model}:`, err)
+                // A picture or video model cannot load in the chat engine, so
+                // trying it again at every launch only repeats the error.
+                // errorText: JSON.stringify of an Error is `{}` (LIBC-034).
+                if (/image or video generation model/.test(errorText(err))) {
+                  unloadable.push({ model, provider: providerName })
+                }
               }
             })
-        })
-        .catch((error: unknown) => {
-          console.error('Failed to start Local API Server on startup:', error)
-          setServerStatus('stopped')
-        })
-    }
+          )
+          if (unloadable.length > 0) {
+            setLastServerModels(
+              useLocalApiServer
+                .getState()
+                .lastServerModels.filter(
+                  (m) =>
+                    !unloadable.some(
+                      (u) => u.model === m.model && u.provider === m.provider
+                    )
+                )
+            )
+          }
+        }
+
+        return startLocalApiServer({
+            serverHost,
+            serverPort,
+            apiPrefix,
+            apiKey,
+            trustedHosts,
+            corsEnabled,
+            verboseLogs,
+            proxyTimeout,
+            enableServerToolExecution,
+          })
+          .then(async (actualPort: number | undefined) => {
+            // Track the port actually bound (mobile port 0, or a fallback)
+            // without overwriting the user's configured port.
+            if (actualPort) setActiveServerPort(actualPort)
+            setServerStatus('running')
+            // Persist whichever models are actually running so next startup can restore them
+            const activeModels = await serviceHub.models().getActiveModels().catch(() => [] as string[])
+            if (activeModels.length > 0) {
+              const serverModels = serverModelsFromActive(
+                activeModels,
+                useModelProvider.getState().providers
+              )
+              if (serverModels.length > 0) setLastServerModels(serverModels)
+            }
+          })
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to sync or start Local API Server on startup:', error)
+        if (startedPending) setServerStatus('stopped')
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
 }

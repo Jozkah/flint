@@ -195,6 +195,7 @@
   "forkedSession": "Đã tạo nhánh. Phiên mới có cuộc trò chuyện này nhưng không có quyền truy cập nào của nó.",
   "forkRefused": "Không thể tạo nhánh từ phiên này.",
   "deleteSession": "Xóa phiên",
+  "renameSession": "Đổi tên phiên",
   "deleteSessionTitle": "Xóa phiên?",
   "deleteSessionBody": "\"{{title}}\" và bản ghi của nó sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
   "newChat": "Trò chuyện Mới",

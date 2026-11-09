@@ -292,3 +292,52 @@ describe('CoworkNav row actions read the full session', () => {
     expect(spies.docFromCowork).toHaveBeenCalledWith(full, expect.any(Date))
   })
 })
+
+describe('CoworkNav rename', () => {
+  const rowItem = (id: string) =>
+    screen
+      .getAllByTestId('cowork-session-item')
+      .find((el) => el.getAttribute('data-session-id') === id)!.parentElement!
+  const stored = (id: string) =>
+    useCoworkSessions.getState().sessions.find((x) => x.id === id)!
+
+  function startRename(id: string) {
+    const item = rowItem(id)
+    fireEvent.click(item.querySelector('[data-testid="rename-session"]')!)
+    return item.querySelector('[data-testid="rename-session-input"]') as HTMLInputElement
+  }
+
+  it("renames a session in place and marks the name as the user's", () => {
+    render(<CoworkNav />)
+    const input = startRename('s1')
+    expect(input).toHaveValue('Session s1')
+    expect(input).toHaveFocus()
+    fireEvent.change(input, { target: { value: '  Drone camera fix  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(stored('s1').title).toBe('Drone camera fix')
+    expect(stored('s1').titleManual).toBe(true)
+    expect(screen.queryByTestId('rename-session-input')).toBeNull()
+    expect(screen.getByText('Drone camera fix')).toBeInTheDocument()
+  })
+
+  it('keeps the name when the field loses focus', () => {
+    render(<CoworkNav />)
+    const input = startRename('s1')
+    fireEvent.change(input, { target: { value: 'Blurred name' } })
+    fireEvent.blur(input)
+    expect(stored('s1').title).toBe('Blurred name')
+  })
+
+  it('Escape or an empty name leaves the title alone', () => {
+    render(<CoworkNav />)
+    let input = startRename('s1')
+    fireEvent.change(input, { target: { value: 'Not this' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(stored('s1').title).toBe('Session s1')
+    input = startRename('s1')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(stored('s1').title).toBe('Session s1')
+    expect(stored('s1').titleManual).toBeUndefined()
+  })
+})

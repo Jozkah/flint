@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { SessionTitleEditor } from '@/components/shell/nav/SessionTitleEditor'
 import { SessionWorktreeDeleteChoice } from '@/containers/SessionWorktreeDeleteChoice'
 import { removeSessionWorktree } from '@/lib/coworkParallel'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
@@ -41,6 +42,7 @@ import {
   MoreHorizontal,
   Puzzle,
   Trash2,
+  Pencil,
   Loader2,
   FolderPlus,
   Workflow,
@@ -141,6 +143,8 @@ const SessionItem = memo(function SessionItem({
   const [menuOpen, setMenuOpen] = useState(false)
   const cursor = useCursorAnchor()
   const [activityOpen, setActivityOpen] = useState(false)
+  // Inline rename: the row's title becomes an input until Enter, Escape or blur.
+  const [renaming, setRenaming] = useState(false)
   // Subscribed, not read once: the ledger is written when a run ends, and a
   // snapshot taken at render time would leave the dialog describing the run
   // before last.
@@ -205,8 +209,20 @@ const SessionItem = memo(function SessionItem({
           sessionId: session.id,
           folder: worktree?.path ?? session.folder,
         }}
-        suppressed={menuOpen || activityOpen}
+        suppressed={menuOpen || activityOpen || renaming}
       >
+        {renaming ? (
+          <SessionTitleEditor
+            title={session.title}
+            onSubmit={(title) => {
+              setRenaming(false)
+              if (title !== session.title) {
+                useCoworkSessions.getState().renameSession(session.id, title)
+              }
+            }}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : (
         <NavButton
           size="sub"
           isActive={isCurrent}
@@ -252,6 +268,7 @@ const SessionItem = memo(function SessionItem({
             </span>
           )}
         </NavButton>
+        )}
       </RowPreview>
       <DropdownMenu
         open={menuOpen}
@@ -274,7 +291,19 @@ const SessionItem = memo(function SessionItem({
           className="w-48"
           side={cursor.point || isMobile ? 'bottom' : 'right'}
           align={cursor.point ? 'start' : isMobile ? 'end' : 'start'}
+          // The menu hands focus back to its trigger as it closes, which would
+          // blur (and so submit) the rename input the moment it appears.
+          onCloseAutoFocus={(e) => {
+            if (renaming) e.preventDefault()
+          }}
         >
+          <DropdownMenuItem
+            data-testid="rename-session"
+            onSelect={() => setRenaming(true)}
+          >
+            <Pencil />
+            <span>{t('common:rename')}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem
             data-testid="regenerate-session-title"
             onSelect={() =>
