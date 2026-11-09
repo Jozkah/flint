@@ -286,6 +286,11 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
     if cfg!(windows) && backend == Backend::Cuda12 {
         assets.push(catalog::cuda_runtime_asset());
     }
+    let resumable: Vec<PathBuf> = assets.iter().map(|a| part_path(&staging.join(a.name))).collect();
+    let dropped = clean_stale_parts(&staging, &resumable, PART_MAX_AGE);
+    if dropped > 0 {
+        log::info!("diffusion: deleted {dropped} partial engine download(s) no install will resume");
+    }
     let result = async {
         for asset in &assets {
             let zip_path = staging.join(asset.name);
@@ -331,6 +336,9 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
         let _ = tokio::fs::remove_dir_all(&dir).await;
         return Err(e);
     }
+    // Installed: a partial download of another backend has nothing left to
+    // finish for.
+    clean_stale_parts(&staging, &[], std::time::Duration::ZERO);
     Ok(final_dir)
 }
 
@@ -341,6 +349,40 @@ static INSTALL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 fn staging_path(dir: &Path) -> PathBuf {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     dir.with_file_name(format!("{name}.staging-{}", std::process::id()))
+}
+
+/// How long a partial engine download is kept for a later attempt to resume.
+const PART_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+
+/// Deletes partial downloads (`*.part`) in `downloads` that no attempt will
+/// resume: any not named in `keep`, and any last written more than `max_age`
+/// ago. A cancelled attempt at one backend followed by an install of another,
+/// or an attempt nobody retried, otherwise left up to ~900 MB behind for good.
+/// Returns how many were deleted.
+fn clean_stale_parts(downloads: &Path, keep: &[PathBuf], max_age: std::time::Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(downloads) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|x| x != "part") {
+            continue;
+        }
+        let fresh = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age < max_age);
+        if keep.contains(&path) && fresh {
+            continue;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// Removes staging folders an interrupted install left beside `dir`.
@@ -558,6 +600,33 @@ mod tests {
             part_path(Path::new("downloads/sd.zip")),
             PathBuf::from("downloads/sd.zip.part")
         );
+    }
+
+    /// Only a recent partial download of an archive this install fetches is
+    /// kept to resume; other backends' parts, old parts and nothing else go.
+    #[test]
+    fn stale_partial_downloads_are_deleted_and_resumable_ones_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let mine = part_path(&dir.path().join("cuda.zip"));
+        let other = part_path(&dir.path().join("vulkan.zip"));
+        let old = part_path(&dir.path().join("cudart.zip"));
+        let unrelated = dir.path().join("notes.txt");
+        for p in [&mine, &other, &old, &unrelated] {
+            std::fs::write(p, b"partial").unwrap();
+        }
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+        std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
+
+        let keep = [mine.clone(), old.clone()];
+        assert_eq!(clean_stale_parts(dir.path(), &keep, PART_MAX_AGE), 2);
+        assert!(mine.exists());
+        assert!(!other.exists() && !old.exists());
+        assert!(unrelated.exists());
+
+        // After an install nothing is left to resume.
+        assert_eq!(clean_stale_parts(dir.path(), &[], std::time::Duration::ZERO), 1);
+        assert!(!mine.exists() && unrelated.exists());
+        assert_eq!(clean_stale_parts(&dir.path().join("missing"), &[], PART_MAX_AGE), 0);
     }
 
     #[test]

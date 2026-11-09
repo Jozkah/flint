@@ -305,6 +305,12 @@ fn as_worktree(record: &ChildRecord) -> WorktreeRecord {
     }
 }
 
+/// The child's worktree, if it is still the one that was recorded: under
+/// `roots`, the same repository, on the recorded branch.
+pub(crate) fn checked_worktree(record: &ChildRecord, roots: &Path) -> Result<WorktreeRecord, ChildError> {
+    verify(record, roots)
+}
+
 /// The child's worktree, if it is still the one that was recorded.
 fn verify(record: &ChildRecord, roots: &Path) -> Result<WorktreeRecord, ChildError> {
     let path = Path::new(&record.worktree_path);
@@ -438,6 +444,15 @@ pub fn begin(data_folder: &Path, roots: &Path, input: BeginInput) -> Result<Chil
         overrides: input.overrides,
     };
     let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    // Looked at again under the lock the worktree reaper holds while it
+    // re-reads a record and removes its worktree: one removed since it was found above is
+    // not recorded as the place this child runs.
+    if !Path::new(&record.worktree_path).exists() {
+        return Err(ChildError::new(
+            ChildErrorKind::NotManaged,
+            format!("task {}'s worktree was removed before it could start", record.task_id),
+        ));
+    }
     save(data_folder, &record)?;
     Ok(record)
 }
@@ -490,6 +505,13 @@ pub fn settle(
     record.ended_at = Some(now());
     record.fingerprint = print;
     save(data_folder, &record)?;
+    // A run's children ending is when earlier failed or cancelled children's
+    // empty worktrees are looked at again; this child's own grace starts now.
+    #[cfg(not(test))]
+    crate::core::agent::child_reaper::reap_in_background(
+        data_folder.to_path_buf(),
+        std::time::Duration::ZERO,
+    );
     Ok(record)
 }
 
@@ -562,6 +584,40 @@ fn prune_at(data_folder: &Path, retention_days: i64, at: chrono::DateTime<chrono
     removed
 }
 
+/// Every readable child record, in no particular order. Unreadable files are
+/// skipped.
+pub(crate) fn all_records(data_folder: &Path) -> Vec<ChildRecord> {
+    let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|t| serde_json::from_str::<ChildRecord>(&t).ok())
+        .collect()
+}
+
+/// Run `f` holding the lock every record read-modify-write takes, the one a
+/// child starting takes before it records itself as running.
+pub(crate) fn with_records_locked<T>(f: impl FnOnce() -> T) -> T {
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    f()
+}
+
+/// Test hook: change a recorded child in place.
+#[cfg(test)]
+pub(crate) fn update_record_for_test(
+    data_folder: &Path,
+    owner_id: &str,
+    change: impl FnOnce(&mut ChildRecord),
+) {
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    let mut record = load(data_folder, owner_id).expect("recorded child");
+    change(&mut record);
+    save(data_folder, &record).expect("saved child");
+}
+
 fn state_of(record: &ChildRecord) -> ChildState {
     match record.status {
         ChildStatus::Running if record.instance == instance() => ChildState::Running,
@@ -597,20 +653,38 @@ pub fn list(
     session: Option<&str>,
 ) -> Vec<ChildView> {
     prune(data_folder, 30);
-    let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
-        return Vec::new();
-    };
     let project = Path::new(project);
-    let mut records: Vec<ChildRecord> = entries
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
-        .filter_map(|t| serde_json::from_str::<ChildRecord>(&t).ok())
+    let mut records: Vec<ChildRecord> = all_records(data_folder)
+        .into_iter()
         .filter(|r| session.is_none_or(|s| r.parent_session == s))
         .filter(|r| same_dir(Path::new(&r.source_root), project))
         .collect();
     records.sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.task_id.cmp(&b.task_id)));
-    records.into_iter().map(|r| view(r, roots)).collect()
+    views(records, roots)
+}
+
+/// How many records are looked at on disk at once when listing.
+const LIST_WORKERS: usize = 4;
+
+/// [`view`] of every record, in order. Each view runs several git commands,
+/// so they run on up to [`LIST_WORKERS`] threads instead of one after another.
+/// Nothing is cached: every view reads the worktree as it is now, so a change
+/// made after a child finished is caught exactly as it was before.
+fn views(records: Vec<ChildRecord>, roots: &Path) -> Vec<ChildView> {
+    if records.len() < 2 {
+        return records.into_iter().map(|r| view(r, roots)).collect();
+    }
+    let chunk = records.len().div_ceil(LIST_WORKERS);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = records
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || part.iter().cloned().map(|r| view(r, roots)).collect::<Vec<_>>()))
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
+            .collect()
+    })
 }
 
 fn view(record: ChildRecord, roots: &Path) -> ChildView {
@@ -1076,5 +1150,37 @@ mod tests {
             propose(&f.data, &f.roots, "sess", "alpha", true).unwrap_err().kind,
             ChildErrorKind::LinkEscape
         );
+    }
+
+    /// Listing looks at records on several threads, and still returns them in
+    /// order, each exactly as a one-at-a-time look would see it -- including
+    /// a worktree changed after its child finished.
+    #[test]
+    fn listing_in_parallel_matches_a_sequential_look() {
+        let f = fixture("parallel");
+        let tasks = ["t1", "t2", "t3", "t4", "t5", "t6"];
+        for task in tasks {
+            let rec = start(&f, task);
+            std::fs::write(Path::new(&rec.worktree_path).join(format!("{task}.txt")), task).unwrap();
+            settle(&f.data, &f.roots, "sess", task, ChildStatus::Completed, "").unwrap();
+        }
+        let changed = load(&f.data, &tauri_plugin_agent_tools::child_session_id("sess", "t4")).unwrap();
+        std::fs::write(Path::new(&changed.worktree_path).join("late.txt"), "late").unwrap();
+
+        let listed = list(&f.data, &f.roots, &f.src.to_string_lossy(), Some("sess"));
+        let order: Vec<&str> = listed.iter().map(|v| v.record.task_id.as_str()).collect();
+        let mut expected_records: Vec<ChildRecord> = all_records(&f.data);
+        expected_records
+            .sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.task_id.cmp(&b.task_id)));
+        let sequential: Vec<ChildView> =
+            expected_records.into_iter().map(|r| view(r, &f.roots)).collect();
+        assert_eq!(listed, sequential);
+        assert_eq!(order.len(), tasks.len());
+        let flagged: Vec<&str> = listed
+            .iter()
+            .filter(|v| v.problem.as_ref().map(|p| p.kind) == Some(ChildErrorKind::ModifiedAfterFinish))
+            .map(|v| v.record.task_id.as_str())
+            .collect();
+        assert_eq!(flagged, ["t4"]);
     }
 }

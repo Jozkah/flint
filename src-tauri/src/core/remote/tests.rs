@@ -606,6 +606,106 @@ fn self_signed_certificate_is_reused_for_the_same_address() {
     assert_eq!(d.fingerprint, e.fingerprint);
 }
 
+/// The host's allow-list is exactly the protocol's method table: a method
+/// missing here would break the phone, an extra one would reach the window
+/// without being part of the protocol.
+#[test]
+fn phone_methods_match_the_protocol_table() {
+    let table = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../web-app/src/lib/remote/protocolRequests.ts"),
+    )
+    .expect("the remote protocol table");
+    let body = table
+        .split("export type RemoteMethods = {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("the RemoteMethods block");
+    let mut listed: Vec<String> = body
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("  ")?;
+            if rest.starts_with(' ') || rest.starts_with('/') || rest.starts_with('*') {
+                return None;
+            }
+            let key = rest.split(':').next()?.trim().trim_matches('\'');
+            valid_method(key).then(|| key.to_string())
+        })
+        .collect();
+    listed.sort();
+    assert!(listed.len() > 40, "parsed too few methods: {listed:?}");
+    let mine: Vec<String> = PHONE_METHODS.iter().map(|m| m.to_string()).collect();
+    assert_eq!(mine, listed);
+    let mut sorted = mine.clone();
+    sorted.sort();
+    assert_eq!(mine, sorted, "PHONE_METHODS must stay sorted for binary search");
+}
+
+#[tokio::test]
+async fn a_method_outside_the_protocol_never_reaches_the_window() {
+    assert!(phone_callable("chat.send"));
+    assert!(phone_callable("status"));
+    assert!(!phone_callable("permissions.grant"));
+    assert!(!phone_callable("settings.setPermissionMode"));
+    let (hub, rec) = hub();
+    let (token, _) = pair(&hub, "p");
+    let device = hub.authenticate(Some(&token), IP).unwrap();
+    let refused = hub.rpc(&device, "permissions.grant", json!({})).await;
+    assert_eq!(refused.unwrap_err(), RpcReject::BadMethod);
+    assert!(rec.rpcs.lock().unwrap().is_empty(), "the window saw a refused call");
+}
+
+#[test]
+fn self_signed_certificate_is_bounded_and_replaced_near_its_end() {
+    use super::tls::{self_signed_at, self_signed_expiry, SELF_SIGNED_VALIDITY_DAYS};
+    let dir = tempfile::tempdir().unwrap();
+    let day = chrono::Duration::days(1);
+    let t0 = chrono::Utc::now();
+    let a = self_signed_at(dir.path(), "192.168.1.20", None, t0).unwrap();
+    let expiry = self_signed_expiry(dir.path()).unwrap();
+    assert!(expiry <= t0 + day * SELF_SIGNED_VALIDITY_DAYS as i32 + day);
+    assert!(expiry > t0 + day * 365);
+    assert!(SELF_SIGNED_VALIDITY_DAYS <= 825, "Apple refuses longer server certificates");
+
+    // Kept for most of its life, so a trusting phone keeps trusting it.
+    let b = self_signed_at(dir.path(), "192.168.1.20", None, t0 + day * 300).unwrap();
+    assert_eq!(a.fingerprint, b.fingerprint);
+    // Replaced once inside the renewal window, then kept again.
+    let c = self_signed_at(dir.path(), "192.168.1.20", None, expiry - day * 10).unwrap();
+    assert_ne!(a.fingerprint, c.fingerprint);
+    assert!(self_signed_expiry(dir.path()).unwrap() > expiry + day * 300);
+    let d = self_signed_at(dir.path(), "192.168.1.20", None, expiry - day * 9).unwrap();
+    assert_eq!(c.fingerprint, d.fingerprint);
+}
+
+/// A certificate made before expiry dates were recorded counts from the day
+/// it was written, so an upgrade does not replace a recent one at once.
+#[test]
+fn a_certificate_without_a_recorded_expiry_counts_from_when_it_was_made() {
+    use super::tls::{self_signed_at, self_signed_expiry, SELF_SIGNED_VALIDITY_DAYS};
+    let dir = tempfile::tempdir().unwrap();
+    let now = chrono::Utc::now();
+    let a = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    std::fs::remove_file(dir.path().join("lan-cert.expires")).unwrap();
+    let derived = self_signed_expiry(dir.path()).unwrap();
+    let made = derived - chrono::Duration::days(SELF_SIGNED_VALIDITY_DAYS);
+    assert!((made - now).num_minutes().abs() < 5, "{made} vs {now}");
+    let b = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    assert_eq!(a.fingerprint, b.fingerprint);
+
+    // One written long ago is replaced.
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(400 * 24 * 3600);
+    std::fs::File::options()
+        .write(true)
+        .open(dir.path().join("lan-cert.pem"))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let c = self_signed_at(dir.path(), "10.0.0.2", None, now).unwrap();
+    assert_ne!(a.fingerprint, c.fingerprint);
+    assert!(dir.path().join("lan-cert.expires").exists());
+}
+
 #[test]
 fn custom_host_name_is_normalized_and_validated() {
     let with = |h: &str| RemoteConfig {

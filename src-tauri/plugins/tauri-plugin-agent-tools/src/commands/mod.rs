@@ -111,11 +111,14 @@ pub enum ApprovalSource {
     Secret,
 }
 
-/// Everything `execute_tool_inner` needs to run a call again, kept by an
-/// unsandboxed-retry offer. The command is the one that failed, not one the
-/// renderer names at redemption time.
+/// One tool call as the execute commands receive it: everything
+/// `execute_tool_inner` needs besides the output sink, the sandbox choice and
+/// the verified approval. An unsandboxed-retry offer keeps one, so the command
+/// run again is the one that failed, not one the renderer names at redemption
+/// time. The Tauri commands keep their flat arguments (the renderer sends them
+/// by name) and build this.
 #[derive(Clone)]
-struct RetryCall {
+struct ToolCallRequest {
     data_folder: String,
     thread_id: String,
     project: Option<String>,
@@ -142,8 +145,16 @@ pub(crate) fn hidden_state_msg(name: &str) -> String {
     )
 }
 
-fn retry_offers() -> &'static crate::unsandboxed_retry::Offers<RetryCall> {
-    static OFFERS: std::sync::OnceLock<crate::unsandboxed_retry::Offers<RetryCall>> =
+impl ToolCallRequest {
+    /// The request an unsandboxed-retry offer keeps for this call: only a
+    /// sandboxed `bash` call can end in the failure that offer is for.
+    fn retry_copy(&self, unsandboxed: bool) -> Option<ToolCallRequest> {
+        (!unsandboxed && self.name == "bash").then(|| self.clone())
+    }
+}
+
+fn retry_offers() -> &'static crate::unsandboxed_retry::Offers<ToolCallRequest> {
+    static OFFERS: std::sync::OnceLock<crate::unsandboxed_retry::Offers<ToolCallRequest>> =
         std::sync::OnceLock::new();
     OFFERS.get_or_init(Default::default)
 }
@@ -948,7 +959,7 @@ pub async fn execute_tool(
         &args,
         approval,
     )?;
-    execute_tool_inner(
+    let request = ToolCallRequest {
         data_folder,
         thread_id,
         project,
@@ -963,11 +974,8 @@ pub async fn execute_tool(
         undo_run,
         actor,
         extra_projects,
-        None,
-        false,
-        approval,
-    )
-    .await
+    };
+    execute_tool_inner(request, None, false, approval).await
 }
 
 /// `execute_tool`, plus a channel that receives the tool's output as it is
@@ -1011,7 +1019,7 @@ pub async fn execute_tool_streaming(
         approval,
     )?;
     let sink = output_sink(on_output, call_id.clone());
-    execute_tool_inner(
+    let request = ToolCallRequest {
         data_folder,
         thread_id,
         project,
@@ -1026,11 +1034,8 @@ pub async fn execute_tool_streaming(
         undo_run,
         actor,
         extra_projects,
-        Some(sink),
-        false,
-        approval,
-    )
-    .await
+    };
+    execute_tool_inner(request, Some(sink), false, approval).await
 }
 
 /// Run a `bash` call again outside the sandbox, after the user approved it.
@@ -1053,26 +1058,7 @@ pub async fn execute_tool_unsandboxed_retry(
                 .to_string(),
         ));
     };
-    execute_tool_inner(
-        call.data_folder,
-        call.thread_id,
-        call.project,
-        call.name,
-        call.args,
-        call.enabled_skills,
-        call.allow_network,
-        call.read_only_project,
-        call.write_grant,
-        call.scope,
-        call.call_id,
-        call.undo_run,
-        call.actor,
-        call.extra_projects,
-        None,
-        true,
-        None,
-    )
-    .await
+    execute_tool_inner(call, None, true, None).await
 }
 
 /// Mint a one-shot token for `approval` on this exact call (O02-024). The
@@ -1104,35 +1090,8 @@ pub async fn execute_tool_unsandboxed_withdraw(thread_id: String, retry: String)
     retry_offers().withdraw(&retry, &thread_id);
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn execute_tool_inner(
-    data_folder: String,
-    thread_id: String,
-    project: Option<String>,
-    name: String,
-    args: serde_json::Value,
-    enabled_skills: Option<Vec<String>>,
-    allow_network: Option<bool>,
-    read_only_project: Option<String>,
-    // An opaque grant id from `direct_edit_authorize`, naming a folder the user
-    // confirmed for this session. Not a path: a path arriving here could be
-    // anything the caller chose, whereas an id only resolves to the folder the
-    // grant was issued for, and only in the session it was issued to. `None` is
-    // every run that has not been authorized, which is the unchanged
-    // sandbox-only behaviour.
-    write_grant: Option<String>,
-    scope: Option<WorkspaceScope>,
-    call_id: Option<String>,
-    // The run this call belongs to. Given, the files a `write` or `edit`
-    // changes are journaled against it so the turn can be undone (AH-202).
-    undo_run: Option<String>,
-    // Who is making this call (AH-110): the subject spelling of the agent
-    // (`agent`, `agent:<name>`, `role:<name>`) plus a display label and, for a
-    // subagent, its parent. Journaled with every file the call changes, so a
-    // change can always name the agent that made it. `None` records the change
-    // without an actor, which reads as unknown rather than as anyone.
-    actor: Option<ActorInput>,
-    extra_projects: Option<Vec<String>>,
+    request: ToolCallRequest,
     sink: Option<crate::tools::OutputSink>,
     // True only for a call the user approved to run outside the sandbox,
     // redeemed through `execute_tool_unsandboxed_retry`.
@@ -1141,22 +1100,37 @@ async fn execute_tool_inner(
 ) -> Result<ToolResult, AgentToolsError> {
     // Kept before anything consumes the arguments, in case this call ends in
     // the one failure the user can be offered an unsandboxed retry for.
-    let retry_call = (!unsandboxed && name == "bash").then(|| RetryCall {
-        data_folder: data_folder.clone(),
-        thread_id: thread_id.clone(),
-        project: project.clone(),
-        name: name.clone(),
-        args: args.clone(),
-        enabled_skills: enabled_skills.clone(),
+    let retry_call = request.retry_copy(unsandboxed);
+    let ToolCallRequest {
+        data_folder,
+        thread_id,
+        project,
+        name,
+        args,
+        enabled_skills,
         allow_network,
-        read_only_project: read_only_project.clone(),
-        write_grant: write_grant.clone(),
+        read_only_project,
+        // An opaque grant id from `direct_edit_authorize`, naming a folder the
+        // user confirmed for this session. Not a path: a path arriving here
+        // could be anything the caller chose, whereas an id only resolves to
+        // the folder the grant was issued for, and only in the session it was
+        // issued to. `None` is every run that has not been authorized, which
+        // is the unchanged sandbox-only behaviour.
+        write_grant,
         scope,
-        call_id: call_id.clone(),
-        undo_run: undo_run.clone(),
-        actor: actor.clone(),
-        extra_projects: extra_projects.clone(),
-    });
+        call_id,
+        // The run this call belongs to. Given, the files a `write` or `edit`
+        // changes are journaled against it so the turn can be undone (AH-202).
+        undo_run,
+        // Who is making this call (AH-110): the subject spelling of the agent
+        // (`agent`, `agent:<name>`, `role:<name>`) plus a display label and,
+        // for a subagent, its parent. Journaled with every file the call
+        // changes, so a change can always name the agent that made it. `None`
+        // records the change without an actor, which reads as unknown rather
+        // than as anyone.
+        actor,
+        extra_projects,
+    } = request;
     // Refused before the tool runs, not after it has changed a file: a call
     // that cannot say who it is acting for must not leave a change that will
     // later be attributed to someone.
@@ -2521,4 +2495,4 @@ fn read_escape_message(
 
 #[cfg(test)]
 mod tests;
-
+
