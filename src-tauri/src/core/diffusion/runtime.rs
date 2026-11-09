@@ -75,6 +75,18 @@ struct Resident {
     _job: Option<jan_process::confine::Job>,
 }
 
+/// An engine that answered on a port it owns, before it becomes [`Resident`].
+struct Started {
+    child: Child,
+    port: u16,
+    live: Arc<StdMutex<Live>>,
+    #[cfg(windows)]
+    job: Option<jan_process::confine::Job>,
+}
+
+/// How many ports a load tries when another process takes the one picked.
+const PORT_ATTEMPTS: u32 = 3;
+
 static RESIDENT: OnceLock<Mutex<Option<Resident>>> = OnceLock::new();
 
 fn resident() -> &'static Mutex<Option<Resident>> {
@@ -353,49 +365,73 @@ pub async fn load<R: Runtime>(
     let lora_dir = engine::diffusion_root(app).join("loras");
     std::fs::create_dir_all(&scratch).map_err(|e| format!("Could not create the scratch folder: {e}"))?;
     std::fs::create_dir_all(&lora_dir).map_err(|e| format!("Could not create the LoRA folder: {e}"))?;
-    let port = free_port()?;
     let mut extra = vec!["--lora-model-dir".to_string(), lora_dir.to_string_lossy().into_owned()];
     extra.extend(def.extra_args.iter().map(|a| a.to_string()));
-    let argv = build_server_args(&files, port, &scratch, offload, None, &extra);
-
-    let mut command = Command::new(dir.join(engine::SERVER_EXE));
-    command
-        .args(&argv)
-        .current_dir(&dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    engine::configure_library_path(&mut command, &dir);
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    jan_process::confine::die_with_parent(&mut command);
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("Could not start the image engine: {e}"))?;
-    #[cfg(windows)]
-    let job = child.raw_handle().and_then(jan_process::confine::confine);
-    let live = Arc::new(StdMutex::new(Live::default()));
-    if let Some(out) = child.stdout.take() {
-        watch_output(out, live.clone());
-    }
-    if let Some(err) = child.stderr.take() {
-        watch_output(err, live.clone());
-    }
-
-    // Ready when /v1/models answers: the model is loaded before the port opens.
     let client = http()?;
-    let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
-    if let Ok(mut slot) = load_cancel().lock() {
-        *slot = Some(cancel_tx);
-    }
-    let ready = await_ready(&client, &mut child, port, &live, &mut cancel_rx, LOAD_TIMEOUT).await;
-    if let Ok(mut slot) = load_cancel().lock() {
-        *slot = None;
-    }
-    if let Err(e) = ready {
-        emit_state(app, "unloaded", None);
-        return Err(e.message());
-    }
+
+    // The port is picked free and released before the engine binds it, so
+    // another process can take it in between; that start is retried on a new
+    // port rather than reported, or trusted (see `await_ready`).
+    let mut attempt = 0;
+    let started = loop {
+        attempt += 1;
+        let port = free_port()?;
+        let argv = build_server_args(&files, port, &scratch, offload, None, &extra);
+
+        let mut command = Command::new(dir.join(engine::SERVER_EXE));
+        command
+            .args(&argv)
+            .current_dir(&dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        engine::configure_library_path(&mut command, &dir);
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        jan_process::confine::die_with_parent(&mut command);
+        let mut child = command
+            .spawn()
+            .map_err(|e| format!("Could not start the image engine: {e}"))?;
+        #[cfg(windows)]
+        let job = child.raw_handle().and_then(jan_process::confine::confine);
+        let live = Arc::new(StdMutex::new(Live::default()));
+        if let Some(out) = child.stdout.take() {
+            watch_output(out, live.clone());
+        }
+        if let Some(err) = child.stderr.take() {
+            watch_output(err, live.clone());
+        }
+
+        // Ready when /v1/models answers: the model is loaded before the port opens.
+        let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+        if let Ok(mut slot) = load_cancel().lock() {
+            *slot = Some(cancel_tx);
+        }
+        let ready = await_ready(
+            &client,
+            &mut child,
+            port,
+            &live,
+            &mut cancel_rx,
+            LOAD_TIMEOUT,
+            &tauri_plugin_llamacpp::engine::worker::port_owned_by_tree,
+        )
+        .await;
+        if let Ok(mut slot) = load_cancel().lock() {
+            *slot = None;
+        }
+        match ready {
+            Ok(()) => break Started { child, port, live, #[cfg(windows)] job },
+            Err(ReadyError::PortTaken) if attempt < PORT_ATTEMPTS => {
+                log::warn!("image engine: port {port} was taken by another process; retrying on a new port");
+            }
+            Err(e) => {
+                emit_state(app, "unloaded", None);
+                return Err(e.message());
+            }
+        }
+    };
+    let Started { child, port, live, #[cfg(windows)] job } = started;
 
     *resident().lock().await = Some(Resident {
         model_id: def.id,
@@ -425,12 +461,17 @@ enum ReadyError {
     TimedOut,
     /// `unload` asked the load to stop.
     Cancelled,
+    /// Another process holds the port: it answered the probe, or the engine
+    /// said it was listening and then exited (its bind failed). The engine
+    /// has been stopped; a new port may be tried.
+    PortTaken,
 }
 
 impl ReadyError {
     fn message(&self) -> String {
         match self {
             Self::Exited(why) => why.clone(),
+            Self::PortTaken => "The image engine could not get a local port to itself. Try loading the model again.".to_string(),
             Self::TimedOut => "The image engine took too long to load the model.".to_string(),
             Self::Cancelled => "The image engine load was cancelled.".to_string(),
         }
@@ -452,8 +493,22 @@ async fn cancelled(rx: &mut tokio::sync::watch::Receiver<bool>) {
     }
 }
 
+/// Whether the engine's log says it reached `listen`: `sd-server` prints this
+/// line just before binding, then returns from `main` when the bind fails, so
+/// an exit after it means the port was taken, not that the model failed.
+fn reached_listen(live: &Arc<StdMutex<Live>>) -> bool {
+    live.lock()
+        .map(|l| l.tail.iter().any(|line| line.contains("listening on: http://")))
+        .unwrap_or(false)
+}
+
 /// Polls `/v1/models` until the engine answers. A timeout or a cancel kills
 /// `child`, so a caller that gets `Err` never leaves a process behind.
+///
+/// `sd-server` has no API key option at the pinned release, so the answer
+/// cannot prove who sent it; `owns(port, pid)` checks that the listener on
+/// the port is `child` (or its descendant). An answer from anything else is
+/// [`ReadyError::PortTaken`], and `child` is stopped.
 async fn await_ready(
     client: &reqwest::Client,
     child: &mut Child,
@@ -461,10 +516,14 @@ async fn await_ready(
     live: &Arc<StdMutex<Live>>,
     cancel: &mut tokio::sync::watch::Receiver<bool>,
     limit: Duration,
+    owns: &(dyn Fn(u16, u32) -> bool + Sync),
 ) -> Result<(), ReadyError> {
     let started = Instant::now();
     loop {
         if let Ok(Some(status)) = child.try_wait() {
+            if reached_listen(live) {
+                return Err(ReadyError::PortTaken);
+            }
             let why = diagnose(live);
             return Err(ReadyError::Exited(format!(
                 "The image engine stopped while loading ({status}). {why}"
@@ -483,7 +542,15 @@ async fn await_ready(
             }
         };
         if answered {
-            return Ok(());
+            let pid = child.id();
+            if pid.is_some_and(|pid| owns(port, pid)) {
+                return Ok(());
+            }
+            // The engine itself is not done loading, or it has just exited;
+            // either way the port belongs to someone else.
+            let _ = child.start_kill();
+            let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+            return Err(ReadyError::PortTaken);
         }
         if started.elapsed() > limit {
             let _ = child.start_kill();
@@ -1315,7 +1382,7 @@ mod load_and_timeout_tests {
         let (tx, mut rx) = tokio::sync::watch::channel(false);
         let port = free_tcp_port();
         let waiter = tokio::spawn(async move {
-            let out = await_ready(&client, &mut child, port, &live, &mut rx, Duration::from_secs(60)).await;
+            let out = await_ready(&client, &mut child, port, &live, &mut rx, Duration::from_secs(60), &|_, _| true).await;
             (out, child)
         });
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -1334,7 +1401,7 @@ mod load_and_timeout_tests {
         let live = Arc::new(StdMutex::new(Live::default()));
         let client = http().unwrap();
         let (_tx, mut rx) = tokio::sync::watch::channel(false);
-        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_millis(500)).await;
+        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_millis(500), &|_, _| true).await;
         assert_eq!(out, Err(ReadyError::TimedOut));
         let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
         assert!(child.try_wait().unwrap().is_some());
@@ -1358,7 +1425,84 @@ mod load_and_timeout_tests {
         let live = Arc::new(StdMutex::new(Live::default()));
         let client = http().unwrap();
         let (_tx, mut rx) = tokio::sync::watch::channel(false);
-        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_secs(5)).await;
+        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_secs(5), &|_, _| true).await;
         assert!(matches!(out, Err(ReadyError::Exited(m)) if m.contains("stopped while loading")));
+    }
+
+    /// Something that answers `/v1/models` with 200 to everyone, as another
+    /// server that took the port would.
+    async fn squatter() -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let server = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = server.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock
+                    .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 11\r\nconnection: close\r\n\r\n{\"data\":[]}")
+                    .await;
+            }
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn an_answer_from_another_process_is_not_ready_and_stops_the_engine() {
+        let port = squatter().await;
+        let mut child = sleeper();
+        let live = Arc::new(StdMutex::new(Live::default()));
+        let client = http().unwrap();
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        // The real owner check: the listener is this test process, not the child.
+        let out = await_ready(
+            &client,
+            &mut child,
+            port,
+            &live,
+            &mut rx,
+            Duration::from_secs(10),
+            &tauri_plugin_llamacpp::engine::worker::port_owned_by_tree,
+        )
+        .await;
+        if cfg!(any(windows, target_os = "linux")) {
+            assert_eq!(out, Err(ReadyError::PortTaken));
+            assert!(child.try_wait().unwrap().is_some(), "the engine was left running");
+        } else {
+            // Platforms that cannot name a port's owner accept the answer.
+            assert_eq!(out, Ok(()));
+        }
+    }
+
+    #[tokio::test]
+    async fn an_answer_from_the_engine_itself_is_ready() {
+        let port = squatter().await;
+        let mut child = sleeper();
+        let live = Arc::new(StdMutex::new(Live::default()));
+        let client = http().unwrap();
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let out = await_ready(&client, &mut child, port, &live, &mut rx, Duration::from_secs(10), &|p, _| p == port).await;
+        assert_eq!(out, Ok(()));
+        let _ = child.start_kill();
+    }
+
+    #[tokio::test]
+    async fn an_exit_after_the_listen_line_is_a_taken_port_not_a_model_failure() {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "exit 0"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = Command::new("true");
+        let mut child = cmd.spawn().unwrap();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let live = Arc::new(StdMutex::new(Live::default()));
+        live.lock().unwrap().tail.push_back("[INFO ] main.cpp:149 - listening on: http://127.0.0.1:4321".to_string());
+        let client = http().unwrap();
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_secs(5), &|_, _| true).await;
+        assert_eq!(out, Err(ReadyError::PortTaken));
     }
 }
