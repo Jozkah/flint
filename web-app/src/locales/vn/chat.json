@@ -338,5 +338,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Công cụ chạy mô hình đã dừng. Đang tải lại mô hình…",
+    "retrying": "Đã tải lại mô hình. Đang gửi lại tin nhắn của bạn…",
+    "recovered": "Đã khôi phục: công cụ chạy mô hình đã dừng, đã được khởi động lại và tin nhắn của bạn đã được trả lời.",
+    "retryFailed": "Công cụ chạy mô hình lại dừng. Flint đã thử lại một lần; hãy dùng Tạo lại để thử lần nữa.",
+    "restartFailed": "Không thể tự động tải lại mô hình. Hãy dùng Tạo lại hoặc chọn lại mô hình."
   }
 }

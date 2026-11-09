@@ -818,6 +818,22 @@ pub(super) fn collapse_command(cmd: &str) -> String {
         .to_string()
 }
 
+/// The line range a `read` call asked for, as a ` [start-end]` suffix for its
+/// path (` [start+]` when only `offset` is set), or empty for a whole-file read.
+/// Without it, paging through a large file shows the same label over and over.
+pub(super) fn read_span(args: &serde_json::Value) -> String {
+    let n = |k: &str| args.get(k).and_then(|v| v.as_u64());
+    // The tool treats offset 0 as line 1, and a limit of 0 reads nothing.
+    let start = n("offset").unwrap_or(1).max(1);
+    match n("limit") {
+        Some(0) => String::new(),
+        // The arguments come from the model, so a huge limit must not overflow.
+        Some(limit) => format!(" [{start}-{}]", start.saturating_add(limit - 1)),
+        None if start > 1 => format!(" [{start}+]"),
+        None => String::new(),
+    }
+}
+
 pub(super) fn tool_activity(name: &str, args: &serde_json::Value) -> String {
     let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("");
     let base = |p: &str| {
@@ -841,7 +857,7 @@ pub(super) fn tool_activity(name: &str, args: &serde_json::Value) -> String {
         }
         "grep" | "search" => "Searching".to_string(),
         "find" | "glob" => "Finding files".to_string(),
-        "read" => format!("Reading {}", base(s("path"))),
+        "read" => format!("Reading {}{}", base(s("path")), read_span(args)),
         "list" | "ls" => "Listing files".to_string(),
         "write" => format!("Writing {}", base(s("path"))),
         "edit" => format!("Editing {}", base(s("path"))),
@@ -973,7 +989,7 @@ pub(super) fn tool_finished(name: &str, args: &serde_json::Value) -> String {
         }
         "grep" | "search" => "Searched".to_string(),
         "find" | "glob" => "Found files".to_string(),
-        "read" => format!("Read {}", base(s("path"))),
+        "read" => format!("Read {}{}", base(s("path")), read_span(args)),
         "list" | "ls" => "Listed files".to_string(),
         "write" => format!("Wrote {}", base(s("path"))),
         "edit" => format!("Edited {}", base(s("path"))),
@@ -1449,27 +1465,58 @@ pub(super) fn group_detail_lines(group: &ToolGroup, width: u16) -> Vec<Line<'sta
     out
 }
 
-/// Classify a collapsible tool into a breakdown noun and whether it is a
-/// read-style op (drives the "Read" vs "Ran" verb in a group summary).
-pub(super) fn tool_kind(name: &str) -> (&'static str, bool) {
+/// Which clause of a group summary a call counts in, so its verb agrees with
+/// what the call did (`Read 2 files; updated 1 memory note; ran 1 command`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ToolOp {
+    Read,
+    Update,
+    Run,
+}
+
+/// Classify a collapsible tool into a breakdown noun and the `ToolOp` it is.
+/// A memory or skill write updates; every other memory/skill tool reads.
+pub(super) fn tool_kind(name: &str) -> (&'static str, ToolOp) {
     match name {
-        n if n.starts_with("memory") => ("memory note", true),
-        n if n.starts_with("skill") => ("skill", true),
-        "read" => ("file", true),
-        "list" | "ls" => ("directory", true),
-        "grep" | "search" => ("search", false),
-        "find" | "glob" => ("file search", false),
-        "bash" | "shell" | "exec" => ("command", false),
-        _ => ("tool call", false),
+        "memory_write" | "memory_propose" => ("memory note", ToolOp::Update),
+        n if n.starts_with("memory") => ("memory note", ToolOp::Read),
+        "skill_write" => ("skill", ToolOp::Update),
+        n if n.starts_with("skill") => ("skill", ToolOp::Read),
+        "read" => ("file", ToolOp::Read),
+        "list" | "ls" => ("directory", ToolOp::Read),
+        "grep" | "search" => ("search", ToolOp::Run),
+        "find" | "glob" => ("file search", ToolOp::Run),
+        "bash" | "shell" | "exec" => ("command", ToolOp::Run),
+        _ => ("tool call", ToolOp::Run),
     }
 }
 
 /// Short sentence summarizing a finished tool group, e.g. "Read 3 memory notes,
-/// 1 skill" or "Read 20 files; ran 12 commands". Read-style nouns get a "Read"
-/// clause and executed nouns a "ran" clause, so the verb always agrees with its
-/// noun (never "Ran 1 directory"). Each clause preserves first-seen order.
-pub(super) fn group_summary(nouns: &[(&str, bool)]) -> String {
-    group_clauses(nouns, "Read", "ran")
+/// 1 skill" or "Read 20 files; updated 1 memory note; ran 12 commands": one
+/// clause per `ToolOp`, so the verb always agrees with its noun (never "Ran 1
+/// directory", never "Read" for a note that was written). Each clause counts
+/// and pluralizes its nouns in first-seen order.
+pub(super) fn group_summary(nouns: &[(&str, ToolOp)]) -> String {
+    let clauses = [(ToolOp::Read, "read"), (ToolOp::Update, "updated"), (ToolOp::Run, "ran")]
+        .into_iter()
+        .filter_map(|(op, verb)| {
+            let mut counts: Vec<(&str, usize)> = Vec::new();
+            for &(noun, _) in nouns.iter().filter(|(_, o)| *o == op) {
+                match counts.iter_mut().find(|(n, _)| *n == noun) {
+                    Some((_, c)) => *c += 1,
+                    None => counts.push((noun, 1)),
+                }
+            }
+            let items: Vec<String> = counts.iter().map(|(n, c)| pluralize(n, *c)).collect();
+            (!items.is_empty()).then(|| format!("{verb} {}", items.join(", ")))
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let mut chars = clauses.chars();
+    chars
+        .next()
+        .map(|f| f.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default()
 }
 
 /// The one-line header a folded trace collapses to, with a step count so the
@@ -1617,44 +1664,6 @@ pub(super) fn typing_terminal_lines(command: &str, frame: &str, width: u16) -> V
         Span::styled("typing…", Style::new().dark_gray()),
     ]));
     boxed_panel(rows, width as usize, SHELL_PANEL_GUTTER)
-}
-
-/// Bucket `nouns` into read-style and run-style clauses (first-seen order,
-/// counted and pluralized) and join them with the given verbs, so the verb
-/// always agrees with its noun (never "Ran 1 directory").
-pub(super) fn group_clauses(nouns: &[(&str, bool)], read_verb: &str, run_verb: &str) -> String {
-    let mut read: Vec<(&str, usize)> = Vec::new();
-    let mut run: Vec<(&str, usize)> = Vec::new();
-    for &(n, is_read) in nouns {
-        let bucket = if is_read { &mut read } else { &mut run };
-        match bucket.iter_mut().find(|(name, _)| *name == n) {
-            Some((_, c)) => *c += 1,
-            None => bucket.push((n, 1)),
-        }
-    }
-    let clause = |items: &[(&str, usize)]| {
-        items
-            .iter()
-            .map(|(n, c)| pluralize(n, *c))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let mut out = String::new();
-    if !read.is_empty() {
-        out = format!("{read_verb} {}", clause(&read));
-    }
-    if !run.is_empty() {
-        let verb = if out.is_empty() {
-            let mut c = run_verb.chars();
-            c.next()
-                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-                .unwrap_or_default()
-        } else {
-            format!("; {run_verb}")
-        };
-        out.push_str(&format!("{verb} {}", clause(&run)));
-    }
-    out
 }
 
 /// "3 memory notes", "1 skill", "2 searches", "1 directory".

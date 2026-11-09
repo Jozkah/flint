@@ -2151,22 +2151,17 @@ We build with make.")
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// The scratch must be advertised under the name that resolves from both
-    /// `bash` and the filesystem tools: `/tmp` where the sandbox binds it there,
-    /// the real path where nothing is mounted over `/tmp`. Naming the host path
-    /// on Linux (or `/tmp` anywhere else) would send the model to a directory
-    /// one of the two surfaces cannot reach.
+    /// The scratch must be advertised under the name that resolves from
+    /// `bash`, an escalated command and the filesystem tools alike: its real
+    /// path, on every platform (the Linux sandbox binds it there, not over
+    /// `/tmp`).
     #[test]
     fn runtime_environment_block_advertises_the_scratch_the_tools_share() {
         let root = scratch_project("scratch");
         std::fs::create_dir_all(&root).unwrap();
         let scratch = root.join("agent-scratch");
         let block = runtime_environment_block(&root, Some(&scratch));
-        let expected = if cfg!(target_os = "linux") {
-            "/tmp".to_string()
-        } else {
-            scratch.to_string_lossy().into_owned()
-        };
+        let expected = scratch.to_string_lossy().into_owned();
         assert!(
             block.contains(&format!("Scratch: `{expected}`")),
             "want {expected}: {block}"

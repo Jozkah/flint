@@ -212,6 +212,10 @@ impl<'a> FastProbe<'a> {
 
 #[async_trait]
 impl ModelInvoker for FastProbe<'_> {
+    fn provider(&self) -> Option<&str> {
+        self.inner.provider()
+    }
+
     async fn invoke(
         &self,
         request: &Value,

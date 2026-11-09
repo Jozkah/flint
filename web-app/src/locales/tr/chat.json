@@ -323,5 +323,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Model motoru durdu. Model yeniden yükleniyor…",
+    "retrying": "Model yeniden yüklendi. Mesajınız yeniden gönderiliyor…",
+    "recovered": "Kurtarıldı: model motoru durmuştu, yeniden başlatıldı ve mesajınız yanıtlandı.",
+    "retryFailed": "Model motoru yine durdu. Flint bir kez yeniden denedi; tekrar denemek için Yeniden oluştur'u kullanın.",
+    "restartFailed": "Model otomatik olarak yeniden yüklenemedi. Yeniden oluştur'u kullanın veya modeli yeniden seçin."
   }
 }

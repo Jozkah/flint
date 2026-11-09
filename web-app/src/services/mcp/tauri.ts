@@ -15,6 +15,8 @@ import type {
   MCPBudgetEntry,
   MCPTrustReport,
   ServerSummary,
+  MCPPromptInfo,
+  MCPPromptContent,
 } from './types'
 import { DefaultMCPService } from './default'
 import { recordToolCall } from '@/stores/engine-activity-store'
@@ -139,6 +141,22 @@ export class TauriMCPService extends DefaultMCPService {
 
   async getServerSummaries(): Promise<ServerSummary[]> {
     return invokeCommand('get_server_summaries')
+  }
+
+  async listPrompts(): Promise<MCPPromptInfo[]> {
+    return (await invokeCommand<MCPPromptInfo[]>('list_mcp_prompts')) ?? []
+  }
+
+  async getPrompt(
+    server: string,
+    name: string,
+    args?: Record<string, string>
+  ): Promise<MCPPromptContent> {
+    return invokeCommand('get_mcp_prompt', {
+      server,
+      name,
+      arguments: args && Object.keys(args).length > 0 ? args : undefined,
+    })
   }
 
   async getServerLog(serverName: string, lines?: number): Promise<string[]> {

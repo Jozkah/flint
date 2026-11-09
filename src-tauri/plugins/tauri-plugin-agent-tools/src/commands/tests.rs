@@ -771,13 +771,8 @@ async fn escaping_writes_are_refused() {
         .await
         .unwrap();
     let name = format!("jan_cmd_scratch_{}.txt", std::process::id());
-    let (requested, expected) = if cfg!(target_os = "linux") {
-        let p = format!("/tmp/{name}");
-        (p.clone(), p)
-    } else {
-        let p = scratch.join(&name).to_string_lossy().into_owned();
-        (p.clone(), p)
-    };
+    let p = scratch.join(&name).to_string_lossy().into_owned();
+    let (requested, expected) = (p.clone(), p);
     let res = execute_tool(
         df.clone(),
         t_scratch.into(),
@@ -1185,17 +1180,9 @@ async fn one_thread_cannot_read_another_threads_files() {
     // on the secret never arriving, not on which refusal was used.
     let one_scratch = crate::workspace::ensure_scratch_dir(t1).await.unwrap();
     std::fs::write(one_scratch.join("secret.txt"), b"classified").unwrap();
-    // Which spelling actually probes the isolation differs by platform.
-    // On Linux `/tmp` *is* the per-session scratch, so t2 asking for
-    // `/tmp/secret.txt` asks for its own empty one. Elsewhere there is no
-    // bind, and `/tmp` is refused as an escape whatever it holds — which
-    // would pass whether or not the sessions were isolated. So off Linux
-    // the test names t1's real scratch: correct code refuses it as an
-    // escape, and code that let sessions share a scratch would hand it
-    // over.
-    #[cfg(target_os = "linux")]
-    let target = "/tmp/secret.txt".to_string();
-    #[cfg(not(target_os = "linux"))]
+    // The test names t1's real scratch (the one name a scratch has on every
+    // platform): correct code refuses it as an escape, and code that let
+    // sessions share a scratch would hand it over.
     let target = one_scratch
         .join("secret.txt")
         .to_string_lossy()

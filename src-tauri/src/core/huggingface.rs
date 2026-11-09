@@ -1,5 +1,6 @@
 use crate::core::app::commands::get_jan_data_folder_path;
 use futures_util::StreamExt;
+use jan_utils::fs_retry::rename_retrying;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -440,9 +441,12 @@ async fn discard_part(part_path: &std::path::Path) {
     let _ = tokio::fs::remove_file(part_meta_path(part_path)).await;
 }
 
+/// Every rename here waits out a transient lock: on Windows, Defender, the
+/// search indexer and OneDrive open a just-finished file and hold it for
+/// seconds, and a single rename in that window failed the whole download.
 async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -> Result<(), String> {
     if tokio::fs::metadata(final_path).await.is_err() {
-        return tokio::fs::rename(part_path, final_path)
+        return rename_retrying(part_path, final_path)
             .await
             .map_err(|e| format!("Could not finalize download: {e}"));
     }
@@ -453,17 +457,17 @@ async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -
         .unwrap_or("model");
     let backup_path = final_path.with_file_name(format!("{file_name}.previous"));
     let _ = tokio::fs::remove_file(&backup_path).await;
-    tokio::fs::rename(final_path, &backup_path)
+    rename_retrying(final_path, &backup_path)
         .await
         .map_err(|e| format!("Could not stage existing model for replacement: {e}"))?;
 
-    match tokio::fs::rename(part_path, final_path).await {
+    match rename_retrying(part_path, final_path).await {
         Ok(()) => {
             let _ = tokio::fs::remove_file(&backup_path).await;
             Ok(())
         }
         Err(error) => {
-            let restore = tokio::fs::rename(&backup_path, final_path).await;
+            let restore = rename_retrying(&backup_path, final_path).await;
             match restore {
                 Ok(()) => Err(format!("Could not finalize download: {error}")),
                 Err(restore_error) => Err(format!(
@@ -799,6 +803,8 @@ fn os_error_hint(code: i32) -> Option<&'static str> {
     {
         match code {
             112 => Some("there is not enough free space on the disk"),
+            // ERROR_FILE_TOO_LARGE
+            223 => Some(FAT_LIMIT_HINT),
             32 | 33 => Some("another program (often antivirus) has the file open"),
             5 => Some("access to the folder was denied"),
             3 | 206 => Some("the file path is too long for Windows; choose a data folder with a shorter path"),
@@ -809,6 +815,8 @@ fn os_error_hint(code: i32) -> Option<&'static str> {
     {
         match code {
             28 | 122 => Some("there is not enough free space on the disk"),
+            // EFBIG: what a FAT volume answers a write past 4 GiB.
+            27 => Some(FAT_LIMIT_HINT),
             13 | 1 => Some("access to the folder was denied"),
             36 => Some("the file name is too long"),
             _ => None,
@@ -925,6 +933,80 @@ fn disk_preflight(total: Option<u64>, already: u64, free: u64) -> Result<(), Str
         gib(needed),
         gib(free)
     ))
+}
+
+/// The largest file FAT12/16/32 can store: one byte short of 4 GiB.
+const FAT_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024 - 1;
+
+const FAT_LIMIT_HINT: &str = "the drive's file system (FAT32) cannot hold files over 4 GB; move the data folder to an NTFS or exFAT drive";
+
+/// Whether `fs_name`, as `GetVolumeInformationW` spells it, is a FAT variant.
+/// `exFAT` is not one: its files have no practical size limit.
+fn is_fat_file_system(fs_name: &str) -> bool {
+    ["FAT", "FAT12", "FAT16", "FAT32"]
+        .iter()
+        .any(|fat| fs_name.eq_ignore_ascii_case(fat))
+}
+
+/// Why a file of `file_size` bytes cannot be stored on a volume formatted as
+/// `fs_name`, or `None` when it can or the file system is unknown.
+///
+/// On FAT32 the write that crosses 4 GiB fails with "disk full" on a drive with
+/// plenty of free space, after gigabytes were already fetched; refusing up
+/// front names the real cause.
+fn fat_file_limit_error(fs_name: Option<&str>, file_size: u64) -> Option<String> {
+    let fs_name = fs_name?;
+    if file_size <= FAT_MAX_FILE_BYTES || !is_fat_file_system(fs_name) {
+        return None;
+    }
+    Some(format!(
+        "This file is {}, but the drive holding the model folder is formatted as {fs_name}, which cannot store a file larger than 4 GB. Move the data folder to an NTFS or exFAT drive in Settings and retry.",
+        gib(file_size)
+    ))
+}
+
+/// The file-system name (`NTFS`, `FAT32`, `exFAT`, ...) of the volume holding
+/// `path`. Windows only: that is where FAT32 data folders (USB sticks, old
+/// external drives) turn up; elsewhere the EFBIG hint covers the failure.
+#[cfg(windows)]
+fn file_system_name(path: &std::path::Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{GetVolumeInformationW, GetVolumePathNameW};
+
+    fn until_nul(buffer: &[u16]) -> String {
+        let len = buffer.iter().position(|&u| u == 0).unwrap_or(buffer.len());
+        String::from_utf16_lossy(&buffer[..len])
+    }
+
+    let wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // The root is never longer than the path it was found from.
+    let mut root = vec![0u16; wide_path.len().max(261)];
+    // SAFETY: `wide_path` is NUL-terminated; `root` is writable for the length
+    // passed with it.
+    if unsafe { GetVolumePathNameW(wide_path.as_ptr(), root.as_mut_ptr(), root.len() as u32) } == 0 {
+        return None;
+    }
+    let mut name = [0u16; 261];
+    // SAFETY: `root` holds a NUL-terminated volume root; `name` is writable for
+    // the length passed with it; the other out-parameters are optional.
+    let ok = unsafe {
+        GetVolumeInformationW(
+            root.as_ptr(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            name.as_mut_ptr(),
+            name.len() as u32,
+        )
+    };
+    (ok != 0).then(|| until_nul(&name)).filter(|n| !n.is_empty())
+}
+
+#[cfg(not(windows))]
+fn file_system_name(_path: &std::path::Path) -> Option<String> {
+    None
 }
 
 fn normalize_for_mount_match(path: &std::path::Path) -> PathBuf {
@@ -1270,6 +1352,17 @@ pub async fn huggingface_download_model<R: Runtime>(
             };
             disk_preflight(total, already, free)?;
         }
+        if let Some(size) = expected_size.filter(|size| *size > FAT_MAX_FILE_BYTES) {
+            let probe_path = part_path.clone();
+            let fs_name = jan_utils::system::run_bounded(FREE_SPACE_TIMEOUT, move || {
+                file_system_name(probe_path.parent().unwrap_or(&probe_path))
+            })
+            .await
+            .flatten();
+            if let Some(error) = fat_file_limit_error(fs_name.as_deref(), size) {
+                return Err(error);
+            }
+        }
         let client = hf_client(token.as_deref())?;
         let attempt = || async {
             let existing = tokio::fs::metadata(&part_path)
@@ -1613,6 +1706,40 @@ mod tests {
     }
 
     #[test]
+    fn a_file_too_large_for_the_file_system_is_named() {
+        #[cfg(windows)]
+        let err = std::io::Error::from_raw_os_error(223);
+        #[cfg(not(windows))]
+        let err = std::io::Error::from_raw_os_error(27);
+        let msg = io_failure("Could not write the model download", &err);
+        assert!(msg.contains("(FAT32) cannot hold files over 4 GB"), "{msg}");
+    }
+
+    #[test]
+    fn a_file_over_4_gib_is_refused_on_fat_only() {
+        let four_gib = 4 * 1024 * 1024 * 1024;
+        let error = fat_file_limit_error(Some("FAT32"), four_gib).expect("refused");
+        assert!(error.contains("FAT32") && error.contains("NTFS or exFAT"), "{error}");
+        assert!(fat_file_limit_error(Some("fat"), 20 * four_gib).is_some());
+        // The largest file FAT32 can hold still fits.
+        assert_eq!(FAT_MAX_FILE_BYTES, four_gib - 1);
+        assert_eq!(fat_file_limit_error(Some("FAT32"), four_gib - 1), None);
+        // exFAT has no 4 GB cap; an unknown file system is not refused.
+        for fs_name in ["NTFS", "exFAT", "ReFS", "apfs", ""] {
+            assert_eq!(fat_file_limit_error(Some(fs_name), 20 * four_gib), None, "{fs_name}");
+        }
+        assert_eq!(fat_file_limit_error(None, 20 * four_gib), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_file_system_of_the_temp_folder_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = file_system_name(dir.path()).expect("a local volume has a file system name");
+        assert!(!name.is_empty());
+    }
+
+    #[test]
     fn an_unrecognised_error_keeps_only_the_os_text() {
         let err = std::io::Error::other("odd failure");
         assert_eq!(
@@ -1683,6 +1810,36 @@ mod tests {
         assert_eq!(read_part_etag(&part).await.as_deref(), Some("\"abc\""));
         discard_part(&part).await;
         assert!(!part.exists() && !part_meta_path(&part).exists());
+    }
+
+    /// A scanner holding the finished part (no sharing, like Defender) for a
+    /// moment used to fail the download at the final rename with os error 32.
+    #[cfg(windows)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn finalize_waits_out_a_scanner_holding_the_part() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        let done = dir.path().join("m.gguf");
+        std::fs::write(&part, b"weights").unwrap();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&part)
+            .unwrap();
+        assert_eq!(
+            std::fs::rename(&part, &done).unwrap_err().raw_os_error(),
+            Some(32),
+            "the held file must reject a plain rename"
+        );
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            drop(held);
+        });
+        finalize_verified_download(&part, &done).await.unwrap();
+        release.join().unwrap();
+        assert_eq!(std::fs::read(&done).unwrap(), b"weights");
+        assert!(!part.exists());
     }
 
     #[test]

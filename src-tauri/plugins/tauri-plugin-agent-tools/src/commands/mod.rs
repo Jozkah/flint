@@ -1360,6 +1360,13 @@ async fn execute_tool_inner(
             )
             .into());
         }
+        Decision::HardDeny(gate::DenyReason::ReadOnlyRoot) => {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+            return Err(crate::tools::read_only_root_refusal(path).into());
+        }
+        Decision::HardDeny(gate::DenyReason::TooComplex) => {
+            return Err(crate::tools::too_complex_refusal(&name).into());
+        }
         Decision::HardDeny(gate::DenyReason::Hidden) => {
             return Err(hidden_state_msg(&name).into());
         }
@@ -2228,6 +2235,12 @@ fn record_permission_decision(
         }
         Decision::HardDeny(gate::DenyReason::GitInternals) => {
             (Outcome::Deny, "git-internals".to_string())
+        }
+        Decision::HardDeny(gate::DenyReason::ReadOnlyRoot) => {
+            (Outcome::Deny, "read-only-root".to_string())
+        }
+        Decision::HardDeny(gate::DenyReason::TooComplex) => {
+            (Outcome::Deny, "too-complex".to_string())
         }
         Decision::HardDeny(gate::DenyReason::Resource) => {
             (Outcome::Deny, "unresolvable-resource".to_string())
