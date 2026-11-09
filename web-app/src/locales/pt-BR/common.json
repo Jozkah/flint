@@ -195,6 +195,7 @@
   "forkedSession": "Bifurcada. A nova sessão tem esta conversa e nenhum dos seus acessos.",
   "forkRefused": "Não foi possível bifurcar esta sessão.",
   "deleteSession": "Excluir sessão",
+  "renameSession": "Renomear sessão",
   "deleteSessionTitle": "Excluir sessão?",
   "deleteSessionBody": "\"{{title}}\" e sua transcrição serão excluídos permanentemente. Isso não pode ser desfeito.",
   "newChat": "Novo Chat",
@@ -3527,5 +3528,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "Um prompt do servidor MCP {{server}}.",
+    "empty": "O prompt {{name}} veio vazio.",
+    "failed": "Não foi possível obter o prompt {{name}}",
+    "omitted": "Partes deste prompt que o campo de mensagem não comporta (áudio ou arquivos binários) foram omitidas: {{count}}."
   }
 }

@@ -318,5 +318,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "模型引擎已停止。正在重新加载模型…",
+    "retrying": "模型已重新加载。正在重新发送你的消息…",
+    "recovered": "已恢复：模型引擎曾停止，现已重启，你的消息已得到回复。",
+    "retryFailed": "模型引擎再次停止。Flint 已自动重试一次；请使用“重新生成”再试。",
+    "restartFailed": "无法自动重新加载模型。请使用“重新生成”，或重新选择模型。"
   }
 }

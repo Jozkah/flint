@@ -194,6 +194,7 @@
   "forkedSession": "分岐しました。新しいセッションにはこの会話が含まれますが、アクセス権は引き継がれません。",
   "forkRefused": "このセッションを分岐できませんでした。",
   "deleteSession": "セッションを削除",
+  "renameSession": "セッション名を変更",
   "deleteSessionTitle": "セッションを削除しますか?",
   "deleteSessionBody": "「{{title}}」とそのトランスクリプトは完全に削除されます。この操作は元に戻せません。",
   "newChat": "新しいチャット",
@@ -3430,5 +3431,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "MCP サーバー {{server}} のプロンプトです。",
+    "empty": "プロンプト {{name}} は空でした。",
+    "failed": "プロンプト {{name}} を取得できませんでした",
+    "omitted": "入力欄に入れられない部分 (音声やバイナリファイル) を省きました: {{count}}。"
   }
 }

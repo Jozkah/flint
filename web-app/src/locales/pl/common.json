@@ -196,6 +196,7 @@
   "forkedSession": "Rozgałęziono. Nowa sesja zawiera tę rozmowę, ale nie ma żadnych jej uprawnień dostępu.",
   "forkRefused": "Nie udało się rozgałęzić tej sesji.",
   "deleteSession": "Usuń sesję",
+  "renameSession": "Zmień nazwę sesji",
   "deleteSessionTitle": "Usunąć sesję?",
   "deleteSessionBody": "„{{title}}” i jej transkrypcja zostaną usunięte na stałe. Tej operacji nie można cofnąć.",
   "newChat": "Nowy Czat",
@@ -3607,5 +3608,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "Prompt z serwera MCP {{server}}.",
+    "empty": "Prompt {{name}} wrócił pusty.",
+    "failed": "Nie udało się pobrać promptu {{name}}",
+    "omitted": "Pominięto części promptu, których pole wiadomości nie może przyjąć (dźwięk lub pliki binarne): {{count}}."
   }
 }

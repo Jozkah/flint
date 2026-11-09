@@ -194,6 +194,7 @@
   "forkedSession": "已分岔。新工作階段包含此對話，但沒有其存取權限。",
   "forkRefused": "無法分岔此工作階段。",
   "deleteSession": "刪除工作階段",
+  "renameSession": "重新命名工作階段",
   "deleteSessionTitle": "刪除工作階段？",
   "deleteSessionBody": "「{{title}}」及其記錄將被永久刪除。此操作無法復原。",
   "newChat": "新聊天",
@@ -3435,5 +3436,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "來自 MCP 伺服器 {{server}} 的提示詞。",
+    "empty": "提示詞 {{name}} 傳回為空。",
+    "failed": "無法取得提示詞 {{name}}",
+    "omitted": "已省略輸入框無法容納的部分（音訊或二進位檔案）：{{count}}。"
   }
 }

@@ -10,7 +10,8 @@
     "pluginNamed": "connector {{plugin}}",
     "skill": "habilitat",
     "builtin": "integrada",
-    "prompt": "consigna"
+    "prompt": "consigna",
+    "mcp": "indicació MCP"
   },
   "scope": {
     "project": "projecte",

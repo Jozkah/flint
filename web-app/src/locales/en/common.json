@@ -233,6 +233,7 @@
   "forkedSession": "Forked. The new session has this conversation and none of its access.",
   "forkRefused": "This session could not be forked.",
   "deleteSession": "Delete session",
+  "renameSession": "Rename session",
   "deleteSessionTitle": "Delete session?",
   "deleteSessionBody": "\"{{title}}\" and its transcript will be permanently deleted. This can't be undone.",
   "newChat": "New Chat",
@@ -3447,5 +3448,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "A prompt from the {{server}} MCP server.",
+    "empty": "The prompt {{name}} came back empty.",
+    "failed": "Could not get the prompt {{name}}",
+    "omitted": "Parts of this prompt the composer cannot hold (audio or binary files) were left out: {{count}}."
   }
 }

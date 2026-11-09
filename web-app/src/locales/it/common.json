@@ -195,6 +195,7 @@
   "forkedSession": "Duplicata. La nuova sessione ha questa conversazione e nessuno dei suoi accessi.",
   "forkRefused": "Non è stato possibile duplicare questa sessione.",
   "deleteSession": "Elimina sessione",
+  "renameSession": "Rinomina sessione",
   "deleteSessionTitle": "Eliminare la sessione?",
   "deleteSessionBody": "\"{{title}}\" e la sua trascrizione verranno eliminati definitivamente. L'operazione non può essere annullata.",
   "newChat": "Nuova chat",
@@ -3527,5 +3528,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "Un prompt dal server MCP {{server}}.",
+    "empty": "Il prompt {{name}} è tornato vuoto.",
+    "failed": "Impossibile ottenere il prompt {{name}}",
+    "omitted": "Le parti di questo prompt che il campo di testo non può contenere (audio o file binari) sono state omesse: {{count}}."
   }
 }

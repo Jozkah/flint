@@ -10,7 +10,8 @@
     "pluginNamed": "wtyczka {{plugin}}",
     "skill": "umiejętność",
     "builtin": "wbudowane",
-    "prompt": "prompt"
+    "prompt": "prompt",
+    "mcp": "prompt MCP"
   },
   "scope": {
     "project": "projekt",
