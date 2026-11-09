@@ -19,6 +19,7 @@ exports[`large module exports > coworkRunner 1`] = `
   "consumeStep": "function",
   "endRun": "function",
   "ensureRun": "function",
+  "firstDuplicateCallId": "function",
   "getRunHandle": "function",
   "harnessNote": "function",
   "hasSubagent": "function",
