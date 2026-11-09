@@ -3548,6 +3548,29 @@ mod enforcement_tests {
         );
     }
 
+    /// The package cache is writable from inside the sandbox, the cache
+    /// variables name it, and what a command caches there is on the host for
+    /// the next call (the point: no re-download per call).
+    #[tokio::test]
+    async fn the_package_cache_is_writable_and_named_by_the_cache_env() {
+        require_backend!();
+        let ws = workspace();
+        let pkg = ws.join("pkg-cache");
+        std::fs::create_dir_all(&pkg).unwrap();
+        let policy = Policy::new(&ws, false).with_pkg_cache(&pkg);
+        let (ok, out) = run_policy(
+            policy,
+            &ws,
+            "mkdir -p \"$npm_config_cache\" && echo cached > \"$npm_config_cache/probe\" && echo \"$PIP_CACHE_DIR\"",
+        )
+        .await;
+        let on_host = std::fs::read_to_string(pkg.join("npm/probe")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(ok, "cache write must succeed: {out}");
+        assert!(out.contains(&*pkg.join("pip").to_string_lossy()), "{out}");
+        assert!(on_host.contains("cached"), "the host keeps the cache: {out}");
+    }
+
     #[tokio::test]
     async fn writes_outside_the_workspace_never_reach_the_host() {
         require_backend!();
