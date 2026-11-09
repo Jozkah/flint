@@ -2287,6 +2287,10 @@ fn make_logo() -> String {
 /// commands to remove.
 fn main() {
     install_closed_pipe_hook();
+    // `flint serve` supervises the engine worker: a crash there must exit, not
+    // wait in a WER dialog holding its port. Children inherit the mode.
+    #[cfg(windows)]
+    jan_process::error_mode::suppress_crash_dialogs();
     // `serve`/`stop --data-dir` must point every data-folder lookup at that
     // folder, including the grants, exclusions and log set up before the
     // command is parsed; and the variable is set before any thread exists.

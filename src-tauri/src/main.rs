@@ -41,6 +41,12 @@ fn main() {
     #[cfg(windows)]
     harden_dll_search();
 
+    // A crashing llama-server or engine worker must exit, not wait in a WER
+    // dialog holding its port. Children inherit the mode, so set it before
+    // anything is spawned.
+    #[cfg(windows)]
+    jan_process::error_mode::suppress_crash_dialogs();
+
     // WebView2's native occlusion tracker can leave the window white until it
     // is resized; see core::webview_paint. Must run before any webview starts.
     #[cfg(windows)]
