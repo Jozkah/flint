@@ -929,18 +929,18 @@ fn live_tail_folds_a_closed_reasoning_run_to_its_summary_row() {
 fn group_summary_counts_and_pluralizes() {
     assert_eq!(
         group_summary(&[
-            ("memory note", true),
-            ("skill", true),
-            ("memory note", true)
+            ("memory note", ToolOp::Read),
+            ("skill", ToolOp::Read),
+            ("memory note", ToolOp::Read)
         ]),
         "Read 2 memory notes, 1 skill"
     );
     assert_eq!(
-        group_summary(&[("command", false), ("search", false), ("search", false)]),
+        group_summary(&[("command", ToolOp::Run), ("search", ToolOp::Run), ("search", ToolOp::Run)]),
         "Ran 1 command, 2 searches"
     );
     assert_eq!(
-        group_summary(&[("directory", true), ("directory", true)]),
+        group_summary(&[("directory", ToolOp::Read), ("directory", ToolOp::Read)]),
         "Read 2 directories"
     );
 }
@@ -950,12 +950,73 @@ fn group_summary_splits_read_and_run_clauses() {
     // Mixed ops keep the verb agreeing with its noun: never "Ran 1 directory".
     assert_eq!(
         group_summary(&[
-            ("directory", true),
-            ("search", false),
-            ("file", true),
-            ("command", false),
+            ("directory", ToolOp::Read),
+            ("search", ToolOp::Run),
+            ("file", ToolOp::Read),
+            ("command", ToolOp::Run),
         ]),
         "Read 1 directory, 1 file; ran 1 search, 1 command"
+    );
+}
+
+/// A memory or skill write is counted as updated, not read: a group that wrote
+/// a note used to fold to "Read 1 memory note".
+#[test]
+fn group_summary_counts_memory_and_skill_writes_as_updated() {
+    let nouns: Vec<(&str, ToolOp)> = [
+        "memory_read",
+        "memory_write",
+        "skill_read",
+        "skill_write",
+        "memory_list",
+        "memory_propose",
+        "bash",
+    ]
+    .into_iter()
+    .map(tool_kind)
+    .collect();
+    assert_eq!(
+        group_summary(&nouns),
+        "Read 2 memory notes, 1 skill; updated 2 memory notes, 1 skill; ran 1 command"
+    );
+    assert_eq!(
+        group_summary(&[tool_kind("memory_write")]),
+        "Updated 1 memory note"
+    );
+    assert_eq!(
+        group_summary(&[tool_kind("memory_read"), tool_kind("memory_read"), tool_kind("memory_write")]),
+        "Read 2 memory notes; updated 1 memory note"
+    );
+}
+
+/// Paging through a large file showed the same label over and over.
+#[test]
+fn a_read_label_shows_the_requested_line_range() {
+    assert_eq!(
+        tool_activity("read", &json!({ "path": "src/main.rs", "offset": 10, "limit": 20 })),
+        "Reading main.rs [10-29]"
+    );
+    assert_eq!(
+        tool_finished("read", &json!({ "path": "src/main.rs", "offset": 10, "limit": 20 })),
+        "Read main.rs [10-29]"
+    );
+    assert_eq!(
+        tool_finished("read", &json!({ "path": "src/main.rs", "offset": 200 })),
+        "Read main.rs [200+]"
+    );
+    assert_eq!(
+        tool_finished("read", &json!({ "path": "src/main.rs", "limit": 50 })),
+        "Read main.rs [1-50]"
+    );
+    // offset 0 counts as line 1, as the read tool counts; a zero limit or a
+    // whole-file read has no range; a huge limit saturates.
+    assert_eq!(read_span(&json!({ "offset": 0, "limit": 5 })), " [1-5]");
+    assert_eq!(read_span(&json!({ "limit": 0 })), "");
+    assert_eq!(read_span(&json!({ "offset": 1 })), "");
+    assert_eq!(read_span(&json!({})), "");
+    assert_eq!(
+        read_span(&json!({ "offset": 2, "limit": u64::MAX })),
+        format!(" [2-{}]", u64::MAX)
     );
 }
 

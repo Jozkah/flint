@@ -14,7 +14,7 @@ use super::{
     clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
     estimate_token_count, finish_compaction, finish_context_report,
     finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
-    group_detail_lines, group_summary, handle_ask_key, handle_ask_mouse, handle_key,
+    group_detail_lines, group_summary, read_span, tool_kind, ToolOp, handle_ask_key, handle_ask_mouse, handle_key,
     handle_mouse, header_spans, image_mime, image_mime_of, input_content_lines,
     load_first_file_image, load_image_file, message_text, open_config_screen,
     open_rewind_picker, pairs_to_str, parse_command, partial_json_field,
