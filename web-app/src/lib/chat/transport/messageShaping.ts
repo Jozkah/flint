@@ -107,19 +107,19 @@ export function stripUnsupportedImageParts(
       return true
     }).map((part) => {
       // A tool image sentinel would decode into an image_url part on the tool
-      // message; a text-only model rejects that.
-      const output = (part as { output?: unknown }).output
-      if (typeof output !== 'string' || !hasToolImageSentinel(output)) {
-        return part
+      // message; a text-only model rejects that. An error reaches the model
+      // the same way a result does.
+      const omitted = ` ${i18n.t('chat:transport.imageOmitted', { defaultValue: '(image omitted: the model has no vision)' })}`
+      const next: Record<string, string> = {}
+      for (const key of ['output', 'errorText'] as const) {
+        const value = (part as { [k in typeof key]?: unknown })[key]
+        if (typeof value === 'string' && hasToolImageSentinel(value)) {
+          next[key] = stripToolImageSentinels(value, omitted)
+        }
       }
+      if (Object.keys(next).length === 0) return part
       touched = true
-      return {
-        ...part,
-        output: stripToolImageSentinels(
-          output,
-          ` ${i18n.t('chat:transport.imageOmitted', { defaultValue: '(image omitted: the model has no vision)' })}`
-        ),
-      } as typeof part
+      return { ...part, ...next } as typeof part
     })
     if (!touched) return message
     return { ...message, parts: nextParts } as UIMessage
