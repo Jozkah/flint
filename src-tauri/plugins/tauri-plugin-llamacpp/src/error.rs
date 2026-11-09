@@ -23,6 +23,9 @@ pub enum ErrorCode {
 
     // --- Memory Errors ---
     OutOfMemory,
+    /// Auto-fit could not place the model on this device at any context it
+    /// may choose: a smaller context is not the fix, a smaller model is.
+    ModelDoesNotFit,
 
     // --- Configuration Errors ---
     InvalidArgument,
@@ -53,6 +56,16 @@ impl LlamacppError {
             details,
             missing_libraries: None,
         }
+    }
+
+    /// A load that failed because the model does not fit this device at any
+    /// context auto-fit may choose. `details` keeps the engine's own words.
+    pub fn model_does_not_fit(details: String) -> Self {
+        Self::new(
+            ErrorCode::ModelDoesNotFit,
+            "The model does not fit on this device.".into(),
+            (!details.trim().is_empty()).then_some(details),
+        )
     }
 
     /// Classifies engine output from a failed model load. An unrecognized
@@ -405,6 +418,7 @@ mod tests {
             (ErrorCode::ModelQuantNotSupported, "MODEL_QUANT_NOT_SUPPORTED"),
             (ErrorCode::EngineStopped, "ENGINE_STOPPED"),
             (ErrorCode::OutOfMemory, "OUT_OF_MEMORY"),
+            (ErrorCode::ModelDoesNotFit, "MODEL_DOES_NOT_FIT"),
             (ErrorCode::InvalidArgument, "INVALID_ARGUMENT"),
             (ErrorCode::IoError, "IO_ERROR"),
             (ErrorCode::InternalError, "INTERNAL_ERROR"),

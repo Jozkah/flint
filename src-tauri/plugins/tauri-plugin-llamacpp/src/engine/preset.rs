@@ -41,6 +41,35 @@ fn section_bodies(ini: &str) -> HashMap<String, Vec<String>> {
     out
 }
 
+/// Whether auto-fit is free to size `section`'s context: fit is on (llama.cpp's
+/// default when the preset says nothing), no `ctx-size` pins it, and the split
+/// mode is not `tensor`.
+///
+/// Only then has fit already shrunk the context as far as `fit-ctx` allows by
+/// the time a load runs out of memory, so "use a smaller context" would be
+/// wrong advice. Any `ctx-size`, 0 included, stops fit from touching it (0 asks
+/// for the full trained context). Tensor split mode makes fit abort before it
+/// reduces the context; an explicit n-gpu-layers, tensor-split or row split
+/// does not. A model's own line wins over `[*]`, the order the loader applies
+/// them in. Only the spellings the preset generator writes are read.
+pub fn fit_owns_context(ini: &str, section: &str) -> bool {
+    let bodies = section_bodies(ini);
+    let value = |key: &str| {
+        [section, "*"].iter().find_map(|name| {
+            bodies.get(*name)?.iter().find_map(|line| {
+                let (k, v) = line.split_once('=')?;
+                (k.trim() == key).then(|| v.trim().to_string())
+            })
+        })
+    };
+    // `common_arg_utils::is_falsey`; anything else leaves fit at its default.
+    let fit_on = !matches!(
+        value("fit").as_deref(),
+        Some("off" | "disabled" | "false" | "0")
+    );
+    fit_on && value("ctx-size").is_none() && value("split-mode").as_deref() != Some("tensor")
+}
+
 /// A key from the shared `[*]` block.
 ///
 /// Read on the Rust side as well as by the C++ loader because the worker has to
@@ -110,6 +139,34 @@ pub fn specs(ini_path: &str, ini: &str) -> HashMap<String, LoadSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_owns_the_context_only_when_on_and_no_ctx_size_pins_it() {
+        let auto = "[*]\nparallel = 1\n\n[m]\nmodel = /m.gguf\n";
+        assert!(fit_owns_context(auto, "m"), "fit is on by default");
+        assert!(fit_owns_context("[*]\nfit = on\n[m]\n", "m"));
+
+        // A preset with fit off pins the shared context as well.
+        let off = "[*]\nfit = off\nctx-size = 8192\n\n[m]\nmodel = /m.gguf\n";
+        assert!(!fit_owns_context(off, "m"));
+        assert!(!fit_owns_context("[*]\nfit = false\n[m]\n", "m"));
+
+        // A user's own context, or 0 (the full trained one), is left alone by
+        // fit, so a smaller context is still advice that helps.
+        assert!(!fit_owns_context("[*]\n[m]\nctx-size = 32768\n", "m"));
+        assert!(!fit_owns_context("[*]\n[m]\nctx-size = 0\n", "m"));
+        assert!(fit_owns_context("[*]\n[m]\n[other]\nctx-size = 4096\n", "m"));
+
+        // A model's own line overrides [*].
+        assert!(fit_owns_context("[*]\nfit = off\n[m]\nfit = on\n", "m"));
+
+        // Tensor split aborts fit before it touches the context; row split
+        // and pinned layers only stop it after it has shrunk the context.
+        assert!(!fit_owns_context("[*]\nsplit-mode = tensor\n[m]\n", "m"));
+        assert!(fit_owns_context("[*]\nsplit-mode = row\n[m]\n", "m"));
+        assert!(fit_owns_context("[*]\ntensor-split = 3,1\n[m]\n", "m"));
+        assert!(fit_owns_context("[*]\n[m]\nn-gpu-layers = 20\n", "m"));
+    }
 
     const INI: &str = "\
 [*]
