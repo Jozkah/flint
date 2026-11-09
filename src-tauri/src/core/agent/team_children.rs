@@ -444,6 +444,15 @@ pub fn begin(data_folder: &Path, roots: &Path, input: BeginInput) -> Result<Chil
         overrides: input.overrides,
     };
     let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    // Looked at again under the lock the worktree reaper holds while it
+    // checks and removes a worktree: one removed since it was found above is
+    // not recorded as the place this child runs.
+    if !Path::new(&record.worktree_path).exists() {
+        return Err(ChildError::new(
+            ChildErrorKind::NotManaged,
+            format!("task {}'s worktree was removed before it could start", record.task_id),
+        ));
+    }
     save(data_folder, &record)?;
     Ok(record)
 }
@@ -589,12 +598,23 @@ pub(crate) fn all_records(data_folder: &Path) -> Vec<ChildRecord> {
         .collect()
 }
 
-/// Test hook: backdate a settled child's end time.
+/// Run `f` holding the lock every record read-modify-write takes, the one a
+/// child starting takes before it records itself as running.
+pub(crate) fn with_records_locked<T>(f: impl FnOnce() -> T) -> T {
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    f()
+}
+
+/// Test hook: change a recorded child in place.
 #[cfg(test)]
-pub(crate) fn set_ended_at_for_test(data_folder: &Path, owner_id: &str, ended_at: &str) {
+pub(crate) fn update_record_for_test(
+    data_folder: &Path,
+    owner_id: &str,
+    change: impl FnOnce(&mut ChildRecord),
+) {
     let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
     let mut record = load(data_folder, owner_id).expect("recorded child");
-    record.ended_at = Some(ended_at.to_string());
+    change(&mut record);
     save(data_folder, &record).expect("saved child");
 }
 

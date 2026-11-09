@@ -3,17 +3,25 @@
 //!
 //! Every writing child gets its own worktree and branch, and a child that
 //! failed or was cancelled used to keep both until someone discarded them by
-//! hand. This removes such a worktree only when removing it cannot lose
-//! anything:
+//! hand. This removes such a worktree only when every check below passes:
 //!
 //! - the child's record says it failed or was cancelled, and it ended more than
 //!   [`GRACE`] ago, so a person had time to look at it;
 //! - the worktree is still the one that was recorded (same repository, same
 //!   branch, under Flint's own worktree folder);
-//! - `git status` in it succeeds and lists nothing, untracked files included;
+//! - `git status` in it succeeds and lists nothing: no change, no untracked
+//!   file, and no ignored file other than dependency and build output
+//!   (`node_modules`, `target`), which a build recreates. An ignored `.env` or
+//!   local config keeps the worktree;
 //! - its branch holds no commit that no other branch, tag or remote has;
-//! - and the ordinary non-forcing discard agrees, which re-checks both of the
-//!   above and refuses on its own if either changed.
+//! - and the ordinary non-forcing discard agrees, which re-checks the changes
+//!   and the commits and refuses on its own if either changed.
+//!
+//! What is removed is therefore the checkout of committed files that exist
+//! elsewhere, plus `node_modules` and `target` folders. The record is read
+//! again and every check runs under the team-children record lock, the one a
+//! child starting takes, so a child resumed into this worktree during a pass
+//! is never removed under it.
 //!
 //! Anything that fails a check is left alone and the reason is logged. The
 //! record itself is kept, so the review list still shows the child (as
@@ -50,7 +58,7 @@ pub fn reap(
         .filter(|record| due(record, grace, at))
         .filter(|record| Path::new(&record.worktree_path).exists())
         .map(|record| {
-            let outcome = reap_one(&record, roots);
+            let outcome = reap_one(data_folder, &record, roots, grace, at);
             match &outcome {
                 Outcome::Reaped => log::info!(
                     "team child {} {}: removed its empty worktree {} and branch {}",
@@ -91,17 +99,71 @@ fn due(record: &ChildRecord, grace: chrono::Duration, at: chrono::DateTime<chron
             .is_some_and(|ended| ended < at - grace)
 }
 
-fn reap_one(record: &ChildRecord, roots: &Path) -> Outcome {
+/// Re-read `snapshot`'s record and, only if it is still due and still names
+/// the same worktree, check and remove it. All of it runs under the record
+/// lock a starting child takes, so nothing can resume into the worktree
+/// between the last check and its removal.
+fn reap_one(
+    data_folder: &Path,
+    snapshot: &ChildRecord,
+    roots: &Path,
+    grace: chrono::Duration,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Outcome {
+    team_children::with_records_locked(|| {
+        match team_children::load(data_folder, &snapshot.owner_id) {
+            Ok(now)
+                if due(&now, grace, at)
+                    && now.worktree_path == snapshot.worktree_path
+                    && now.branch == snapshot.branch =>
+            {
+                check_and_discard(&now, roots)
+            }
+            Ok(_) => Outcome::Kept("the child was resumed or its record changed during this pass".into()),
+            Err(e) => Outcome::Kept(e.message),
+        }
+    })
+}
+
+/// Ignored paths a build or install recreates, so losing them loses nothing.
+const REGENERABLE: &[&str] = &["node_modules", "target"];
+
+/// Whether an ignored path from `git status` lies in dependency or build
+/// output.
+fn regenerable(path: &str) -> bool {
+    path.trim_end_matches('/')
+        .split('/')
+        .any(|part| REGENERABLE.contains(&part))
+}
+
+/// Why the worktree's status keeps it, if it does: any change or untracked
+/// file, or an ignored file outside [`REGENERABLE`] folders.
+fn status_keeps(porcelain: &str) -> Option<String> {
+    let mut ignored = Vec::new();
+    for line in porcelain.lines().filter(|l| !l.trim().is_empty()) {
+        match line.strip_prefix("!! ") {
+            Some(path) if regenerable(path) => {}
+            Some(path) => ignored.push(path.trim_matches('"').to_string()),
+            None => return Some("it has uncommitted changes".into()),
+        }
+    }
+    (!ignored.is_empty()).then(|| format!("it holds ignored files: {}", ignored.join(", ")))
+}
+
+fn check_and_discard(record: &ChildRecord, roots: &Path) -> Outcome {
     let wt = match team_children::checked_worktree(record, roots) {
         Ok(wt) => wt,
         Err(e) => return Outcome::Kept(e.message),
     };
     match worktree::run(
         Path::new(&wt.path),
-        &["status", "--porcelain", "--untracked-files=all"],
+        &["status", "--porcelain", "--untracked-files=all", "--ignored=matching"],
     ) {
-        Ok(out) if out.trim().is_empty() => {}
-        Ok(_) => return Outcome::Kept("it has uncommitted changes".into()),
+        Ok(out) => {
+            if let Some(why) = status_keeps(&out) {
+                return Outcome::Kept(why);
+            }
+        }
         Err(e) => return Outcome::Kept(format!("its status could not be read: {e}")),
     }
     match commits_only_on(&wt.source_root, &wt.branch) {
@@ -141,6 +203,16 @@ fn commits_only_on(source_root: &str, branch: &str) -> Result<usize, String> {
 /// does not start a second one over the same worktrees.
 static REAPING: AtomicBool = AtomicBool::new(false);
 
+/// Clears [`REAPING`] when dropped, so a pass that panics does not leave the
+/// reaper switched off for the rest of the session.
+struct ReapingReset;
+
+impl Drop for ReapingReset {
+    fn drop(&mut self) {
+        REAPING.store(false, Ordering::Release);
+    }
+}
+
 /// Run a pass on a background thread, after `delay`. Does nothing if a pass is
 /// already running.
 pub fn reap_in_background(data_folder: PathBuf, delay: std::time::Duration) {
@@ -150,6 +222,7 @@ pub fn reap_in_background(data_folder: PathBuf, delay: std::time::Duration) {
     let spawned = std::thread::Builder::new()
         .name("child-worktree-reaper".into())
         .spawn(move || {
+            let _reset = ReapingReset;
             std::thread::sleep(delay);
             match worktree::absolute(&tauri_plugin_agent_tools::workspace::worktrees_dir(
                 &data_folder,
@@ -159,7 +232,6 @@ pub fn reap_in_background(data_folder: PathBuf, delay: std::time::Duration) {
                 }
                 Err(e) => log::warn!("child worktree reaper: no worktree folder: {e}"),
             }
-            REAPING.store(false, Ordering::Release);
         });
     if let Err(e) = spawned {
         log::warn!("child worktree reaper could not start: {e}");
@@ -204,6 +276,7 @@ mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q", "-b", "main"]);
         std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+        std::fs::write(repo.join(".gitignore"), ".env\nnode_modules/\ntarget/\n").unwrap();
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-q", "-m", "init"]);
         let data = tmp.path().join("data");
@@ -239,7 +312,8 @@ mod tests {
         )
         .unwrap();
         team_children::settle(&f.data, &f.roots, "parent", task, status, "").unwrap();
-        team_children::set_ended_at_for_test(&f.data, &owner, &ended.to_rfc3339());
+        let ended = ended.to_rfc3339();
+        team_children::update_record_for_test(&f.data, &owner, |r| r.ended_at = Some(ended));
         team_children::load(&f.data, &owner).unwrap()
     }
 
@@ -307,6 +381,67 @@ mod tests {
         git(&f.repo, &["merge", "-q", "--ff-only", &committed.branch]);
         let out = reap(&f.data, &f.roots, GRACE, now);
         assert_eq!(outcome_for(&out, &committed), Some(Outcome::Reaped));
+    }
+
+    #[test]
+    fn an_ignored_env_file_keeps_the_worktree_but_build_output_does_not() {
+        let f = fixture();
+        let now = chrono::Utc::now();
+        let old = now - chrono::Duration::days(2);
+        let secrets = child(&f, "t1", ChildStatus::Failed, old);
+        std::fs::write(Path::new(&secrets.worktree_path).join(".env"), "TOKEN=x\n").unwrap();
+        let built = child(&f, "t2", ChildStatus::Cancelled, old);
+        let wt = Path::new(&built.worktree_path);
+        std::fs::create_dir_all(wt.join("node_modules/pkg")).unwrap();
+        std::fs::write(wt.join("node_modules/pkg/index.js"), "x").unwrap();
+        std::fs::create_dir_all(wt.join("target/debug")).unwrap();
+        std::fs::write(wt.join("target/debug/app"), "x").unwrap();
+
+        let out = reap(&f.data, &f.roots, GRACE, now);
+        assert!(matches!(outcome_for(&out, &secrets), Some(Outcome::Kept(why)) if why.contains(".env")), "{out:?}");
+        assert!(Path::new(&secrets.worktree_path).join(".env").exists());
+        assert_eq!(outcome_for(&out, &built), Some(Outcome::Reaped));
+        assert!(!wt.exists());
+    }
+
+    #[test]
+    fn status_lines_are_judged_by_kind_and_place() {
+        assert_eq!(status_keeps(""), None);
+        assert_eq!(status_keeps("!! node_modules/\n!! web/target/\n"), None);
+        assert!(status_keeps(" M a.txt\n").is_some());
+        assert!(status_keeps("?? new.txt\n").is_some());
+        assert!(status_keeps("!! .env\n").unwrap().contains(".env"));
+        assert!(status_keeps("!! node_modules/\n!! config/local.json\n").is_some());
+    }
+
+    /// A child resumed after the pass took its snapshot is running in that
+    /// worktree again; the pass re-reads the record and keeps it.
+    #[test]
+    fn a_child_resumed_during_a_pass_keeps_its_worktree() {
+        let f = fixture();
+        let now = chrono::Utc::now();
+        let snapshot = child(&f, "t1", ChildStatus::Failed, now - chrono::Duration::days(2));
+        assert!(due(&snapshot, GRACE, now));
+        team_children::update_record_for_test(&f.data, &snapshot.owner_id, |r| {
+            r.status = ChildStatus::Running;
+            r.ended_at = None;
+        });
+        let outcome = reap_one(&f.data, &snapshot, &f.roots, GRACE, now);
+        assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
+        assert!(Path::new(&snapshot.worktree_path).exists());
+    }
+
+    /// The flag that keeps passes from overlapping is cleared even when a pass
+    /// panics.
+    #[test]
+    fn a_panicking_pass_does_not_leave_the_reaper_switched_off() {
+        REAPING.store(true, Ordering::Release);
+        let result = std::panic::catch_unwind(|| {
+            let _reset = ReapingReset;
+            panic!("a pass went wrong");
+        });
+        assert!(result.is_err());
+        assert!(!REAPING.load(Ordering::Acquire));
     }
 
     #[test]
