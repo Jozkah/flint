@@ -75,7 +75,7 @@ export async function transcribeWav(
 ): Promise<string> {
   const session = await ensureVoiceSession()
   const response = await providerFetch(
-    `http://localhost:${session.port}/v1/chat/completions`,
+    `http://127.0.0.1:${session.port}/v1/chat/completions`,
     {
       method: 'POST',
       signal: options.signal,

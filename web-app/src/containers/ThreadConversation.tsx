@@ -74,6 +74,7 @@ import { useRagToolAvailability } from '@/hooks/threadConversation/useRagToolAva
 import { useBannerErrors } from '@/hooks/threadConversation/useBannerErrors'
 import { useThreadVersioning } from '@/hooks/threadConversation/useThreadVersioning'
 import { useChatCompaction } from '@/hooks/threadConversation/useChatCompaction'
+import { useEngineRecovery } from '@/hooks/threadConversation/useEngineRecovery'
 import { useThreadQueue } from '@/hooks/threadConversation/useThreadQueue'
 import { useErrorStamping } from '@/hooks/threadConversation/useErrorStamping'
 import { useThreadDetails } from '@/hooks/threadConversation/useThreadDetails'
@@ -940,6 +941,22 @@ export function ThreadConversation({
     updateMessage,
     selectedProvider,
     setContextLimitError,
+  })
+
+  // A local turn whose engine went away is retried once on its own.
+  useEngineRecovery({
+    threadId,
+    status,
+    error,
+    selectedProvider,
+    selectedModelId: selectedModel?.id,
+    getProviderByName,
+    serviceHub,
+    chatMessagesRef,
+    setChatMessages,
+    sendMessage,
+    handleRegenerate,
+    t,
   })
 
   // Clear the queue when navigating away from this thread
