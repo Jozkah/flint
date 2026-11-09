@@ -469,6 +469,19 @@ pub(crate) async fn execute_text(
             if let Some(refusal) = stale_edit_refusal(verb, args, ctx).await {
                 return refusal;
             }
+            // Whatever was approved: an attached read-only folder stays one,
+            // confined or not (the gate refuses the same calls first).
+            if let Some(path) = arg_str(args, "path").filter(|p| {
+                crate::tools::sandbox::in_read_only_attached_root(
+                    project_root,
+                    scratch,
+                    ctx.read_roots,
+                    ctx.write_roots,
+                    p,
+                )
+            }) {
+                return format!("ERROR: {}", crate::tools::read_only_root_refusal(path));
+            }
             let out = if tool.name == "write" {
                 write(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
             } else {
