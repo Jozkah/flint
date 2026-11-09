@@ -284,7 +284,7 @@ describe('model-factory deep coverage', () => {
       vi.mocked(invoke).mockResolvedValue({ port: 8080, api_key: 'llama-key' })
       await ModelFactory.createModel('m', mkProvider('llamacpp'), {})
       const opts = getOpts()
-      expect(opts.url({ path: '/chat/completions' })).toBe('http://localhost:8080/v1/chat/completions')
+      expect(opts.url({ path: '/chat/completions' })).toBe('http://127.0.0.1:8080/v1/chat/completions')
       expect(opts.headers().Authorization).toBe('Bearer llama-key')
       expect(opts.headers().Origin).toBe('tauri://localhost')
     })
@@ -353,7 +353,7 @@ describe('model-factory deep coverage', () => {
       vi.mocked(invoke).mockResolvedValue({ port: 9090, api_key: 'mlx-key' })
       await ModelFactory.createModel('m', mkProvider('mlx'), { temperature: 0.3 })
       const opts = getOpts()
-      expect(opts.url({ path: '/chat/completions' })).toBe('http://localhost:9090/v1/chat/completions')
+      expect(opts.url({ path: '/chat/completions' })).toBe('http://127.0.0.1:9090/v1/chat/completions')
       expect(opts.headers().Authorization).toBe('Bearer mlx-key')
 
       await opts.fetch('http://x', { method: 'POST', body: JSON.stringify({ messages: [] }) })
@@ -370,7 +370,7 @@ describe('model-factory deep coverage', () => {
       ctrl.abort()
       await new Promise((r) => setTimeout(r, 20))
       expect(vi.mocked(httpFetch)).toHaveBeenCalledTimes(2)
-      expect(vi.mocked(httpFetch).mock.calls[1][0]).toBe('http://localhost:9090/v1/cancel')
+      expect(vi.mocked(httpFetch).mock.calls[1][0]).toBe('http://127.0.0.1:9090/v1/cancel')
       // mlx-server rejects /v1/cancel without the session key (#172).
       const cancelHeaders = vi.mocked(httpFetch).mock.calls[1][1]!.headers as Record<string, string>
       expect(cancelHeaders.Authorization).toBe('Bearer k')
