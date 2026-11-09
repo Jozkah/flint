@@ -1374,6 +1374,12 @@ export async function generatePreset(
       if (!ctxEmitted) {
         lines.push('ctx-size = 0')
       }
+      // A global `split-mode = tensor` or `row` (from the setting or the global
+      // extra args in [*]) is inherited too, and ggml aborts on it for an
+      // embedder spread over several GPUs ("unsupported mul_mat split states").
+      // An embedder is small enough for one device; the model's own extra_args
+      // below can still override this.
+      lines.push('split-mode = none')
       const pooling =
         typeof mc.pooling === 'string' && mc.pooling.length > 0
           ? mc.pooling
