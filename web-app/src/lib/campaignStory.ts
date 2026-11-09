@@ -7,6 +7,7 @@
 import type { Campaign, CampaignTask } from '@/lib/campaignModel'
 import type { ToolActivityItem } from '@/lib/toolActivity'
 import { dotOf, wordOf } from '@/lib/campaignView'
+import { formatDuration as formatTime, type TimeTranslate } from '@/lib/time'
 
 // ---------------------------------------------------------------------------
 // Steps: what the agent did, in order
@@ -279,14 +280,9 @@ export function taskDurationMs(
   return total
 }
 
-/** "45 s", "3 min", "1 h 05 min": short and plain. */
-export function formatDuration(ms: number): string {
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${Math.max(1, s)} s`
-  const m = Math.round(s / 60)
-  if (m < 60) return `${m} min`
-  const h = Math.floor(m / 60)
-  return `${h} h ${String(m % 60).padStart(2, '0')} min`
+/** "45 s", "3 min", "1 h 05 min": short and plain, in the reader's language. */
+export function formatDuration(ms: number, t: TimeTranslate): string {
+  return formatTime(ms, { style: 'words', t, wholeMinutes: true, atLeastOneSecond: true })
 }
 
 /** Created to last update (or now while it runs). */

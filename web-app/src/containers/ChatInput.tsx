@@ -8,16 +8,7 @@ import { useElementWidth } from '@/hooks/useElementWidth'
 import { ComposerDensityProvider } from '@/containers/ComposerDensity'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  memo,
-} from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, memo } from 'react'
 import { holdQueueThenStop } from '@/lib/chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { ComposerQueue } from '@/containers/ComposerQueue'
@@ -29,18 +20,13 @@ import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import { DropRim } from '@/components/ui/drop-rim'
 import { ComposerAttachmentChips } from '@/containers/ComposerAttachmentChips'
-import {
-  useConversationModel,
-  type ModelSelection,
-} from '@/hooks/useConversationPane'
-import { useTokensCount } from '@/hooks/useTokensCount'
+import { useConversationModel } from '@/hooks/useConversationPane'
+import { useTokensCount, type TokenUsageSource } from '@/hooks/useTokensCount'
 import { isOverridden } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { useReconcileVideoCapability } from '@/hooks/useReconcileVideoCapability'
-
 import { useAppState } from '@/hooks/useAppState'
-import type { ChatStatus } from 'ai'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -49,19 +35,14 @@ import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
 import { ComposerOptionsMenu } from '@/containers/ComposerOptionsMenu'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
-import type { TokenUsageSource } from '@/hooks/useTokensCount'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
 import { requestChatCompaction } from '@/lib/chatCompaction'
-import {
-  NEW_THREAD_ATTACHMENT_KEY,
-  useChatAttachments,
-} from '@/hooks/useChatAttachments'
+import { NEW_THREAD_ATTACHMENT_KEY, useChatAttachments } from '@/hooks/useChatAttachments'
 import { VisionDisabledDialog } from '@/containers/dialogs/VisionDisabledDialog'
 import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCapabilityDialog'
-
 import { acceptAttribute } from '@/lib/attachmentSupport'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useComposerFocus } from '@/hooks/useComposerFocus'
@@ -79,7 +60,7 @@ import {
 import { useImageAttachments } from '@/hooks/useImageAttachments'
 import { useDocumentAttachments } from '@/hooks/useDocumentAttachments'
 import { usePathOffer } from '@/hooks/usePathOffer'
-import { useComposerSend, type ModelCheck } from '@/hooks/useComposerSend'
+import { useComposerSend } from '@/hooks/useComposerSend'
 import { useComposerEffort } from '@/hooks/useComposerEffort'
 import { useComposerDropPaste } from '@/hooks/useComposerDropPaste'
 import { useModelCapabilityPrompt } from '@/hooks/useModelCapabilityPrompt'
@@ -89,7 +70,7 @@ import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { useChatShell } from '@/hooks/useChatShell'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
-import { optionId, type NamedSource } from '@/lib/referenceMenu'
+import { optionId } from '@/lib/referenceMenu'
 import { mentionTrigger } from '@/lib/chatMentions'
 import { listConversations } from '@/lib/chatMentionSources'
 import { MentionChips } from '@/containers/MentionChips'
@@ -99,187 +80,8 @@ import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { PromptFillDialog } from '@/containers/PromptFillDialog'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
-import type { SlashSurface } from '@/hooks/useSlashCommands'
-import type { SlashBuiltin } from '@/lib/slashCommands'
-
-type ChatInputProps = {
-  className?: string
-  showSpeedToken?: boolean
-  /**
-   * Hide the composer's token counter. For a surface that already shows token
-   * usage elsewhere (Cowork shows it per turn), so the same number is not
-   * reported twice.
-   */
-  hideTokenCounter?: boolean
-  /**
-   * Compacts the open conversation, offered from the context circle. Chat
-   * compacts through its registered compactor; a surface with its own (Cowork)
-   * supplies this.
-   */
-  onCompact?: () => void
-  model?: ThreadModel
-  initialMessage?: boolean
-  projectId?: string
-  projectAssistantId?: string
-  onSubmit?: (
-    text: string,
-    files?: Array<{ type: string; mediaType: string; url: string }>,
-    /**
-     * Call when the send is refused before anything started (no tool-calling
-     * model, say): the composer then gets its text and attachments back.
-     */
-    onRefused?: () => void
-  ) => void
-  onStop?: () => void
-  chatStatus?: ChatStatus
-  // Overrides the conversation scope this input belongs to — both its message
-  // queue and its pending attachments (default: useThreads' currentThreadId).
-  // Callers outside the general chat (e.g. Cowork, keyed by session id) pass
-  // their own id so each gets an independent queue and attachment draft.
-  scopeKey?: string
-  /**
-   * Whether the surface's tool set is configured from this composer.
-   *
-   * False for a surface that builds its own set (Cowork, via
-   * `buildCoworkTools`). Its toggles here would be inert on this surface while
-   * still writing the global chat stores, so a user turning "agent tools" off
-   * in Cowork would silently disable them in Chat.
-   */
-  ownsToolSet?: boolean
-  /**
-   * The folder `@` references may name (AH-204). A reference is a path inside
-   * it, read through the backend's confined reader; with none, the picker
-   * offers nothing and a typed reference resolves to nothing. Never the home
-   * directory: that used to make every file under it, keys included, one `@`
-   * away from the prompt.
-   */
-  referenceRoot?: string | null
-  /**
-   * What else `@` can name besides files (AH-204): the skills and saved agents
-   * of the surface. Offered in the same ranked list, inserted as typed
-   * references (`@skill:name`, `@agent:name`).
-   */
-  referenceSources?: { skills?: NamedSource[]; agents?: NamedSource[] }
-  /**
-   * Surface-specific controls docked in the composer's control row (Cowork's
-   * plan toggle and folder chip). They sit outside the streaming dim, because
-   * both configure the *next* message rather than the run in flight.
-   */
-  surfaceControls?: ReactNode
-  /** Put the assistant, sampling, tools, web search and reasoning controls
-   * behind one Options button (Cowork), for a quieter row. */
-  groupOptions?: boolean
-  /**
-   * Where this composer's web search choice is kept (useWebSearchChoice).
-   * Absent: the chat shown (or the new-chat draft). `null`: nothing yet, so
-   * the default from Settings shows until `ensureWebSearchScope` makes one.
-   */
-  webSearchScope?: string | null
-  /** Makes the scope a choice is written to (Cowork creates its session). */
-  ensureWebSearchScope?: () => string
-  /**
-   * The model selector, docked under the composer at the right. The reasoning
-   * effort control, when the model has one, sits to its left. Absent, the
-   * effort control still shows (alone) so it is reachable on every surface.
-   */
-  modelControl?: ReactNode
-  /** Controls under the composer at the left (Cowork's mode and access). */
-  belowLeft?: ReactNode
-  /**
-   * Like `belowLeft`, but handed the reasoning-effort control so the surface
-   * can fold it into its own settings group; the effort is then not drawn on
-   * the right.
-   */
-  belowLeftWithEffort?: (ctx: {
-    effort: ReactNode
-    effortOverridden: boolean
-    effortLabel: string | null
-  }) => ReactNode
-  /**
-   * Replaces the default stop button while streaming.
-   *
-   * Cowork supplies one control that asks how far to stop; without this slot
-   * it would have to render a second stop button beside this one, which is
-   * exactly the thing being removed.
-   */
-  stopControl?: ReactNode
-  /**
-   * The surface shows held messages in a panel of its own (Cowork's held
-   * input, with Send and Discard), so the composer leaves them out of its
-   * chips and each held message is shown once.
-   */
-  heldShownElsewhere?: boolean
-  /**
-   * A surface that can hold a project folder (Cowork). When set, a pasted
-   * path to a folder offers to attach it; `attached` are the folders it
-   * already has, which are not offered again.
-   */
-  pastedFolder?: {
-    attached: readonly string[]
-    onAttach: (path: string) => void
-  }
-  /**
-   * Usage for a surface that keeps no thread messages (Cowork). Rendering the
-   * counter here rather than in the caller is what keeps its placement, the
-   * `tokenCounterCompact` setting and the spacing to the send button identical
-   * across surfaces.
-   */
-  tokenSource?: TokenUsageSource
-  /**
-   * The thread this composer writes to, when that is not the current thread:
-   * a split conversation pane passes its own, because the current thread is
-   * whichever pane is active. Defaults to useThreads' currentThreadId.
-   */
-  threadId?: string
-  /**
-   * The model this composer sends with, when the surface decides it rather
-   * than the global picker or a thread: a Cowork session sends with its own
-   * saved model, so "is a model chosen" has to ask the session.
-   */
-  modelSelection?: ModelSelection
-  /**
-   * The key this composer's per-conversation model overrides (reasoning
-   * effort) are stored under, when that is not a thread: a Cowork session's
-   * id, which is the key its transport resolves the model with. Defaults to
-   * the thread id; an empty string means "no conversation yet" (the global
-   * model setting is written, as on the new-chat screen) rather than falling
-   * back to whichever chat thread is current.
-   */
-  modelOverrideScope?: string
-  /**
-   * The saved model that no longer resolves, named in the message shown
-   * instead of the generic "select a model" when nothing can be sent with.
-   */
-  unavailableModel?: string
-  /**
-   * Checked before a send, for a host that owns the model choice (Cowork): if
-   * the saved model is gone, ask the user for another and record it. `'retry'`
-   * means a replacement was applied and the send should go ahead once it shows;
-   * `'stop'` means the user cancelled. Absent, a chat checks its own thread.
-   */
-  confirmModel?: () => ModelCheck | Promise<ModelCheck>
-  /**
-   * Keeps this composer's draft apart from the main one. The second pane of a
-   * split conversation passes a scope; without one the shared main draft is
-   * used, as before.
-   */
-  draftScope?: string
-  /**
-   * Whether the composer may take focus on its own -- on mount, on a thread
-   * change, when a reply finishes. A split pane the user is not working in
-   * must not pull focus away from the one they are.
-   */
-  takeFocus?: boolean
-  /**
-   * Which surface's `/` commands this composer offers (default Home). Plugin
-   * commands and skills are filtered by that surface's enablement toggle.
-   */
-  slashSurface?: SlashSurface
-  /** Cowork's folder: its project commands and skills join the global ones. */
-  slashProject?: string | null
-  /** Surface built-ins; Home gets `/new` by default. `/help` is always there. */
-  slashBuiltins?: SlashBuiltin[]
-}
+import type { ChatInputProps } from '@/containers/chatInput/chatInputProps'
+import { useComposerDraft } from '@/hooks/useComposerDraft'
 
 const ChatInput = memo(function ChatInput({
   className,
@@ -351,62 +153,15 @@ const ChatInput = memo(function ChatInput({
   }, [])
   const abortControllers = useAppState((state) => state.abortControllers)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
-  // The main draft, or this composer's own when it has a scope (the second
-  // pane of a split conversation), so typing in one never edits the other.
-  const mainPrompt = usePrompt((state) => state.prompt)
-  const scopedPrompt = usePrompt((state) =>
-    draftScope ? (state.scoped?.[draftScope]?.prompt ?? '') : ''
-  )
-  const prompt = draftScope ? scopedPrompt : mainPrompt
-  // The draft as of the last render, for a refused send's restore (below).
-  const latestPromptRef = useRef(prompt)
-  latestPromptRef.current = prompt
-  // Text put back after a refused send. The draft store may be shared with
-  // other composers (the unscoped one is), so it is taken out again when this
-  // composer goes away or moves to another session, if still untouched.
-  const restoredDraftRef = useRef<string | null>(null)
-  const setMainPrompt = usePrompt((state) => state.setPrompt)
-  const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
-  const setPrompt = useCallback(
-    (value: string) =>
-      draftScope ? setScopedPrompt(draftScope, value) : setMainPrompt(value),
-    [draftScope, setScopedPrompt, setMainPrompt]
-  )
-  const addToHistory = usePrompt((state) => state.addToHistory)
-  useEffect(
-    () => () => {
-      const restored = restoredDraftRef.current
-      restoredDraftRef.current = null
-      if (restored !== null && latestPromptRef.current === restored) {
-        setPrompt('')
-      }
-    },
-    [scopeKey, draftScope, setPrompt]
-  )
-  const navigateMainHistory = usePrompt((state) => state.navigateHistory)
-  const navigateScopedHistory = usePrompt(
-    (state) => state.navigateScopedHistory
-  )
-  const navigateHistory = useCallback(
-    (direction: 'up' | 'down') =>
-      draftScope
-        ? navigateScopedHistory(draftScope, direction)
-        : navigateMainHistory(direction),
-    [draftScope, navigateScopedHistory, navigateMainHistory]
-  )
-  // The main composer's draft is per chat: leaving a chat keeps its unsent
-  // text for it, and the chat shown gets back its own (or nothing).
-  const draftKey =
-    scopeKey ??
-    threadIdProp ??
-    // Home and New Chat keep the last chat id in the store: key them apart.
-    (routeThreadId && /\/threads\//.test(window.location.pathname)
-      ? routeThreadId
-      : '__new__')
-  const switchDraft = usePrompt((state) => state.switchDraft)
-  useEffect(() => {
-    if (!draftScope) switchDraft?.(draftKey)
-  }, [draftKey, draftScope, switchDraft])
+  // The draft, its history, and the restore of a refused send.
+  const {
+    prompt,
+    latestPromptRef,
+    restoredDraftRef,
+    setPrompt,
+    addToHistory,
+    navigateHistory,
+  } = useComposerDraft({ draftScope, scopeKey, threadIdProp, routeThreadId })
   // The SDK reports "ready" before the previous turn's tool loop has run
   // (onFinish fires after the status flips), so streaming status alone says
   // nothing about tools still awaiting approval or executing. The thread is

@@ -40,6 +40,7 @@ describe('Flint branding', () => {
       'web-app/src/containers/GlobalError.tsx',
       'web-app/src/containers/MessageItem.tsx',
       'web-app/src/containers/ThreadConversation.tsx',
+      'web-app/src/containers/threadConversation/ThreadConversationView.tsx',
       'web-app/src/lib/agentTools.ts',
       'web-app/src/lib/agentWorkspace.ts',
       'web-app/src/lib/sessionBundle.ts',

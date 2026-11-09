@@ -5,16 +5,11 @@ import { cloudTargets, customCloudTargets, type CloudTarget } from '@/lib/studio
 import { IMAGE_SIZES, VIDEO_SIZES, customSize } from '@/lib/studio/helpers'
 import { type StudioKind, type StudioModel } from '@/lib/studio/studio'
 import { CUSTOM, Form, T } from '@/containers/studio/studioTypes'
+import { ageParts, formatDuration as formatTime, type AgeUnit } from '@/lib/time'
 
-/** `3 s`, `1 min 20 s`: how long a generation took. */
+/** `3s`, `1m 20s`: how long a generation took. */
 export function formatDuration(t: T, ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000))
-  if (seconds < 60) return t('studio:duration.s', { count: seconds })
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
-  return rest === 0
-    ? t('studio:duration.min', { count: minutes })
-    : t('studio:duration.minS', { minutes, seconds: rest })
+  return formatTime(ms, { style: 'words', t, largest: 'minute' })
 }
 
 /** What a running job is doing, in words. */
@@ -60,16 +55,23 @@ export const rise = (index: number) => ({
   animationDelay: `${40 + Math.min(index, 10) * 35}ms`,
 })
 
+/** "A few seconds" under 20 s, then at least a minute, each unit rounded from the last. */
+const STUDIO_AGE_UNITS: readonly AgeUnit[] = [
+  { unit: 'second', seconds: 1, until: 20 },
+  { unit: 'minute', seconds: 60 },
+  { unit: 'hour', seconds: 3600 },
+  { unit: 'day', seconds: 86_400 },
+]
+
 export function timeAgo(ms: number, t: T, language: string): string {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (s < 20) return t('studio:time.fewSeconds')
-  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
-  if (s < 90) return rtf.format(-1, 'minute')
-  const m = Math.round(s / 60)
-  if (m < 60) return rtf.format(-m, 'minute')
-  const h = Math.round(m / 60)
-  if (h < 24) return rtf.format(-h, 'hour')
-  return rtf.format(-Math.round(h / 24), 'day')
+  const { value, unit } = ageParts(ms, {
+    units: STUDIO_AGE_UNITS,
+    cascade: true,
+    pastOnly: true,
+    minValue: 1,
+  })
+  if (unit === 'second') return t('studio:time.fewSeconds')
+  return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(value, unit)
 }
 
 /** A flat gradient stand-in for a model preview: the colour comes from its id, so it stays the same. */

@@ -76,7 +76,10 @@ export function useChatNestStatus(
 
 /** The same for Cowork sessions (server sessions report their own state). */
 export function useCoworkNestStatus(
-  sessions: readonly CoworkSession[],
+  sessions: readonly Pick<
+    CoworkSession,
+    'id' | 'updated' | 'remote' | 'remoteStatus'
+  >[],
   selectedId?: string
 ): (id: string) => NestStatus {
   const ids = useMemo(() => sessions.map((s) => s.id), [sessions])

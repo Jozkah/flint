@@ -138,11 +138,6 @@
     "downloading": "Скачивание…",
     "button": "Скачать ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} с",
-    "min": "{{count}} мин",
-    "minS": "{{minutes}} мин {{seconds}} с"
-  },
   "phase": {
     "queued": "Ожидание",
     "encoding": "Чтение промпта",

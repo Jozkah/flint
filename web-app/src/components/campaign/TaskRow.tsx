@@ -242,7 +242,7 @@ export function TaskRow({
                   task.status === 'running'
                     ? 'settings:campaigns.board.story.running'
                     : 'settings:campaigns.board.story.took',
-                  { time: formatDuration(duration) }
+                  { time: formatDuration(duration, t) }
                 )}
               </span>
             )}

@@ -7044,16 +7044,10 @@ fn orchestrate_reads_run_mode_override_from_body() {
     // The per-turn body override (mirrors model/max_tokens) parses to Plan;
     // absent/normal falls back to the session default.
     use crate::core::agent::plan::RunMode;
-    let from_body = |v: serde_json::Value| {
-        v.get("run_mode")
-            .and_then(|x| serde_json::from_value::<RunMode>(x.clone()).ok())
-    };
-    assert_eq!(from_body(json!({"run_mode": "plan"})), Some(RunMode::Plan));
-    assert_eq!(
-        from_body(json!({"run_mode": "normal"})),
-        Some(RunMode::Normal)
-    );
-    assert_eq!(from_body(json!({})), None);
+    let from_body = |v: serde_json::Value| body_run_mode(&v, RunMode::Normal);
+    assert_eq!(from_body(json!({"run_mode": "plan"})), RunMode::Plan);
+    assert_eq!(body_run_mode(&json!({"run_mode": "normal"}), RunMode::Plan), RunMode::Normal);
+    assert_eq!(from_body(json!({})), RunMode::Normal);
 }
 
 #[tokio::test]
@@ -9352,6 +9346,28 @@ fn advertised_tool_names_match_the_snapshot() {
         .unwrap_or_default()
         .replace("\r\n", "\n");
     assert_eq!(got, want, "the advertised tool set changed; if on purpose, rerun with UPDATE_OFFERED_SNAPSHOT=1");
+}
+
+/// The texts a halted turn cycle leaves behind, pinned word for word.
+#[test]
+fn turn_cycle_halt_texts_are_unchanged() {
+    assert_eq!(
+        empty_stop_completion(),
+        json!({ "choices": [{ "message": { "role": "assistant", "content": "" }, "finish_reason": "stop" }] })
+    );
+    assert_eq!(
+        spend_pause_note(1.5, 1.0),
+        "[spend pause] This run stopped after spending about $1.5000: it reached its $1.0000 pause and the user chose to stop. The task may be unfinished."
+    );
+    assert_eq!(
+        cost_ceiling_note(2.25, 2.0),
+        "[cost ceiling reached] This run stopped after spending about $2.2500 against its $2.0000 ceiling. The task may be unfinished; raising --max-budget-usd and resuming continues it."
+    );
+    // A run halted for approval before any completion ends on the empty answer
+    // carrying the note.
+    let halted = halted_for_approval(empty_stop_completion(), "waiting on x");
+    assert_eq!(halted["choices"][0]["message"]["content"], "waiting on x");
+    assert_eq!(halted["choices"][0]["finish_reason"], "awaiting_approval");
 }
 
 #[test]

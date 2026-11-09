@@ -15,6 +15,7 @@ import {
 } from '../campaignStory'
 import type { ToolActivityItem } from '../toolActivity'
 import type { CampaignTask } from '../campaignModel'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 const item = (over: Partial<ToolActivityItem>): ToolActivityItem =>
   ({
@@ -157,10 +158,11 @@ describe('time', () => {
     expect(taskDurationMs(log, 'a', false, 0)).toBe(180_000)
   })
   it('formats plainly', () => {
-    expect(formatDuration(500)).toBe('1 s')
-    expect(formatDuration(45_000)).toBe('45 s')
-    expect(formatDuration(180_000)).toBe('3 min')
-    expect(formatDuration(3_900_000)).toBe('1 h 05 min')
+    const t = (key: string, options?: Record<string, unknown>) => i18n.t(key, options)
+    expect(formatDuration(500, t)).toBe('1s')
+    expect(formatDuration(45_000, t)).toBe('45s')
+    expect(formatDuration(180_000, t)).toBe('3m')
+    expect(formatDuration(3_900_000, t)).toBe('1h 5m')
   })
   it('measures the campaign', () => {
     expect(

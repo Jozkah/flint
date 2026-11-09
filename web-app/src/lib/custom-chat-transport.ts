@@ -1,8 +1,4 @@
 import { hasAgentToolImages } from '@/lib/toolOutputImages'
-import {
-  hasToolImageSentinel,
-  stripToolImageSentinels,
-} from '@/lib/tool-image-sentinel'
 import { pluginInventoryLine } from '@/lib/pluginInventory'
 import { skillCatalogBlock } from '@/lib/skillCatalog'
 import {
@@ -18,17 +14,12 @@ import {
   buildFilesSystemInstruction,
   buildWebSearchSystemInstruction,
 } from '@/lib/chat/transport/promptBuilder'
-
-export { SHELL_ROUTING_GUIDANCE, SHELL_ROUTING_GUIDANCE_NO_BASH }
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
-import {
-  rememberedWindowFor,
-  resolveCompactionWindow,
-} from '@/lib/compactionWindowSource'
+import { rememberedWindowFor, resolveCompactionWindow } from '@/lib/compactionWindowSource'
 import { listedWindow } from '@/lib/listedWindows'
-import { assertEstimatedContextFits, cappedContextWindow, ContextEstimate } from '@/lib/contextEstimate'
+import { assertEstimatedContextFits, ContextEstimate } from '@/lib/contextEstimate'
 import {
   appendSessionContext,
   runCcContextHooks,
@@ -36,28 +27,34 @@ import {
   withPromptContext,
 } from '@/lib/ccContextHooks'
 import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
-import { fetchOllamaWindow, isOllamaProvider, shouldNoticeOllamaTruncation } from '@/lib/ollamaWindow'
+import {
+  fetchOllamaWindow,
+  isOllamaProvider,
+  shouldNoticeOllamaTruncation,
+} from '@/lib/ollamaWindow'
 import { knownContextWindowDetail } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import {
-  fallbackRef,
-  resolveFallbackChain,
-  shouldFallback,
-} from '@/lib/fallbackChain'
+import { fallbackRef, resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { replyCost, resolvePricing } from '@/lib/modelPricing'
-import { type UIMessage } from '@ai-sdk/react'
+import type { UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
-import { convertToModelMessages, streamText, type ChatRequestOptions, type ChatTransport, type LanguageModel, type UIMessageChunk, type Tool, type LanguageModelUsage, InvalidToolInputError } from 'ai'
+import {
+  convertToModelMessages,
+  streamText,
+  type ChatRequestOptions,
+  type ChatTransport,
+  type LanguageModel,
+  type UIMessageChunk,
+  type Tool,
+  type LanguageModelUsage,
+  InvalidToolInputError,
+} from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
-import {
-  createIdleWatchdog,
-  STREAM_IDLE_TIMEOUT_MS,
-  streamIdleMessage,
-} from './streamIdle'
+import { createIdleWatchdog, STREAM_IDLE_TIMEOUT_MS, streamIdleMessage } from './streamIdle'
 import { ReasoningLoopGuard } from './reasoningLoopGuard'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
@@ -72,10 +69,7 @@ import { routeRefusedToolCalls } from '@/lib/disabledToolCalls'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
 import { errorText } from '@/lib/errorText'
-import {
-  memoryRetrieve,
-  type MemoryInstruction,
-} from '@janhq/tauri-plugin-agent-tools-api'
+import { memoryRetrieve, type MemoryInstruction } from '@janhq/tauri-plugin-agent-tools-api'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import {
   chatMemoryBinding,
@@ -103,12 +97,7 @@ import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { replyLanguageLine } from '@/lib/replyLanguage'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import { clampThinkingBudget } from '@/lib/thinkingBudget'
-import {
-  buildLlamacppReasoningParams,
-  resolveThinkingBudgetTokens,
-} from '@/lib/llamacppReasoning'
-// Moved to llamacppReasoning so Rooms can share it; still exported from here.
-export { buildLlamacppReasoningParams }
+import { buildLlamacppReasoningParams, resolveThinkingBudgetTokens } from '@/lib/llamacppReasoning'
 import {
   buildReasoningProviderOptions,
   buildVerbosityProviderOptions,
@@ -118,7 +107,7 @@ import { resolveModel } from '@/lib/modelOverrides'
 import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
-import { type MCPTool } from '@janhq/core'
+import type { MCPTool } from '@janhq/core'
 import {
   trimMessages,
   estimateTokens,
@@ -127,20 +116,18 @@ import {
   contextSafetyMargin,
   type ContextManagerConfig,
 } from './context-manager'
-import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, DEFAULT_COMPACT_THRESHOLD, type CompactionRecord } from '@/lib/compaction'
 import {
-  resetCompactionBreaker,
-} from '@/lib/compactionGuard'
-import {
-  acceptsSystemRole,
-  foldSummaryIntoSystem,
-} from '@/lib/compactionSystemRole'
+  estimateHistoryTokens,
+  resolveAutoCompact,
+  ASSUMED_WINDOW_TOKENS,
+  DEFAULT_KEEP_RECENT,
+  DEFAULT_COMPACT_THRESHOLD,
+  type CompactionRecord,
+} from '@/lib/compaction'
+import { resetCompactionBreaker } from '@/lib/compactionGuard'
+import { acceptsSystemRole, foldSummaryIntoSystem } from '@/lib/compactionSystemRole'
 import { askSideQuestion } from '@/lib/sideQuestion'
-import {
-  applyChatCompaction,
-  readChatCompaction,
-  writeChatCompaction,
-} from '@/lib/chatCompaction'
+import { applyChatCompaction, readChatCompaction, writeChatCompaction } from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
 import {
   compactAtThreshold,
@@ -149,24 +136,29 @@ import {
   type CompactionHost,
   type RunCompactionOptions,
 } from '@/lib/chat/transport/compaction'
-import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY, compactThresholdFor } from '@/lib/compactionPolicy'
+import {
+  getCompactionPolicy,
+  replyReserve,
+  DEFAULT_COMPACTION_POLICY,
+  compactThresholdFor,
+} from '@/lib/compactionPolicy'
 import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
-import {
-  SMALL_CONTEXT_MEMORY_CHARS,
-  smallContextActive,
-} from '@/lib/smallContext'
+import { SMALL_CONTEXT_MEMORY_CHARS, smallContextActive } from '@/lib/smallContext'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
-import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
-import { usageEventPayload } from '@/lib/executionTimeline'
-import { hasAudioSentinel } from '@/lib/audio-sentinel'
-import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
-  imageLimitFor,
-  imageLimitKey,
-  limitImageParts,
-  parseImageLimit,
-  rememberImageLimit,
-} from '@/lib/imageLimit'
+  chatAwaitsTools,
+  chatRunOf,
+  chatSnapshotId,
+  continueOrBeginChatRun,
+  endChatRun,
+  markChatAwaitingTools,
+  nextChatInvocation,
+  recordChatMessage,
+  recordChatUsage,
+} from '@/lib/chatRun'
+import { usageEventPayload } from '@/lib/executionTimeline'
+import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
+import { imageLimitFor, imageLimitKey, parseImageLimit, rememberImageLimit } from '@/lib/imageLimit'
 import { withEarlyRetry } from '@/lib/earlyRetryStream'
 import {
   attachToolScreenshots,
@@ -174,14 +166,70 @@ import {
   screenshotsToAttach,
 } from '@/lib/toolScreenshots'
 import { transcodeWebpImages } from '@/lib/imageTranscode'
-import { hasVideoSentinel } from '@/lib/video-sentinel'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { mergeRequestParams } from '@/lib/chat/transport/requestParams'
 import { recordGeneration } from '@/stores/engine-activity-store'
 import { sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
-import { BUILTIN_WEB_TOOLS, recordMcpSet, refreshTools, type ToolRefreshHost } from '@/lib/chat/transport/toolRefresh'
+import {
+  BUILTIN_WEB_TOOLS,
+  recordMcpSet,
+  refreshTools,
+  type ToolRefreshHost,
+} from '@/lib/chat/transport/toolRefresh'
+import { createUsageCollector, readTokenUsage, type TokenUsage } from '@/lib/tokenUsage'
+import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
+import { addToReplySpeed, earlierTokenSpeed } from '@/lib/replyTokenSpeed'
+import { earlierCreatedAt } from '@/lib/messageTime'
+import { createReasoningClock } from '@/lib/reasoningClock'
+import {
+  extractModelSamplingDefaults,
+  extractModelTemplateKwargs,
+  effectiveContextWindow,
+} from '@/lib/chat/transport/sampling'
+import {
+  limitIfNeeded,
+  LOCAL_ENGINE_PROVIDERS,
+  stripUnsupportedImageParts,
+  resolveOrphanToolCalls,
+  splitAssistantToolWaves,
+  coalesceMessagesForAlternation,
+  hasGenuineUserQuery,
+  extractLatestUserText,
+  prependContinuationToUIStream,
+} from '@/lib/chat/transport/messageShaping'
+import {
+  extractContextInfoFromError,
+  unwrapRetryError,
+  stripRetryErrorWrapper,
+} from '@/lib/chat/transport/transportErrors'
+import { isLocalChatServer } from '@/lib/chat/transport/localServer'
+
+export {
+  effectiveContextWindow,
+  extractModelSamplingDefaults,
+  resolveContextShift,
+} from '@/lib/chat/transport/sampling'
+export {
+  coalesceMessagesForAlternation,
+  hasGenuineUserQuery,
+  resolveOrphanToolCalls,
+  splitAssistantToolWaves,
+  stripUnsupportedImageParts,
+} from '@/lib/chat/transport/messageShaping'
+export {
+  extractContextInfoFromError,
+  stripRetryErrorWrapper,
+  unwrapRetryError,
+} from '@/lib/chat/transport/transportErrors'
+export {
+  isLocalChatServer,
+} from '@/lib/chat/transport/localServer'
+
+export { SHELL_ROUTING_GUIDANCE, SHELL_ROUTING_GUIDANCE_NO_BASH }
+// Moved to llamacppReasoning so Rooms can share it; still exported from here.
+export { buildLlamacppReasoningParams }
 export { isValidToolName, normalizeToolInputSchema }
 
 // Built-ins advertised through the websearch plugin.
@@ -193,15 +241,6 @@ const READ_ONLY_CHAT_TOOLS = new Set([
   'show_widget',
   'chat_read',
 ])
-import {
-  createUsageCollector,
-  readTokenUsage,
-  type TokenUsage,
-} from '@/lib/tokenUsage'
-import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
-import { addToReplySpeed, earlierTokenSpeed } from '@/lib/replyTokenSpeed'
-import { earlierCreatedAt } from '@/lib/messageTime'
-import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
   usage: TokenUsage,
@@ -242,611 +281,6 @@ export type ServiceHub = {
       Array<{ name: string; capabilities: string[]; description: string }>
     >
   }
-}
-
-// Per-model sidebar keys forwarded into each chat-completion request body as
-// defaults. These *are* also written into the model's own preset section, so
-// this is not the only path -- it exists so a sidebar change applies without
-// regenerating the preset and reloading the engine. Assistant `parameters`
-// override these in the merge.
-const MODEL_SAMPLING_SETTING_KEYS = [
-  'temperature',
-  'top_k',
-  'top_p',
-  'min_p',
-  'repeat_last_n',
-  'repeat_penalty',
-  'presence_penalty',
-  'frequency_penalty',
-  'seed',
-] as const
-
-/** Keys whose upstream handler throws on a negative value. */
-const NON_NEGATIVE_SAMPLING_KEYS = new Set<string>([
-  // A negative seed is "random", the same as not sending one.
-  'seed',
-  'repeat_last_n',
-  'dry_penalty_last_n',
-])
-
-/**
- * llama.cpp's own defaults for the sampling keys that set the
- * suppress-the-GGUF-recommendation bit. Keys absent here set no bit and are
- * always forwarded.
- */
-const UPSTREAM_SAMPLING_DEFAULTS: Record<string, number> = {
-  temperature: 0.8,
-  top_k: 40,
-  top_p: 0.95,
-  min_p: 0.05,
-  repeat_last_n: 64,
-  repeat_penalty: 1.0,
-}
-
-export function extractModelSamplingDefaults(
-  model: Model | null | undefined
-): Record<string, unknown> {
-  if (!model?.settings) return {}
-  const out: Record<string, unknown> = {}
-  for (const key of MODEL_SAMPLING_SETTING_KEYS) {
-    const raw = model.settings[key]?.controller_props?.value
-    if (raw === undefined || raw === null || raw === '') continue
-    // Sidebar inputs are string-typed even when controller_props.type is
-    // 'number'; coerce so the request body matches the OpenAI schema.
-    let value: unknown = raw
-    if (typeof raw === 'string') {
-      const n = Number(raw)
-      if (!Number.isFinite(n)) continue
-      value = n
-    }
-    // The server rejects a negative window outright rather than clamping, so a
-    // value left over from the old "-1 = full context" UI would 400 every
-    // request. Dropping it lets the server's own default apply.
-    if (
-      NON_NEGATIVE_SAMPLING_KEYS.has(key) &&
-      typeof value === 'number' &&
-      value < 0
-    ) {
-      continue
-    }
-    // Forwarding a value equal to llama.cpp's default is not a no-op: it sets a
-    // bit that suppresses the GGUF's own recommended sampling, so an
-    // untouched-looking default would silently override what the model asked
-    // for. Same rule preset.ts applies.
-    if (UPSTREAM_SAMPLING_DEFAULTS[key] === value) continue
-    out[key] = value
-  }
-  // Per-model stop strings (one per line) ride the same request-body path; the
-  // model factory turns the text into the wire array. An assistant's own
-  // `stop` replaces them (see the merge in the transport).
-  const stop = model.settings.stop_strings?.controller_props?.value
-  if (typeof stop === 'string' && stop.trim().length > 0) out.stop = stop
-  return out
-}
-
-/**
- * Per-model chat-template kwargs the user set in the model settings sidebar,
- * stored as an object under `settings.chat_template_kwargs`. Only primitive
- * values are forwarded; `enable_thinking` is owned by the reasoning control
- * and is dropped here.
- */
-function extractModelTemplateKwargs(
-  model: Model | null | undefined
-): Record<string, boolean | number | string> {
-  const raw: unknown =
-    model?.settings?.chat_template_kwargs?.controller_props?.value
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out: Record<string, boolean | number | string> = {}
-  for (const [key, value] of Object.entries(raw)) {
-    if (key === 'enable_thinking') continue
-    const t = typeof value
-    if (t === 'boolean' || t === 'number' || t === 'string') {
-      out[key] = value as boolean | number | string
-    }
-  }
-  return out
-}
-
-/**
- * Whether llama.cpp shifts this model's context when it fills. The model's own
- * setting (`on` / `off`; `auto` or absent means "use global") wins over the
- * engine-wide Context Shift checkbox.
- */
-export function resolveContextShift(
-  modelSetting: unknown,
-  globalSetting: unknown
-): boolean {
-  if (modelSetting === 'on' || modelSetting === true) return true
-  if (modelSetting === 'off' || modelSetting === false) return false
-  return globalSetting === true
-}
-
-export function effectiveContextWindow(
-  configuredContextTokens: number,
-  liveContextTokens: number | undefined,
-  contextShiftEnabled: boolean
-): number {
-  const configured = usableContextValue(configuredContextTokens)
-  const live = contextShiftEnabled ? usableContextValue(liveContextTokens) : null
-  // A runtime window constrains the user's cap; it never enlarges it.
-  return cappedContextWindow(configured, live) ?? 0
-}
-
-
-/**
- * Returns true when an assistant message carries no content the model would
- * actually render: no text, no tool call, no file, no reasoning. These appear
- * when a generation fails before any chunk arrives — the AI SDK leaves a bare
- * placeholder in the message list with empty parts.
- */
-function isAssistantMessageEmpty(message: UIMessage): boolean {
-  if (message.role !== 'assistant') return false
-  const parts = Array.isArray(message.parts) ? message.parts : []
-  if (parts.length === 0) return true
-  return parts.every((part) => {
-    const type = (part as { type?: string }).type
-    if (type === 'text' || type === 'reasoning') {
-      const text = (part as { text?: string }).text
-      return typeof text !== 'string' || text.trim().length === 0
-    }
-    return false
-  })
-}
-
-/**
- * Parts of an unanswered user turn to keep when a newer user turn replaces it:
- * its attachments, but not its question. The UI still shows those attachments
- * in the earlier bubble, so a follow-up like "what is in it?" must still reach
- * the model with them. By this point images are `file` parts, audio and video
- * are sentinel-only text parts, and documents are an [ATTACHED_FILES] block
- * (plus any inlined contents) appended after the question text.
- */
-function carryAttachmentsForward(
-  dropped: UIMessage['parts'],
-  kept: UIMessage['parts']
-): UIMessage['parts'] {
-  const attachments: UIMessage['parts'] = []
-  for (const part of Array.isArray(dropped) ? dropped : []) {
-    if (part.type === 'file') {
-      attachments.push(part)
-    } else if (part.type === 'text' && typeof part.text === 'string') {
-      if (hasAudioSentinel(part.text) || hasVideoSentinel(part.text)) {
-        attachments.push(part)
-        continue
-      }
-      const filesAt = part.text.indexOf('[ATTACHED_FILES]')
-      if (filesAt !== -1) {
-        attachments.push({ ...part, text: part.text.slice(filesAt) })
-      }
-    }
-  }
-  return [...attachments, ...(Array.isArray(kept) ? kept : [])]
-}
-
-/**
- * Enforce strict user/assistant alternation on the message history before it
- * goes to the model.
- *
- * Most chat templates (Gemma, Mistral, Llama 3, Anthropic Claude API,
- * tool-calling Qwen variants, etc.) reject two consecutive turns with the
- * same role — either via a Jinja `raise_exception` or a 400 from the
- * provider. When a generation fails mid-stream the AI SDK still keeps the
- * user message in its state but never appends an assistant reply, so the
- * next send produces `[user, user]` and the next request 500s on the
- * server side. We fix that here by:
- *
- * 1. Dropping assistant placeholders with no content (failed turns).
- * 2. Keeping only the last of any adjacent user messages. The earlier ones
- *    were never answered; merging their text would resend a failed question
- *    inside the next one while the UI shows them as separate bubbles. Their
- *    attachments are carried forward (see carryAttachmentsForward).
- *
- * Adjacent assistant messages are intentionally left alone: the Anthropic
- * serial-tool-use wave-split in `sendMessages` deliberately produces them.
- */
-/**
- * Drop image parts (and AI-SDK `image` parts) from the history when the
- * active model lacks the `vision` capability. Without this, switching from
- * a vision-capable model to a text-only model mid-thread sends `file` parts
- * the new model can't interpret — most OpenAI-compatible providers 400 on
- * unsupported content types, and llama-server with a non-vision template
- * either errors or silently strips the content (depending on template).
- *
- * Audio sentinels (planted by `encodeAudioAttachments`) are not file parts
- * at this point yet — they're still `file` parts with `audio/*` mediaType —
- * so this only matches `image/*`. Files inlined via `mapUserInlineAttachments`
- * are already text and not affected.
- */
-/**
- * Pull llama-server's structured context-overflow fields out of an
- * APICallError. The AI SDK's OpenAI-compatible provider zod-parses the
- * error body and strips unknown keys from `error.data`, but the raw text
- * survives on `error.responseBody`. Parse that to recover the original
- * `n_prompt_tokens` / `n_ctx` siblings so the UI can render an actionable
- * "Used X of Y context tokens" line instead of just the keyword-based
- * banner.
- *
- * Returns null unless both fields are present and numeric.
- */
-export function extractContextInfoFromError(
-  error: unknown
-): { nPromptTokens: number; nCtx: number } | null {
-  if (!error || typeof error !== 'object') return null
-  const responseBody = (error as { responseBody?: unknown }).responseBody
-  if (typeof responseBody !== 'string' || responseBody.length === 0) return null
-  try {
-    const parsed = JSON.parse(responseBody) as {
-      error?: { n_prompt_tokens?: unknown; n_ctx?: unknown }
-    }
-    const inner = parsed?.error
-    if (!inner || typeof inner !== 'object') return null
-    const nPromptTokens = (inner as Record<string, unknown>).n_prompt_tokens
-    const nCtx = (inner as Record<string, unknown>).n_ctx
-    if (typeof nPromptTokens !== 'number' || typeof nCtx !== 'number') return null
-    return { nPromptTokens, nCtx }
-  } catch {
-    return null
-  }
-}
-
-export function unwrapRetryError(error: unknown): unknown {
-  if (!error || typeof error !== 'object') return error
-  const errors = (error as { errors?: unknown }).errors
-  if (Array.isArray(errors) && errors.length > 0) {
-    return errors[errors.length - 1] ?? error
-  }
-  return error
-}
-
-const RETRY_PREFIX_RE = /^Failed after \d+ attempts\. Last error: /
-const RETRY_NONRETRYABLE_RE = /^Failed after \d+ attempts with non-retryable error: '(.+)'$/s
-
-export function stripRetryErrorWrapper(message: string): string {
-  if (typeof message !== 'string') return message
-  const m = message.match(RETRY_NONRETRYABLE_RE)
-  if (m) return m[1]
-  return message.replace(RETRY_PREFIX_RE, '')
-}
-
-/** Only the newest `limit` images, when the server told us how many it takes. */
-const limitIfNeeded = (messages: UIMessage[], limit: number | undefined) =>
-  limit != null && limit > 0 ? limitImageParts(messages, limit) : messages
-
-/** Providers that run a model on this machine, with a small context. */
-const LOCAL_ENGINE_PROVIDERS = new Set(['llamacpp', 'mlx'])
-
-export function stripUnsupportedImageParts(
-  messages: UIMessage[],
-  modelSupportsVision: boolean
-): UIMessage[] {
-  if (modelSupportsVision) return messages
-  return messages.map((message) => {
-    if (!Array.isArray(message.parts) || message.parts.length === 0) {
-      return message
-    }
-    let touched = false
-    const nextParts = message.parts.filter((part) => {
-      const type = (part as { type?: string }).type
-      if (type === 'image') {
-        touched = true
-        return false
-      }
-      if (type === 'file') {
-        const mediaType = (part as { mediaType?: string }).mediaType
-        if (typeof mediaType === 'string' && mediaType.startsWith('image/')) {
-          touched = true
-          return false
-        }
-      }
-      return true
-    }).map((part) => {
-      // A tool image sentinel would decode into an image_url part on the tool
-      // message; a text-only model rejects that.
-      const output = (part as { output?: unknown }).output
-      if (typeof output !== 'string' || !hasToolImageSentinel(output)) {
-        return part
-      }
-      touched = true
-      return {
-        ...part,
-        output: stripToolImageSentinels(
-          output,
-          ` ${i18n.t('chat:transport.imageOmitted', { defaultValue: '(image omitted: the model has no vision)' })}`
-        ),
-      } as typeof part
-    })
-    if (!touched) return message
-    return { ...message, parts: nextParts } as UIMessage
-  })
-}
-
-const RESOLVED_TOOL_STATES = new Set([
-  'output-available',
-  'output-error',
-  'output-denied',
-])
-
-/**
- * Mark unresolved tool-call parts on assistant messages as errored so the
- * history sent to the next model still satisfies the "every tool call has a
- * matching tool result" invariant most chat templates enforce.
- *
- * Triggered by: a tool-call sequence is interrupted mid-flight (parse error,
- * abort, network drop). The AI SDK leaves the assistant message with a
- * tool-* part whose `state` is `input-streaming` / `input-available` — no
- * result was ever appended. Sending that history back to a strict template
- * (Gemma, Mistral, alternation-checking Qwen variants) trips a Jinja
- * `raise_exception` on the next turn.
- *
- * We synthesise an `output-error` so the orphan reads as a failed tool call
- * with a brief explanation, preserving the user's intent and the assistant's
- * reasoning instead of dropping the whole turn.
- */
-export function resolveOrphanToolCalls(messages: UIMessage[]): UIMessage[] {
-  return messages.map((message) => {
-    if (message.role !== 'assistant') return message
-    const parts = Array.isArray(message.parts) ? message.parts : []
-    if (parts.length === 0) return message
-
-    // A tool call with no usable name (a stream that never sent one, an
-    // imported message) is replayed as `function.name: undefined`, and the
-    // provider rejects the whole request ("Expected 'function.name' to be a
-    // string"). There is nothing to replay: drop it.
-    const named = parts.filter((original) => {
-      const type = (original as { type?: string }).type
-      if (type === 'dynamic-tool') {
-        const name = (original as { toolName?: unknown }).toolName
-        return typeof name === 'string' && name.trim() !== '' && name !== 'undefined'
-      }
-      if (typeof type === 'string' && type.startsWith('tool-')) {
-        const name = type.slice('tool-'.length)
-        return name.trim() !== '' && name !== 'undefined' && name !== 'null'
-      }
-      return true
-    })
-    let mutated = named.length !== parts.length
-    const nextParts = named.map((original) => {
-      const type = (original as { type?: string }).type
-      if (typeof type !== 'string' || !type.startsWith('tool-')) return original
-      let part = original
-      // A call whose arguments were not JSON keeps its raw text as `input`,
-      // and a thread saved that way reloads it the same (messages.ts keeps
-      // the unparsed string). Replayed, that is a tool call whose input is
-      // not an object, which a chat template cannot render -- every later
-      // request in the conversation failed. The call itself stays in the
-      // history; only its unusable input is replaced.
-      const input = (part as { input?: unknown }).input
-      if (
-        input !== undefined &&
-        (input === null || typeof input !== 'object' || Array.isArray(input))
-      ) {
-        mutated = true
-        part = { ...(part as object), input: {} } as typeof part
-      }
-      const state = (part as { state?: string }).state
-      if (typeof state === 'string' && RESOLVED_TOOL_STATES.has(state)) {
-        return part
-      }
-      mutated = true
-      return {
-        ...(part as object),
-        state: 'output-error',
-        errorText:
-          (part as { errorText?: string }).errorText ??
-          'Tool call did not complete (interrupted by an earlier error).',
-      } as typeof part
-    })
-
-    if (!mutated) return message
-    return { ...message, parts: nextParts }
-  })
-}
-
-/**
- * Split any assistant message whose parts place non-tool content (text,
- * reasoning, file) AFTER tool-call parts into consecutive assistant messages,
- * one per "wave". This is required for two reasons:
- *
- * 1. Correctness: the Claude API rejects an assistant turn that interleaves
- *    tool_use with text (error 400); it needs tool_use / tool_result pairing.
- * 2. Prompt-cache stability: when a tool-call turn completes, the AI SDK stores
- *    the follow-up text in the SAME assistant UIMessage as the tool call, so
- *    `convertToModelMessages` renders `assistant(tool-call, text)` then
- *    `tool(result)`. But that turn was generated in two requests — the cache
- *    was seeded with `assistant(tool-call)` then `tool(result)`, with no text
- *    yet. Splitting restores the generated order `assistant(tool-call)` ->
- *    `tool(result)` -> `assistant(text)`, so the prefix stays byte-identical
- *    across turns and llama.cpp reuses the KV cache.
- *
- * A message with no tool parts, or with all non-tool parts before the tool
- * parts, is returned unchanged.
- */
-export function splitAssistantToolWaves(messages: UIMessage[]): UIMessage[] {
-  return messages.flatMap((message) => {
-    if (message.role !== 'assistant') return [message]
-
-    const parts = Array.isArray(message.parts) ? message.parts : []
-    if (parts.length === 0) return [message]
-
-    const isToolPart = (p: (typeof parts)[number]) =>
-      typeof p.type === 'string' && p.type.startsWith('tool-')
-
-    const waves: (typeof parts)[] = []
-    let currentWave: typeof parts = []
-    let seenToolParts = false
-
-    for (const part of parts) {
-      if (isToolPart(part)) {
-        seenToolParts = true
-        currentWave.push(part)
-      } else if (seenToolParts) {
-        waves.push(currentWave)
-        currentWave = [part]
-        seenToolParts = false
-      } else {
-        currentWave.push(part)
-      }
-    }
-    if (currentWave.length > 0) waves.push(currentWave)
-
-    if (waves.length <= 1) return [message]
-
-    return waves.map((waveParts, i) => ({
-      ...message,
-      id: `${message.id}_w${i}`,
-      parts: waveParts,
-    }))
-  })
-}
-
-export function coalesceMessagesForAlternation(
-  messages: UIMessage[]
-): UIMessage[] {
-  const filtered = messages.filter((m) => !isAssistantMessageEmpty(m))
-  if (filtered.length <= 1) return filtered
-
-  const out: UIMessage[] = [filtered[0]]
-  for (let i = 1; i < filtered.length; i++) {
-    const prev = out[out.length - 1]
-    const cur = filtered[i]
-    if (prev.role === 'user' && cur.role === 'user') {
-      // The summary a continued chat opens with is a user turn the model must
-      // still read: keep it ahead of the next question instead of replacing it.
-      const seed = (prev.metadata as Record<string, unknown> | undefined)
-        ?.continuedFrom
-      out[out.length - 1] = {
-        ...cur,
-        parts: seed
-          ? [...(prev.parts ?? []), ...(cur.parts ?? [])]
-          : carryAttachmentsForward(prev.parts, cur.parts),
-      }
-    } else {
-      out.push(cur)
-    }
-  }
-  return out
-}
-
-const LOCAL_CHAT_ENGINES: Record<string, true> = {
-  llamacpp: true,
-  mlx: true,
-}
-
-const LOOPBACK_HOSTS: Record<string, true> = {
-  localhost: true,
-  // What some local servers print as their listen address.
-  '0.0.0.0': true,
-  // URL.hostname keeps the brackets on IPv6 literals.
-  '[::1]': true,
-}
-
-/**
- * Jan's own engines and any server on this machine (Ollama, LM Studio, a
- * local llama-server). Their 5xx is deterministic and a retry re-runs the
- * whole prompt, so such requests are not retried.
- */
-export function isLocalChatServer(
-  providerId: string,
-  baseUrl: string | undefined
-): boolean {
-  if (LOCAL_CHAT_ENGINES[providerId]) return true
-  if (!baseUrl) return false
-  try {
-    const host = new URL(baseUrl).hostname
-    // URL has already normalised IPv4, so 127.0.0.0/8 is a prefix match.
-    return !!LOOPBACK_HOSTS[host] || /^127\.\d+\.\d+\.\d+$/.test(host)
-  } catch {
-    return false
-  }
-}
-
-const TOOL_RESPONSE_ONLY = /^<tool_response>[\s\S]*<\/tool_response>$/
-
-/**
- * A "genuine" user query is a user-role message with non-empty text that isn't
- * entirely a <tool_response> wrapper. Qwen3.5+ chat templates raise
- * "No user query found in messages" when none survives — e.g. the user deletes
- * the only real user turn (leaving orphaned assistant/tool turns) or token
- * eviction drops it. Guard the send so we fail with a clear message instead.
- */
-export function hasGenuineUserQuery(messages: UIMessage[]): boolean {
-  return messages.some((m) => {
-    if (m.role !== 'user') return false
-    const text = (m.parts ?? [])
-      .map((p) => (p.type === 'text' ? (p.text ?? '') : ''))
-      .join('')
-      .trim()
-    return text.length > 0 && !TOOL_RESPONSE_ONLY.test(text)
-  })
-}
-
-/** Text from the most recent user message (for MCP server routing). */
-function extractLatestUserText(messages: UIMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.role !== 'user') continue
-    const parts = Array.isArray(m.parts) ? m.parts : []
-    const chunks: string[] = []
-    for (const p of parts) {
-      if (p.type === 'text' && typeof (p as { text?: string }).text === 'string') {
-        const t = (p as { text: string }).text.trim()
-        if (t) chunks.push(t)
-      }
-    }
-    if (chunks.length > 0) return chunks.join('\n')
-  }
-  return ''
-}
-
-/**
- * Wraps a UIMessageChunk stream so the partial content of a resumed turn is
- * injected back into the new message right away: `reasoning` into the first
- * `reasoning-start` block and `text` into the first `text-start` block. This
- * makes the continuation look seamless instead of dropping the partial output.
- */
-function prependContinuationToUIStream(
-  stream: ReadableStream<UIMessageChunk>,
-  prefix: ContinuationContent
-): ReadableStream<UIMessageChunk> {
-  const reader = stream.getReader()
-  let reasoningEmitted = !prefix.reasoning
-  let textEmitted = !prefix.text
-  return new ReadableStream<UIMessageChunk>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read()
-        if (done) {
-          controller.close()
-          return
-        }
-        controller.enqueue(value)
-        const type = (value as { type: string }).type
-        if (!reasoningEmitted && type === 'reasoning-start') {
-          reasoningEmitted = true
-          const id = (value as { id: string }).id
-          controller.enqueue({
-            type: 'reasoning-delta',
-            id,
-            delta: prefix.reasoning,
-          } as UIMessageChunk)
-        }
-        if (!textEmitted && type === 'text-start') {
-          textEmitted = true
-          const id = (value as { id: string }).id
-          controller.enqueue({
-            type: 'text-delta',
-            id,
-            delta: prefix.text,
-          } as UIMessageChunk)
-        }
-      } catch (error) {
-        controller.error(error)
-      }
-    },
-    cancel() {
-      reader.cancel()
-    },
-  })
 }
 
 /**

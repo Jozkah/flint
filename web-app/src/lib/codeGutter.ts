@@ -7,6 +7,8 @@
  * the common head and tail first and only runs a line LCS over what is left.
  */
 
+import { ageParts, type AgeUnit } from '@/lib/time'
+
 export type ChangeHunk = {
   kind: 'added' | 'modified' | 'deleted'
   /** 1-based first line in the new text. For `deleted`, the line the
@@ -293,17 +295,22 @@ export function relativeTime(
   seconds: number,
   now: number = Date.now() / 1000
 ): { value: number; unit: Intl.RelativeTimeFormatUnit } {
-  const diff = Math.max(0, now - seconds)
-  const steps: [number, Intl.RelativeTimeFormatUnit][] = [
-    [60 * 60 * 24 * 365, 'year'],
-    [60 * 60 * 24 * 30, 'month'],
-    [60 * 60 * 24 * 7, 'week'],
-    [60 * 60 * 24, 'day'],
-    [60 * 60, 'hour'],
-    [60, 'minute'],
-  ]
-  for (const [size, unit] of steps) {
-    if (diff >= size) return { value: -Math.floor(diff / size), unit }
-  }
-  return { value: 0, unit: 'second' }
+  // Under a minute is "now", not a count of seconds.
+  if (now - seconds < 60) return { value: 0, unit: 'second' }
+  return ageParts(seconds * 1000, {
+    now: now * 1000,
+    units: GUTTER_AGE_UNITS,
+    rounding: 'floor',
+    pastOnly: true,
+  })
 }
+
+const DAY = 60 * 60 * 24
+const GUTTER_AGE_UNITS: readonly AgeUnit[] = [
+  { unit: 'minute', seconds: 60 },
+  { unit: 'hour', seconds: 60 * 60 },
+  { unit: 'day', seconds: DAY },
+  { unit: 'week', seconds: DAY * 7 },
+  { unit: 'month', seconds: DAY * 30 },
+  { unit: 'year', seconds: DAY * 365 },
+]

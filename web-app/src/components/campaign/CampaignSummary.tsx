@@ -125,7 +125,7 @@ export function CampaignSummary({
                   finished
                     ? 'settings:campaigns.board.summary.timeTotal'
                     : 'settings:campaigns.board.summary.timeSoFar',
-                  { time: formatDuration(elapsed) }
+                  { time: formatDuration(elapsed, t) }
                 )}
           </dd>
         </div>

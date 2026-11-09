@@ -1,5 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
-import { RowPreview, lastUserText, placeOf } from '@/components/shell/nav/RowPreview'
+import { RowPreview, placeOf } from '@/components/shell/nav/RowPreview'
 import {
   NavAction,
   NavButton,
@@ -53,9 +53,14 @@ import { regenerateWithToast } from '@/lib/regenerateToast'
 import { startSharedFolderSync, useSharedWith } from '@/stores/shared-folder-store'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { isCoworkRoute } from '@/constants/routes'
-import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import {
+  fullCoworkSession,
+  useCoworkSessionViews,
+  type CoworkSessionView,
+} from '@/components/shell/nav/coworkSessionView'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
+import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 import { useWaitingOnUser } from '@/hooks/useHeldMail'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
@@ -113,7 +118,9 @@ type CoworkNavItem = {
 
 // Own component (not inlined in a .map()) so it can be memoized: a change to
 // one session re-renders its own row rather than the whole session list,
-// mirroring ThreadList.tsx's memoized ThreadItem.
+// mirroring ThreadList.tsx's memoized ThreadItem. It takes the session's
+// sidebar view, not the session: a field the row does not show changes no
+// prop, and the menu and export actions read the full session when chosen.
 const SessionItem = memo(function SessionItem({
   session,
   isCurrent,
@@ -122,7 +129,7 @@ const SessionItem = memo(function SessionItem({
   onRequestDelete,
   campaignDot,
 }: {
-  session: CoworkSession
+  session: CoworkSessionView
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
@@ -155,12 +162,7 @@ const SessionItem = memo(function SessionItem({
   const sharedWith = useSharedWith(session.id)
   // The last thing asked, from the conversation or (a session saved before
   // `messages` existed, or seeded without them) from its turns.
-  const summary = useMemo(
-    () =>
-      lastUserText(session.messages) ??
-      session.turns.filter((turn) => turn.role === 'user').at(-1)?.content,
-    [session.messages, session.turns]
-  )
+  const summary = session.summary
   const place = useMemo(
     () => placeOf(worktree?.sourceRoot ?? session.folder),
     [worktree?.sourceRoot, session.folder]
@@ -192,7 +194,7 @@ const SessionItem = memo(function SessionItem({
           place,
           branch: worktree?.branch,
           updated: session.updated,
-          messages: session.messages.length || session.turns.length,
+          messages: session.messageCount,
           sharedWith,
         }}
         model={session.model}
@@ -333,15 +335,20 @@ const SessionItem = memo(function SessionItem({
               credentials before writing, and the path comes from a dialog the
               backend opens, never from here. */}
           <ExportSubmenu
-            build={() => docFromCowork(session, new Date())}
+            build={() => {
+              const full = fullCoworkSession(session.id)
+              return full ? docFromCowork(full, new Date()) : null
+            }}
             extra={
               <DropdownMenuItem
                 data-testid="export-session"
                 onSelect={async () => {
+                  const full = fullCoworkSession(session.id)
+                  if (!full) return
                   const toolActivity = await loadToolActivity(session.id)
                   const out = await exportBundle(
                     buildBundle({
-                      session,
+                      session: full,
                       toolActivity,
                       fileActivity: useFileActivity
                         .getState()
@@ -370,11 +377,13 @@ const SessionItem = memo(function SessionItem({
           <DropdownMenuItem
             data-testid="handoff-session"
             onSelect={async () => {
+              const full = fullCoworkSession(session.id)
+              if (!full) return
               const toolActivity = await loadToolActivity(session.id)
               const models = useModelProvider.getState()
               const out = await exportHandoff(
                 buildBundle({
-                  session,
+                  session: full,
                   toolActivity,
                   fileActivity: useFileActivity
                     .getState()
@@ -386,7 +395,7 @@ const SessionItem = memo(function SessionItem({
                       id: models.selectedModel.id,
                     }
                   : null,
-                session.folder
+                full.folder
               )
               if (out.ok) {
                 toast.success(t('common:handoff.saved', { count: out.redactions }))
@@ -451,7 +460,9 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
   const closeDrawer = useCloseDrawer()
-  const allSessions = useCoworkSessions((s) => s.sessions)
+  // Views, not sessions: a run checkpoint or another field the list does not
+  // show re-renders nothing here.
+  const allSessions = useCoworkSessionViews()
   // One reader of the shared-folder registry for every row's mark.
   useEffect(() => startSharedFolderSync(), [])
   const currentId = useCoworkSessions((s) => s.currentId)
@@ -462,10 +473,10 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
       allSessions.filter(
         (session) =>
           (onCowork && session.id === currentId) ||
-          !isSessionEmpty(session) ||
+          !session.empty ||
           session.title !== DEFAULT_SESSION_TITLE ||
           Boolean(runs?.[session.id]) ||
-          (session.pendingInput?.length ?? 0) > 0
+          session.pendingInputCount > 0
       ),
     [allSessions, onCowork, currentId, runs]
   )
@@ -552,7 +563,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const nest = useMemo(
     () => ({
       scope: 'cowork' as const,
-      parentOf: (id: string) => byId.get(id)?.forkedFrom?.sessionId ?? null,
+      parentOf: (id: string) => byId.get(id)?.forkedFrom ?? null,
       updatedOf: (id: string) => byId.get(id)?.updated ?? 0,
       statusOf: nestStatusOf,
       selectedId,

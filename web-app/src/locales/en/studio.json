@@ -132,11 +132,6 @@
     "downloading": "Downloading…",
     "button": "Download ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} min",
-    "minS": "{{minutes}} min {{seconds}} s"
-  },
   "phase": {
     "queued": "Waiting",
     "encoding": "Reading the prompt",

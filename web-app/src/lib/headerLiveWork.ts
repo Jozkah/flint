@@ -4,7 +4,7 @@
  * pill opens can be tested without rendering the shell.
  */
 import type { CoworkTurn } from '@/types/coworkSession'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 
 export type WaitingApprovalRow = {
   requestId: string

@@ -1,5 +1,6 @@
 import { formatTokenCount } from '@/lib/utils'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { timeAgo, type AgeUnit } from '@/lib/time'
 
 /**
  * How full the context window is: the one place "used / max input" is worked
@@ -79,4 +80,23 @@ export function contextUsage(
     thresholdShare: buffer > 0 ? (window - buffer) / whole : null,
     label: `${formatTokenCount(used)} / ${formatTokenCount(window)} (${pctText}%)`,
   }
+}
+
+/** Minutes, then hours up to two days, then days. */
+const AGE_UNITS: readonly AgeUnit[] = [
+  { unit: 'minute', seconds: 60 },
+  { unit: 'hour', seconds: 3600, until: 48 * 3600 },
+  { unit: 'day', seconds: 86_400 },
+]
+
+/** How long ago the context card's figures were sent, in the reader's language: "2 hours ago". Nothing under a minute. */
+export function contextAge(ms: number, locale = i18n.language): string | null {
+  if (ms < 60_000) return null
+  return timeAgo(0, {
+    now: ms,
+    units: AGE_UNITS,
+    rounding: 'floor',
+    numeric: 'always',
+    locale: locale || 'en',
+  })
 }

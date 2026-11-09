@@ -12,7 +12,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { PhaseRow } from '@/containers/CoworkWorkflowCard'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import {
   INTERRUPTED_BY_RUN_END,
   cancellabilityOf,

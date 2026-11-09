@@ -1,5 +1,128 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`remote registry key order > action handlers 1`] = `
+[
+  "chat.send",
+  "cowork.send",
+  "room.send",
+  "chat.regenerate",
+  "chat.edit",
+  "run.stop",
+  "room.control",
+  "approvals.respond",
+  "asks.respond",
+  "approvals.prompt",
+  "settings.set",
+]
+`;
+
+exports[`remote registry key order > app actions, with the room controls 1`] = `
+[
+  "chatExists",
+  "chatBusy",
+  "createChat",
+  "setWebSearch",
+  "setChatReasoning",
+  "setChatModel",
+  "coworkExists",
+  "coworkBusy",
+  "knownFolders",
+  "createCowork",
+  "setCoworkMode",
+  "setCoworkModel",
+  "coworkAccess",
+  "setCoworkReviewOnly",
+  "open",
+  "sendViaComposer",
+  "prepareAttachments",
+  "stageDocs",
+  "enqueue",
+  "stop",
+  "stopConversation",
+  "stopAll",
+  "findApproval",
+  "resolveApproval",
+  "findAsk",
+  "answerAsk",
+  "chatAct",
+  "findPrompt",
+  "respondPrompt",
+  "recoverInterrupted",
+  "permissions",
+  "roomExists",
+  "room",
+  "setNotificationPrefs",
+]
+`;
+
+exports[`remote registry key order > app actions, with the room controls 2`] = `
+[
+  "send",
+  "start",
+  "pause",
+  "resume",
+  "stop",
+  "cancelTurn",
+  "selectNext",
+  "callVote",
+  "synthesize",
+  "requestFinalPositions",
+]
+`;
+
+exports[`remote registry key order > app extras 1`] = `
+[
+  "chatDetails",
+  "setChatEffort",
+  "setChatAssistant",
+  "assistants",
+  "forkChat",
+  "selectVersion",
+  "compactChat",
+  "regenerateTitle",
+  "clearRoom",
+  "coworkFiles",
+  "coworkFile",
+  "coworkPreview",
+  "hfSearch",
+  "hfDownload",
+  "downloads",
+]
+`;
+
+exports[`remote registry key order > app sources 1`] = `
+[
+  "chats",
+  "coworkSessions",
+  "rooms",
+  "running",
+  "chatMessages",
+  "chatMessagesPage",
+  "coworkMessages",
+  "roomMessages",
+  "roomDetail",
+  "coworkDetail",
+  "streamSnapshot",
+  "queue",
+  "coworkChanges",
+  "coworkActivity",
+  "approvals",
+  "approvalDetails",
+  "asks",
+  "prompts",
+  "providers",
+  "loadedModels",
+  "favoriteModels",
+  "systemInfo",
+  "mcpServers",
+  "settings",
+  "library",
+  "permissions",
+  "notificationPrefs",
+  "appearance",
+]
+`;
+
 exports[`remote registry keys > action handlers 1`] = `
 [
   "approvals.prompt",

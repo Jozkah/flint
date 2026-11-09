@@ -1,34 +1,11 @@
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import type { ParentPersona } from '@/lib/subagentChoice'
-import { useAssistant } from '@/hooks/useAssistant'
-import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
-import { getServiceHub } from '@/hooks/useServiceHub'
-import { useToolAvailable } from '@/hooks/useToolAvailable'
-import {
-  loadLiveMcpTools,
-  mcpServerLabels,
-  mcpAvailability,
-  announceMcpWithheld,
-  mcpStartingNote,
-  snapshotMcpTools,
-} from '@/lib/mcpLiveTools'
-import { routeModelForTurn } from '@/lib/jevModelTurn'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { AGENT_TOOL_NAMES, sandboxEnforces } from '@/lib/agentTools'
-import {
-  chooseJevPromptRoute,
-  jevModeSuggestion,
-  type JevSuggestedMode,
-} from '@/lib/jevRouting'
-import {
-  applyWebSearchToTools,
-  buildCoworkTools,
-  coworkToolSignature,
-} from '@/lib/coworkTools'
+import { applyWebSearchToTools, buildCoworkTools, coworkToolSignature } from '@/lib/coworkTools'
 import { groupOf, withoutEnable, type ToolGroupId } from '@/lib/coworkToolGroups'
-import { buildCoworkSystemPrompt, environmentOptions } from '@/lib/coworkPrompt'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import {
   latestUserText,
@@ -39,13 +16,10 @@ import {
 import { measureContextPack } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { lastUserText, latestUserMessage } from '@/lib/coworkTransportMessages'
-
+import { lastUserText } from '@/lib/coworkTransportMessages'
 import type { CoworkRunConfig } from '@/lib/coworkRunConfig'
 import {
   advertisedGroupsOf,
-  assistantProfileBlock,
-  collectMcpOverlay,
   composeFrozenTools,
   configWithSkillGroups,
   heldBackToolsOf,
@@ -53,6 +27,9 @@ import {
   leanBuiltinTools,
   memoryInstructionsOf,
 } from '@/lib/coworkTransportTools'
+import { CoworkPromptRouter } from '@/lib/coworkPromptRouting'
+import { coworkRunPrompt } from '@/lib/coworkRunPrompt'
+import { loadCoworkMcpOverlay } from '@/lib/coworkMcpOverlay'
 
 export type { CoworkRunConfig }
 export { lastUserText }
@@ -117,20 +94,8 @@ export class CoworkChatTransport extends CustomChatTransport {
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
   private builtSig = ''
-  /** One Jev route per user turn, never one per tool-loop step. */
-  private lastRoutedUserMessageId: string | null = null
-  /** The user message the model decision was made for. */
-  private lastModelRoutedFor: string | null = null
-  /** Persona selected for this turn. Flint keeps Cowork's existing baseline. */
-  private routedAssistantInstructions: string | undefined
-  private routedAssistantId: string | undefined
-  /** Behavioural suggestion only; never used by the permission gate. */
-  private routedMode: JevSuggestedMode | null = null
-  /** The assistant the session started with (per session, not per app). */
-  private sessionAssistant: Assistant | undefined
-  private sessionAssistantCaptured = false
-  /** The assistant Jev applied to this session, kept across turns that abstain. */
-  private routedAssistant: Assistant | undefined
+  /** Jev's model and assistant for each user message (see CoworkPromptRouter). */
+  private readonly router = new CoworkPromptRouter()
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
@@ -312,99 +277,34 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   /**
-   * Let Jev pick the AI model for this message, when the person turned that on.
-   * One decision per user message, never one per tool-loop step, so the run
-   * keeps one model for the whole turn; the session's own model is the default
-   * and the usual outcome. Only models that can use tools are offered, and none
-   * with a known context window smaller than the session model's, because the
-   * run's compaction and context accounting follow the session's model.
+   * Jev's model for this message, for this message only: the previous
+   * message's choice is dropped before the new one is asked for.
    */
   private async routeModel(messages: UIMessage[], signal?: AbortSignal) {
-    const latest = latestUserMessage(messages)
-    if (!latest || latest.id === this.lastModelRoutedFor) return
-    this.lastModelRoutedFor = latest.id
-    // Last message's choice must never carry over.
-    this.turnModel = undefined
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-    const routed = await routeModelForTurn({
-      message: latest.text,
-      parts: lastUser?.parts ?? [],
-      current: this.getModelSelection(),
-      temporary: false,
-      requireTools: true,
-      keepContextWindow: true,
-      signal,
-    })
-    this.turnModel = routed?.selection
+    const routed = await this.router.routeModel(
+      messages,
+      () => {
+        this.turnModel = undefined
+        return this.getModelSelection()
+      },
+      signal
+    )
+    if (routed) this.turnModel = routed.selection
   }
 
+  /** Jev's assistant for this message; it names this session's replies. */
   private async routePrompt(messages: UIMessage[], signal?: AbortSignal) {
-    const latest = latestUserMessage(messages)
-    if (!latest || latest.id === this.lastRoutedUserMessageId) return
-    this.lastRoutedUserMessageId = latest.id
-
-    const state = useAssistant.getState()
-    // This session's own assistant: what the picker held when the session
-    // first sent, not whatever any other chat sets later.
-    if (!this.sessionAssistantCaptured) {
-      this.sessionAssistant = state.currentAssistant
-      this.sessionAssistantCaptured = true
-    }
-    const base = this.sessionAssistant
-    // Only a session on the default Flint is routed; a picked assistant (or
-    // "None") stays.
-    const route = await chooseJevPromptRoute({
-      message: latest.text,
-      assistants: state.assistants,
-      currentAssistantId: base?.id,
-      // Five assistants, not fifteen assistant-and-style pairs (see the chat
-      // transport): the split left each pair under Jev's 0.7 bar. The work
-      // profile chosen alongside already says how to approach the message.
-      includeCoworkMode: false,
-      pinned: !base || base.id !== 'jan',
-      temporary: false,
-      signal,
-    })
-
-    if (route?.assistantId) {
-      this.routedAssistant = state.assistants.find(
-        (assistant) => assistant.id === route.assistantId
-      )
-    }
-    // On abstention or an unavailable Jev the assistant this session already
-    // has (routed earlier, else its own) is kept.
-    const selected = this.routedAssistant ?? base
-
-    // Flint remains Cowork's baseline generalist; injecting its existing chat
-    // prompt here would change the default behaviour the user asked us not to
-    // edit. Any non-Flint assistant that is selected intentionally -- including
-    // a custom/project assistant that Jev is not allowed to route away from --
-    // contributes its persona beneath Cowork's policy.
-    this.routedAssistantId = selected && selected.id !== 'jan' ? selected.id : undefined
-    this.routedAssistantInstructions =
-      selected && selected.id !== 'jan' ? selected.instructions : undefined
-    this.answeringAssistant = selected?.name
-      ? {
-          name: selected.name,
-          avatar:
-            selected.id !== 'jan' && typeof selected.avatar === 'string'
-              ? selected.avatar
-              : undefined,
-        }
-      : undefined
-    this.routedMode = route?.mode ?? null
-    // The global assistant store is deliberately not touched: routing is per
-    // session, and mirroring it there would leak into other conversations and
-    // be saved as the user's "last used" assistant.
+    const routed = await this.router.routePrompt(messages, signal)
+    if (routed) this.answeringAssistant = routed.answering
   }
 
   /** The assistant and work profile this run is using, for subagents that inherit them. */
   persona(): ParentPersona {
     const profiles = useWorkProfiles.getState()
     return {
-      assistantId: this.routedAssistantId,
+      assistantId: this.router.routedAssistantId,
       assistantName: this.answeringAssistant?.name,
-      assistantInstructions: this.routedAssistantInstructions,
+      assistantInstructions: this.router.routedAssistantInstructions,
       workProfile: profiles.enabled && this.threadId ? profiles.sessions[this.threadId]?.id : undefined,
     }
   }
@@ -469,46 +369,20 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   protected override buildSystemPrompt(messages: UIMessage[]): string {
-    const assistantProfile = assistantProfileBlock(this.routedAssistantInstructions)
-    const self = this.threadId
-      ? useCoworkSessions.getState().sessions.find((s) => s.id === this.threadId)
-      : undefined
-    const base = buildCoworkSystemPrompt({
+    const base = coworkRunPrompt({
+      messages,
+      threadId: this.threadId,
+      config: this.config,
       availableTools: Object.keys(this.advertisedTools),
-      messagingSelf: self ? { id: self.id, name: self.title } : undefined,
-      workspacePath: this.config.workspacePath,
-      readOnlyFolder: this.config.readOnlyFolder,
-      extraFolders: this.config.extraFolders,
-      writableExtraFolders: this.config.writableExtraFolders,
-      folderAccess: this.config.folderAccess,
-      worktreeBranch: this.config.worktreeBranch,
-      ...environmentOptions(this.config),
-      mcpServers: !this.mcpRead
-        ? undefined
-        : this.config.planMode
-        ? ['none offered (review mode withholds MCP tools)']
-        : mcpServerLabels(
-            snapshotMcpTools(
-              [...this.mcpToolServers].map(([name, server]) => ({ name, server }))
-            ),
-            this.mcpStarting,
-            this.mcpWithheldLabels
-          ),
-      gitBranch: this.config.gitBranch,
-      projectInstructions: this.config.projectInstructions,
-      compatInstructions: this.config.compatInstructions,
-      projectTooling: this.config.projectTooling,
-      planMode: this.config.planMode,
-      userRequest: lastUserText(messages),
-      openingInspection: this.config.openingInspection,
-      bashAvailable: sandboxEnforces(),
-      subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
-      webSearch: this.config.webSearch,
-      skillsBlock: skillCatalogBlock(undefined, this.config.readOnlyFolder),
-      skillActivationBlock: skillActivationBlock(this.activeSkills),
-      workProfileBlock: useWorkProfiles.getState().blockFor(this.threadId),
-      assistantProfileBlock: assistantProfile,
-      modeSuggestionBlock: jevModeSuggestion(this.routedMode),
+      mcp: {
+        read: this.mcpRead,
+        servers: this.mcpToolServers,
+        starting: this.mcpStarting,
+        withheldLabels: this.mcpWithheldLabels,
+      },
+      activeSkills: this.activeSkills,
+      routedAssistantInstructions: this.router.routedAssistantInstructions,
+      routedMode: this.router.routedMode,
     })
     // Remembered facts come after everything that states policy -- the run's
     // own rules, `JAN.md`, the compatibility instructions -- and the block
@@ -574,43 +448,24 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   private async refreshMcp(): Promise<void> {
     const base = this.frozenTools ?? this.tools
-    let overlay: Record<string, Tool> = {}
-    const servers = new Map<string, string>()
     this.mcpStarting = []
     this.mcpStartingText = null
     this.mcpWithheldLabels = []
     this.mcpRead = true
-    if (!this.config.planMode) {
-      try {
-        const mcp = getServiceHub().mcp()
-        const live = await loadLiveMcpTools(mcp)
-        this.mcpStarting = live.starting
-        const isDisabled = useToolAvailable.getState().isToolDisabled
-        collectMcpOverlay(live.tools, base, isDisabled, overlay, servers)
-        const offered = [...servers].map(([name, server]) => ({ name, server }))
-        const availability = mcpAvailability(
-          live.tools,
-          snapshotMcpTools(offered),
-          live.starting,
-          isDisabled
-        )
-        this.mcpWithheldLabels = availability.labels
-        this.mcpStartingText =
-          [mcpStartingNote(live.starting), availability.note]
-            .filter((s): s is string => Boolean(s))
-            .join(' ') || null
-        announceMcpWithheld(availability.withheld)
-        this.recordMcpSet(offered, live.tools)
-      } catch (error) {
-        console.warn('Failed to load MCP tools:', error)
-        overlay = {}
-        servers.clear()
-      }
-    }
+    const { overlay, servers } = await loadCoworkMcpOverlay(base, this.config.planMode, {
+      starting: (names) => {
+        this.mcpStarting = names
+      },
+      withheldLabels: (labels) => {
+        this.mcpWithheldLabels = labels
+      },
+      startingText: (text) => {
+        this.mcpStartingText = text
+      },
+      record: (offered, listed) => this.recordMcpSet(offered, listed),
+    })
     // Sorted, and after the built-ins: an unchanged set sends identical JSON.
-    this.mcpOverlay = Object.fromEntries(
-      Object.entries(overlay).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    )
+    this.mcpOverlay = overlay
     this.mcpToolServers = servers
     this.advertised =
       Object.keys(this.mcpOverlay).length > 0

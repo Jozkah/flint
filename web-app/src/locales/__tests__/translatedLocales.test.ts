@@ -105,9 +105,6 @@ const SAME_AS_ENGLISH: Record<string, string[]> = {
   // Leftover sweep (studio / integrations / uiLeftovers / sweep): words and units these locales really use as-is.
   'integrations:claudeCode.local': ['ca', 'es', 'fr', 'pt-BR'],
   'integrations:remoteRunner.model': ['ca', 'cs', 'id', 'pl', 'tr'],
-  'studio:duration.min': ['ca', 'cs', 'es', 'fr', 'it', 'pl', 'pt-BR'],
-  'studio:duration.minS': ['ca', 'cs', 'es', 'fr', 'it', 'pl', 'pt-BR'],
-  'studio:duration.s': ['ca', 'cs', 'de-DE', 'es', 'fr', 'it', 'pl', 'pt-BR'],
   'studio:model.title': ['ca', 'cs', 'id', 'pl', 'tr'],
   'studio:prompt.remixShort': ['ca', 'cs', 'de-DE', 'es', 'fr', 'id', 'it', 'pt-BR', 'vn'],
   'studio:prompt.title': ['ca', 'cs', 'de-DE', 'es', 'fr', 'id', 'it', 'pl', 'pt-BR', 'vn'],

@@ -132,11 +132,6 @@
     "downloading": "डाउनलोड हो रहा है…",
     "button": "डाउनलोड करें ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} से",
-    "min": "{{count}} मि",
-    "minS": "{{minutes}} मि {{seconds}} से"
-  },
   "phase": {
     "queued": "प्रतीक्षा में",
     "encoding": "प्रॉम्प्ट पढ़ रहा है",

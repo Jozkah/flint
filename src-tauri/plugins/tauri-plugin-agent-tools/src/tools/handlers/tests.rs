@@ -2893,10 +2893,11 @@ async fn bash_exceeding_its_timeout_is_terminated_not_backgrounded() {
     // its deadline was shelved and kept running. An unowned process that
     // outlives every limit placed on it is the defect, not the feature.
     let root = unique_root();
+    // 1 s, the schema's minimum: a 0 now means the default wait.
     let command = command_or_skip!(&root, Shape::Sleep { seconds: 5 });
     let out = execute_builtin(
         lookup("bash").unwrap(),
-        &json!({ "command": command, "timeout": 0 }),
+        &json!({ "command": command, "timeout": 1 }),
         &root,
     )
     .await;
