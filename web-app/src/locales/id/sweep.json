@@ -198,6 +198,7 @@
     "exists": "Model sudah ada",
     "failed": "Gagal mengimpor model",
     "hasBeenImported": "{{name}} telah diimpor",
+    "notListed": "{{name}} sudah disimpan, tetapi Flint tidak dapat menampilkannya di daftar. Mulai ulang Flint, dan laporkan jika model masih tidak ada.",
     "import": "Impor model",
     "importing": "Mengimpor…",
     "success": "Model berhasil diimpor"

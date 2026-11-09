@@ -207,6 +207,7 @@
     "exists": "Model už existuje",
     "failed": "Model se nepodařilo importovat",
     "hasBeenImported": "{{name}} byl naimportován",
+    "notListed": "{{name}} byl uložen, ale Flint ho nedokázal zobrazit v seznamu. Restartujte Flint a pokud model stále chybí, nahlaste to.",
     "import": "Importovat model",
     "importing": "Importování…",
     "success": "Model byl úspěšně naimportován"

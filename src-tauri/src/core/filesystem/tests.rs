@@ -159,6 +159,38 @@ fn test_readdir_sync() {
     let _ = fs::remove_dir_all(dir_path);
 }
 
+/// The llama.cpp extension builds its models folder with `join_path` and takes
+/// each model id as the entry with that folder cut off the front. `join_path`
+/// canonicalizes (on Windows that adds `\\?\`), so the listing has to come back
+/// in the same spelling or every model id is garbled and no model is listed.
+#[test]
+fn test_readdir_entries_keep_the_spelling_join_path_returned() {
+    let app = mock_app();
+    let data = get_jan_data_folder_path(app.handle().clone());
+    let models = data.join("llamacpp").join("models");
+    fs::create_dir_all(models.join("imported-model")).unwrap();
+    File::create(models.join("imported-model").join("model.yml")).unwrap();
+
+    let models_dir = join_path(
+        app.handle().clone(),
+        vec![
+            data.join("llamacpp").to_string_lossy().to_string(),
+            "models".to_string(),
+        ],
+    )
+    .unwrap();
+    let listed = readdir_sync(app.handle().clone(), vec![models_dir.clone()]).unwrap();
+
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    let id = listed[0]
+        .strip_prefix(&models_dir)
+        .unwrap_or_else(|| panic!("{} does not start with {models_dir}", listed[0]))
+        .trim_start_matches(['/', '\\']);
+    assert_eq!(id, "imported-model");
+
+    let _ = fs::remove_dir_all(data.join("llamacpp"));
+}
+
 #[cfg(unix)]
 #[test]
 fn test_resolve_jan_scoped_path_allows_canonicalized_home_symlink_target() {

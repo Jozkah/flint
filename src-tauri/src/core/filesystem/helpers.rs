@@ -30,7 +30,7 @@ pub fn is_sensitive_read_path(path: &Path) -> bool {
     jan_utils::path_policy::is_sensitive_path(path)
 }
 
-fn is_file_uri(path: &str) -> bool {
+pub(crate) fn is_file_uri(path: &str) -> bool {
     path.starts_with("file:/") || path.starts_with("file:\\")
 }
 

@@ -2,11 +2,11 @@
 // It's added to ensure the legacy implementation from frontend still functions before removal.
 use super::grants::{is_within, record_picks, ReadGrants, DENIED_PREFIX};
 use super::helpers::{
-    canonical_scope_path, is_sensitive_read_path, resolve_app_path_within_jan_data_folder,
+    canonical_scope_path, is_file_uri, is_sensitive_read_path, resolve_app_path_within_jan_data_folder,
     resolve_app_read_path, resolve_path,
 };
 use crate::core::app::commands::get_jan_data_folder_path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use super::models::{DialogOpenOptions, FileStat};
 use super::picker::AsyncFileDialog;
 use std::fs;
@@ -178,6 +178,17 @@ pub fn readdir_sync<R: Runtime>(
     }
 
     let path = resolve_app_read_path(app_handle.clone(), &args[0])?;
+    // Children are spelled under the folder as the caller named it, which is
+    // usually what `join_path` returned. The scope check works on the
+    // canonical form, which on Windows has no `\\?\` prefix while `join_path`
+    // keeps it; returning that form made callers that cut their folder off the
+    // front of each entry (llama.cpp model ids) cut four characters too many,
+    // so every model, a freshly imported one included, dropped out of the list.
+    let listed_base = if is_file_uri(&args[0]) || !Path::new(&args[0]).is_absolute() {
+        path.clone()
+    } else {
+        PathBuf::from(&args[0])
+    };
     let data = canonical_scope_path(&get_jan_data_folder_path(app_handle.clone()));
     let in_data = is_within(&path, &data);
     let none = ReadGrants::default();
@@ -194,6 +205,7 @@ pub fn readdir_sync<R: Runtime>(
             !is_sensitive_read_path(entry)
                 && (in_data || grants.allows(&canonical_scope_path(entry), &data))
         })
+        .filter_map(|entry| entry.file_name().map(|name| listed_base.join(name)))
         .map(|entry| entry.to_string_lossy().to_string())
         .collect();
     Ok(paths)

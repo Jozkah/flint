@@ -375,6 +375,14 @@ export const ImportLlamacppModelDialog = ({
         isDraftModel && draftFile ? draftFile : undefined
       )
 
+      // The import wrote the model's files, but only the engine's own listing
+      // decides whether it shows up. Say so instead of claiming success when
+      // that listing leaves it out.
+      const listed = await serviceHub.models().fetchModels()
+      if (!listed.some((model) => model.id === modelName)) {
+        throw new Error(t('sweep:modelImport.notListed', { name: modelName }))
+      }
+
       toast.success(t('sweep:modelImport.success'), {
         description: t('sweep:modelImport.hasBeenImported', { name: modelName }),
       })

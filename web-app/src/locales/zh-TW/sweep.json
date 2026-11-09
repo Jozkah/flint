@@ -198,6 +198,7 @@
     "exists": "模型已存在",
     "failed": "匯入模型失敗",
     "hasBeenImported": "已匯入 {{name}}",
+    "notListed": "已儲存 {{name}}，但 Flint 無法在清單中顯示它。請重新啟動 Flint；若模型仍然缺少，請回報此問題。",
     "import": "匯入模型",
     "importing": "正在匯入…",
     "success": "模型匯入成功"
