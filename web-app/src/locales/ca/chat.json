@@ -338,5 +338,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "El motor del model s'ha aturat. S'està tornant a carregar el model…",
+    "retrying": "El model s'ha tornat a carregar. S'està tornant a enviar el missatge…",
+    "recovered": "Recuperat: el motor del model s'havia aturat, s'ha reiniciat i el missatge ha rebut resposta.",
+    "retryFailed": "El motor del model s'ha tornat a aturar. Flint ho ha reintentat una vegada; feu servir Regenera per tornar-ho a provar.",
+    "restartFailed": "No s'ha pogut tornar a carregar el model automàticament. Feu servir Regenera o torneu a triar el model."
   }
 }

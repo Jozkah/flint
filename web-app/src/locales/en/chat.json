@@ -323,5 +323,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "The model engine stopped. Loading the model again…",
+    "retrying": "Model loaded again. Retrying your message…",
+    "recovered": "Recovered: the model engine stopped and was restarted, and your message was answered.",
+    "retryFailed": "The model engine stopped again. Flint retried once; use Regenerate to try again.",
+    "restartFailed": "Could not load the model again automatically. Use Regenerate, or pick the model again."
   }
 }
