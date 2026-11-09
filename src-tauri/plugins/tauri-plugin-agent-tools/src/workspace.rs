@@ -210,13 +210,14 @@ pub fn validate_browse_root(root: &Path, jan_data_folder: &Path) -> Result<PathB
 /// (e.g. `/tmp/jan-agent-<session>` on Linux), where `bash` scratch files
 /// persist across calls for one session and the filesystem tools may write.
 ///
-/// Every backend exposes it, but not the same way. Bubblewrap binds it over the
-/// sandbox's `/tmp` -- only this session subdir, not the whole host `/tmp`, so
-/// the shell sees its own scratch and none of the machine's other temp files --
-/// and the tools remap `/tmp/...` back onto it. Seatbelt and AppContainer have
-/// no mount, so it is reached by this real path and made writable by a policy
-/// rule and an ACE respectively. Either way `TMPDIR`/`TMP`/`TEMP` point at it
-/// (see `tools::jail::scratch_env_path`) and it is cleaned up with the session.
+/// Every backend exposes it at this real path, so the shell, an escalated
+/// (unsandboxed) command and the filesystem tools all name it the same way.
+/// Bubblewrap binds only this session subdir at its own path, over a throwaway
+/// `/tmp` tmpfs, so the shell sees its own scratch and none of the machine's
+/// other temp files; Seatbelt and AppContainer have no mount and make it
+/// writable by a policy rule and an ACE respectively. `TMPDIR`/`TMP`/`TEMP`
+/// point at it (see `tools::jail::scratch_env_path`) and it is cleaned up with
+/// the session.
 pub fn scratch_dir(session: &str) -> PathBuf {
     // One component whatever the id holds: the result is later removed
     // recursively, so a separator must not lead it out of the temp dir.
