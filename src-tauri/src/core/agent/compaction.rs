@@ -149,6 +149,9 @@ pub(crate) struct CompactOptions {
     pub live_request: Option<Value>,
     /// The input window the live prefix plus the summary request must fit in.
     pub live_window: Option<u64>,
+    /// The folder the run works in, whose `git status` the summary lists
+    /// under files touched. `None` lists only the write/edit record.
+    pub project_root: Option<std::path::PathBuf>,
 }
 
 /// The fewest messages a token-capped tail is cut to.
@@ -185,6 +188,7 @@ impl Default for CompactOptions {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
         }
     }
 }
@@ -207,6 +211,7 @@ impl CompactOptions {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
         }
     }
 
@@ -250,6 +255,10 @@ impl CompactOptions {
             live_window: body
                 .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
                 .and_then(Value::as_u64),
+            project_root: body
+                .get(crate::core::agent::r#loop::BODY_PROJECT_ROOT)
+                .and_then(Value::as_str)
+                .map(std::path::PathBuf::from),
         }
     }
 }
@@ -388,6 +397,15 @@ pub(crate) async fn compact_conversation_with(
     }
 
     let mut content = format!("{SUMMARY_HEADER}{summary}");
+    // Built by code from the record, never paraphrased by the summarizer, so a
+    // later pass carries the same list on rather than eroding it.
+    let git_status = options
+        .project_root
+        .as_deref()
+        .and_then(crate::core::agent::git::workspace_status);
+    if let Some(block) = files_touched_block(&prior.files, &rest[..cut], git_status.as_deref()) {
+        content.push_str(&block);
+    }
     // Pinned blocks of the summaries this one replaces travel on verbatim.
     content.push_str(&prior.pinned);
     for (index, label) in &pins {
@@ -472,17 +490,26 @@ const SUMMARY_HEADER: &str = "[Summary of earlier conversation, condensed to sav
 struct PriorSummaries {
     brief: Option<String>,
     pinned: String,
+    /// The paths earlier summaries listed under files touched, in order.
+    files: Vec<String>,
 }
 
 impl PriorSummaries {
     fn from(system_msgs: &[Value]) -> Self {
         let mut briefs: Vec<String> = Vec::new();
         let mut pinned = String::new();
+        let mut files: Vec<String> = Vec::new();
         for msg in system_msgs.iter().filter(|m| is_compaction_summary(m)) {
             let text = content_text(msg);
             let body = text.strip_prefix(SUMMARY_HEADER).unwrap_or(&text);
             let split = body.find(&format!("\n\n{PIN_HEADER}")).unwrap_or(body.len());
             let (brief, pins) = body.split_at(split);
+            let (brief, listed) = split_files_block(brief);
+            for path in listed {
+                if !files.contains(&path) {
+                    files.push(path);
+                }
+            }
             if !brief.trim().is_empty() {
                 briefs.push(brief.trim().to_string());
             }
@@ -491,6 +518,7 @@ impl PriorSummaries {
         Self {
             brief: (!briefs.is_empty()).then(|| briefs.join("\n\n---\n\n")),
             pinned,
+            files,
         }
     }
 
@@ -501,6 +529,121 @@ impl PriorSummaries {
             None => note.to_string(),
         }
     }
+}
+
+/// Opens the harness-built files touched block inside a summary node.
+const FILES_HEADER: &str =
+    "[Files touched, recorded by the harness: written with write/edit, oldest first]";
+
+/// Opens the `git status` part of that block (see `git::workspace_status`).
+const FILES_GIT_LINE: &str = "Workspace `git status --short`:";
+
+/// The most paths the block lists. A run that wrote hundreds of files keeps
+/// its newest ones and says how many earlier ones are not listed.
+const FILES_MAX: usize = 100;
+
+/// Paths a span wrote through `write` and `edit` calls whose result did not
+/// fail, in first-write order. From the record, so it survives the next pass.
+fn files_written(span: &[Value]) -> Vec<String> {
+    let mut calls: std::collections::HashMap<&str, (&str, &str)> =
+        std::collections::HashMap::new();
+    let mut paths: Vec<String> = Vec::new();
+    for msg in span {
+        match role(msg) {
+            "assistant" => {
+                for call in msg
+                    .get("tool_calls")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let id = call.get("id").and_then(Value::as_str).unwrap_or("");
+                    let function = call.get("function");
+                    let name = function
+                        .and_then(|f| f.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let args = function
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    calls.insert(id, (name, args));
+                }
+            }
+            "tool" => {
+                let id = msg.get("tool_call_id").and_then(Value::as_str).unwrap_or("");
+                let Some((name, args)) = calls.get(id).copied() else {
+                    continue;
+                };
+                if !matches!(name, "write" | "edit")
+                    || crate::core::agent::r#loop::tool_outcome_failed(name, &content_text(msg))
+                {
+                    continue;
+                }
+                let path = serde_json::from_str::<Value>(args)
+                    .ok()
+                    .and_then(|a| a.get("path").and_then(Value::as_str).map(str::to_string));
+                if let Some(path) = path.map(|p| p.trim().replace(['\n', '\r'], " ")) {
+                    if !path.is_empty() && !paths.contains(&path) {
+                        paths.push(path);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    paths
+}
+
+/// The files touched block for a summary node: earlier summaries' paths, then
+/// this span's, then the workspace's `git status`. `None` with nothing to say.
+fn files_touched_block(
+    prior: &[String],
+    span: &[Value],
+    git_status: Option<&str>,
+) -> Option<String> {
+    let mut paths: Vec<String> = prior.to_vec();
+    for path in files_written(span) {
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    if paths.is_empty() && git_status.is_none() {
+        return None;
+    }
+    let mut out = format!("\n\n{FILES_HEADER}\n");
+    let skip = paths.len().saturating_sub(FILES_MAX);
+    if skip > 0 {
+        out.push_str(&format!("[{skip} earlier paths not listed]\n"));
+    }
+    for path in &paths[skip..] {
+        // A path is model-chosen text, now under the system role.
+        let path = tauri_plugin_agent_tools::control_tags::neutralize(path).0;
+        out.push_str(&format!("- {path}\n"));
+    }
+    if let Some(status) = git_status {
+        // Opens with FILES_GIT_LINE, which ends the path list when read back.
+        let status = tauri_plugin_agent_tools::control_tags::neutralize(status.trim_end()).0;
+        out.push_str(&status);
+    }
+    Some(out.trim_end().to_string())
+}
+
+/// Split a prior brief into the model-written text and the paths its files
+/// touched block listed (the `git status` part is rebuilt, never carried).
+fn split_files_block(brief: &str) -> (&str, Vec<String>) {
+    let Some(at) = brief.find(&format!("\n\n{FILES_HEADER}")) else {
+        return (brief, Vec::new());
+    };
+    let paths = brief[at..]
+        .lines()
+        .skip_while(|line| !line.starts_with(FILES_HEADER))
+        .skip(1)
+        .take_while(|line| !line.starts_with(FILES_GIT_LINE))
+        .filter_map(|line| line.strip_prefix("- "))
+        .map(str::to_string)
+        .collect();
+    (&brief[..at], paths)
 }
 
 /// Opens each pinned block inside a summary node; also how a later pass knows
@@ -1075,6 +1218,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             },
         )
         .await
@@ -1103,6 +1247,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             },
         )
         .await
@@ -1136,6 +1281,7 @@ mod tests {
             summary_model: None,
             live_request: None,
             live_window: None,
+            project_root: None,
             }
         );
         assert_eq!(
@@ -1930,5 +2076,105 @@ mod tests {
         assert!(text.contains("keep API names"));
         assert!(text.contains("earlier summary"));
         assert!(!live_prefix_instruction(3, None, false).contains("earlier summary"));
+    }
+
+    /// One write/edit call and its result, as the record holds them.
+    fn file_call(id: &str, name: &str, path: &str, result: &str) -> [Value; 2] {
+        [
+            json!({ "role": "assistant", "content": "", "tool_calls": [{
+                "id": id, "type": "function",
+                "function": { "name": name, "arguments": json!({ "path": path }).to_string() }
+            }] }),
+            json!({ "role": "tool", "tool_call_id": id, "content": result }),
+        ]
+    }
+
+    fn with_file_calls(calls: &[[Value; 2]], tail: usize) -> Vec<Value> {
+        let mut v = vec![
+            json!({ "role": "system", "content": "sys" }),
+            json!({ "role": "user", "content": "do the task" }),
+        ];
+        for pair in calls {
+            v.extend(pair.iter().cloned());
+        }
+        for i in 0..tail {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            v.push(json!({ "role": r, "content": format!("later{i}") }));
+        }
+        v
+    }
+
+    /// The summary lists what the compacted span wrote, built by code: failed
+    /// writes and reads are left out, and the model never had to recall them.
+    #[tokio::test]
+    async fn the_summary_lists_the_files_the_span_wrote() {
+        let convo = with_file_calls(
+            &[
+                file_call("w1", "write", "src/a.rs", "Wrote 3 lines to src/a.rs"),
+                file_call("e1", "edit", "src/b.rs", "Applied 1 edit to src/b.rs"),
+                file_call("w2", "write", "src/denied.rs", "ERROR: permission denied"),
+                file_call("r1", "read", "src/read_only.rs", "1: fn x() {}"),
+                file_call("e2", "edit", "src/a.rs", "Applied 1 edit to src/a.rs"),
+            ],
+            4,
+        );
+        let opts = CompactOptions { keep_recent: 4, ..CompactOptions::default() };
+        let out = compact_conversation_with(&convo, "m", &stub("BRIEF"), &opts).await.unwrap();
+        let summary = content_text(out.iter().find(|m| is_compaction_summary(m)).unwrap());
+        let block = summary.split(FILES_HEADER).nth(1).expect("a files block");
+        let block = block.split(PIN_HEADER).next().unwrap();
+        assert_eq!(block.trim(), "- src/a.rs\n- src/b.rs", "{summary}");
+        assert!(summary.find("BRIEF").unwrap() < summary.find(FILES_HEADER).unwrap());
+    }
+
+    /// A second compaction carries the first one's list on (the brief is
+    /// re-summarized, the list is not), adds what was written since, and does
+    /// not show the list to the summarizer as part of the brief to merge.
+    #[tokio::test]
+    async fn a_later_compaction_carries_the_files_list_on() {
+        let opts = CompactOptions { keep_recent: 4, ..CompactOptions::default() };
+        let first = compact_conversation_with(
+            &with_file_calls(&[file_call("w1", "write", "one.txt", "ok")], 4),
+            "m",
+            &stub("FIRST"),
+            &opts,
+        )
+        .await
+        .unwrap();
+        let mut grown = first.clone();
+        grown.extend(file_call("w2", "write", "two.txt", "ok"));
+        for i in 0..4 {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            grown.push(json!({ "role": r, "content": format!("more{i}") }));
+        }
+        let model = stub("SECOND");
+        let second = compact_conversation_with(&grown, "m", &model, &opts).await.unwrap();
+        let summaries: Vec<String> =
+            second.iter().filter(|m| is_compaction_summary(m)).map(content_text).collect();
+        assert_eq!(summaries.len(), 1, "{summaries:?}");
+        let block = summaries[0].split(FILES_HEADER).nth(1).expect("a files block");
+        assert!(block.contains("- one.txt\n- two.txt"), "{}", summaries[0]);
+        assert_eq!(summaries[0].matches(FILES_HEADER).count(), 1);
+        let requests = model.requests.lock().await;
+        let sent = requests.last().unwrap().to_string();
+        assert!(!sent.contains(FILES_HEADER), "the list is not the model's to merge: {sent}");
+    }
+
+    /// The `git status` part is rebuilt on every pass and never read back as
+    /// paths; a path cannot smuggle a line break into the block.
+    #[test]
+    fn the_files_block_reads_back_only_its_paths() {
+        let span: Vec<Value> = file_call("w", "write", "evil\n- injected", "ok").to_vec();
+        let block = files_touched_block(
+            &["kept.rs".to_string()],
+            &span,
+            Some("Workspace `git status --short`:\n M kept.rs\n?? new.rs"),
+        )
+        .unwrap();
+        let brief = format!("BRIEF{block}");
+        let (text, paths) = split_files_block(&brief);
+        assert_eq!(text, "BRIEF");
+        assert_eq!(paths, vec!["kept.rs".to_string(), "evil - injected".to_string()]);
+        assert!(files_touched_block(&[], &[], None).is_none());
     }
 }
