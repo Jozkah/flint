@@ -123,6 +123,19 @@ describe('describeEngineError', () => {
     expect(text).not.toContain('could not start the llama.cpp engine')
   })
 
+  // A model auto-fit could not place gets its own advice: a smaller model,
+  // not the smaller context an out-of-memory error suggests.
+  it('describes a model fit could not place as not fitting this device', () => {
+    const parsed = parseEngineError({
+      code: 'MODEL_DOES_NOT_FIT',
+      message: 'The model does not fit on this device.',
+      details: 'cudaMalloc failed: out of memory',
+    })
+    expect(parsed?.code).toBe('MODEL_DOES_NOT_FIT')
+    describeEngineError(parsed)
+    expect(mockT).toHaveBeenCalledWith('model-errors:engine.MODEL_DOES_NOT_FIT')
+  })
+
   it('leads with the reason when only part of the boilerplate is present', () => {
     describeEngineError({
       code: 'MODEL_LOAD_FAILED',

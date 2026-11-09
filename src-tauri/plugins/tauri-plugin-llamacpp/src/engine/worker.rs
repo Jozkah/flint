@@ -128,6 +128,16 @@ fn is_oom_line(line_lower: &str) -> bool {
     line_lower.contains("failed to allocate") && line_lower.contains("buffer of size")
 }
 
+/// Whether a worker log line says auto-fit could not fit the model even into
+/// system memory. llama.cpp then loads with the unfitted parameters anyway, so
+/// the load that follows fails with an error that does not name the cause.
+/// fit only gives up like this without a GPU; with one it shrinks the context
+/// and offloads, and a model still too big fails as an ordinary out-of-memory
+/// load (see `commands::explain_load_failure`). Not a runtime fault.
+pub fn is_fit_failure_line(line_lower: &str) -> bool {
+    line_lower.contains("failed to fit params") && line_lower.contains("unable to fit model")
+}
+
 fn is_backend_error_line(line_lower: &str) -> bool {
     if line_lower.contains("cuda error:") || line_lower.contains("ggml_assert(") {
         return true;
@@ -222,7 +232,24 @@ const STDERR_TAIL_LINE_CHARS: usize = 300;
 /// The most recent worker stderr lines, shared between the task draining the
 /// pipe and whoever later has to say why the worker died.
 #[derive(Debug, Clone, Default)]
-struct StderrTail(std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>);
+struct StderrTail(
+    std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
+    std::sync::Arc<std::sync::Mutex<FitNotes>>,
+);
+
+/// Fit-failure lines the worker printed. Counted rather than taken, so a load
+/// can ask for the lines printed since it started without clearing one that a
+/// concurrent load is still waiting for.
+#[derive(Debug, Default)]
+struct FitNotes {
+    count: u64,
+    last: Option<String>,
+}
+
+/// How many fit-failure lines a worker had printed at some moment; see
+/// [`WorkerHandle::fit_failure_since`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FitMark(u64);
 
 impl StderrTail {
     fn push(&self, line: &str) {
@@ -230,12 +257,27 @@ impl StderrTail {
         if line.is_empty() {
             return;
         }
+        if is_fit_failure_line(&line.to_lowercase()) {
+            if let Ok(mut notes) = self.1.lock() {
+                notes.count += 1;
+                notes.last = Some(line.chars().take(STDERR_TAIL_LINE_CHARS).collect());
+            }
+        }
         let line: String = line.chars().take(STDERR_TAIL_LINE_CHARS).collect();
         let Ok(mut lines) = self.0.lock() else { return };
         if lines.len() == STDERR_TAIL_LINES {
             lines.pop_front();
         }
         lines.push_back(line);
+    }
+
+    fn fit_mark(&self) -> FitMark {
+        FitMark(self.1.lock().map(|f| f.count).unwrap_or(0))
+    }
+
+    fn fit_since(&self, mark: FitMark) -> Option<String> {
+        let notes = self.1.lock().ok()?;
+        (notes.count > mark.0).then(|| notes.last.clone()).flatten()
     }
 
     fn lines(&self) -> Vec<String> {
@@ -509,6 +551,9 @@ pub struct WorkerHandle {
     pub models: Vec<String>,
     /// The CUDA toolkit the engine was built with, when it reported one.
     pub cuda_toolkit: Option<CudaVersion>,
+    /// The preset the worker was started from. It is regenerated in place and
+    /// the worker reloads the same path, so it also describes later loads.
+    pub preset_path: PathBuf,
     child: Child,
     stderr_tail: StderrTail,
     #[cfg(windows)]
@@ -526,6 +571,7 @@ impl WorkerHandle {
             api_key: format!("key-{port}"),
             models: Vec::new(),
             cuda_toolkit: None,
+            preset_path: PathBuf::new(),
             child,
             stderr_tail: StderrTail::default(),
             #[cfg(windows)]
@@ -598,6 +644,19 @@ impl WorkerHandle {
     /// None while still running, otherwise the exit status.
     pub fn exited(&mut self) -> Option<std::process::ExitStatus> {
         self.child.try_wait().ok().flatten()
+    }
+
+    /// Taken before a load, so only a fit failure printed during that load is
+    /// blamed for it: a stale one would pin the next, unrelated failure on fit.
+    pub fn fit_mark(&self) -> FitMark {
+        self.stderr_tail.fit_mark()
+    }
+
+    /// The latest fit-failure line, if one was printed after `mark`. The line
+    /// names no model; the frontend loads one chat model at a time, so two
+    /// loads racing on one worker are rare enough to accept the ambiguity.
+    pub fn fit_failure_since(&self, mark: FitMark) -> Option<String> {
+        self.stderr_tail.fit_since(mark)
     }
 
     /// None while still running, otherwise how it ended and what it last said.
@@ -798,6 +857,7 @@ pub async fn spawn_with_offload(
         api_key: api_key.to_string(),
         models: hs.models,
         cuda_toolkit: hs.cuda_toolkit,
+        preset_path: preset_path.to_path_buf(),
         child,
         stderr_tail,
         #[cfg(windows)]
@@ -927,7 +987,12 @@ pub async fn spawn_external(
                 log::warn!("external llama-server lost its port ({e:?}); retrying on a fresh one");
                 last_err = Some(e);
             }
-            other => return other,
+            other => {
+                return other.map(|mut handle| {
+                    handle.preset_path = preset_path.to_path_buf();
+                    handle
+                })
+            }
         }
     }
     Err(last_err.unwrap_or_else(|| WorkerError::Spawn("no free loopback port".into())))
@@ -1052,6 +1117,8 @@ async fn spawn_external_attempt(
         api_key: api_key.to_string(),
         models: models.to_vec(),
         cuda_toolkit: None,
+        // Set by `spawn_external`, which knows the user's preset.
+        preset_path: PathBuf::new(),
         child,
         stderr_tail,
         #[cfg(windows)]
@@ -1229,6 +1296,30 @@ fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> (HashMap<Strin
 
 #[cfg(test)]
 mod tests {
+
+    /// Only a fit-failure line printed after a mark explains a load: one from
+    /// an earlier load is not blamed for this one, and the count survives a
+    /// full tail.
+    #[test]
+    fn fit_failures_are_counted_from_a_mark() {
+        const FIT_LINE: &str = "common_fit_params: failed to fit params to free device memory: \
+            was unable to fit model into system memory by reducing context, abort";
+        assert!(super::is_fit_failure_line(&FIT_LINE.to_lowercase()));
+        assert!(!super::is_fit_failure_line("llama_model_load: failed to fit params"));
+        let tail = super::StderrTail::default();
+        let start = tail.fit_mark();
+        assert_eq!(tail.fit_since(start), None);
+        tail.push("load_tensors: offloaded 10/32 layers");
+        assert_eq!(tail.fit_since(start), None);
+        tail.push(FIT_LINE);
+        assert_eq!(tail.fit_since(start).as_deref(), Some(FIT_LINE));
+        let after = tail.fit_mark();
+        assert_eq!(tail.fit_since(after), None, "an earlier load's line");
+        for i in 0..200 {
+            tail.push(&format!("noise {i}"));
+        }
+        assert_eq!(tail.fit_since(start).as_deref(), Some(FIT_LINE));
+    }
 
     #[test]
     fn port_was_taken_matches_bind_failures() {

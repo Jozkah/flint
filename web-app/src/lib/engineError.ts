@@ -18,6 +18,9 @@ export const ENGINE_ERROR_CODES = [
   'MODEL_QUANT_NOT_SUPPORTED',
   'ENGINE_STOPPED',
   'OUT_OF_MEMORY',
+  // Auto-fit could not place the model at any context it may choose: a
+  // smaller model helps, a smaller context does not.
+  'MODEL_DOES_NOT_FIT',
   // MLX only (`tauri-plugin-mlx/src/error.rs`): a running server died of a GPU
   // allocation failure on one prompt.
   'PROMPT_OUT_OF_MEMORY',

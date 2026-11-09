@@ -436,6 +436,89 @@ impl Drop for AbortOnDrop {
     }
 }
 
+/// How long a failed load waits for a fit-failure line the worker printed but
+/// the stderr drain has not read yet.
+const FIT_NOTE_WAIT: Duration = Duration::from_millis(300);
+
+/// The engine on `port`'s fit-failure count, taken before a load.
+async fn fit_mark(state: &LlamacppState, port: u16) -> Option<crate::engine::worker::FitMark> {
+    let guard = state.engine.lock().await;
+    guard.as_ref().filter(|h| h.port == port).map(|h| h.fit_mark())
+}
+
+/// The fit-failure line the worker on `port` printed after `mark`, plus the
+/// preset it runs from.
+async fn fit_failure_since(
+    state: &LlamacppState,
+    port: u16,
+    mark: crate::engine::worker::FitMark,
+) -> (Option<String>, Option<std::path::PathBuf>) {
+    let guard = state.engine.lock().await;
+    match guard.as_ref().filter(|h| h.port == port) {
+        Some(h) => (h.fit_failure_since(mark), Some(h.preset_path.clone())),
+        None => (None, None),
+    }
+}
+
+/// Rewords a failed load that auto-fit could not place, given what the worker
+/// said and the preset it runs from. Without this the user sees an
+/// out-of-memory error whose advice is a smaller context, when fit has
+/// already shrunk the context as far as `fit-ctx` allows.
+///
+/// Two signals, because fit only gives up loudly without a GPU: there it
+/// prints a "unable to fit model" line, which is the cause of whatever the
+/// load then hit. With a GPU it never fails; it shrinks the context, moves
+/// layers to the CPU and loads, so a model too big for the device fails as a
+/// plain out-of-memory load. That is read as not fitting only when fit owned
+/// the context for this model; a pinned `ctx-size` is left alone by fit, and
+/// lowering it is real advice.
+fn explain_with(
+    err: LlamacppError,
+    fit_line: Option<String>,
+    preset: Option<&str>,
+    model_id: &str,
+) -> LlamacppError {
+    if matches!(err.code, ErrorCode::ModelLoadCancelled) {
+        return err;
+    }
+    let output = err.details.clone().unwrap_or_default();
+    if let Some(line) = fit_line {
+        let details = if output.trim().is_empty() { line } else { format!("{line}; {output}") };
+        return LlamacppError::model_does_not_fit(details);
+    }
+    if !matches!(err.code, ErrorCode::OutOfMemory) {
+        return err;
+    }
+    match preset {
+        Some(ini) if crate::engine::preset::fit_owns_context(ini, model_id) => {
+            LlamacppError::model_does_not_fit(output)
+        }
+        _ => err,
+    }
+}
+
+/// [`explain_with`] for the worker on `port`, reading what it printed since
+/// `mark` and its preset file.
+async fn explain_load_failure(
+    state: &LlamacppState,
+    port: u16,
+    model_id: &str,
+    mark: Option<crate::engine::worker::FitMark>,
+    err: LlamacppError,
+) -> LlamacppError {
+    let Some(mark) = mark else { return err };
+    let (mut line, mut preset) = fit_failure_since(state, port, mark).await;
+    if line.is_none() && matches!(err.code, ErrorCode::ModelLoadFailed | ErrorCode::OutOfMemory) {
+        tokio::time::sleep(FIT_NOTE_WAIT).await;
+        (line, preset) = fit_failure_since(state, port, mark).await;
+    }
+    let ini = match preset.filter(|p| !p.as_os_str().is_empty()) {
+        Some(path) => tokio::fs::read_to_string(&path).await.ok(),
+        None => None,
+    };
+    explain_with(err, line, ini.as_deref(), model_id)
+}
+
 async fn post_load<S: ProgressSink>(
     sink: &S,
     state: &LlamacppState,
@@ -481,6 +564,7 @@ async fn post_load_inner<S: ProgressSink>(
         log::debug!("/models/sse did not answer within {SUBSCRIBE_TIMEOUT:?}; loading anyway");
     }
 
+    let mark = fit_mark(state, port).await;
     let client = http_client().await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models/load", port);
     let resp = client
@@ -510,10 +594,9 @@ async fn post_load_inner<S: ProgressSink>(
         // non-2xx is a real rejection whatever its text says.
         let body = resp.text().await.unwrap_or_default();
         progress_task.abort();
-        return Err(ServerError::Llamacpp(load_rejection_error(
-            status.as_u16(),
-            &body,
-        )));
+        let err = load_rejection_error(status.as_u16(), &body);
+        let err = explain_load_failure(state, port, model_id, mark, err).await;
+        return Err(ServerError::Llamacpp(err));
     }
 
     // Definitive failure signal from the SSE stream; pends forever if the
@@ -538,7 +621,12 @@ async fn post_load_inner<S: ProgressSink>(
         ))),
     };
     progress_task.abort();
-    result
+    match result {
+        Err(ServerError::Llamacpp(err)) => Err(ServerError::Llamacpp(
+            explain_load_failure(state, port, model_id, mark, err).await,
+        )),
+        other => other,
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1325,6 +1413,61 @@ mod load_progress_tests {
         );
         let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
         assert!(payload.stage.is_none());
+    }
+}
+
+#[cfg(test)]
+mod fit_explain_tests {
+    use super::{explain_with, load_rejection_error};
+    use crate::error::{ErrorCode, LlamacppError};
+
+    const OOM_BODY: &str = r#"{"error":{"message":"failed to load model; ggml_backend_cuda_buffer_type_alloc_buffer: allocating 9000.00 MiB on device 0: cudaMalloc failed: out of memory","code":400}}"#;
+    const FIT_LINE: &str = "common_fit_params: failed to fit params to free device memory: was unable to fit model into system memory by reducing context, abort";
+    const FIT_OWNS: &str = "[*]\nfit-ctx = 4096\n\n[m]\nmodel = /m.gguf\n";
+
+    // No GPU: fit gives up out loud, and the load that follows fails with
+    // whatever llama.cpp hit next. The fit line is the cause.
+    #[test]
+    fn a_load_after_fit_gave_up_does_not_fit() {
+        let failed = LlamacppError::from_load_failure("failed to load model");
+        let err = explain_with(failed, Some(FIT_LINE.into()), Some(FIT_OWNS), "m");
+        assert!(matches!(err.code, ErrorCode::ModelDoesNotFit), "{err:?}");
+        let details = err.details.unwrap();
+        assert!(details.starts_with(FIT_LINE) && details.ends_with("failed to load model"), "{details}");
+    }
+
+    // With a GPU fit never fails: it shrinks the context and offloads, and a
+    // model still too big runs out of memory. With fit owning the context that
+    // is the model not fitting, not a context the user could lower.
+    #[test]
+    fn an_out_of_memory_load_with_fit_owning_the_context_does_not_fit() {
+        let err = load_rejection_error(400, OOM_BODY);
+        assert!(matches!(err.code, ErrorCode::OutOfMemory), "the plain classification");
+        let err = explain_with(err, None, Some(FIT_OWNS), "m");
+        assert!(matches!(err.code, ErrorCode::ModelDoesNotFit), "{err:?}");
+        assert!(err.details.unwrap().contains("cudaMalloc failed: out of memory"));
+    }
+
+    // Fit off, or a context the user pinned (fit leaves it alone): a smaller
+    // context is real advice, so the out-of-memory error stands. So does any
+    // other failure, and an out-of-memory load with no preset to read.
+    #[test]
+    fn other_failures_keep_their_own_code() {
+        for ini in [
+            "[*]\nfit = off\nctx-size = 8192\n\n[m]\nmodel = /m.gguf\n",
+            "[*]\n\n[m]\nmodel = /m.gguf\nctx-size = 32768\n",
+        ] {
+            let err = explain_with(load_rejection_error(400, OOM_BODY), None, Some(ini), "m");
+            assert!(matches!(err.code, ErrorCode::OutOfMemory), "{ini}");
+        }
+        let err = explain_with(load_rejection_error(400, OOM_BODY), None, None, "m");
+        assert!(matches!(err.code, ErrorCode::OutOfMemory));
+        let arch = LlamacppError::from_load_failure("error loading model architecture: unknown");
+        let err = explain_with(arch, None, Some(FIT_OWNS), "m");
+        assert!(matches!(err.code, ErrorCode::ModelArchNotSupported), "{err:?}");
+        let cancelled = LlamacppError::new(ErrorCode::ModelLoadCancelled, "x".into(), None);
+        let err = explain_with(cancelled, Some(FIT_LINE.into()), Some(FIT_OWNS), "m");
+        assert!(matches!(err.code, ErrorCode::ModelLoadCancelled));
     }
 }
 
