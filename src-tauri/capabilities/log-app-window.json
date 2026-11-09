@@ -13,6 +13,7 @@
     "log:default",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-get-all-webviews",
-    "core:window:allow-set-focus"
+    "core:window:allow-set-focus",
+    "aux-window-commands"
   ]
 }
