@@ -23,9 +23,37 @@ use serde_json::Value;
 /// not need per-token precision and a real tokenizer is neither available for
 /// every remote model nor worth its cost on every turn. Whitespace-only content
 /// still counts as at least one token so an empty message is never free.
+///
+/// Chinese, Japanese and Korean characters count as one token each instead:
+/// tokenizers spend about a token (often more) per character on those scripts,
+/// so chars/4 read a CJK conversation four times too small and compaction
+/// started only after the real window had overflowed. Everything else, Latin
+/// text and code included, keeps chars/4; the provider-reported usage anchor
+/// below corrects the remaining density error once a turn has been measured.
 pub fn estimate_tokens_str(text: &str) -> u64 {
-    let chars = text.chars().count() as u64;
-    chars.div_ceil(4)
+    let (mut narrow, mut dense) = (0u64, 0u64);
+    for c in text.chars() {
+        if is_dense_script(c) {
+            dense += 1;
+        } else {
+            narrow += 1;
+        }
+    }
+    dense + narrow.div_ceil(4)
+}
+
+/// Characters a tokenizer spends about one token on: Hangul, the CJK
+/// punctuation, kana and ideograph blocks, and fullwidth forms.
+fn is_dense_script(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x1100..=0x11FF       // Hangul Jamo
+            | 0x2E80..=0x9FFF // CJK radicals, punctuation, kana, ideographs
+            | 0xAC00..=0xD7AF // Hangul syllables
+            | 0xF900..=0xFAFF // CJK compatibility ideographs
+            | 0xFF00..=0xFFEF // halfwidth and fullwidth forms
+            | 0x20000..=0x3FFFF // CJK extension planes
+    )
 }
 
 /// Estimate the tokens a wire message will cost, counting text content, tool-call
@@ -851,6 +879,41 @@ fn role(msg: &Value) -> &str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // --- estimator ---
+
+    #[test]
+    fn latin_text_and_code_keep_the_chars_over_four_estimate() {
+        assert_eq!(estimate_tokens_str(""), 0);
+        assert_eq!(estimate_tokens_str("a"), 1);
+        assert_eq!(estimate_tokens_str("abcd"), 1);
+        assert_eq!(estimate_tokens_str("abcde"), 2);
+        assert_eq!(estimate_tokens_str(&"x".repeat(400)), 100);
+        assert_eq!(estimate_tokens_str("fn main() { println!(\"hi\"); }"), 8);
+        // Accented Latin, Cyrillic and Greek stay on chars/4.
+        assert_eq!(estimate_tokens_str("café über naïve"), 4);
+        assert_eq!(estimate_tokens_str("привет мир"), 3);
+        assert_eq!(estimate_tokens_str("γειά σου"), 2);
+        let msg = json!({ "role": "user", "content": "x".repeat(40) });
+        assert_eq!(estimate_message_tokens(&msg), 4 + 10);
+        let img = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": "data:" } }] });
+        assert_eq!(estimate_message_tokens(&img), 4 + 256);
+    }
+
+    #[test]
+    fn cjk_characters_count_one_token_each() {
+        // Chinese, Japanese kana and Korean Hangul are about a token per character.
+        assert_eq!(estimate_tokens_str("你好世界"), 4);
+        assert_eq!(estimate_tokens_str("こんにちは"), 5);
+        assert_eq!(estimate_tokens_str("カタカナ"), 4);
+        assert_eq!(estimate_tokens_str("안녕하세요"), 5);
+        assert_eq!(estimate_tokens_str("。、！"), 3, "CJK and fullwidth punctuation");
+        // Mixed text: the CJK part per character, the rest at chars/4.
+        assert_eq!(estimate_tokens_str("hello 世界"), 2 + 2);
+        // A long CJK conversation now reaches the trigger instead of reading 4x too small.
+        let msg = json!({ "role": "user", "content": "中".repeat(4_000) });
+        assert_eq!(estimate_message_tokens(&msg), 4 + 4_000);
+    }
 
     // --- thresholds ---
 
