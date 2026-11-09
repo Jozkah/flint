@@ -7,32 +7,115 @@ export function cappedContextWindow(configured?: number | null, discovered?: num
   return cap != null && window != null ? Math.min(cap, window) : cap ?? window
 }
 
-/** 32768 -> "32K", 262144 -> "262K"; small numbers stay exact. */
-function windowLabel(tokens: number): string {
-  return tokens >= 1000 ? `${Math.round(tokens / 1024)}K` : String(tokens)
+/**
+ * A token count as the message prints it: exact, with thousands separators.
+ * It used to print a "K" label divided by 1024 next to the exact number, so a
+ * configured 200000 window read as "195K" and looked like a second, different
+ * window.
+ */
+function tokens(n: number): string {
+  return Math.round(n).toLocaleString('en-US')
+}
+
+/** What the estimate of one request is made of, in heuristic (unscaled) tokens. */
+export type EstimateBreakdown = {
+  systemPrompt: number
+  tools: number
+  toolCount: number
+  /** Every message before the newest one. */
+  history: number
+  /** The newest message (the user's, or the tool results being answered). */
+  latest: number
+}
+
+export type EstimateCheck = {
+  /** Where the window came from ("configured", "the last refusal", ...). */
+  source?: string
+  breakdown?: EstimateBreakdown
+  /**
+   * Stop on the calibrated estimate. Off, a request whose calibrated count is
+   * over but whose plain heuristic count fits is sent: the provider's own
+   * count decides, and a length refusal goes through overflow recovery. On
+   * for the resend after such a refusal, which must not be sent blind again.
+   */
+  strict?: boolean
 }
 
 /** Last-message preservation must not bypass the context budget. */
 /** Start of the message `assertEstimatedContextFits` throws; the chat banner keys on it. */
 export const PREFLIGHT_CONTEXT_ERROR_PREFIX = 'The estimated request exceeds the available context size.'
 
+/**
+ * Refuse a request that cannot fit the window.
+ *
+ * `ratio` is the calibration learned from this model's reported usage (see
+ * `ContextEstimate`); it carries up to 1.6x of uncertainty. Unless `strict`,
+ * the request is refused only when the plain heuristic count (ratio 1) plus
+ * the reply reserve is already over the window: a request over only by the
+ * calibration margin is sent and the provider decides.
+ */
 export function assertEstimatedContextFits(
   estimated: number,
   ratio: number,
   window: number,
   reserve: number,
-  source?: string
+  check: string | EstimateCheck = {}
 ): void {
   if (window <= 0) return
+  const { source, breakdown, strict = true } =
+    typeof check === 'string' ? { source: check } : check
+  const plain = Math.ceil(estimated)
   const need = Math.ceil(estimated * ratio)
-  if (need + reserve > window) {
-    throw new Error(`${PREFLIGHT_CONTEXT_ERROR_PREFIX} ` +
-      `Flint estimated ${need} prompt tokens plus ${reserve} reserved for the reply, ` +
-      `against a window of ${window}${source ? ` (from ${source})` : ''}. ` +
-      `This model's window is ${windowLabel(window)}; Flint needs about ${windowLabel(need + reserve)}. ` +
-      'Pick a larger-context model or raise Max Context Tokens in Assistant settings. ' +
-      'The latest message or fixed prompt is too large to fit after compaction; shorten it or reduce the enabled tools.')
-  }
+  const over = strict ? need + reserve > window : plain + reserve > window
+  if (!over) return
+  const scale = (n: number) => tokens(n * ratio)
+  const parts = breakdown
+    ? [
+        ['system prompt', breakdown.systemPrompt],
+        [`tool definitions (${breakdown.toolCount} tools)`, breakdown.tools],
+        ['earlier conversation', breakdown.history],
+        ['latest message', breakdown.latest],
+      ] as const
+    : []
+  const largest = [...parts].sort((a, b) => b[1] - a[1])[0]
+  const action = !largest
+    ? undefined
+    : largest[0].startsWith('tool definitions')
+      ? 'turn off MCP servers or tools this conversation does not need'
+      : largest[0] === 'system prompt'
+        ? 'shorten the assistant instructions, project instructions or remembered facts'
+        : largest[0] === 'latest message'
+          ? 'shorten it or attach less'
+          : 'compact it or start a new one'
+  // The largest part comes first: a Cowork run card shows only the first 300
+  // characters of a run's error.
+  const lead = largest
+    ? `Most of it is the ${largest[0]}: ${scale(largest[1])} of ${tokens(need)} prompt tokens; ${action}. `
+    : 'Shorten the latest message or reduce the enabled tools. '
+  throw new Error(`${PREFLIGHT_CONTEXT_ERROR_PREFIX} ${lead}` +
+    `Flint estimated ${tokens(need)} prompt tokens plus ${tokens(reserve)} reserved for the reply, ` +
+    `against a window of ${tokens(window)}${source ? ` (from ${source})` : ''}.` +
+    (parts.length
+      ? ' Estimate by part: ' + parts.map(([label, n]) => `${label} ${scale(n)}`).join(', ') + '.'
+      : '') +
+    (ratio > 1
+      ? ` This includes a x${ratio.toFixed(2)} correction learned from this model's reported usage ` +
+        `(${tokens(plain)} before it).`
+      : '') +
+    ' Or pick a larger-context model or raise Max Context Tokens in Assistant settings.')
+}
+
+/**
+ * Whether the heuristic estimate of a request covers everything the provider
+ * will count. An attached file (image, PDF, audio) and a screenshot sent beside
+ * the transcript are not in it, so such a request must not calibrate the ratio:
+ * its reported/estimated ratio measures the attachment, not tokenizer density.
+ */
+export function estimateCountsEveryPart(
+  messages: ReadonlyArray<{ parts: ReadonlyArray<{ type: string }> }>,
+  screenshots: number
+): boolean {
+  return screenshots === 0 && !messages.some((m) => m.parts.some((p) => p.type === 'file'))
 }
 
 /** Bounds of the calibration ratio: the heuristic is never trusted to over-count, nor a tokenizer to count 1.6x denser. */
