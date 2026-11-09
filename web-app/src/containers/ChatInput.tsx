@@ -78,6 +78,9 @@ import { useMentionPreview } from '@/hooks/useMentionPreview'
 import { knownContextWindow } from '@/lib/knownContextWindow'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { PromptFillDialog } from '@/containers/PromptFillDialog'
+import { McpPromptDialog } from '@/containers/McpPromptDialog'
+import { useMcpPromptInsert } from '@/hooks/useMcpPromptInsert'
+import type { Attachment } from '@/types/attachment'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
 import type { ChatInputProps } from '@/containers/chatInput/chatInputProps'
@@ -229,6 +232,22 @@ const ChatInput = memo(function ChatInput({
   // The image viewer over the composer's attachments: which image is open.
   const [viewerAt, setViewerAt] = useState<number | null>(null)
   const slashListId = useId()
+  // MCP prompts' images land in this composer's attachments; the key is
+  // known further down.
+  const attachmentsKeyRef = useRef<string>(NEW_THREAD_ATTACHMENT_KEY)
+  const addPromptImages = useCallback((images: Attachment[]) => {
+    useChatAttachments
+      .getState()
+      .setAttachments(attachmentsKeyRef.current, (prev) => [...prev, ...images])
+  }, [])
+  const {
+    mcpBuiltins,
+    mcpFill,
+    mcpBusy,
+    beginMcpPromptInsert,
+    submitMcpFill,
+    cancelMcpFill,
+  } = useMcpPromptInsert({ setPrompt, addImages: addPromptImages })
   const {
     slashCommands,
     libraryPrompts,
@@ -241,6 +260,7 @@ const ChatInput = memo(function ChatInput({
     slashBuiltins,
     currentThreadId,
     setPrompt,
+    extraBuiltins: mcpBuiltins,
   })
   const {
     filePickerOpen,
@@ -395,6 +415,7 @@ const ChatInput = memo(function ChatInput({
   // own id would have them silently dropped if this read a thread id.
   const attachmentsKey =
     scopeKey ?? currentThreadId ?? NEW_THREAD_ATTACHMENT_KEY
+  attachmentsKeyRef.current = attachmentsKey
   const attachments = useChatAttachments(
     useCallback(
       (state) => state.getAttachments(attachmentsKey),
@@ -721,9 +742,13 @@ const ChatInput = memo(function ChatInput({
                     const lib = promptId
                       ? libraryPrompts.find((p) => p.id === promptId)
                       : undefined
+                    const mcpPrompt = item.builtin?.mcpPrompt
                     if (lib) {
                       setPrompt('')
                       beginPromptInsert(lib, (out) => setPrompt(out))
+                    } else if (mcpPrompt) {
+                      setPrompt('')
+                      beginMcpPromptInsert(mcpPrompt)
                     } else {
                       setPrompt(text)
                     }
@@ -836,9 +861,13 @@ const ChatInput = memo(function ChatInput({
                           (p) => p.id === highlighted.builtin?.promptId
                         )
                       : undefined
+                    const mcpPrompt = highlighted?.builtin?.mcpPrompt
                     if (lib) {
                       setPrompt('')
                       beginPromptInsert(lib, (out) => setPrompt(out))
+                    } else if (mcpPrompt) {
+                      setPrompt('')
+                      beginMcpPromptInsert(mcpPrompt)
                     } else {
                       setPrompt(selection)
                     }
@@ -882,6 +911,19 @@ const ChatInput = memo(function ChatInput({
                       : undefined,
                 spellcheck: String(spellCheckChatInput),
                 'data-gramm': String(spellCheckChatInput),
+              }}
+            />
+            <McpPromptDialog
+              prompt={mcpFill}
+              busy={mcpBusy}
+              onSubmit={(values) => {
+                void submitMcpFill(values).then(() =>
+                  setTimeout(() => focusComposer(), 0)
+                )
+              }}
+              onCancel={() => {
+                cancelMcpFill()
+                setTimeout(() => focusComposer(), 0)
               }}
             />
             <PromptFillDialog
