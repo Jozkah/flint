@@ -90,6 +90,7 @@ When a port lands, its commit credits the upstream author (as the commit author,
 - [@davidjimenez75](https://github.com/davidjimenez75): [janhq/jan#8108](https://github.com/janhq/jan/issues/8108)
 - [@dhbaquerizo](https://github.com/dhbaquerizo): [janhq/jan#9547](https://github.com/janhq/jan/issues/9547)
 - [@domblah](https://github.com/domblah): [janhq/jan#8911](https://github.com/janhq/jan/issues/8911)
+- [@elevchyt](https://github.com/elevchyt): [janhq/jan#9587](https://github.com/janhq/jan/issues/9587)
 - [@enjoyandlove](https://github.com/enjoyandlove): [janhq/jan#8019](https://github.com/janhq/jan/issues/8019)
 - [@enkynakamura](https://github.com/enkynakamura): [janhq/jan#9022](https://github.com/janhq/jan/issues/9022), [janhq/jan#9197](https://github.com/janhq/jan/issues/9197)
 - [@faar-gitgit](https://github.com/faar-gitgit): [janhq/jan#9628](https://github.com/janhq/jan/issues/9628)
