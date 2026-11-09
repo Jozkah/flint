@@ -962,77 +962,11 @@ async fn execute(
     input: Option<&HookInput>,
     parsed_slot: &std::sync::Arc<std::sync::Mutex<Option<HookOutput>>>,
 ) -> (bool, String, Option<HookError>) {
-    use crate::tools::{jail, proc};
+    use crate::tools::proc;
 
-    // The same base policy the bash tool starts from.
-    let policy = crate::tools::sandbox_shell::base_policy(
-        ctx.project_root,
-        ctx.allow_network,
-        ctx.home_readonly,
-        ctx.sandbox,
-        ctx.mask_root,
-    );
-    // Which shell can be confined is probed, not assumed -- the same decision
-    // `bash` makes, for the same reason: on Windows the MSYS runtime cannot
-    // start inside an AppContainer, and running the hook unconfined instead
-    // would hand it the whole machine.
-    let shell = if ctx.sandbox {
-        let selected = match jail::select_shell(&policy) {
-            Ok(selected) => selected,
-            Err(detail) => {
-                return (
-                    false,
-                    String::new(),
-                    Some(HookError::new(
-                        HookErrorKind::ShellUnavailable,
-                        format!("no shell could be started in a sandbox on this system: {detail}"),
-                    )),
-                )
-            }
-        };
-        // A hook written for a POSIX shell is refused rather than handed to
-        // PowerShell or cmd, which would run *something* -- just not what the
-        // file asked for, and a policy hook that silently runs something else
-        // is worse than one that does not run. A hook that chains with
-        // `&&`/`||` is moved onto a shell that can, as the bash tool's is.
-        match crate::tools::sandbox_shell::fit_to_command(&policy, selected, &hook.command) {
-            Ok(fitted) => fitted.wrapped,
-            Err(crate::tools::sandbox_shell::Unfit::PosixOnly { construct, .. }) => {
-                return (
-                    false,
-                    String::new(),
-                    Some(HookError::new(
-                        HookErrorKind::ShellUnavailable,
-                        format!(
-                            "this hook uses {construct}, which needs a POSIX shell, and none could \
-                             be started in the sandbox here"
-                        ),
-                    )),
-                );
-            }
-            Err(crate::tools::sandbox_shell::Unfit::NoChaining { operator, selected }) => {
-                return (
-                    false,
-                    String::new(),
-                    Some(HookError::new(
-                        HookErrorKind::ShellUnavailable,
-                        proc::chaining_unavailable_error(operator, &selected.report.cfg),
-                    )),
-                );
-            }
-        }
-    } else {
-        proc::shell().clone()
-    };
-    // A confined PowerShell ignores the directory it was started in (it opens
-    // at System32), so a relative path in a hook meant somewhere else. The
-    // `bash` tool fixes this by wrapping the command to open in the workspace
-    // (`proc::located`); a hook is no less entitled to its own project, so it
-    // gets the same wrapper. Unconfined shells already honour `current_dir`.
-    let command = if ctx.sandbox {
-        proc::located(shell.flavor, &hook.command, ctx.project_root)
-    } else {
-        hook.command.clone()
+    let (shell, command) = match hook_shell(hook, ctx) {
+        Ok(chosen) => chosen,
+        Err(error) => return (false, String::new(), Some(error)),
     };
     let root = ctx.project_root.to_path_buf();
     // The shell's pid, shared out of the future so a deadline can kill the
@@ -1145,36 +1079,11 @@ async fn execute(
         let out = status.map(|status| std::process::Output { status, stdout, stderr });
         match out {
             Ok(out) => {
-                let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
-                if want_json && out.status.success() {
-                    if let (Some(parsed), Ok(mut slot)) = (HookOutput::parse(&text), parsed_out.lock()) {
-                        *slot = Some(parsed);
-                    }
+                let (ok, text, error, parsed) = hook_outcome(event_name, want_json, &out);
+                if let (Some(parsed), Ok(mut slot)) = (parsed, parsed_out.lock()) {
+                    *slot = Some(parsed);
                 }
-                text.push_str(&String::from_utf8_lossy(&out.stderr));
-                let text = bound(&crate::harness_error::scrub(&text));
-                if out.status.success() {
-                    (true, text, None)
-                } else {
-                    let code = out
-                        .status
-                        .code()
-                        .map(|c| c.to_string())
-                        .unwrap_or_else(|| "a signal".to_string());
-                    let detail = if text.trim().is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {}", text.trim())
-                    };
-                    (
-                        false,
-                        text.clone(),
-                        Some(HookError::new(
-                            HookErrorKind::Failed,
-                            format!("the {event_name} hook exited with {code}{detail}"),
-                        )),
-                    )
-                }
+                (ok, text, error)
             }
             Err(e) => (
                 false,
@@ -1198,23 +1107,127 @@ async fn execute(
                 proc::kill_tree(pid);
                 proc::unregister(pid);
             }
-            let (kind, why) = match reason {
-                crate::lifecycle::StopReason::Timeout => (
-                    HookErrorKind::TimedOut,
-                    format!(
-                        "the {} hook outlived its {}s limit and was stopped",
-                        event.as_str(),
-                        hook.timeout_secs
-                    ),
-                ),
-                crate::lifecycle::StopReason::Cancelled => (
-                    HookErrorKind::Cancelled,
-                    format!("the {} hook was cancelled with the work it belonged to", event.as_str()),
-                ),
-            };
-            (false, String::new(), Some(HookError::new(kind, why)))
+            (false, String::new(), Some(stop_error(event, hook.timeout_secs, reason)))
         }
     }
+}
+
+/// The shell a hook runs in and the command line it is given.
+///
+/// The same base policy the bash tool starts from, and the same shell choice.
+fn hook_shell(hook: &Hook, ctx: &Context<'_>) -> Result<(crate::tools::proc::ShellConfig, String), HookError> {
+    use crate::tools::{jail, proc};
+
+    let policy = crate::tools::sandbox_shell::base_policy(
+        ctx.project_root,
+        ctx.allow_network,
+        ctx.home_readonly,
+        ctx.sandbox,
+        ctx.mask_root,
+    );
+    // Which shell can be confined is probed, not assumed -- the same decision
+    // `bash` makes, for the same reason: on Windows the MSYS runtime cannot
+    // start inside an AppContainer, and running the hook unconfined instead
+    // would hand it the whole machine.
+    let shell = if ctx.sandbox {
+        let selected = jail::select_shell(&policy).map_err(|detail| {
+            HookError::new(
+                HookErrorKind::ShellUnavailable,
+                format!("no shell could be started in a sandbox on this system: {detail}"),
+            )
+        })?;
+        // A hook written for a POSIX shell is refused rather than handed to
+        // PowerShell or cmd, which would run *something* -- just not what the
+        // file asked for, and a policy hook that silently runs something else
+        // is worse than one that does not run. A hook that chains with
+        // `&&`/`||` is moved onto a shell that can, as the bash tool's is.
+        match crate::tools::sandbox_shell::fit_to_command(&policy, selected, &hook.command) {
+            Ok(fitted) => fitted.wrapped,
+            Err(crate::tools::sandbox_shell::Unfit::PosixOnly { construct, .. }) => {
+                return Err(HookError::new(
+                    HookErrorKind::ShellUnavailable,
+                    format!(
+                        "this hook uses {construct}, which needs a POSIX shell, and none could \
+                         be started in the sandbox here"
+                    ),
+                ));
+            }
+            Err(crate::tools::sandbox_shell::Unfit::NoChaining { operator, selected }) => {
+                return Err(HookError::new(
+                    HookErrorKind::ShellUnavailable,
+                    proc::chaining_unavailable_error(operator, &selected.report.cfg),
+                ));
+            }
+        }
+    } else {
+        proc::shell().clone()
+    };
+    // A confined PowerShell ignores the directory it was started in (it opens
+    // at System32), so a relative path in a hook meant somewhere else. The
+    // `bash` tool fixes this by wrapping the command to open in the workspace
+    // (`proc::located`); a hook is no less entitled to its own project, so it
+    // gets the same wrapper. Unconfined shells already honour `current_dir`.
+    let command = if ctx.sandbox {
+        proc::located(shell.flavor, &hook.command, ctx.project_root)
+    } else {
+        hook.command.clone()
+    };
+    Ok((shell, command))
+}
+
+/// What a finished hook process means: whether it passed, the text the run
+/// records (stdout then stderr, scrubbed and bounded), the error for a non-zero
+/// exit, and the parsed JSON reply of a successful `json_output` hook.
+fn hook_outcome(
+    event_name: &str,
+    want_json: bool,
+    out: &std::process::Output,
+) -> (bool, String, Option<HookError>, Option<HookOutput>) {
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let parsed = if want_json && out.status.success() {
+        HookOutput::parse(&text)
+    } else {
+        None
+    };
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    let text = bound(&crate::harness_error::scrub(&text));
+    if out.status.success() {
+        return (true, text, None, parsed);
+    }
+    let code = out
+        .status
+        .code()
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "a signal".to_string());
+    let detail = if text.trim().is_empty() {
+        String::new()
+    } else {
+        format!(": {}", text.trim())
+    };
+    let error = HookError::new(
+        HookErrorKind::Failed,
+        format!("the {event_name} hook exited with {code}{detail}"),
+    );
+    (false, text, Some(error), parsed)
+}
+
+/// The error for a hook its deadline or its parent stopped.
+fn stop_error(event: Event, timeout_secs: u64, reason: crate::lifecycle::StopReason) -> HookError {
+    let (kind, why) = match reason {
+        crate::lifecycle::StopReason::Timeout => (
+            HookErrorKind::TimedOut,
+            format!(
+                "the {} hook outlived its {}s limit and was stopped",
+                event.as_str(),
+                timeout_secs
+            ),
+        ),
+        crate::lifecycle::StopReason::Cancelled => (
+            HookErrorKind::Cancelled,
+            format!("the {} hook was cancelled with the work it belonged to", event.as_str()),
+        ),
+    };
+    HookError::new(kind, why)
 }
 
 /// Run the `post-tool-batch` hooks for a finished batch and say nothing back.
@@ -1511,6 +1524,84 @@ tools = [1]
     /// way on every host this runs on.
     const OK: &str = "exit 0";
     const FAIL: &str = "echo the linter says no 1>&2; exit 3";
+
+    /// Pins the texts a run records for a failed, a timed-out and a
+    /// JSON-replying hook, end to end through a real shell.
+    #[tokio::test]
+    async fn run_records_the_failure_timeout_and_json_texts() {
+        let root = dir("texts");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"post-tool\"\ncommand = \"{FAIL}\"\n\
+                 [[hook]]\nevent = \"post-tool\"\ncommand = \"sleep 5\"\ntimeout_secs = 1\n\
+                 [[hook]]\nevent = \"post-tool\"\njson_output = true\n\
+                 command = \"echo '{{\\\"additionalContext\\\": \\\"from the hook\\\"}}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let d = run(&hooks, Event::PostTool, Some("bash"), &ctx(&root)).await;
+        assert_eq!(d.runs.len(), 3);
+        let failed = &d.runs[0];
+        assert!(!failed.ok);
+        assert_eq!(failed.output.trim(), "the linter says no");
+        let err = failed.error.as_ref().unwrap();
+        assert_eq!(err.kind, HookErrorKind::Failed);
+        assert_eq!(err.message, "the post-tool hook exited with 3: the linter says no");
+        let slow = &d.runs[1];
+        assert!(!slow.ok);
+        assert_eq!(slow.output, "");
+        let err = slow.error.as_ref().unwrap();
+        assert_eq!(err.kind, HookErrorKind::TimedOut);
+        assert_eq!(err.message, "the post-tool hook outlived its 1s limit and was stopped");
+        let json = &d.runs[2];
+        assert!(json.ok, "{json:?}");
+        assert!(json.error.is_none());
+        assert_eq!(d.notes, vec!["from the hook".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn exited(code: i32, stdout: &str, stderr: &str) -> std::process::Output {
+        #[cfg(unix)]
+        let status = std::os::unix::process::ExitStatusExt::from_raw(code << 8);
+        #[cfg(windows)]
+        let status = std::os::windows::process::ExitStatusExt::from_raw(code as u32);
+        std::process::Output { status, stdout: stdout.into(), stderr: stderr.into() }
+    }
+
+    #[test]
+    fn hook_outcome_folds_exit_status_output_and_json() {
+        let (ok, text, error, parsed) = hook_outcome("pre-tool", false, &exited(0, "out\n", "err\n"));
+        assert!(ok && error.is_none() && parsed.is_none());
+        assert_eq!(text, "out\nerr\n");
+
+        let (ok, text, error, _) = hook_outcome("post-tool", false, &exited(3, "", "no\n"));
+        assert!(!ok);
+        assert_eq!(text, "no\n");
+        assert_eq!(error.unwrap().message, "the post-tool hook exited with 3: no");
+
+        let (_, _, error, _) = hook_outcome("run-end", false, &exited(1, "", "  "));
+        assert_eq!(error.unwrap().message, "the run-end hook exited with 1", "blank output adds no detail");
+
+        // JSON is read from stdout alone, and only from a hook that passed.
+        let reply = r#"{"additionalContext": "note"}"#;
+        let (_, _, _, parsed) = hook_outcome("pre-tool", true, &exited(0, reply, "noise"));
+        assert_eq!(parsed.unwrap().additional_context.as_deref(), Some("note"));
+        let (_, _, _, parsed) = hook_outcome("pre-tool", true, &exited(2, reply, ""));
+        assert!(parsed.is_none());
+        let (_, _, _, parsed) = hook_outcome("pre-tool", false, &exited(0, reply, ""));
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn stop_error_names_the_event_and_the_reason() {
+        let t = stop_error(Event::PreTool, 7, crate::lifecycle::StopReason::Timeout);
+        assert_eq!(t.kind, HookErrorKind::TimedOut);
+        assert_eq!(t.message, "the pre-tool hook outlived its 7s limit and was stopped");
+        let c = stop_error(Event::RunEnd, 7, crate::lifecycle::StopReason::Cancelled);
+        assert_eq!(c.kind, HookErrorKind::Cancelled);
+        assert_eq!(c.message, "the run-end hook was cancelled with the work it belonged to");
+    }
 
     /// A finished hook reports how long it took, and serializes it.
     #[tokio::test]
