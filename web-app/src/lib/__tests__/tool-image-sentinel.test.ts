@@ -297,8 +297,8 @@ describe('encodeMcpToolImages', () => {
   })
 
   it.each([
-    ['image/gif', btoa('GIF89a  ')],
-    ['image/webp', btoa('RIFF   WEBPVP8 ')],
+    ['image/gif', btoa('GIF89a\u0000\u0000')],
+    ['image/webp', btoa('RIFF\u0000\u0000\u0000WEBPVP8 ')],
   ])('recognises %s by its bytes', (mimeType, data) => {
     const out = encodeMcpToolImages([mcpTool([{ type: 'image', data, mimeType }])])
     expect(splitToolImageSentinels(outputOf(out) as string)).toContainEqual({
