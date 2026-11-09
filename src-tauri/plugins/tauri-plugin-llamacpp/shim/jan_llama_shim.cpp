@@ -428,6 +428,16 @@ jan_llama_engine * jan_llama_engine_start_from_preset(const char *       ini_pat
         global.apply_to_params(engine->params);
         it->second.apply_to_params(engine->params);
 
+        // The router starts every child with `--alias <section name>`
+        // (server-models.cpp, update_args), and server_context answers with the
+        // first alias as the model name. Nothing here is a router, so without
+        // this it falls back to the model *file path* -- which is what /props,
+        // /v1/models and every completion report as `model` to direct callers
+        // (`\\?\C:\...\model.gguf` on Windows). Replaced rather than added
+        // to: the router does the same, and the first alias is the one used.
+        engine->params.model_alias.clear();
+        engine->params.model_alias.insert(preset_name);
+
         // With several GPU backends loaded, one physical GPU shows up once per
         // backend (CUDA0 and Vulkan0). Left to auto-pick, llama.cpp may place
         // layers on the Vulkan twin, which has no CUDA unified-memory spill and
