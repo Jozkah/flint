@@ -39,24 +39,6 @@ pub fn escapes_project(
     raw: &str,
 ) -> Result<bool, String> {
     let raw = &*normalize_drive_path(raw);
-    // Absolute `/tmp` paths map into the session scratch (see [`resolve_path`]),
-    // which is the agent's own area -- but only once the mapped path is checked
-    // against it. Clamping `..` happens lexically, so a symlink planted in the
-    // scratch (the shell can make one: `/tmp` is the scratch bind) would
-    // otherwise resolve straight back out to the host. Canonicalize what the
-    // clamp produced and require it to still be inside.
-    if cfg!(target_os = "linux") {
-        if let Some(scratch) = scratch {
-            if tmp_relative(raw).is_some() {
-                let scratch_root = scratch
-                    .canonicalize()
-                    .map_err(|e| format!("scratch root {:?}: {e}", scratch))?;
-                let resolved =
-                    canonicalize_lenient(&resolve_path(project_root, Some(scratch), raw))?;
-                return Ok(!resolved.starts_with(&scratch_root));
-            }
-        }
-    }
     let root = project_root
         .canonicalize()
         .map_err(|e| format!("project root {:?}: {e}", project_root))?;
@@ -71,10 +53,11 @@ pub fn escapes_project(
     }
     // The scratch is the agent's own per-session area and is writable under
     // every backend, so a path landing in it is not a host escape even though it
-    // sits outside the project. On Linux it is normally reached through the
-    // `/tmp` branch above; macOS and Windows have no bind mount, so the shell
-    // and the filesystem tools both address it by this real path. A scratch that
-    // cannot be canonicalized grants nothing: the path stays an escape.
+    // sits outside the project. Every backend exposes it at this real path (on
+    // Linux bubblewrap binds it there, not over `/tmp`), so the shell, an
+    // escalated command and the filesystem tools all name it the same way. A
+    // scratch that cannot be canonicalized grants nothing: the path stays an
+    // escape.
     if let Some(scratch) = scratch {
         if let Ok(scratch) = scratch.canonicalize() {
             return Ok(!resolved.starts_with(&scratch));
@@ -169,24 +152,13 @@ pub fn escapes_write_roots(
     Ok(true)
 }
 
-/// Resolve a tool-supplied path to its on-disk location, forwarding an absolute
-/// `/tmp/...` path into the session scratch when one is set (and only on Linux,
-/// where the bash sandbox binds the scratch over `/tmp`). This keeps every
-/// filesystem tool reading and writing the same `/tmp` the shell sees. With no
-/// scratch, `/tmp` stays a plain host path.
-///
-/// The scratch is treated like a chroot: no `..` component may climb above the
-/// scratch root, matching how the sandbox's `/tmp` mount behaves (it is a mount
-/// point, so `..` above it stays inside `/tmp`).
-pub fn resolve_path(project_root: &Path, scratch: Option<&Path>, raw: &str) -> PathBuf {
+/// Resolve a tool-supplied path to its on-disk location: an absolute path as
+/// is, a relative one under `project_root`. The scratch has one real path that
+/// the shell sees too (bubblewrap binds it there rather than over `/tmp`), so
+/// no path is remapped; `/tmp` is the host's own temp dir, which the sandboxed
+/// shell does not see. `scratch` is kept for the callers' signature.
+pub fn resolve_path(project_root: &Path, _scratch: Option<&Path>, raw: &str) -> PathBuf {
     let raw = &*normalize_drive_path(raw);
-    if cfg!(target_os = "linux") {
-        if let Some(rel) = tmp_relative(raw) {
-            if let Some(scratch) = scratch {
-                return clamp_scratch(scratch, &rel);
-            }
-        }
-    }
     if Path::new(raw).is_absolute() {
         PathBuf::from(raw)
     } else {
@@ -260,26 +232,12 @@ pub fn refuse_windows_name(raw: &str) -> Option<(String, &'static str)> {
     })
 }
 
-/// The spelling to hand a tool-facing path back to the model: the inverse of
-/// [`resolve_path`]. On Linux a file inside the scratch is named `/tmp/...`, the
-/// one name that works from both the filesystem tools (which remap it back) and
-/// `bash` (where the scratch is mounted at `/tmp`); its host path would resolve
-/// for the former and not exist for the latter. Where nothing is mounted over
-/// `/tmp` (macOS, Windows) both surfaces use the real path, so that is the name.
-/// Anything outside the scratch is shown as-is.
-pub fn scratch_display_path(scratch: Option<&Path>, path: &Path) -> String {
-    let target = lexical_normalize(path);
-    if cfg!(target_os = "linux") {
-        if let Some(rel) = scratch_tail(scratch, &target) {
-            let rel = rel.to_string_lossy().replace('\\', "/");
-            return if rel.is_empty() {
-                "/tmp".to_string()
-            } else {
-                format!("/tmp/{rel}")
-            };
-        }
-    }
-    target.to_string_lossy().into_owned()
+/// The spelling to hand a tool-facing path back to the model. The scratch has
+/// the same real path in the shell, an escalated command and the filesystem
+/// tools on every platform, so that path is the name: normalized, nothing
+/// remapped. `scratch` is kept for the callers' signature.
+pub fn scratch_display_path(_scratch: Option<&Path>, path: &Path) -> String {
+    lexical_normalize(path).to_string_lossy().into_owned()
 }
 
 /// True iff `path` lexically sits inside the session scratch. Lexical on
@@ -312,45 +270,6 @@ pub fn lexical_normalize(path: &Path) -> PathBuf {
         }
     }
     out
-}
-
-/// Join `rel` under `scratch`, clamping `..` so it can never climb above the
-/// scratch root (chroot semantics). A leading `..` or `/tmp/..` therefore falls
-/// back to the scratch root rather than escaping to the host temp.
-fn clamp_scratch(scratch: &Path, rel: &str) -> PathBuf {
-    let mut out = scratch.to_path_buf();
-    for c in Path::new(rel).components() {
-        match c {
-            std::path::Component::ParentDir => {
-                // Clamp: never pop past the scratch root.
-                if out != scratch {
-                    out.pop();
-                }
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
-/// The `/tmp`-relative tail of an absolute `/tmp/...` path; `Some("")` for the
-/// bare `/tmp` dir itself; `None` when `raw` is not such a path.
-fn tmp_relative(raw: &str) -> Option<String> {
-    // Tested with a leading slash rather than `Path::is_absolute`, which asks
-    // the *host's* question: on Windows `/tmp` is not absolute (no drive
-    // letter), so the check rejected every path this function exists to
-    // recognise. The paths here are POSIX ones from inside a bubblewrap
-    // namespace and are absolute by that grammar, whatever host is asking.
-    if !raw.starts_with('/') {
-        return None;
-    }
-    // Match only the exact `/tmp` dir or a genuine `/tmp/...` descendant: a
-    // raw string prefix would treat `/tmpx` and `/tmp-archive` as inside /tmp.
-    if raw == "/tmp" {
-        return Some(String::new());
-    }
-    Some(raw.strip_prefix("/tmp/")?.to_string())
 }
 
 /// True iff a `write`/`edit` of `raw` would land in a folder the user attached
@@ -1150,9 +1069,9 @@ mod tests {
         dir
     }
 
-    /// A test dir that is *not* under the host temp dir, so a Linux run does not
-    /// silently route through the `/tmp` bind branch. Lives under the crate's
-    /// `target/`, which is already build output.
+    /// A test dir that is *not* under the host temp dir, so it is never mistaken
+    /// for a `/tmp` path. Lives under the crate's `target/`, which is already
+    /// build output.
     fn unique_root_outside_tmp() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1354,36 +1273,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A symlink planted in the scratch (the shell can create one: `/tmp` is
-    /// the scratch bind) must not turn `/tmp/...` into a way out. Clamping `..`
-    /// is not enough -- the link is a single component that resolves elsewhere.
+    /// `/tmp` is the host's own temp dir now, not an alias for the scratch:
+    /// the sandboxed shell has a throwaway tmpfs there and the scratch at its
+    /// real path, so a `/tmp/...` path is checked like any other host path and
+    /// resolves to itself, never into the scratch.
     #[test]
-    #[cfg(target_os = "linux")]
-    fn tmp_symlink_cannot_escape_the_scratch() {
+    #[cfg(unix)]
+    fn tmp_is_not_an_alias_for_the_scratch() {
         let root = unique_root();
-        let scratch = unique_root();
-        let outside = unique_root();
-        std::os::unix::fs::symlink(&outside, scratch.join("esc")).unwrap();
-        assert_eq!(
-            escapes_project(&root, Some(&scratch), "/tmp/esc/pwned.txt"),
-            Ok(true),
-            "a symlink out of the scratch is an escape"
-        );
-        // A genuine scratch path is still not an escape.
-        assert_eq!(
-            escapes_project(&root, Some(&scratch), "/tmp/ok.txt"),
-            Ok(false)
-        );
+        let scratch = unique_root_outside_tmp();
+        let raw = "/tmp/jan-not-the-scratch/out.txt";
+        assert_eq!(resolve_path(&root, Some(&scratch), raw), PathBuf::from(raw));
+        assert_eq!(escapes_project(&root, Some(&scratch), raw), Ok(true));
+        let inside = scratch.join("out.txt");
+        assert_eq!(resolve_path(&root, Some(&scratch), inside.to_str().unwrap()), inside);
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&scratch);
-        let _ = std::fs::remove_dir_all(&outside);
     }
 
-    /// A scratch reached by its real path (no `/tmp` bind in front of it) is the
-    /// agent's own area on every platform, so it must not read as an escape.
-    /// The scratch here sits outside the host temp dir on purpose: on Linux a
-    /// `/tmp`-prefixed path would be answered by the bind branch above instead,
-    /// leaving the cross-platform branch untested on the one OS we can run.
+    /// A scratch reached by its real path is the agent's own area on every
+    /// platform, so it must not read as an escape.
     #[test]
     fn real_scratch_path_is_not_an_escape() {
         let root = unique_root();
@@ -1414,8 +1323,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&scratch);
     }
 
-    /// The real-path branch resolves symlinks for the same reason the `/tmp`
-    /// branch does: the shell can plant one inside the scratch.
+    /// The scratch check resolves symlinks: the shell can plant one inside the
+    /// scratch.
     #[cfg(unix)]
     #[test]
     fn real_scratch_path_symlink_cannot_escape() {
@@ -1434,8 +1343,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&outside);
     }
 
-    /// The name handed back to the model: the `/tmp` alias only where something
-    /// is actually mounted there, the real path everywhere else.
+    /// The name handed back to the model is the scratch's real path on every
+    /// platform, the one the shell, an escalated command and the tools share.
     #[test]
     fn scratch_is_displayed_under_the_name_the_shell_can_use() {
         let scratch = PathBuf::from(if cfg!(windows) {
@@ -1456,15 +1365,14 @@ mod tests {
         assert!(in_scratch(Some(&scratch), &file));
         assert!(!in_scratch(Some(&scratch), &other));
         assert!(!in_scratch(None, &file));
-        if cfg!(target_os = "linux") {
-            assert_eq!(scratch_display_path(Some(&scratch), &file), "/tmp/out.txt");
-            assert_eq!(scratch_display_path(Some(&scratch), &scratch), "/tmp");
-        } else {
-            assert_eq!(
-                scratch_display_path(Some(&scratch), &file),
-                file.to_string_lossy()
-            );
-        }
+        assert_eq!(
+            scratch_display_path(Some(&scratch), &file),
+            file.to_string_lossy()
+        );
+        assert_eq!(
+            scratch_display_path(Some(&scratch), &scratch),
+            scratch.to_string_lossy()
+        );
         // Outside the scratch the path is untouched either way.
         assert_eq!(
             scratch_display_path(Some(&scratch), &other),
@@ -1536,16 +1444,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&scratch);
     }
 
-    /// `/tmpx` and `/tmp-archive` are not descendants of `/tmp` and must not be
-    /// silently redirected into the scratch.
-    #[test]
-    fn tmp_lookalikes_are_not_remapped() {
-        assert_eq!(tmp_relative("/tmp"), Some(String::new()));
-        assert_eq!(tmp_relative("/tmp/"), Some(String::new()));
-        assert_eq!(tmp_relative("/tmp/a.txt"), Some("a.txt".to_string()));
-        assert_eq!(tmp_relative("/tmpx"), None);
-        assert_eq!(tmp_relative("/tmp-archive/a.txt"), None);
-    }
     // ---- read-only attached roots -------------------------------------------
 
     #[test]
