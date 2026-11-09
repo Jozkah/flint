@@ -204,6 +204,7 @@
     "exists": "Mô hình đã tồn tại",
     "failed": "Không thể nhập mô hình",
     "hasBeenImported": "Đã nhập {{name}}",
+    "notListed": "Đã lưu {{name}}, nhưng Flint không thể hiển thị trong danh sách. Hãy khởi động lại Flint và báo lỗi nếu mô hình vẫn không có.",
     "import": "Nhập mô hình",
     "importing": "Đang nhập…",
     "success": "Đã nhập mô hình"

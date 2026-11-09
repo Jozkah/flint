@@ -201,6 +201,7 @@
     "exists": "Modell ist bereits vorhanden",
     "failed": "Modell konnte nicht importiert werden",
     "hasBeenImported": "{{name}} wurde importiert",
+    "notListed": "{{name}} wurde gespeichert, aber Flint konnte es nicht auflisten. Starte Flint neu und melde es, falls das Modell weiterhin fehlt.",
     "import": "Modell importieren",
     "importing": "Wird importiert …",
     "success": "Modell erfolgreich importiert"

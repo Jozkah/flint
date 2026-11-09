@@ -198,6 +198,7 @@
     "exists": "이미 있는 모델입니다",
     "failed": "모델을 가져오지 못했습니다",
     "hasBeenImported": "{{name}}을(를) 가져왔습니다",
+    "notListed": "{{name}}을(를) 저장했지만 Flint 목록에 표시하지 못했습니다. Flint를 다시 시작하고, 그래도 모델이 없으면 신고해 주세요.",
     "import": "모델 가져오기",
     "importing": "가져오는 중…",
     "success": "모델을 가져왔습니다"

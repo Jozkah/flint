@@ -5,6 +5,7 @@ import '@testing-library/jest-dom'
 const hoisted = vi.hoisted(() => ({
   dialogOpen: vi.fn(),
   pullModel: vi.fn(),
+  fetchModels: vi.fn(),
   validateGgufFile: vi.fn(),
   basename: vi.fn((p: string) => p.split('/').pop() || p),
   invoke: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('@/hooks/useServiceHub', () => {
     dialog: () => ({ open: hoisted.dialogOpen }),
     models: () => ({
       pullModel: hoisted.pullModel,
+      fetchModels: hoisted.fetchModels,
       validateGgufFile: hoisted.validateGgufFile,
     }),
     path: () => ({ basename: hoisted.basename }),
@@ -58,6 +60,10 @@ describe('ImportLlamacppModelDialog', () => {
     hoisted.invoke.mockResolvedValue({
       metadata: { 'general.architecture': 'clip' },
     })
+    // The engine lists whatever was last imported.
+    hoisted.fetchModels.mockImplementation(async () =>
+      hoisted.pullModel.mock.calls.map((call) => ({ id: call[0] }))
+    )
   })
 
   it('renders the trigger and opens the dialog content', () => {
@@ -368,6 +374,38 @@ describe('ImportLlamacppModelDialog', () => {
       )
     )
     expect(onSuccess).toHaveBeenCalledWith('ok')
+    expect(hoisted.fetchModels).toHaveBeenCalled()
+  })
+
+  it('does not claim success when the engine does not list the imported model', async () => {
+    hoisted.dialogOpen.mockResolvedValueOnce('/tmp/ok.gguf')
+    hoisted.pullModel.mockResolvedValueOnce(undefined)
+    // The import wrote model.yml, but the listing leaves the model out (the
+    // Windows readdir spelling bug did exactly this).
+    hoisted.fetchModels.mockResolvedValueOnce([{ id: 'other' }])
+    const onSuccess = vi.fn()
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+        onSuccess={onSuccess}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByText('Select GGUF File'))
+    await waitFor(() => expect(hoisted.validateGgufFile).toHaveBeenCalled())
+    const importBtn = await screen.findByRole('button', {
+      name: /Import Model/i,
+    })
+    await waitFor(() => expect(importBtn).not.toBeDisabled())
+    fireEvent.click(importBtn)
+    await waitFor(() =>
+      expect(hoisted.toast.error).toHaveBeenCalledWith('Failed to import model', {
+        description: expect.stringContaining('ok was saved, but Flint could not list it'),
+      })
+    )
+    expect(hoisted.toast.success).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it('imports a file name with spaces and brackets under a sanitized id (#283)', async () => {
@@ -526,6 +564,47 @@ describe('ImportLlamacppModelDialog', () => {
     // Other apps' models are not touched.
     expect(screen.getByText('beta')).toBeInTheDocument()
   })
+
+  it.each([
+    ['org/model', 'forward slashes'],
+    ['org\\model', 'a Windows backslash'],
+  ])(
+    'counts a nested id listed back as %s (%s) as imported',
+    async (listedId) => {
+      useModelLibrary.setState({ folders: ['C:/lib'] })
+      hoisted.invoke.mockImplementation(async (cmd: string) =>
+        cmd === 'scan_local_models'
+          ? [{ path: 'C:/lib/org/model.gguf', name: 'org/model', source: 'Custom folder', size_bytes: 1000 }]
+          : { metadata: { 'general.architecture': 'llama' } }
+      )
+      hoisted.pullModel.mockResolvedValueOnce(undefined)
+      hoisted.fetchModels.mockResolvedValueOnce([{ id: listedId }])
+      const onSuccess = vi.fn()
+      render(
+        <ImportLlamacppModelDialog
+          provider={provider}
+          trigger={<button>Open</button>}
+          onSuccess={onSuccess}
+        />
+      )
+      openDialog()
+      fireEvent.click(screen.getByText('Find models already on this computer'))
+      fireEvent.click(await screen.findByText('org/model'))
+      await waitFor(() => expect(hoisted.validateGgufFile).toHaveBeenCalled())
+      const importBtn = await screen.findByRole('button', { name: /Import Model/i })
+      await waitFor(() => expect(importBtn).not.toBeDisabled())
+      fireEvent.click(importBtn)
+      await waitFor(() =>
+        expect(hoisted.toast.success).toHaveBeenCalledWith(
+          'Model imported successfully',
+          expect.any(Object)
+        )
+      )
+      expect(hoisted.pullModel.mock.calls[0][0]).toBe('org/model')
+      expect(hoisted.toast.error).not.toHaveBeenCalled()
+      expect(onSuccess).toHaveBeenCalledWith('org/model')
+    }
+  )
 
   it('imports an Ollama blob under the scanned name, not its digest file name', async () => {
     useModelLibrary.setState({ folders: ['C:/ollama'] })
