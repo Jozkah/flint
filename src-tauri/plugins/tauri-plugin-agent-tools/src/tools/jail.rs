@@ -138,6 +138,48 @@ pub struct Policy {
     /// of the policy by [`fs_rules`] when a backend builds its rules, never
     /// earlier, so the workspace and the other layers are known by then.
     pub fs: FsConfig,
+    /// The project's own package-cache folder on Linux and macOS (see
+    /// `workspace::pkg_cache_dir`): writable to the shell, and every name in
+    /// [`PKG_CACHE_ENV`] points into it. Package managers' defaults sit in a
+    /// `$HOME` the sandbox masks or makes read-only, so without it a build
+    /// re-downloads on every call or fails. Must exist before the sandbox is
+    /// built. Windows keeps its caches in the synthetic home (`win_env`).
+    pub pkg_cache: Option<PathBuf>,
+}
+
+/// Where package managers keep their caches in a sandboxed command on Linux
+/// and macOS: each name, and its folder under [`Policy::pkg_cache`]. Set only
+/// inside the sandbox, so an unconfined command keeps the user's real caches
+/// and a download made in a sandbox never feeds a later unsandboxed build.
+/// `CARGO_HOME` is left out: it also holds the user's cargo config and, with
+/// rustup, the toolchain proxies.
+pub const PKG_CACHE_ENV: &[(&str, &str)] = &[
+    // XDG-aware tools (pip, uv, pnpm's cache and many more) on Linux.
+    #[cfg(target_os = "linux")]
+    ("XDG_CACHE_HOME", "xdg-cache"),
+    ("npm_config_cache", "npm"),
+    ("YARN_CACHE_FOLDER", "yarn-cache"),
+    ("COREPACK_HOME", "corepack"),
+    ("pnpm_config_store_dir", "pnpm-store"),
+    ("pnpm_config_cache_dir", "pnpm-cache"),
+    ("PIP_CACHE_DIR", "pip"),
+    ("UV_CACHE_DIR", "uv"),
+    ("GOCACHE", "go-build"),
+    ("GOMODCACHE", "go-mod"),
+    ("GRADLE_USER_HOME", "gradle"),
+    ("CCACHE_DIR", "ccache"),
+    ("SCCACHE_DIR", "sccache"),
+    ("DENO_DIR", "deno"),
+    ("BUN_INSTALL_CACHE_DIR", "bun-cache"),
+];
+
+/// The package-cache variables a sandboxed shell under `policy` gets, each with
+/// its folder. Empty without a package cache.
+pub fn pkg_cache_env(policy: &Policy) -> Vec<(&'static str, PathBuf)> {
+    match &policy.pkg_cache {
+        Some(dir) => PKG_CACHE_ENV.iter().map(|(name, sub)| (*name, dir.join(sub))).collect(),
+        None => Vec::new(),
+    }
 }
 
 impl Policy {
@@ -156,7 +198,15 @@ impl Policy {
             unreachable_read_grants: Vec::new(),
             own_grant_holder: false,
             fs: FsConfig::default(),
+            pkg_cache: None,
         }
+    }
+
+    /// Give the shell the project's package-cache folder; see
+    /// [`Policy::pkg_cache`]. The folder must already exist.
+    pub fn with_pkg_cache(mut self, dir: &Path) -> Self {
+        self.pkg_cache = Some(dir.to_path_buf());
+        self
     }
 
     /// Apply the configured `[tools.fs]` lists. See [`Policy::fs`].
@@ -950,6 +1000,17 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         push(&mut args, &["--bind", &root, &root]);
     }
 
+    // The project's package cache, at its real path, after the `$HOME` tmpfs
+    // (it lives in the user's cache folder) and before the workspace bind,
+    // like the roots above; every cache variable points into it.
+    if let Some(pkg) = &policy.pkg_cache {
+        let pkg = pkg.to_string_lossy();
+        push(&mut args, &["--bind", &pkg, &pkg]);
+    }
+    for (name, dir) in pkg_cache_env(policy) {
+        push(&mut args, &["--setenv", name, &dir.to_string_lossy()]);
+    }
+
     push(&mut args, &["--bind", &ws, &ws]);
     // After the workspace bind, so it is not shadowed by it: an empty tmpfs where
     // the agent's own state directory sits. Mounted unconditionally rather than
@@ -1060,6 +1121,14 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
         p.push_str(
             "(allow file-read* (subpath (param \"SCRATCH\")))\n\
              (allow file-write* (subpath (param \"SCRATCH\")))\n",
+        );
+    }
+    // The project's package cache, by name for the same reason: it sits in
+    // `~/Library/Caches`, under the home denial above.
+    if policy.pkg_cache.is_some() {
+        p.push_str(
+            "(allow file-read* (subpath (param \"PKG_CACHE\")))\n\
+             (allow file-write* (subpath (param \"PKG_CACHE\")))\n",
         );
     }
     // After the HOME/MASK denials, so an attached folder inside either is read
@@ -1217,10 +1286,20 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     if let Some(scratch) = &policy.scratch_root {
         args.push(format!("-DSCRATCH={}", scratch.to_string_lossy()));
     }
+    if let Some(pkg) = &policy.pkg_cache {
+        args.push(format!("-DPKG_CACHE={}", pkg.to_string_lossy()));
+    }
     if let Some(home) = home_dir() {
         args.push(format!("-DHOME_ROOT={}", home.to_string_lossy()));
     }
     args.push("--".to_string());
+    // sandbox-exec has no `--setenv`: the cache variables go through `env`,
+    // inside the sandbox, so only the confined command sees them.
+    let cache_env = pkg_cache_env(policy);
+    if !cache_env.is_empty() {
+        args.push("/usr/bin/env".to_string());
+        args.extend(cache_env.iter().map(|(name, dir)| format!("{name}={}", dir.to_string_lossy())));
+    }
     args.push(cfg.program.to_string_lossy().to_string());
     args.extend(cfg.args.iter().cloned());
     args
@@ -2550,6 +2629,52 @@ mod tests {
         let bound = joined(&bwrap_args(&policy().with_scratch_root(scratch), &cfg()));
         assert!(!bound.contains("--tmpfs /tmp"), "{bound}");
         assert!(bound.contains(&scratch_bind), "{bound}");
+    }
+
+    /// The project's package cache is bound read-write at its real path after
+    /// the `$HOME` tmpfs (it lives in the user's cache folder) and before the
+    /// workspace, and every cache variable is set inside the sandbox only.
+    #[test]
+    fn bwrap_binds_the_package_cache_and_points_the_cache_env_at_it() {
+        let pkg = Path::new("/home/u/.cache/flint/pkg/proj-0123456789ab");
+        let p = pkg.to_string_lossy();
+        let plain = joined(&bwrap_args(&policy(), &cfg()));
+        assert!(!plain.contains("--setenv"), "{plain}");
+        let text = joined(&bwrap_args(&policy().with_pkg_cache(pkg), &cfg()));
+        let bind = text.find(&format!("--bind {p} {p} ")).expect(&text);
+        let ws = text.find("--bind /data/agent-workspace/threads/t1 ").expect(&text);
+        assert!(bind < ws, "{text}");
+        if let Some(home) = home_dir() {
+            let mask = text.find(&format!("--tmpfs {} ", home.to_string_lossy())).expect(&text);
+            assert!(mask < bind, "{text}");
+        }
+        for (name, sub) in PKG_CACHE_ENV {
+            assert!(
+                text.contains(&format!("--setenv {name} {}", pkg.join(sub).to_string_lossy())),
+                "{name}: {text}"
+            );
+        }
+        assert!(text.contains("npm_config_cache") && text.contains("PIP_CACHE_DIR"), "{text}");
+        assert!(!text.contains("CARGO_HOME"), "{text}");
+    }
+
+    /// Seatbelt grants the package cache by parameter, after the home denial,
+    /// and sets the cache variables through `env` inside the sandbox.
+    #[test]
+    fn seatbelt_grants_the_package_cache_and_sets_its_env_inside() {
+        let pkg = Path::new("/Users/u/Library/Caches/flint/pkg/proj-0123456789ab");
+        let with = policy().with_pkg_cache(pkg);
+        let profile = seatbelt_policy(&with);
+        assert!(profile.contains("(allow file-write* (subpath (param \"PKG_CACHE\")))"), "{profile}");
+        assert!(!seatbelt_policy(&policy()).contains("PKG_CACHE"));
+        let args = seatbelt_args(&with, &cfg());
+        assert!(args.iter().any(|a| a == &format!("-DPKG_CACHE={}", pkg.to_string_lossy())));
+        let sep = args.iter().position(|a| a == "--").expect("separator");
+        assert_eq!(args[sep + 1], "/usr/bin/env");
+        let npm = format!("npm_config_cache={}", pkg.join("npm").to_string_lossy());
+        assert!(args[sep + 1..].contains(&npm), "{args:?}");
+        let plain = seatbelt_args(&policy(), &cfg());
+        assert!(!plain.iter().any(|a| a == "/usr/bin/env"), "{plain:?}");
     }
 
     #[test]

@@ -236,6 +236,53 @@ pub fn scratch_dir(session: &str) -> PathBuf {
     scratch_base().join(format!("jan-agent-{safe}"))
 }
 
+/// The folder a sandboxed shell keeps package-manager caches in for the
+/// project at `project` on Linux and macOS (`tools::jail::Policy::pkg_cache`),
+/// under the user's cache folder: `$XDG_CACHE_HOME` or `~/.cache` on Linux,
+/// `~/Library/Caches` on macOS, then `flint/pkg/<name>-<hash>`. One per
+/// project, so one project's downloads never feed another's build, and kept
+/// across sessions. `None` on Windows (the synthetic home holds them there)
+/// and without a home.
+pub fn pkg_cache_dir(project: &Path) -> Option<PathBuf> {
+    if !cfg!(unix) {
+        return None;
+    }
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(project.to_string_lossy().as_bytes());
+    let tag: String = digest.iter().take(6).map(|b| format!("{b:02x}")).collect();
+    let name: String = project
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .take(40)
+        .collect();
+    let leaf = if name.is_empty() { tag } else { format!("{name}-{tag}") };
+    Some(pkg_cache_base()?.join(leaf))
+}
+
+#[cfg(not(test))]
+fn pkg_cache_base() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from).filter(|h| h.parent().is_some());
+    let base = if cfg!(target_os = "macos") {
+        home?.join("Library").join("Caches")
+    } else {
+        match std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from) {
+            Some(xdg) if xdg.is_absolute() => xdg,
+            _ => home?.join(".cache"),
+        }
+    };
+    Some(base.join("flint").join("pkg"))
+}
+
+/// Under test, inside this test process's own temp folder: tests never write
+/// into the user's real cache folder.
+#[cfg(test)]
+fn pkg_cache_base() -> Option<PathBuf> {
+    Some(scratch_base().join("pkg-cache"))
+}
+
 /// The directory session scratches are created in: the host temp dir.
 #[cfg(not(test))]
 pub fn scratch_base() -> PathBuf {
@@ -669,6 +716,26 @@ pub fn workspace_filename(name: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One package-cache folder per project, stable across calls, named after
+    /// the folder; none on Windows, which keeps caches in the synthetic home.
+    #[test]
+    fn each_project_gets_its_own_stable_package_cache() {
+        let a = pkg_cache_dir(Path::new("/home/u/proj"));
+        if cfg!(windows) {
+            assert_eq!(a, None);
+            return;
+        }
+        let a = a.expect("a cache folder");
+        assert_eq!(Some(a.clone()), pkg_cache_dir(Path::new("/home/u/proj")));
+        let b = pkg_cache_dir(Path::new("/home/v/proj")).unwrap();
+        assert_ne!(a, b, "same name, different project");
+        let leaf = a.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(leaf.starts_with("proj-"), "{leaf}");
+        let odd = pkg_cache_dir(Path::new("/home/u/my proj; rm")).unwrap();
+        let leaf = odd.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(leaf.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'), "{leaf}");
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
