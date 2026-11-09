@@ -830,7 +830,7 @@ pub(super) struct ToolGroup {
     /// read-style op ("memory note"/true, "command"/false, ...). The flag splits
     /// the summary into a "Read ..." clause and a "ran ..." clause so the verb
     /// always agrees with its noun.
-    pub(super) nouns: Vec<(&'static str, bool)>,
+    pub(super) nouns: Vec<(&'static str, ToolOp)>,
     /// Per-call detail retained so the collapsed row can expand back to its
     /// individual calls/results (never discarded at fold time).
     pub(super) calls: Vec<GroupedCall>,
@@ -2635,7 +2635,7 @@ impl App {
     /// Fold a collapsible tool call into the current group row (extending it and
     /// updating its live status) or open a new group row.
     pub(super) fn push_grouped_call(&mut self, id: &str, name: &str, label: String, done: String) {
-        let (noun, is_read) = tool_kind(name);
+        let (noun, op) = tool_kind(name);
         self.grouped_ids.insert(id.to_string());
         let call = GroupedCall {
             id: id.to_string(),
@@ -2651,7 +2651,7 @@ impl App {
             .is_some_and(|g| g.idx < self.transcript.len());
         if extend {
             let g = self.tool_group.as_mut().expect("group checked above");
-            g.nouns.push((noun, is_read));
+            g.nouns.push((noun, op));
             g.calls.push(call);
             self.refresh_group_row();
             return;
@@ -2667,7 +2667,7 @@ impl App {
         self.tool_group = Some(ToolGroup {
             idx: self.transcript.len() - 1,
             first_done: done,
-            nouns: vec![(noun, is_read)],
+            nouns: vec![(noun, op)],
             calls: vec![call],
             started: Instant::now(),
             last_result_error: None,

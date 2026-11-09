@@ -2080,6 +2080,31 @@ fn consecutive_collapsible_tools_fold_into_one_summary_row() {
     assert!(row.contains("✓ Read 3 memory notes, 1 skill"), "row: {row}");
 }
 
+/// A group that wrote a memory note folded to "Read 1 memory note".
+#[test]
+fn a_folded_memory_write_reads_as_updated() {
+    let mut app = test_app();
+    let calls = [
+        ("c1", "memory_read", json!({ "name": "decisions" })),
+        ("c2", "memory_write", json!({ "name": "decisions", "content": "x" })),
+    ];
+    for (id, name, args) in calls {
+        app.apply(StreamEvent::ToolCall {
+            id: id.into(),
+            name: name.into(),
+            args,
+        });
+        app.apply(StreamEvent::ToolResult {
+            id: id.into(),
+            content: "ok".into(),
+            is_error: false,
+            diff: None,
+        });
+    }
+    let row = row_text(app.transcript.last().unwrap());
+    assert!(row.contains("Read 1 memory note; updated 1 memory note"), "row: {row}");
+}
+
 #[test]
 fn folded_group_expands_and_collapses_via_keybinding() {
     let mut app = test_app();
