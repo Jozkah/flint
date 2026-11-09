@@ -19,7 +19,11 @@ import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescripti
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { rememberedWindowFor, resolveCompactionWindow } from '@/lib/compactionWindowSource'
 import { listedWindow } from '@/lib/listedWindows'
-import { assertEstimatedContextFits, ContextEstimate } from '@/lib/contextEstimate'
+import {
+  assertEstimatedContextFits,
+  ContextEstimate,
+  estimateCountsEveryPart,
+} from '@/lib/contextEstimate'
 import {
   appendSessionContext,
   runCcContextHooks,
@@ -111,6 +115,7 @@ import type { MCPTool } from '@janhq/core'
 import {
   trimMessages,
   estimateTokens,
+  estimateMessageTokens,
   estimateToolTokens,
   estimateToolSchemaTokens,
   contextSafetyMargin,
@@ -2012,23 +2017,48 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ]
       : baseMessages
 
-    const dispatchedEstimate = estimateHistoryTokens(effectiveMessages) +
-      (requestSystem ? estimateTokens(requestSystem) + 4 : 0) + toolSchemaTokens +
-      (continueContent ? estimateTokens((continueContent.text ?? '') + (continueContent.reasoning ?? '')) : 0)
+    const latestMessage = effectiveMessages[effectiveMessages.length - 1]
+    const latestTokens = latestMessage ? estimateMessageTokens(latestMessage) : 0
+    const estimateParts = {
+      systemPrompt: requestSystem ? estimateTokens(requestSystem) + 4 : 0,
+      tools: toolSchemaTokens,
+      toolCount: toolSchemaTokens > 0 ? Object.keys(this.tools).length : 0,
+      history: estimateHistoryTokens(effectiveMessages) - latestTokens,
+      latest: latestTokens +
+        (continueContent ? estimateTokens((continueContent.text ?? '') + (continueContent.reasoning ?? '')) : 0),
+    }
+    const dispatchedEstimate = estimateParts.systemPrompt + estimateParts.tools +
+      estimateParts.history + estimateParts.latest
     // The trimmer preserves a newest message even when that one message is
     // larger than the budget. Refuse that payload instead of silently sending
     // it past the chosen cap. Overflow recovery may compact it once more.
-    // A local server is asked once even when the estimate says it is tight:
-    // the estimate is a heuristic, and the server's own refusal names the real
-    // window, which the overflow recovery then plans against. Only the resend
-    // after such a refusal is checked here (with no reserve: a request that
-    // fits the window without it is never refused).
+    // The first send is refused only when even the plain heuristic count does
+    // not fit: a request over by no more than the learned calibration is sent,
+    // and a length refusal goes through overflow recovery, whose resend is then
+    // checked strictly. A local server is asked once even when the estimate
+    // says it is tight: its refusal names the real window. Only its resend is
+    // checked here (with no reserve: a request that fits the window without it
+    // is never refused).
     if (!localServer) {
-      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
-        reserveTokens, this.overflowRetry ? 'the last refusal' : resolvedWindow.source)
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, reserveTokens, {
+        source: this.overflowRetry ? 'the last refusal' : resolvedWindow.source,
+        breakdown: estimateParts,
+        strict: this.overflowRetry != null,
+      })
     } else if (this.overflowRetry) {
-      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, 'the last refusal')
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, {
+        source: 'the last refusal',
+        breakdown: estimateParts,
+      })
     }
+    // Parts the estimate does not count (an attached image, PDF or audio
+    // file, a screenshot sent beside the transcript) are in the provider's
+    // count: calibrating on such a request read them as tokenizer density and
+    // inflated every later estimate for this model by up to 1.6x.
+    const estimateIsComplete = estimateCountsEveryPart(
+      effectiveMessages,
+      screenshotsToAttach(effectiveMessages)
+    )
 
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
@@ -2239,7 +2269,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: string
           }
           const usage = usageCollector.total(finishPart.totalUsage)
-          this.contextEstimate.observe(estimateKey, dispatchedEstimate, usage.inputTokens)
+          if (estimateIsComplete) {
+            this.contextEstimate.observe(estimateKey, dispatchedEstimate, usage.inputTokens)
+          }
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
 
           // Only for the speed figure; the stored usage keeps an unreported

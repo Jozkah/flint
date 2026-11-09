@@ -485,6 +485,22 @@ describe('CustomChatTransport reply reserve (local vs cloud)', () => {
     await expect(send(transport, big())).rejects.toThrow('exceeds the available context size')
     expect(streamTextCalls).toHaveLength(0)
   })
+
+  it('sends a hosted prompt that is over only by the learned calibration', async () => {
+    h.providerId = 'openai'
+    provider.provider = 'openai'
+    selectedModel.id = 'gpt'
+    const transport = new CustomChatTransport('you are jan', 'thread-reserve-calibrated')
+    // An earlier reply reported 1.6x the heuristic count for this model.
+    ;(transport as unknown as {
+      contextEstimate: { observe(key: string, estimated: number, reported: number): void }
+    }).contextEstimate.observe('openai:gpt', 1000, 1600)
+    // About 18,000 heuristic tokens: fits 32K minus the 8K reserve as
+    // counted, but not once scaled by 1.6.
+    const prompt = [user('u1', `summarize ${'pasted '.repeat(9_000)}`)]
+    await drain(await send(transport, prompt))
+    expect(streamTextCalls).toHaveLength(1)
+  })
 })
 
 describe('CustomChatTransport plain chat on a small window', () => {

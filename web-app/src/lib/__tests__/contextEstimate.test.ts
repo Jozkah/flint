@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { assertEstimatedContextFits, cappedContextWindow, ContextEstimate } from '../contextEstimate'
+import {
+  assertEstimatedContextFits,
+  cappedContextWindow,
+  ContextEstimate,
+  estimateCountsEveryPart,
+  PREFLIGHT_CONTEXT_ERROR_PREFIX,
+} from '../contextEstimate'
 
 describe('context cap and calibration', () => {
   it('keeps the chosen 200k cap under a 240k runtime window', () => {
@@ -53,7 +59,65 @@ describe('context cap and calibration', () => {
 
   it('names the window and its source in the pre-flight error', () => {
     expect(() => assertEstimatedContextFits(24_000, 1, 8_192, 2_048, 'model-settings')).toThrow(
-      /24000 prompt tokens plus 2048 reserved.*window of 8192 \(from model-settings\)/
+      /24,000 prompt tokens plus 2,048 reserved.*window of 8,192 \(from model-settings\)/
     )
+  })
+
+  // The reported banner: 130,716 heuristic tokens x1.6 = 209,145 plus a 22,000
+  // reserve against a configured 200,000 window.
+  const reported = {
+    systemPrompt: 9_000,
+    tools: 120_000,
+    toolCount: 240,
+    history: 1_700,
+    latest: 16,
+  }
+  const reportedEstimate = 130_716
+
+  it('prints the window once, exactly, with no 1024-based label beside it', () => {
+    let message = ''
+    try {
+      assertEstimatedContextFits(reportedEstimate, 1.6, 200_000, 22_000, { source: 'configured' })
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toContain('against a window of 200,000 (from configured)')
+    expect(message).not.toContain('195K')
+    expect(message).not.toContain('226K')
+  })
+
+  it('breaks the estimate down by part and points at the largest one', () => {
+    expect(() =>
+      assertEstimatedContextFits(reportedEstimate, 1.6, 200_000, 22_000, {
+        source: 'configured',
+        breakdown: reported,
+      })
+    ).toThrow(
+      /system prompt 14,400, tool definitions \(240 tools\) 192,000, earlier conversation 2,720, latest message 26\. This includes a x1\.60 correction learned from this model's reported usage \(130,716 before it\)\. Most of it is tool definitions/
+    )
+  })
+
+  it('sends a first request that is over only by the learned calibration', () => {
+    // 130,716 + 22,000 fits 200,000 on Flint's own count; only the x1.6
+    // calibration puts it over. The provider decides, and a length refusal
+    // goes through overflow recovery.
+    expect(() =>
+      assertEstimatedContextFits(reportedEstimate, 1.6, 200_000, 22_000, { strict: false })
+    ).not.toThrow()
+    // The resend after a refusal is still checked on the calibrated count.
+    expect(() =>
+      assertEstimatedContextFits(reportedEstimate, 1.6, 200_000, 22_000, { strict: true })
+    ).toThrow(PREFLIGHT_CONTEXT_ERROR_PREFIX)
+    // A request that cannot fit even uncalibrated is refused either way.
+    expect(() =>
+      assertEstimatedContextFits(190_000, 1.6, 200_000, 22_000, { strict: false })
+    ).toThrow(PREFLIGHT_CONTEXT_ERROR_PREFIX)
+  })
+
+  it('does not calibrate on a request carrying parts the estimate leaves out', () => {
+    const text = { parts: [{ type: 'text' }] }
+    expect(estimateCountsEveryPart([text, text], 0)).toBe(true)
+    expect(estimateCountsEveryPart([text, { parts: [{ type: 'text' }, { type: 'file' }] }], 0)).toBe(false)
+    expect(estimateCountsEveryPart([text], 2)).toBe(false)
   })
 })
