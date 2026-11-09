@@ -338,5 +338,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "O motor do modelo parou. Carregando o modelo novamente…",
+    "retrying": "Modelo carregado novamente. Reenviando sua mensagem…",
+    "recovered": "Recuperado: o motor do modelo parou, foi reiniciado e sua mensagem foi respondida.",
+    "retryFailed": "O motor do modelo parou de novo. O Flint tentou novamente uma vez; use Gerar novamente para tentar outra vez.",
+    "restartFailed": "Não foi possível carregar o modelo novamente de forma automática. Use Gerar novamente ou escolha o modelo de novo."
   }
 }
