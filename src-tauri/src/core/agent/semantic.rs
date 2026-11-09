@@ -1142,4 +1142,79 @@ mod tests {
         assert_eq!((again.embedded, again.reused), (0, 3), "{again:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    /// Opt-in end-to-end check against a real embedding model, through the
+    /// same HTTP path a run uses. Point it at any OpenAI-compatible server:
+    ///
+    /// ```text
+    /// llama-server --embeddings --port 8098 -m <small embedding GGUF, e.g. all-MiniLM-L6-v2 or nomic-embed-text>
+    /// FLINT_E2E_EMBEDDINGS_URL=http://127.0.0.1:8098/v1 FLINT_E2E_EMBEDDINGS_MODEL=<model id> \
+    ///   cargo test --lib --no-default-features --features cli real_embedding_model -- --nocapture
+    /// ```
+    ///
+    /// Skipped (passes without doing anything) when the variables are unset.
+    /// The queries share no distinctive word with the file they must find, so
+    /// only the model's sense of meaning can rank them; the lexical
+    /// tie-breaker cannot.
+    #[tokio::test]
+    async fn real_embedding_model_finds_files_by_meaning() {
+        let (Ok(url), Ok(model)) = (std::env::var("FLINT_E2E_EMBEDDINGS_URL"), std::env::var("FLINT_E2E_EMBEDDINGS_MODEL")) else {
+            eprintln!("skipped: set FLINT_E2E_EMBEDDINGS_URL and FLINT_E2E_EMBEDDINGS_MODEL to run against a real model");
+            return;
+        };
+        let key = std::env::var("FLINT_E2E_EMBEDDINGS_KEY").ok();
+        let env = |name: &str| match name {
+            MODEL_ENV => Some(format!("e2e/{model}")),
+            URL_ENV => Some(url.clone()),
+            KEY_ENV => key.clone(),
+            _ => None,
+        };
+        let embedder = resolve(&env, None, &|_| None).expect("the e2e embedder resolves");
+        let http = HttpEmbedder { embedder: embedder.clone(), cancel: None };
+
+        let base = std::env::temp_dir().join(format!("jan-semantic-e2e-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, data) = (base.join("project"), base.join("data"));
+        let files: &[(&str, &str)] = &[
+            ("net/backoff.rs", "/// Retry a flaky network call, doubling the delay after each failure.\npub fn with_retry<T>(mut call: impl FnMut() -> Result<T, ()>) -> Result<T, ()> {\n    let mut delay_ms = 100;\n    for _ in 0..5 {\n        if let Ok(v) = call() { return Ok(v); }\n        std::thread::sleep(std::time::Duration::from_millis(delay_ms));\n        delay_ms *= 2;\n    }\n    call()\n}\n"),
+            ("auth/login.rs", "/// Compare the supplied password with the stored hash and open a session.\npub fn sign_in(user: &str, password: &str, stored_hash: &str) -> Option<String> {\n    if hash(password) == stored_hash { Some(format!(\"session-{user}\")) } else { None }\n}\nfn hash(p: &str) -> String { format!(\"{:x}\", p.len()) }\n"),
+            ("math/stats.rs", "/// Arithmetic mean of a slice of samples.\npub fn mean(xs: &[f64]) -> f64 {\n    xs.iter().sum::<f64>() / xs.len() as f64\n}\n/// Sample variance.\npub fn variance(xs: &[f64]) -> f64 {\n    let m = mean(xs);\n    xs.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (xs.len() - 1) as f64\n}\n"),
+            ("ui/theme.rs", "/// Colours for the dark appearance.\npub const BACKGROUND: &str = \"#111318\";\npub const FOREGROUND: &str = \"#e6e6e6\";\npub const ACCENT: &str = \"#7aa2f7\";\n"),
+            ("export/csv.rs", "/// Write the rows to a comma-separated file with a header line.\npub fn write_csv(path: &std::path::Path, header: &[&str], rows: &[Vec<String>]) -> std::io::Result<()> {\n    let mut out = header.join(\",\");\n    for r in rows { out.push('\\n'); out.push_str(&r.join(\",\")); }\n    std::fs::write(path, out)\n}\n"),
+        ];
+        for (path, text) in files {
+            let full = root.join(path);
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(full, text).unwrap();
+        }
+        std::fs::create_dir_all(&data).unwrap();
+
+        let started = std::time::Instant::now();
+        let (store, update) = refresh(&data, &root, &embedder.id, &http, &|| false).await.expect("indexing with the real model");
+        let indexed = started.elapsed();
+        let store_bytes = std::fs::metadata(store_path(&data, &root)).map(|m| m.len()).unwrap_or(0);
+        eprintln!(
+            "indexed {} files / {} ranges, dim {}, in {indexed:?}; store {store_bytes} bytes",
+            update.files,
+            store.chunks.len(),
+            store.dim
+        );
+        assert!(store.dim > 0 && store.chunks.len() >= files.len(), "{update:?}");
+
+        for (query, expected) in [
+            ("wait longer between attempts when a request keeps failing", "net/backoff.rs"),
+            ("check whether someone's credentials are correct", "auth/login.rs"),
+            ("average of a list of numbers", "math/stats.rs"),
+        ] {
+            let started = std::time::Instant::now();
+            let hits = search(&root, &store, query, 3, &http).await.expect("search with the real model");
+            eprintln!(
+                "{query:?} -> {:?} in {:?}",
+                hits.iter().map(|h| (h.path.as_str(), h.semantic)).collect::<Vec<_>>(),
+                started.elapsed()
+            );
+            assert_eq!(hits.first().map(|h| h.path.as_str()), Some(expected), "{query:?}: {hits:?}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
