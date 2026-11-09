@@ -445,7 +445,7 @@ pub fn begin(data_folder: &Path, roots: &Path, input: BeginInput) -> Result<Chil
     };
     let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
     // Looked at again under the lock the worktree reaper holds while it
-    // checks and removes a worktree: one removed since it was found above is
+    // re-reads a record and removes its worktree: one removed since it was found above is
     // not recorded as the place this child runs.
     if !Path::new(&record.worktree_path).exists() {
         return Err(ChildError::new(

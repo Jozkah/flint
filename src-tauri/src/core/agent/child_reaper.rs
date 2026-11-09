@@ -10,18 +10,24 @@
 //! - the worktree is still the one that was recorded (same repository, same
 //!   branch, under Flint's own worktree folder);
 //! - `git status` in it succeeds and lists nothing: no change, no untracked
-//!   file, and no ignored file other than dependency and build output
-//!   (`node_modules`, `target`), which a build recreates. An ignored `.env` or
-//!   local config keeps the worktree;
+//!   file, and no ignored entry other than a whole ignored `node_modules` or
+//!   `target` directory, which a build recreates. An ignored `.env` or local
+//!   config keeps the worktree, even inside a committed folder that happens to
+//!   be called `target`;
 //! - its branch holds no commit that no other branch, tag or remote has;
 //! - and the ordinary non-forcing discard agrees, which re-checks the changes
 //!   and the commits and refuses on its own if either changed.
 //!
 //! What is removed is therefore the checkout of committed files that exist
-//! elsewhere, plus `node_modules` and `target` folders. The record is read
-//! again and every check runs under the team-children record lock, the one a
-//! child starting takes, so a child resumed into this worktree during a pass
-//! is never removed under it.
+//! elsewhere, plus ignored `node_modules` and `target` directories.
+//!
+//! The slow checks (the worktree's state, the status scan, the commit count)
+//! run without the team-children record lock, so other children starting and
+//! settling are not held up by them. The record is read under that lock before
+//! the checks and again after them, and the worktree is removed, still under
+//! the lock, only if the record did not change in between. A child starting
+//! takes the same lock and refuses a worktree that is gone, so a child resumed
+//! into this worktree during a pass is never removed under it.
 //!
 //! Anything that fails a check is left alone and the reason is logged. The
 //! record itself is kept, so the review list still shows the child (as
@@ -99,10 +105,35 @@ fn due(record: &ChildRecord, grace: chrono::Duration, at: chrono::DateTime<chron
             .is_some_and(|ended| ended < at - grace)
 }
 
-/// Re-read `snapshot`'s record and, only if it is still due and still names
-/// the same worktree, check and remove it. All of it runs under the record
-/// lock a starting child takes, so nothing can resume into the worktree
-/// between the last check and its removal.
+/// The same ending of the same child in the same worktree: what must not
+/// change between the record read before the checks and the one read before
+/// removal.
+fn same_ending(a: &ChildRecord, b: &ChildRecord) -> bool {
+    a.status == b.status
+        && a.ended_at == b.ended_at
+        && a.worktree_path == b.worktree_path
+        && a.branch == b.branch
+}
+
+/// The record as it is now, if it is still due and still the ending `seen`.
+fn still_due(
+    data_folder: &Path,
+    seen: &ChildRecord,
+    grace: chrono::Duration,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<ChildRecord, Outcome> {
+    match team_children::load(data_folder, &seen.owner_id) {
+        Ok(now) if due(&now, grace, at) && same_ending(&now, seen) => Ok(now),
+        Ok(_) => Err(Outcome::Kept(
+            "the child was resumed or its record changed during this pass".into(),
+        )),
+        Err(e) => Err(Outcome::Kept(e.message)),
+    }
+}
+
+/// Re-read `snapshot`'s record under the record lock, run the slow checks
+/// without it, then remove the worktree under the lock only if the record is
+/// still the one the checks were for.
 fn reap_one(
     data_folder: &Path,
     snapshot: &ChildRecord,
@@ -110,17 +141,33 @@ fn reap_one(
     grace: chrono::Duration,
     at: chrono::DateTime<chrono::Utc>,
 ) -> Outcome {
+    let seen = match team_children::with_records_locked(|| still_due(data_folder, snapshot, grace, at)) {
+        Ok(record) => record,
+        Err(kept) => return kept,
+    };
+    let wt = match scan(&seen, roots) {
+        Ok(wt) => wt,
+        Err(why) => return Outcome::Kept(why),
+    };
+    discard_if_unchanged(data_folder, &seen, &wt, roots, grace, at)
+}
+
+/// Under the record lock: remove the worktree if the record is still `seen`.
+fn discard_if_unchanged(
+    data_folder: &Path,
+    seen: &ChildRecord,
+    wt: &worktree::WorktreeRecord,
+    roots: &Path,
+    grace: chrono::Duration,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Outcome {
     team_children::with_records_locked(|| {
-        match team_children::load(data_folder, &snapshot.owner_id) {
-            Ok(now)
-                if due(&now, grace, at)
-                    && now.worktree_path == snapshot.worktree_path
-                    && now.branch == snapshot.branch =>
-            {
-                check_and_discard(&now, roots)
-            }
-            Ok(_) => Outcome::Kept("the child was resumed or its record changed during this pass".into()),
-            Err(e) => Outcome::Kept(e.message),
+        if let Err(kept) = still_due(data_folder, seen, grace, at) {
+            return kept;
+        }
+        match worktree::discard_owned(wt, roots, false) {
+            Ok(()) => Outcome::Reaped,
+            Err(e) => Outcome::Kept(e),
         }
     })
 }
@@ -128,12 +175,14 @@ fn reap_one(
 /// Ignored paths a build or install recreates, so losing them loses nothing.
 const REGENERABLE: &[&str] = &["node_modules", "target"];
 
-/// Whether an ignored path from `git status` lies in dependency or build
-/// output.
+/// Whether an ignored entry from `git status --ignored=matching` is a whole
+/// dependency or build output directory: reported as a directory (trailing
+/// slash) whose own name is in [`REGENERABLE`]. A file inside a committed
+/// folder that merely shares the name (`docs/target/.env`) is not.
 fn regenerable(path: &str) -> bool {
-    path.trim_end_matches('/')
-        .split('/')
-        .any(|part| REGENERABLE.contains(&part))
+    path.trim_matches('"')
+        .strip_suffix('/')
+        .is_some_and(|dir| REGENERABLE.contains(&dir.rsplit('/').next().unwrap_or("")))
 }
 
 /// Why the worktree's status keeps it, if it does: any change or untracked
@@ -150,30 +199,23 @@ fn status_keeps(porcelain: &str) -> Option<String> {
     (!ignored.is_empty()).then(|| format!("it holds ignored files: {}", ignored.join(", ")))
 }
 
-fn check_and_discard(record: &ChildRecord, roots: &Path) -> Outcome {
-    let wt = match team_children::checked_worktree(record, roots) {
-        Ok(wt) => wt,
-        Err(e) => return Outcome::Kept(e.message),
-    };
-    match worktree::run(
+/// The slow checks, run without the record lock: the worktree is still the
+/// recorded one, holds nothing but regenerable ignored output, and its branch
+/// has no commit found nowhere else. `Err` says why it is kept.
+fn scan(record: &ChildRecord, roots: &Path) -> Result<worktree::WorktreeRecord, String> {
+    let wt = team_children::checked_worktree(record, roots).map_err(|e| e.message)?;
+    let status = worktree::run(
         Path::new(&wt.path),
         &["status", "--porcelain", "--untracked-files=all", "--ignored=matching"],
-    ) {
-        Ok(out) => {
-            if let Some(why) = status_keeps(&out) {
-                return Outcome::Kept(why);
-            }
-        }
-        Err(e) => return Outcome::Kept(format!("its status could not be read: {e}")),
+    )
+    .map_err(|e| format!("its status could not be read: {e}"))?;
+    if let Some(why) = status_keeps(&status) {
+        return Err(why);
     }
     match commits_only_on(&wt.source_root, &wt.branch) {
-        Ok(0) => {}
-        Ok(n) => return Outcome::Kept(format!("its branch has {n} commit(s) found nowhere else")),
-        Err(e) => return Outcome::Kept(format!("its commits could not be checked: {e}")),
-    }
-    match worktree::discard_owned(&wt, roots, false) {
-        Ok(()) => Outcome::Reaped,
-        Err(e) => Outcome::Kept(e),
+        Ok(0) => Ok(wt),
+        Ok(n) => Err(format!("its branch has {n} commit(s) found nowhere else")),
+        Err(e) => Err(format!("its commits could not be checked: {e}")),
     }
 }
 
@@ -405,6 +447,26 @@ mod tests {
     }
 
     #[test]
+    fn only_a_whole_ignored_output_directory_is_regenerable() {
+        for dir in ["node_modules/", "target/", "web-app/node_modules/", "src-tauri/target/"] {
+            assert!(regenerable(dir), "{dir}");
+        }
+        for kept in [
+            "docs/target/.env",
+            "config/target/local.json",
+            "node_modules/.env",
+            "target",
+            "targets/",
+            "docs/node_modules_backup/",
+        ] {
+            assert!(!regenerable(kept), "{kept}");
+        }
+        assert!(status_keeps("!! docs/target/.env\n").is_some());
+        assert!(status_keeps("!! config/target/local.json\n").is_some());
+        assert_eq!(status_keeps("!! node_modules/\n!! target/\n!! web-app/node_modules/\n"), None);
+    }
+
+    #[test]
     fn status_lines_are_judged_by_kind_and_place() {
         assert_eq!(status_keeps(""), None);
         assert_eq!(status_keeps("!! node_modules/\n!! web/target/\n"), None);
@@ -412,6 +474,52 @@ mod tests {
         assert!(status_keeps("?? new.txt\n").is_some());
         assert!(status_keeps("!! .env\n").unwrap().contains(".env"));
         assert!(status_keeps("!! node_modules/\n!! config/local.json\n").is_some());
+    }
+
+    /// The record is read again after the unlocked checks: a child resumed
+    /// (or re-ended) between the scan and the removal keeps its worktree.
+    #[test]
+    fn a_record_that_changes_after_the_scan_keeps_the_worktree() {
+        let f = fixture();
+        let now = chrono::Utc::now();
+        let old = now - chrono::Duration::days(2);
+        for (task, change) in [
+            ("t1", Box::new(|r: &mut ChildRecord| {
+                r.status = ChildStatus::Running;
+                r.ended_at = None;
+            }) as Box<dyn FnOnce(&mut ChildRecord)>),
+            ("t2", Box::new(|r: &mut ChildRecord| {
+                r.ended_at = Some((chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339());
+            })),
+        ] {
+            let record = child(&f, task, ChildStatus::Failed, old);
+            let seen = team_children::with_records_locked(|| still_due(&f.data, &record, GRACE, now))
+                .expect("due before the scan");
+            let wt = scan(&seen, &f.roots).expect("clean worktree");
+            team_children::update_record_for_test(&f.data, &record.owner_id, change);
+            let outcome = discard_if_unchanged(&f.data, &seen, &wt, &f.roots, GRACE, now);
+            assert!(matches!(outcome, Outcome::Kept(_)), "{task}: {outcome:?}");
+            assert!(Path::new(&record.worktree_path).exists(), "{task}");
+        }
+    }
+
+    /// The slow checks need no record lock: they finish while another thread
+    /// holds it, the way a child starting or settling would.
+    #[test]
+    fn the_scan_runs_while_another_thread_holds_the_record_lock() {
+        let f = fixture();
+        let now = chrono::Utc::now();
+        let record = child(&f, "t1", ChildStatus::Failed, now - chrono::Duration::days(2));
+        let roots = f.roots.clone();
+        let done = team_children::with_records_locked(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let scanned = record.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(scan(&scanned, &roots).is_ok());
+            });
+            rx.recv_timeout(std::time::Duration::from_secs(60))
+        });
+        assert_eq!(done, Ok(true), "the scan waited for the record lock");
     }
 
     /// A child resumed after the pass took its snapshot is running in that
