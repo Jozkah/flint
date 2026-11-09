@@ -1,5 +1,6 @@
 use crate::core::app::commands::get_jan_data_folder_path;
 use futures_util::StreamExt;
+use jan_utils::fs_retry::rename_retrying;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -440,9 +441,12 @@ async fn discard_part(part_path: &std::path::Path) {
     let _ = tokio::fs::remove_file(part_meta_path(part_path)).await;
 }
 
+/// Every rename here waits out a transient lock: on Windows, Defender, the
+/// search indexer and OneDrive open a just-finished file and hold it for
+/// seconds, and a single rename in that window failed the whole download.
 async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -> Result<(), String> {
     if tokio::fs::metadata(final_path).await.is_err() {
-        return tokio::fs::rename(part_path, final_path)
+        return rename_retrying(part_path, final_path)
             .await
             .map_err(|e| format!("Could not finalize download: {e}"));
     }
@@ -453,17 +457,17 @@ async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -
         .unwrap_or("model");
     let backup_path = final_path.with_file_name(format!("{file_name}.previous"));
     let _ = tokio::fs::remove_file(&backup_path).await;
-    tokio::fs::rename(final_path, &backup_path)
+    rename_retrying(final_path, &backup_path)
         .await
         .map_err(|e| format!("Could not stage existing model for replacement: {e}"))?;
 
-    match tokio::fs::rename(part_path, final_path).await {
+    match rename_retrying(part_path, final_path).await {
         Ok(()) => {
             let _ = tokio::fs::remove_file(&backup_path).await;
             Ok(())
         }
         Err(error) => {
-            let restore = tokio::fs::rename(&backup_path, final_path).await;
+            let restore = rename_retrying(&backup_path, final_path).await;
             match restore {
                 Ok(()) => Err(format!("Could not finalize download: {error}")),
                 Err(restore_error) => Err(format!(
@@ -1683,6 +1687,36 @@ mod tests {
         assert_eq!(read_part_etag(&part).await.as_deref(), Some("\"abc\""));
         discard_part(&part).await;
         assert!(!part.exists() && !part_meta_path(&part).exists());
+    }
+
+    /// A scanner holding the finished part (no sharing, like Defender) for a
+    /// moment used to fail the download at the final rename with os error 32.
+    #[cfg(windows)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn finalize_waits_out_a_scanner_holding_the_part() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        let done = dir.path().join("m.gguf");
+        std::fs::write(&part, b"weights").unwrap();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&part)
+            .unwrap();
+        assert_eq!(
+            std::fs::rename(&part, &done).unwrap_err().raw_os_error(),
+            Some(32),
+            "the held file must reject a plain rename"
+        );
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            drop(held);
+        });
+        finalize_verified_download(&part, &done).await.unwrap();
+        release.join().unwrap();
+        assert_eq!(std::fs::read(&done).unwrap(), b"weights");
+        assert!(!part.exists());
     }
 
     #[test]

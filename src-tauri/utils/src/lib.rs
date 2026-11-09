@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod crypto;
+pub mod fs_retry;
 pub mod http;
 pub mod math;
 pub mod network;
