@@ -1619,6 +1619,10 @@ pub(crate) fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::
         DenyReason::GitInternals => format!(
             "ERROR: tool '{name}' refused: it would change a repository's .git folder (hooks, config), which Git runs outside the sandbox. Use the `git` tool for repository changes."
         ),
+        DenyReason::ReadOnlyRoot => format!(
+            "ERROR: tool '{name}' {}",
+            tauri_plugin_agent_tools::tools::read_only_root_refusal("there")
+        ),
         // Say which argument could not be read. Told only "refused", a model
         // reissues the same malformed call until the step budget runs out.
         DenyReason::Resource => format!(
@@ -3759,6 +3763,11 @@ async fn orchestrate_inner(
             // would let a request pick where tool results are written.
             if let Some(map) = body.as_object_mut() {
                 map.remove(BODY_OFFLOAD_ROOT);
+                // Likewise the folder whose `git status` a summary lists.
+                map.insert(
+                    BODY_PROJECT_ROOT.to_string(),
+                    serde_json::json!(root.to_string_lossy()),
+                );
             }
             if let (true, Some(map)) = (
                 available_tools.iter().any(|t| t == "read"),
@@ -4309,6 +4318,7 @@ pub(crate) async fn compact_history(
                     .and_then(crate::core::agent::context::compact_instructions)
                     .as_deref(),
             ]),
+            project_root: args.project_root.as_deref().map(std::path::PathBuf::from),
             ..crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent)
         },
     )
@@ -4713,6 +4723,11 @@ pub(crate) const BODY_EFFECTIVE_WINDOW: &str = "jan_compaction_effective_window"
 /// run has a scratch the `read` tool can reach; absent means results are
 /// condensed in place.
 pub(crate) const BODY_OFFLOAD_ROOT: &str = "jan_compaction_offload_root";
+
+/// Body key naming the folder the run works in, set by the host like
+/// [`BODY_OFFLOAD_ROOT`]: a compaction summary lists its `git status` under
+/// files touched, which catches what `bash` changed.
+pub(crate) const BODY_PROJECT_ROOT: &str = "jan_compaction_project_root";
 
 /// Body key a subagent dispatch sets from its definition's
 /// `auto_compact_window`: the token count at which this child compacts.

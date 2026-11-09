@@ -1102,6 +1102,20 @@ pub fn is_workspace_tool(name: &str) -> bool {
     )
 }
 
+/// Why a `write`/`edit` into a folder attached read-only is refused, in the
+/// one wording the gate and the handlers share. Approving the call cannot make
+/// the folder writable; a `request_access` grant for writing can, so the
+/// model is pointed there rather than left to retry.
+pub fn read_only_root_refusal(path: &str) -> String {
+    format!(
+        "refused to write {path}: it is in a folder the user attached read-only, and \
+         approving this call does not change that. Call request_access with access_mode \
+         \"write\", the narrowest path you must change and a one-sentence reason: the user \
+         decides, and on a grant you retry this call. If it is denied, copy the file into \
+         the workspace and edit it there."
+    )
+}
+
 pub fn lookup(name: &str) -> Option<&'static BuiltinTool> {
     BUILTIN_TOOLS.iter().find(|t| t.name == name)
 }

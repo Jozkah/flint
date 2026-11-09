@@ -10,7 +10,8 @@
     "pluginNamed": "плагин {{plugin}}",
     "skill": "навык",
     "builtin": "встроенная",
-    "prompt": "промпт"
+    "prompt": "промпт",
+    "mcp": "промпт MCP"
   },
   "scope": {
     "project": "проект",
