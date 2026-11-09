@@ -194,6 +194,7 @@
   "forkedSession": "分岐しました。新しいセッションにはこの会話が含まれますが、アクセス権は引き継がれません。",
   "forkRefused": "このセッションを分岐できませんでした。",
   "deleteSession": "セッションを削除",
+  "renameSession": "セッション名を変更",
   "deleteSessionTitle": "セッションを削除しますか?",
   "deleteSessionBody": "「{{title}}」とそのトランスクリプトは完全に削除されます。この操作は元に戻せません。",
   "newChat": "新しいチャット",

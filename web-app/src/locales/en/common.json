@@ -233,6 +233,7 @@
   "forkedSession": "Forked. The new session has this conversation and none of its access.",
   "forkRefused": "This session could not be forked.",
   "deleteSession": "Delete session",
+  "renameSession": "Rename session",
   "deleteSessionTitle": "Delete session?",
   "deleteSessionBody": "\"{{title}}\" and its transcript will be permanently deleted. This can't be undone.",
   "newChat": "New Chat",

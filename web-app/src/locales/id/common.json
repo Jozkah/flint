@@ -193,6 +193,7 @@
   "forkedSession": "Dicabangkan. Sesi baru memiliki percakapan ini dan tidak ada aksesnya.",
   "forkRefused": "Sesi ini tidak dapat dicabangkan.",
   "deleteSession": "Hapus sesi",
+  "renameSession": "Ganti nama sesi",
   "deleteSessionTitle": "Hapus sesi?",
   "deleteSessionBody": "\"{{title}}\" dan transkripnya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.",
   "newChat": "Obrolan Baru",
