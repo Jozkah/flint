@@ -284,6 +284,12 @@ export type RunDeps = {
       lengthRecovery?: boolean
     }
   ) => Promise<ReadableStream<UIMessageChunk>>
+  /**
+   * The transport's strict pre-flight refusal of the step just sent, when it
+   * went out only on the lenient check (see `lengthRecovery`); null or absent
+   * otherwise. Asked when a length refusal leaves nothing to compact.
+   */
+  preflightRefusal?: () => Error | null
   /** Run one tool call. Must resolve, never reject. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /**
@@ -617,12 +623,13 @@ async function sendStepWithRetries(
             applyCompaction(st, compacted)
             continue
           }
-          // Nothing to fold (the fixed prompt and tools are what is large):
-          // send once more with the recovery spent. A step the transport let
-          // through only on its lenient pre-flight check is then stopped by
-          // that check, with Flint's breakdown of what is large, instead of
-          // ending on the provider's raw refusal.
-          continue
+          // Nothing to fold (the fixed prompt and tools are what is large).
+          // A step the transport let through only on its lenient pre-flight
+          // check ends on that check's explanation, with Flint's breakdown of
+          // what is large; any other ends on the provider's refusal. Neither
+          // sends again (not even the generic retry below): the same request
+          // would be refused again.
+          throw deps.preflightRefusal?.() ?? failure
         }
         const decision = decideRetry({
           facts: {

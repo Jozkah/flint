@@ -233,35 +233,46 @@ describe('Cowork run crossing the compaction threshold', () => {
     expect(offered.every((v) => v === false)).toBe(true)
   })
 
-  it('with nothing to fold, sends once more without recovery so the pre-flight explanation ends the run', async () => {
-    const offered: Array<boolean | undefined> = []
-    const sendStep = vi.fn(
-      async (_m: UIMessage[], _s: AbortSignal, opts?: { lengthRecovery?: boolean }) => {
-        offered.push(opts?.lengthRecovery)
-        // The transport's strict check: Flint's own breakdown.
-        if (!opts?.lengthRecovery) {
-          throw new Error(
-            'The estimated request exceeds the available context size. Most of it is the tool definitions (240 tools)'
-          )
-        }
+  describe('a length refusal with nothing to fold', () => {
+    const refused = () =>
+      vi.fn(async () => {
         throw new Error('prompt is too long: 215000 tokens > 200000 maximum')
-      }
-    )
-    const outcome = await runTurn({
-      messages: [user('test')],
-      signal: new AbortController().signal,
-      deps: {
+      })
+    const run = (sendStep: ReturnType<typeof refused>, refusal: Error | null) =>
+      runTurn({
+        messages: [user('test')],
+        signal: new AbortController().signal,
+        deps: {
+          sendStep,
+          dispatch: vi.fn(),
+          sink: sink(),
+          onStep: vi.fn(),
+          nextMessageId: () => 'm',
+          compact: vi.fn(async () => null),
+          preflightRefusal: () => refusal,
+        },
+      })
+
+    it('ends on Flint\'s breakdown, without another request, when the step went out only on the lenient check', async () => {
+      const sendStep = refused()
+      const outcome = await run(
         sendStep,
-        dispatch: vi.fn(),
-        sink: sink(),
-        onStep: vi.fn(),
-        nextMessageId: () => 'm',
-        compact: vi.fn(async () => null),
-      },
+        new Error(
+          'The estimated request exceeds the available context size. Most of it is the tool definitions (240 tools)'
+        )
+      )
+      expect(outcome.stoppedBy).toBe('error')
+      expect(sendStep).toHaveBeenCalledTimes(1)
+      expect(outcome.errorText).toContain('Most of it is the tool definitions')
     })
-    expect(outcome.stoppedBy).toBe('error')
-    expect(offered.slice(0, 2)).toEqual([true, false])
-    expect(outcome.errorText).toContain('Most of it is the tool definitions')
+
+    it('ends on the provider\'s refusal, without another request, when the estimate said it fits', async () => {
+      const sendStep = refused()
+      const outcome = await run(sendStep, null)
+      expect(outcome.stoppedBy).toBe('error')
+      expect(sendStep).toHaveBeenCalledTimes(1)
+      expect(outcome.errorText).toContain('prompt is too long')
+    })
   })
 
   it('with compaction off, a refusal ends the run as before', async () => {

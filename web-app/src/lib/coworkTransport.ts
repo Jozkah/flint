@@ -331,6 +331,8 @@ export class CoworkChatTransport extends CustomChatTransport {
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
+    // Belongs to the request about to be built, never to an earlier step.
+    this.lastPreflightRefusal = null
     await Promise.all([
       this.routePrompt(options.messages, options.abortSignal),
       this.routeModel(options.messages, options.abortSignal),

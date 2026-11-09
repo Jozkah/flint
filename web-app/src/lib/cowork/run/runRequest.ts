@@ -1314,6 +1314,7 @@ export async function runCoworkRequest(
             messageId: undefined,
           } as any)
         },
+        preflightRefusal: () => transport.lastPreflightRefusal,
         dispatch: mainDispatch,
         sink,
         onStep: stepHandlers.onStep,

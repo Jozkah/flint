@@ -380,6 +380,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       (await canRecoverFromOverflow({ getActiveInferenceParams: () => this.getActiveInferenceParams() }))
     )
   }
+  /**
+   * The strict pre-flight refusal of the last request, when that request was
+   * sent only because its overage was within the learned calibration and a
+   * length refusal would be recovered. Null when the strict check passed (or
+   * the server is local and is not checked). A run loop asks for it when a
+   * length refusal leaves nothing to compact: Flint's breakdown then ends the
+   * run without another provider request.
+   */
+  lastPreflightRefusal: Error | null = null
   private contextEstimate = new ContextEstimate()
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
@@ -2054,11 +2063,26 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // says it is tight: its refusal names the real window. Only its resend is
     // checked here (with no reserve: a request that fits the window without it
     // is never refused).
+    this.lastPreflightRefusal = null
     if (!localServer) {
-      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, reserveTokens, {
+      const check = {
         source: this.overflowRetry ? 'the last refusal' : resolvedWindow.source,
         breakdown: estimateParts,
-        strict: this.overflowRetry != null || !(await this.lengthRecoveryAvailable()),
+      }
+      const strict = this.overflowRetry != null || !(await this.lengthRecoveryAvailable())
+      // What the strict check says, kept even when this send goes out on the
+      // lenient one: a run loop whose compaction then has nothing to fold
+      // ends on this explanation instead of resending (`preflightRefusal`).
+      try {
+        assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
+          reserveTokens, { ...check, strict: true })
+      } catch (refusal) {
+        if (strict) throw refusal
+        this.lastPreflightRefusal = refusal as Error
+      }
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, reserveTokens, {
+        ...check,
+        strict: false,
       })
     } else if (this.overflowRetry) {
       assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, {

@@ -500,6 +500,11 @@ describe('CustomChatTransport reply reserve (local vs cloud)', () => {
     const prompt = [user('u1', `summarize ${'pasted '.repeat(9_000)}`)]
     await drain(await send(transport, prompt))
     expect(streamTextCalls).toHaveLength(1)
+    // The strict verdict is kept for a run loop with nothing left to fold.
+    expect(transport.lastPreflightRefusal?.message).toMatch(/Most of it is the latest message/)
+    // A request that fits on either count leaves none behind.
+    await drain(await send(transport, [user('u2', 'hi')]))
+    expect(transport.lastPreflightRefusal).toBeNull()
   })
 
   it('stops the same prompt on the calibrated count when nothing would recover a refusal', async () => {
