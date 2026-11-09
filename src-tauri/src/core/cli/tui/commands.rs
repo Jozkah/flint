@@ -1218,6 +1218,16 @@ pub(super) const AGENT_SETTINGS: &[AgentSettingDef] = &[
         kind: AgentSettingKind::Int { default: Some(0), min: 0 },
         scope: SettingScope::Global,
     },
+    AgentSettingDef {
+        key: "bell",
+        label: "bell",
+        desc: "terminal bell: attention rings for permission prompts and asks, always also when a turn ends",
+        kind: AgentSettingKind::Enum {
+            options: super::super::agent_status::BellMode::OPTIONS,
+            default: "attention",
+        },
+        scope: SettingScope::Global,
+    },
 ];
 
 /// Docked edit prompt for one `/settings` row: value field, inline validation
@@ -1734,6 +1744,8 @@ pub(super) fn apply_live_setting(def: &AgentSettingDef, entered: &str) -> bool {
             set_wave_glyph(Some(entered));
             true
         }
+        // Read from the file on every status transition: nothing to apply.
+        "bell" => true,
         _ => false,
     }
 }
@@ -1748,6 +1760,7 @@ pub(super) fn apply_live_unset(def: &AgentSettingDef) -> bool {
             set_wave_glyph(None);
             true
         }
+        "bell" => true,
         _ => false,
     }
 }
