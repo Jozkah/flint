@@ -961,6 +961,32 @@ fn settings_prompt_edits_text_key() {
     let _ = std::fs::remove_dir_all(&app.agent_dir);
 }
 
+/// `bell` is read on every status transition, so its note must not tell the
+/// user to wait for a next run the way other rows do.
+#[test]
+fn settings_prompt_says_bell_applies_now() {
+    crate::core::agent::global_config::with_temp_home(|_| {
+        let mut app = test_app();
+        std::fs::create_dir_all(&app.agent_dir).unwrap();
+        let def = AGENT_SETTINGS.iter().find(|d| d.key == "bell").unwrap();
+        app.settings_prompt = Some(super::super::SettingsPrompt::new(def, None));
+        for ch in "always".chars() {
+            super::super::handle_settings_key(&mut app, key(KeyCode::Char(ch)), false);
+        }
+        super::super::handle_settings_key(&mut app, key(KeyCode::Enter), false);
+
+        assert_eq!(
+            crate::core::agent::global_config::bell_setting().as_deref(),
+            Some("always")
+        );
+        let note = transcript_text(&app);
+        assert!(note.contains("bell = always written; in effect now"), "{note}");
+        assert!(!note.contains("next run"), "{note}");
+
+        let _ = std::fs::remove_dir_all(&app.agent_dir);
+    });
+}
+
 /// `wave` lives in `~/.jan/config.toml`, not the project's agent.toml, so
 /// the row has to write across scopes. It is also the one setting that
 /// applies live: a cosmetic glyph you must restart to see is not a toggle,

@@ -42,6 +42,10 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Flint Agent global provider config.
 #                                     # question's recommended option (else its
 #                                     # first). 0 or unset waits forever, the
 #                                     # default
+# bell = "off"                        # TUI terminal bell: "attention" (the
+#                                     # default) rings when a permission prompt
+#                                     # or ask question needs you, "always"
+#                                     # also when a turn finishes, "off" never
 # terminal_hint = false               # stop the startup note that offers
 #                                     # /terminal-setup when this terminal is
 #                                     # dropping Shift+Enter or Option+Delete.
@@ -112,6 +116,11 @@ struct GlobalConfigToml {
     /// wait forever, blocking the run on the ask exactly as it does today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ask_timeout_secs: Option<u64>,
+    /// TUI terminal bell: `"off"`, `"attention"` or `"always"`. `None` = the
+    /// default, attention. Any other string also reads as the default so a
+    /// typo never silences a prompt the user asked to hear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bell: Option<String>,
     /// Offer `/terminal-setup` at startup when a config file proves this
     /// terminal is dropping a modified key. `None` = the default, on. For the
     /// user who has read the note and decided to keep `Option` composing
@@ -391,6 +400,13 @@ pub(crate) fn theme_setting() -> Option<String> {
     load_raw().ok().and_then(|config| config.theme)
 }
 
+/// The TUI bell preference (`bell` in `~/.jan/config.toml`), `None` when unset.
+/// Read on every status transition so a `/settings` change applies at once; an
+/// unreadable config yields `None` (the default) rather than an error.
+pub(crate) fn bell_setting() -> Option<String> {
+    load_raw().ok().and_then(|config| config.bell)
+}
+
 /// How long an unanswered `ask` prompt waits before it auto-answers with each
 /// question's recommended option (`ask_timeout_secs` in `~/.jan/config.toml`).
 /// `None` -- the default -- means wait forever, preserving today's blocking
@@ -477,6 +493,7 @@ mod root_keys_tests {
             stream_reasoning: Some(true),
             theme: Some(String::new()),
             ask_timeout_secs: Some(1),
+            bell: Some(String::new()),
             terminal_hint: Some(true),
             hide_secrets: Some(true),
             wave: Some(String::new()),
@@ -511,6 +528,7 @@ const ROOT_KEYS: &[&str] = &[
     "stream_reasoning",
     "theme",
     "ask_timeout_secs",
+    "bell",
     "terminal_hint",
     "wave",
 ];
@@ -1315,6 +1333,19 @@ mod tests {
 
             std::fs::write(&path, "not valid toml [[[").unwrap();
             assert_eq!(theme_setting(), None, "an unreadable config reads as auto");
+        });
+    }
+
+    #[test]
+    fn bell_is_unset_by_default_and_reads_its_key() {
+        with_temp_home(|home| {
+            assert_eq!(bell_setting(), None, "missing file");
+            let path = home.join(".jan").join("config.toml");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "bell = \"always\"\n").unwrap();
+            assert_eq!(bell_setting().as_deref(), Some("always"));
+            std::fs::write(&path, "bell = [").unwrap();
+            assert_eq!(bell_setting(), None, "fails open to the default");
         });
     }
 
