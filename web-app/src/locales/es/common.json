@@ -195,6 +195,7 @@
   "forkedSession": "Bifurcada. La nueva sesión tiene esta conversación y ninguno de sus accesos.",
   "forkRefused": "No se pudo bifurcar esta sesión.",
   "deleteSession": "Eliminar sesión",
+  "renameSession": "Cambiar nombre de la sesión",
   "deleteSessionTitle": "¿Eliminar sesión?",
   "deleteSessionBody": "\"{{title}}\" y su transcripción se eliminarán de forma permanente. Esta acción no se puede deshacer.",
   "newChat": "Nuevo chat",

@@ -195,6 +195,7 @@
   "forkedSession": "Bifurcada. La sessió nova té aquesta conversa, però cap dels seus accessos.",
   "forkRefused": "No s'ha pogut bifurcar aquesta sessió.",
   "deleteSession": "Elimina la sessió",
+  "renameSession": "Canvia el nom de la sessió",
   "deleteSessionTitle": "Voleu eliminar la sessió?",
   "deleteSessionBody": "«{{title}}» i la seva transcripció s'eliminaran definitivament. Aquesta acció no es pot desfer.",
   "newChat": "Xat nou",

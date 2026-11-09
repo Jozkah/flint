@@ -13,7 +13,9 @@ const titleJobs = new Map<string, AbortController>()
 /**
  * Replace a Cowork session's placeholder title (the first prompt, cut short)
  * with one the model writes, the way chats are titled. Only while the title
- * is still that placeholder: a session the user renamed is left alone.
+ * is still that placeholder and the user has not named the session: a
+ * session the user renamed is left alone, even when the name they typed
+ * happens to equal the placeholder.
  *
  * A local model serves one request at a time, so the title waits until the
  * engine is idle rather than queueing ahead of or beside the run.
@@ -55,7 +57,9 @@ export function autoTitleCoworkSession(
     if (!title) return
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sessionId)
-    if (current && current.title === placeholder) store.setTitle(sessionId, title)
+    if (current && !current.titleManual && current.title === placeholder) {
+      store.setTitle(sessionId, title)
+    }
   })()
     .catch((err) => console.warn('[CoworkTitle] failed:', err))
     .finally(() => {

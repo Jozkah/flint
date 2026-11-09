@@ -391,6 +391,13 @@ type RunTurnOptions = {
   operationTimeoutMs?: number
   /** The clock, so the caps are testable without waiting for them. */
   now?: () => number
+  /**
+   * Call ids this run has already used. Only the cross-step policy: when
+   * given, an id repeated in a LATER step is refused; omitted (Cowork), ids
+   * may recur across steps. An id repeated inside ONE step is always refused,
+   * whether or not this is set (it would overwrite the first call's outcome).
+   */
+  seenCallIds?: Set<string>
 }
 
 /** What one run carries from step to step. */
@@ -715,6 +722,48 @@ function streamErrored(
   return finish(st, 'error', result.errorText)
 }
 
+/** First id that repeats within `calls` or was already in `seen`, if any. */
+export function firstDuplicateCallId(
+  calls: PendingToolCall[],
+  seen?: ReadonlySet<string>
+): string | undefined {
+  const inStep = new Set<string>()
+  for (const { toolCallId } of calls) {
+    if (inStep.has(toolCallId) || seen?.has(toolCallId)) return toolCallId
+    inStep.add(toolCallId)
+  }
+  return undefined
+}
+
+/**
+ * Validate the whole step before any side effect. Outcomes are keyed by call
+ * id, so a repeated id would let the second call's result overwrite the
+ * first's (which may already have written). A malformed step fails closed:
+ * nothing is dispatched and its calls are not committed, so no phantom result
+ * stands for a call that never ran.
+ */
+function refuseDuplicateCallIds(
+  st: RunState,
+  deps: RunDeps,
+  result: StepResult,
+  seen?: ReadonlySet<string>
+): RunOutcome | null {
+  const duplicateId = firstDuplicateCallId(result.toolCalls, seen)
+  if (duplicateId === undefined) return null
+  const errorText = `Duplicate tool call id: ${duplicateId}. The step was refused and none of its tool calls ran.`
+  const refused: StepResult = { ...result, toolCalls: [], errorText }
+  if (refused.text) {
+    st.messages.push(assistantMessageFor(deps.nextMessageId(), refused, new Map()))
+  }
+  deps.onStep({
+    step: st.step,
+    result: refused,
+    turns: turnsFor(refused, new Map()),
+    outcomes: new Map(),
+  })
+  return outcomeOf(st, 'error', errorText)
+}
+
 /**
  * Run the step's tool calls. Tools run one at a time: they share a
  * workspace, and the progress attribution in the UI assumes a single call in
@@ -1001,6 +1050,10 @@ export async function runTurn(opts: RunTurnOptions): Promise<RunOutcome> {
       if (t.kind === 'finish') return t.outcome
       continue
     }
+
+    const duplicate = refuseDuplicateCallIds(st, deps, result, opts.seenCallIds)
+    if (duplicate) return duplicate
+    for (const call of result.toolCalls) opts.seenCallIds?.add(call.toolCallId)
 
     const { outcomes, steeringPending } = await runToolCalls(st, deps, signal, result)
     if (result.toolCalls.length > 0 && !signal.aborted) {

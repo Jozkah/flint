@@ -194,6 +194,7 @@
   "forkedSession": "Verzweigt. Die neue Sitzung enthält diese Unterhaltung, aber keinen ihrer Zugriffe.",
   "forkRefused": "Diese Sitzung konnte nicht verzweigt werden.",
   "deleteSession": "Sitzung löschen",
+  "renameSession": "Sitzung umbenennen",
   "deleteSessionTitle": "Sitzung löschen?",
   "deleteSessionBody": "„{{title}}“ und das zugehörige Protokoll werden dauerhaft gelöscht. Das kann nicht rückgängig gemacht werden.",
   "newChat": "Neuer Chat",

@@ -194,6 +194,7 @@
   "forkedSession": "已分叉。新会话包含此对话，但没有其访问权限。",
   "forkRefused": "无法分叉此会话。",
   "deleteSession": "删除会话",
+  "renameSession": "重命名会话",
   "deleteSessionTitle": "删除会话？",
   "deleteSessionBody": "“{{title}}”及其对话记录将被永久删除。此操作无法撤销。",
   "newChat": "新建聊天",
