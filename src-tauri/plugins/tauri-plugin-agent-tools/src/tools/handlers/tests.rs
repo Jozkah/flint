@@ -5123,3 +5123,43 @@ fn stale_edit_tracking_forgets_the_least_recently_used_session() {
     assert!(all.contains_key("b") && all.contains_key("d"));
     assert!(!all.contains_key("c"));
 }
+
+/// janhq/jan#9604: an unconfined `write`/`edit` (the escape prompt approved)
+/// still refuses a folder attached read-only, and leaves it untouched; a
+/// writable root nested in it, and the project, still take the write.
+#[tokio::test]
+async fn write_and_edit_refuse_a_read_only_attached_root_even_unconfined() {
+    let root = unique_root();
+    let ro = unique_root();
+    std::fs::write(ro.join("main.rs"), b"keep").unwrap();
+    let nested = ro.join("rw");
+    std::fs::create_dir_all(&nested).unwrap();
+    let read_roots = vec![ro.clone(), nested.clone()];
+    let write_roots = vec![nested.clone()];
+    let store = crate::workspace::project_store(&root);
+    let ctx = ToolContext::new(&root, &store, &[])
+        .with_read_roots(&read_roots)
+        .with_write_roots(&write_roots)
+        .with_confined_writes(false);
+
+    let args = json!({"path": ro.join("new.txt").to_string_lossy(), "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+    assert!(!ro.join("new.txt").exists());
+    let args = json!({
+        "path": ro.join("main.rs").to_string_lossy(),
+        "edits": [{"old_string": "keep", "new_string": "lost"}]
+    });
+    let out = super::execute_builtin(lookup("edit").unwrap(), &args, &ctx).await.0;
+    assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+    assert_eq!(std::fs::read_to_string(ro.join("main.rs")).unwrap(), "keep");
+
+    let args = json!({"path": nested.join("ok.txt").to_string_lossy(), "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(!out.starts_with("ERROR"), "{out}");
+    let args = json!({"path": "in-project.txt", "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(!out.starts_with("ERROR"), "{out}");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&ro);
+}
