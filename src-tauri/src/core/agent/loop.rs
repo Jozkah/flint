@@ -113,6 +113,9 @@ mod approvals;
 use approvals::*;
 
 mod local_tools;
+
+mod body;
+use body::*;
 #[allow(unused_imports)]
 pub(crate) use approvals::{PermissionRegistry, approval_digest, record_deny_reason, secret_denied_message, secret_prompt_text, secret_unattended_msg};
 
@@ -2967,10 +2970,7 @@ async fn orchestrate_inner(
     // (like `model`/`max_tokens`), falling back to the session default. Any
     // caller can only *tighten* to Plan or match the default; the capability
     // gate below enforces read-only regardless of who set it.
-    let run_mode = json_body
-        .get("run_mode")
-        .and_then(|v| serde_json::from_value::<crate::core::agent::plan::RunMode>(v.clone()).ok())
-        .unwrap_or(*run_mode);
+    let run_mode = body_run_mode(json_body, *run_mode);
 
     let messages_value = json_body
         .get("messages")
@@ -3005,18 +3005,7 @@ async fn orchestrate_inner(
     };
     // `--append-system-prompt`: this run's extra instructions ride with the
     // assistant's, ahead of the rest of the prompt.
-    let assistant_instructions = match (
-        assistant_instructions,
-        json_body
-            .get("jan_append_system_prompt")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|t| !t.is_empty()),
-    ) {
-        (Some(base), Some(extra)) => Some(format!("{base}\n\n{extra}")),
-        (None, Some(extra)) => Some(extra.to_string()),
-        (base, None) => base,
-    };
+    let assistant_instructions = with_appended_instructions(assistant_instructions, json_body);
 
     // Resolved here rather than where the tools are built: the system prompt
     // names the scratch, and whether there *is* one is the sandbox decision, so
@@ -3077,12 +3066,7 @@ async fn orchestrate_inner(
         // a loaded engine's n_ctx) says so on the body. It stands in for the
         // CLI config, which a desktop or API-server run has none of, and for
         // the 128K default below.
-        let ctx_window = ctx_window.or_else(|| {
-            json_body
-                .get("jan_context_window")
-                .and_then(|v| v.as_u64())
-                .filter(|w| *w >= 1_024)
-        });
+        let ctx_window = body_context_window(ctx_window, json_body);
         // No configured window: use what this model's own overflow errors
         // taught an earlier run, before the 128K default.
         let learned = match ctx_window {
@@ -3157,10 +3141,7 @@ async fn orchestrate_inner(
     // call: a subagent has no `todo` or `ask`, plan mode has no write tools,
     // and a denied or allowlisted-away web tool is not promised.
     let offered: crate::core::agent::context::OfferedTools = {
-        let allowed: Option<std::collections::HashSet<String>> = json_body
-            .get("allowed_tools")
-            .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        let allowed = body_allowed_tools(json_body);
         // The prompt describes only the tools the profile leaves. The model is
         // not final yet (the router and `[models]` run below), so this reads
         // the best name known now; the list actually sent is resolved again
@@ -3454,16 +3435,8 @@ async fn orchestrate_inner(
     // could silently ignore.
     let force_first_tool = eager_todo_plan.then_some("todo");
 
-    let model_override = json_body.get("model").and_then(|v| v.as_str());
-    let mut model_id: Option<String> = model_override.map(|v| v.to_string());
-    if model_id.is_none() {
-        if let Some(h) = assistant_model_hint {
-            let trimmed = h.trim();
-            if !trimmed.is_empty() && trimmed != "*" {
-                model_id = Some(trimmed.to_string());
-            }
-        }
-    }
+    #[cfg_attr(feature = "cli", allow(unused_mut))]
+    let mut model_id = explicit_model_choice(json_body, assistant_model_hint.as_deref());
     #[cfg(not(feature = "cli"))]
     {
         if model_id.is_none() {
@@ -3563,14 +3536,7 @@ async fn orchestrate_inner(
     }
 
     // Per-run allowlist shared by builtin/subagent/ask advertisement below.
-    let allowed_names: Option<std::collections::HashSet<String>> = json_body
-        .get("allowed_tools")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        });
+    let allowed_names = body_allowed_tools(json_body);
     // The tool profile of the model this run actually talks to (a subagent
     // child resolves its own model here, not its parent's). It only removes
     // tools: the allowlist above is intersected with it, so MCP tools it does

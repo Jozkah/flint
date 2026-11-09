@@ -7044,16 +7044,10 @@ fn orchestrate_reads_run_mode_override_from_body() {
     // The per-turn body override (mirrors model/max_tokens) parses to Plan;
     // absent/normal falls back to the session default.
     use crate::core::agent::plan::RunMode;
-    let from_body = |v: serde_json::Value| {
-        v.get("run_mode")
-            .and_then(|x| serde_json::from_value::<RunMode>(x.clone()).ok())
-    };
-    assert_eq!(from_body(json!({"run_mode": "plan"})), Some(RunMode::Plan));
-    assert_eq!(
-        from_body(json!({"run_mode": "normal"})),
-        Some(RunMode::Normal)
-    );
-    assert_eq!(from_body(json!({})), None);
+    let from_body = |v: serde_json::Value| body_run_mode(&v, RunMode::Normal);
+    assert_eq!(from_body(json!({"run_mode": "plan"})), RunMode::Plan);
+    assert_eq!(body_run_mode(&json!({"run_mode": "normal"}), RunMode::Plan), RunMode::Normal);
+    assert_eq!(from_body(json!({})), RunMode::Normal);
 }
 
 #[tokio::test]
