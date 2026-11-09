@@ -1178,6 +1178,13 @@ pub fn build_app() -> tauri::App {
                     }
                 });
             }
+            // Failed or cancelled team children whose worktree holds no work
+            // are removed once their grace period is over; anything with work
+            // in it is kept.
+            core::agent::child_reaper::reap_in_background(
+                get_jan_data_folder_path(app.handle().clone()),
+                STARTUP_SWEEP_DELAY,
+            );
             // A log folder that cannot be written must not stop the app from
             // starting; it just runs without a log file.
             if let Err(e) = app.handle().plugin(

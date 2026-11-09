@@ -116,6 +116,94 @@ pub fn valid_method(method: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
 }
 
+/// Every method a phone may call: the remote protocol's method table
+/// (`RemoteMethods` in web-app/src/lib/remote/protocolRequests.ts), which the
+/// window's handler registry implements one for one. Anything else is refused
+/// here, before it reaches the window, so a method added to the window later
+/// is not phone-callable until it is added to the protocol table and here. A
+/// test keeps this list and the table equal.
+pub const PHONE_METHODS: &[&str] = &[
+    "appearance.get",
+    "approvals.campaign.act",
+    "approvals.list",
+    "approvals.prompt",
+    "approvals.respond",
+    "archive.empty",
+    "archive.list",
+    "archive.purge",
+    "archive.restore",
+    "asks.list",
+    "asks.respond",
+    "assistants.list",
+    "campaigns.get",
+    "campaigns.list",
+    "chat.assistant",
+    "chat.compact",
+    "chat.details",
+    "chat.edit",
+    "chat.effort",
+    "chat.fork",
+    "chat.regenerate",
+    "chat.send",
+    "cowork.activity",
+    "cowork.changes",
+    "cowork.file",
+    "cowork.files",
+    "cowork.get",
+    "cowork.preview",
+    "cowork.send",
+    "hf.download",
+    "hf.search",
+    "library.list",
+    "models.downloads",
+    "models.list",
+    "preview.ticket",
+    "prompts.list",
+    "push.get",
+    "push.prefs",
+    "push.subscribe",
+    "push.test",
+    "push.unsubscribe",
+    "push.vapidKey",
+    "room.clear",
+    "room.control",
+    "room.create",
+    "room.delete",
+    "room.send",
+    "room.update",
+    "rooms.get",
+    "rooms.summaries",
+    "run.stop",
+    "sessions.list",
+    "settings.get",
+    "settings.set",
+    "status",
+    "stream.get",
+    "studio.delete",
+    "studio.download",
+    "studio.gallery",
+    "studio.generate",
+    "studio.load",
+    "studio.media",
+    "studio.remix",
+    "studio.status",
+    "studio.stop",
+    "studio.unload",
+    "system.info",
+    "thread.branch.select",
+    "thread.messages",
+    "thread.queue",
+    "title.regenerate",
+    "tools.list",
+    "voice.status",
+    "voice.transcribe",
+];
+
+/// Whether `method` is one a phone may call at all.
+pub fn phone_callable(method: &str) -> bool {
+    PHONE_METHODS.binary_search(&method).is_ok()
+}
+
 /// Server-side gate on approval methods, independent of what the window
 /// would do: a phone can never answer approvals the user turned off, nor
 /// grant "Always allow" unless that is on too.
@@ -495,7 +583,7 @@ impl RemoteHub {
         params: Value,
         timeout: Duration,
     ) -> Result<RpcOutcome, RpcReject> {
-        if !valid_method(method) {
+        if !valid_method(method) || !phone_callable(method) {
             return Err(RpcReject::BadMethod);
         }
         if let Err(why) = check_policy(method, &params, &self.config()) {

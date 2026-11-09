@@ -770,6 +770,30 @@ pub fn slowest_dispatches(n: usize) -> Vec<(String, DispatchStat)> {
     all
 }
 
+/// `stats` as the diagnostics bundle's timing page: one line per command,
+/// worst first, with its count and longest hold of the dispatch thread. The
+/// thread a synchronous command runs on is the one the window waits on, so
+/// these are the commands that can freeze it. Async commands return before
+/// their work and are not in it: Tauri's `Invoke` gives no way to see when
+/// their reply is sent.
+pub fn dispatch_report(stats: &[(String, DispatchStat)]) -> String {
+    let mut out = format!(
+        "Commands that held the dispatch thread longest this session (over {} ms is logged as slow).\n",
+        SLOW_DISPATCH.as_millis()
+    );
+    if stats.is_empty() {
+        out.push_str("none recorded\n");
+    }
+    for (name, stat) in stats {
+        out.push_str(&format!(
+            "{name}\tmax {} ms\t{} call(s)\n",
+            stat.max.as_millis(),
+            stat.count
+        ));
+    }
+    out
+}
+
 /// How long a command may hold the dispatch thread before it is reported.
 const SLOW_DISPATCH: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -806,6 +830,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_timing_report_lists_each_command_worst_first() {
+        let ms = std::time::Duration::from_millis;
+        let report = dispatch_report(&[
+            ("read_settings".into(), DispatchStat { count: 4, max: ms(240) }),
+            ("list_threads".into(), DispatchStat { count: 1, max: ms(3) }),
+        ]);
+        let lines: Vec<&str> = report.lines().collect();
+        assert!(lines[0].contains("100 ms"), "{report}");
+        assert_eq!(lines[1], "read_settings\tmax 240 ms\t4 call(s)");
+        assert_eq!(lines[2], "list_threads\tmax 3 ms\t1 call(s)");
+        assert!(dispatch_report(&[]).contains("none recorded"));
     }
 
     #[test]

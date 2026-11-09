@@ -1,8 +1,9 @@
 //! Runtime grants for the `asset:` protocol.
 //!
-//! `tauri.conf.json` allows only the standard user roots statically. The UI also
-//! shows files from places outside them (other drives, a custom data folder), so
-//! the webview asks for a grant per path before calling `convertFileSrc`.
+//! `tauri.conf.json` allows only the app's own data and cache folders
+//! statically. Every other file the UI shows (an attachment from the Desktop or
+//! Downloads, another drive, a custom data folder) needs a grant per path,
+//! which the webview asks for before calling `convertFileSrc`.
 //! Neither the native picker (`rfd`) nor the dialog plugin extends the asset
 //! scope, so this command is the only path to such files. It grants only what
 //! the read allowlist in [`super::grants`] allows, so a file the user picked in

@@ -845,9 +845,13 @@ Known secrets are stripped; the scan is best-effort, so review before sharing.
 }
 
 /// The desktop diagnostic bundle's members: what `flint bug-report` carries
-/// that the desktop has (version, environment, the app log redacted), cut to
-/// the same per-member and total caps.
-fn diagnostic_members(log_tail: &str) -> Vec<(String, String)> {
+/// that the desktop has (version, environment, the app log redacted), plus the
+/// commands that held the window's dispatch thread longest this session, cut
+/// to the same per-member and total caps.
+fn diagnostic_members(
+    log_tail: &str,
+    timings: &[(String, crate::core::crash_trace::DispatchStat)],
+) -> Vec<(String, String)> {
     use crate::core::diagnostics_bundle::{cap_members, MEMBER_CAP, TOTAL_CAP};
     let mut members = vec![
         ("version.txt".to_string(), format!("Flint {}\n", env!("CARGO_PKG_VERSION"))),
@@ -856,6 +860,10 @@ fn diagnostic_members(log_tail: &str) -> Vec<(String, String)> {
             format!("os={}\narch={}\n", std::env::consts::OS, std::env::consts::ARCH),
         ),
         ("logs/app.log".to_string(), redact_log_text(log_tail)),
+        (
+            "ipc-timings.txt".to_string(),
+            crate::core::crash_trace::dispatch_report(timings),
+        ),
     ];
     cap_members(&mut members, MEMBER_CAP, TOTAL_CAP);
     members
@@ -874,7 +882,10 @@ pub async fn export_diagnostic_bundle<R: Runtime>(app: AppHandle<R>) -> Result<O
         .await
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
-    let archive = crate::core::diagnostics_bundle::write_archive(Vec::new(), &diagnostic_members(&tail))?;
+    let archive = crate::core::diagnostics_bundle::write_archive(Vec::new(), &diagnostic_members(
+        &tail,
+        &crate::core::crash_trace::slowest_dispatches(10),
+    ))?;
     let name = sanitize_file_name("flint-diagnostics.tar", "gz");
     let Some(path) = pick_path("gz", &name).await else {
         return Ok(None);
@@ -1800,13 +1811,21 @@ mod tests {
         while log.len() <= 2 * MEMBER_CAP {
             log.push_str("INFO a long and boring line of log text\n");
         }
-        let members = super::diagnostic_members(&log);
+        let slow = vec![(
+            "read_settings".to_string(),
+            crate::core::crash_trace::DispatchStat {
+                count: 2,
+                max: std::time::Duration::from_millis(180),
+            },
+        )];
+        let members = super::diagnostic_members(&log, &slow);
         let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["version.txt", "environment.txt", "logs/app.log"]);
+        assert_eq!(names, ["version.txt", "environment.txt", "logs/app.log", "ipc-timings.txt"]);
+        assert!(members[3].1.contains("read_settings\tmax 180 ms\t2 call(s)"), "{}", members[3].1);
         let app_log = &members[2].1;
         assert!(app_log.starts_with("[truncated: kept the last"), "log not capped");
         assert!(app_log.len() <= MEMBER_CAP + 80, "{}", app_log.len());
-        let small = super::diagnostic_members(&format!("INFO upstream said {key}\n"));
+        let small = super::diagnostic_members(&format!("INFO upstream said {key}\n"), &[]);
         assert!(!small[2].1.contains(key), "secret survived: {}", small[2].1);
 
         let archive = write_archive(Vec::new(), &small).unwrap();
@@ -2394,6 +2413,7 @@ mod tests {
     fn test_full_wipe_list_includes_the_secret_index() {
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.enc"));
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.index.json"));
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.key"));
     }
 
     #[test]

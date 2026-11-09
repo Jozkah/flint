@@ -392,10 +392,20 @@ fn cipher_from(key: &[u8; 32]) -> Result<Aes256Gcm, String> {
     Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())
 }
 
-/// Where the random per-install key lives when the machine has no usable id.
-/// Deliberately outside the data folder, so a copy of that folder (a backup,
-/// a Docker volume) does not carry the key along with the file it unlocks.
-fn install_key_path() -> Option<PathBuf> {
+/// Where the random per-install key lives: in the data folder, next to the
+/// file it unlocks. A headless `flint serve` or a container keeps its data
+/// folder on a volume while the home directory is thrown away with the
+/// container, so a key under `~` would lock the secrets out on every rebuild.
+/// The file is therefore only as private as the data folder's permissions;
+/// both files are created owner-only.
+fn install_key_path() -> PathBuf {
+    resolve_jan_data_folder().join(INSTALL_KEY_FILE_NAME)
+}
+
+/// Where older builds kept the random key (only when the machine had no id).
+/// Read-only now: a file it encrypted still opens, and the next write moves it
+/// to the data-folder key.
+fn legacy_home_install_key_path() -> Option<PathBuf> {
     crate::core::app::commands::jan_home_dir()
         .map(|home| home.join(".jan").join(INSTALL_KEY_FILE_NAME))
 }
@@ -418,10 +428,16 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     file.sync_all()
 }
 
+/// The random key stored at `path`, if one is there. Never creates it.
+fn read_install_key(path: &std::path::Path) -> Option<[u8; 32]> {
+    let bytes = fs::read(path).ok()?;
+    <[u8; 32]>::try_from(bytes.as_slice()).ok()
+}
+
 /// Read the random per-install key, creating it on first use.
-fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
-    if let Ok(bytes) = fs::read(path) {
-        if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
+fn load_or_create_install_key(path: &std::path::Path) -> Result<[u8; 32], String> {
+    if path.exists() {
+        if let Some(key) = read_install_key(path) {
             return Ok(key);
         }
         log::warn!(
@@ -437,47 +453,43 @@ fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
     let tmp = unique_tmp(path, "key");
     write_private(&tmp, &key).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| e.to_string())?;
-    restrict_permissions(path);
+    restrict_permissions(&path.to_path_buf());
     Ok(key)
 }
 
-static NO_MACHINE_ID_WARNED: AtomicBool = AtomicBool::new(false);
-
-/// The key bytes for this install: from the machine id when there is a usable
-/// one, otherwise from a random key persisted under `~/.jan`. Never from a
-/// constant baked into the source, which any reader of it could recompute.
-fn current_key(
-    machine_id: Option<String>,
-    install_key: &Option<PathBuf>,
-) -> Result<[u8; 32], String> {
-    if let Some(id) = machine_id {
-        return Ok(key_bytes(id.as_bytes()));
-    }
-    if !NO_MACHINE_ID_WARNED.swap(true, Ordering::Relaxed) {
-        log::warn!(
-            "No machine id available; protecting the provider secrets file with a random per-install key instead"
-        );
-    }
-    let path = install_key
-        .as_ref()
-        .ok_or_else(|| "no machine id and no home directory for the secrets key".to_string())?;
-    let random = load_or_create_install_key(path)?;
-    Ok(key_bytes(&random))
+/// The key every write uses: the random per-install key in the data folder,
+/// created on first use. Never the machine id, which any local process can
+/// read, and never a constant baked into the source.
+fn current_key(install_key: &std::path::Path) -> Result<[u8; 32], String> {
+    Ok(key_bytes(&load_or_create_install_key(install_key)?))
 }
 
-/// Derive the 32-byte key for the fallback file.
+/// Derive the cipher every write uses.
 fn derive_cipher() -> Result<Aes256Gcm, String> {
-    cipher_from(&current_key(
-        usable_machine_id(machine_id()),
-        &install_key_path(),
-    )?)
+    cipher_from(&current_key(&install_key_path())?)
 }
 
 /// The keys older builds derived when the machine id was missing or empty.
-/// Only ever used to read a file those builds wrote; the next write
-/// re-encrypts it under [`derive_cipher`].
 fn legacy_no_machine_id_keys() -> [[u8; 32]; 2] {
     [key_bytes(b"jan-fallback-machine"), key_bytes(b"")]
+}
+
+/// Every key a read tries, in order: the current data-folder key (only if it
+/// already exists; a read never creates one), then the keys older builds wrote
+/// with -- the random key under `~/.jan`, the machine id, the constants. Only
+/// the first ever encrypts; a file opened by any later one is re-encrypted
+/// under the first on the next write.
+fn read_keys(
+    install_key: &std::path::Path,
+    legacy_home_key: Option<&std::path::Path>,
+    machine_id: Option<String>,
+) -> Vec<[u8; 32]> {
+    let mut keys = Vec::new();
+    keys.extend(read_install_key(install_key).map(|k| key_bytes(&k)));
+    keys.extend(legacy_home_key.and_then(read_install_key).map(|k| key_bytes(&k)));
+    keys.extend(machine_id.map(|id| key_bytes(id.as_bytes())));
+    keys.extend(legacy_no_machine_id_keys());
+    keys
 }
 
 fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
@@ -494,27 +506,20 @@ fn try_read_file_map(path: &PathBuf) -> Option<BTreeMap<String, Vec<String>>> {
         return Some(BTreeMap::new());
     }
     let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
-    let decrypt = |cipher: Aes256Gcm| {
-        cipher
+    let keys = read_keys(
+        &install_key_path(),
+        legacy_home_install_key_path().as_deref(),
+        usable_machine_id(machine_id()),
+    );
+    let plaintext = keys.iter().find_map(|key| {
+        cipher_from(key)
+            .ok()?
             .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|e| e.to_string())
-    };
-    let plaintext = match derive_cipher().and_then(decrypt) {
-        Ok(pt) => pt,
-        Err(err) => {
-            // A file an older build wrote on a machine without an id used a
-            // constant key; still read it so the upgrade loses nothing.
-            let legacy = legacy_no_machine_id_keys()
-                .iter()
-                .find_map(|key| cipher_from(key).and_then(decrypt).ok());
-            match legacy {
-                Some(pt) => pt,
-                None => {
-                    log::warn!("Failed to decrypt provider secrets file: {err}");
-                    return None;
-                }
-            }
-        }
+            .ok()
+    });
+    let Some(plaintext) = plaintext else {
+        log::warn!("Failed to decrypt provider secrets file with any known key");
+        return None;
     };
     serde_json::from_slice(&plaintext).ok()
 }
@@ -1299,18 +1304,150 @@ mod tests {
 
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
-        let key_a = current_key(None, &Some(a.path().join("k"))).unwrap();
-        let key_b = current_key(None, &Some(b.path().join("k"))).unwrap();
+        let key_a = current_key(&a.path().join("k")).unwrap();
+        let key_b = current_key(&b.path().join("k")).unwrap();
         for legacy in legacy_no_machine_id_keys() {
             assert_ne!(key_a, legacy);
             assert_ne!(key_b, legacy);
         }
-        assert_ne!(key_a, key_b, "two installs without a machine id share no key");
+        assert_ne!(key_a, key_b, "two installs share no key");
         assert_eq!(
             key_a,
-            current_key(None, &Some(a.path().join("k"))).unwrap(),
+            current_key(&a.path().join("k")).unwrap(),
             "the per-install key is stable across calls"
         );
+    }
+
+    /// Run `f` with the home directory pointed at a fresh scratch folder that
+    /// is deleted afterwards, the way a container's home goes with it.
+    fn with_scratch_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _guard = TEST_ENV_LOCK.lock();
+        let home = tempfile::tempdir().unwrap();
+        let var = "FLINT_HOME";
+        let prev = std::env::var_os(var);
+        std::env::set_var(var, home.path());
+        let out = f(home.path());
+        match prev {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+        drop(home);
+        out
+    }
+
+    fn write_blob_with(key: &[u8; 32], map: &BTreeMap<String, Vec<String>>) {
+        let cipher = cipher_from(key).unwrap();
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut blob = nonce.to_vec();
+        blob.extend(
+            cipher
+                .encrypt(&nonce, serde_json::to_vec(map).unwrap().as_ref())
+                .unwrap(),
+        );
+        fs::write(secrets_file_path(), blob).unwrap();
+    }
+
+    fn file_opens_with(key: &[u8; 32]) -> bool {
+        let bytes = fs::read(secrets_file_path()).unwrap();
+        let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
+        cipher_from(key)
+            .unwrap()
+            .decrypt(Nonce::from_slice(nonce), ciphertext)
+            .is_ok()
+    }
+
+    fn one_key_map(provider: &str, key: &str) -> BTreeMap<String, Vec<String>> {
+        BTreeMap::from([(provider.to_string(), vec![key.to_string()])])
+    }
+
+    /// The machine id is only ever a read key now: the data-folder key comes
+    /// first, the machine id after the old `~/.jan` key, the constants last.
+    #[test]
+    fn the_machine_id_is_a_legacy_read_key_never_the_write_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("install.key");
+        let home = dir.path().join("home.key");
+        let no_install = read_keys(&install, Some(&home), Some("machine-abc".into()));
+        assert_eq!(no_install[0], key_bytes(b"machine-abc"), "a read never creates the key");
+        assert!(!install.exists());
+
+        fs::write(&install, [1u8; 32]).unwrap();
+        fs::write(&home, [2u8; 32]).unwrap();
+        let keys = read_keys(&install, Some(&home), Some("machine-abc".into()));
+        let mut expected = vec![
+            key_bytes(&[1u8; 32]),
+            key_bytes(&[2u8; 32]),
+            key_bytes(b"machine-abc"),
+        ];
+        expected.extend(legacy_no_machine_id_keys());
+        assert_eq!(keys, expected);
+        assert_eq!(current_key(&install).unwrap(), keys[0]);
+        assert_ne!(current_key(&install).unwrap(), key_bytes(b"machine-abc"));
+    }
+
+    /// A file a machine-id build wrote still opens, the next write moves it
+    /// to the data-folder key, and a second write leaves the key alone.
+    #[test]
+    fn a_machine_id_file_still_reads_and_migrates_once() {
+        let Some(id) = usable_machine_id(machine_id()) else {
+            return;
+        };
+        let _tmp = TempDataFolder::new();
+        let machine_key = key_bytes(id.as_bytes());
+        write_blob_with(&machine_key, &one_key_map("openai", "sk-old"));
+        assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
+        assert!(!install_key_path().exists(), "reading creates no key");
+
+        file_store("anthropic", &["sk-ant".to_string()]).unwrap();
+        let install = fs::read(install_key_path()).expect("the write creates the key");
+        assert!(!file_opens_with(&machine_key), "re-encrypted off the machine id");
+        assert!(file_opens_with(&current_key(&install_key_path()).unwrap()));
+        assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
+
+        file_store("anthropic", &["sk-ant-2".to_string()]).unwrap();
+        assert_eq!(fs::read(install_key_path()).unwrap(), install, "same key reused");
+        assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
+        assert_eq!(file_load("anthropic"), vec!["sk-ant-2".to_string()]);
+    }
+
+    /// A file an older build keyed with the random key under `~/.jan` opens,
+    /// moves to the data-folder key on write, and the home key is not needed
+    /// after that.
+    #[test]
+    fn a_home_key_file_reads_then_moves_into_the_data_folder() {
+        let _tmp = TempDataFolder::new();
+        with_scratch_home(|_| {
+            let home_key_path = legacy_home_install_key_path().unwrap();
+            fs::create_dir_all(home_key_path.parent().unwrap()).unwrap();
+            fs::write(&home_key_path, [9u8; 32]).unwrap();
+            write_blob_with(&key_bytes(&[9u8; 32]), &one_key_map("openai", "sk-home"));
+            assert_eq!(file_load("openai"), vec!["sk-home".to_string()]);
+
+            file_store("anthropic", &["sk-ant".to_string()]).unwrap();
+            assert!(!file_opens_with(&key_bytes(&[9u8; 32])));
+            fs::remove_file(&home_key_path).unwrap();
+            assert_eq!(file_load("openai"), vec!["sk-home".to_string()]);
+        });
+    }
+
+    /// The key travels with the data folder: a container that keeps its data
+    /// volume but loses its home directory still opens its secrets.
+    #[test]
+    fn a_wiped_home_dir_does_not_lock_out_secrets() {
+        let _tmp = TempDataFolder::new();
+        let first_home = with_scratch_home(|home| {
+            file_store("openai", &["sk-keep".to_string()]).unwrap();
+            assert!(
+                !home.join(".jan").join(INSTALL_KEY_FILE_NAME).exists(),
+                "nothing key-related is written under home"
+            );
+            home.to_path_buf()
+        });
+        assert!(!first_home.exists(), "the first home is gone");
+        with_scratch_home(|_| {
+            assert_eq!(file_load("openai"), vec!["sk-keep".to_string()]);
+        });
+        assert!(install_key_path().starts_with(resolve_jan_data_folder()));
     }
 
     /// A file an older build encrypted under the constant key still loads.

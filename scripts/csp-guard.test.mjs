@@ -54,3 +54,22 @@ test('no platform override sets its own CSP', () => {
     assert.equal(other?.app?.security?.csp, undefined, `${platform} overrides the CSP`)
   }
 })
+
+// The static asset scope covers only the app's own folders. A file
+// anywhere else (the Desktop, Downloads, another drive) loads over `asset:`
+// only after `allow_asset_path` grants it, which applies the same
+// sensitive-path and read-grant checks as the file commands; a static
+// `$DOCUMENT/**` glob skipped those checks for everything under it.
+test('the static asset scope holds only app folders', () => {
+  const scope = conf.app.security.assetProtocol.scope
+  assert.equal(scope.requireLiteralLeadingDot, true)
+  for (const entry of scope.allow) {
+    assert.match(entry, /^\$(APPDATA|APPCACHE)\//, `asset scope allows ${entry}`)
+  }
+  for (const platform of ['android', 'ios', 'linux', 'macos', 'windows']) {
+    const other = JSON.parse(
+      readFileSync(new URL(`../src-tauri/tauri.${platform}.conf.json`, import.meta.url), 'utf8')
+    )
+    assert.equal(other?.app?.security?.assetProtocol, undefined, `${platform} overrides the asset scope`)
+  }
+})

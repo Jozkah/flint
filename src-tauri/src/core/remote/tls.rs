@@ -66,17 +66,63 @@ pub fn load_pem(cert: &Path, key: &Path, hostname: Option<String>) -> Result<Loa
     })
 }
 
+/// How long a self-signed certificate is issued for. Apple devices refuse a
+/// TLS server certificate valid for more than 825 days, and a key that leaked
+/// should stop working within about a year rather than never.
+pub const SELF_SIGNED_VALIDITY_DAYS: i64 = 397;
+
+/// A certificate this close to its end is replaced at the next start, so it
+/// never expires under a running phone without warning.
+pub const SELF_SIGNED_RENEW_BEFORE_DAYS: i64 = 30;
+
+/// When the self-signed certificate in `dir` stops being used. Read from the
+/// file written next to it; a certificate from before that file existed was
+/// issued with rcgen's open-ended default and counts from when it was made.
+pub fn self_signed_expiry(dir: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Some(at) = std::fs::read_to_string(dir.join("lan-cert.expires"))
+        .ok()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t.trim()).ok())
+    {
+        return Some(at.with_timezone(&chrono::Utc));
+    }
+    let made: chrono::DateTime<chrono::Utc> = std::fs::metadata(dir.join("lan-cert.pem"))
+        .and_then(|m| m.modified())
+        .ok()?
+        .into();
+    Some(made + chrono::Duration::days(SELF_SIGNED_VALIDITY_DAYS))
+}
+
+/// `at` as the year, month and day `rcgen::date_time_ymd` takes. Always a real
+/// calendar date, so that call cannot fail.
+fn ymd(at: chrono::DateTime<chrono::Utc>) -> (i32, u8, u8) {
+    use chrono::Datelike;
+    (at.year(), at.month() as u8, at.day() as u8)
+}
+
 /// The self-signed certificate for `ip` (and `host`, the custom host name,
-/// when set), made once and reused while both stay the same (so a phone that
-/// trusted it keeps trusting it).
+/// when set), made once and reused while both stay the same and it is not
+/// near its end (so a phone that trusted it keeps trusting it).
 ///
-/// Never rotated on a timer, on purpose: phones pin trust to this certificate,
-/// and a silent rotation would break every paired phone. Manual rotation is
-/// documented in docs/MOBILE.md ("Certificate").
+/// Issued for [`SELF_SIGNED_VALIDITY_DAYS`] and replaced at the first start
+/// within [`SELF_SIGNED_RENEW_BEFORE_DAYS`] of that. A phone sees the new
+/// certificate the way it sees one made for a new address: the browser asks
+/// it to trust a new certificate, whose fingerprint Settings > Remote access
+/// shows. There is no way to serve the old and new one side by side on one
+/// address, so that one re-trust a year is the cost of a key that expires.
 pub fn self_signed(dir: &Path, ip: &str, host: Option<&str>) -> Result<LoadedTls, String> {
+    self_signed_at(dir, ip, host, chrono::Utc::now())
+}
+
+pub fn self_signed_at(
+    dir: &Path,
+    ip: &str,
+    host: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<LoadedTls, String> {
     let cert_path = dir.join("lan-cert.pem");
     let key_path = dir.join("lan-key.pem");
     let ip_path = dir.join("lan-cert.ip");
+    let expires_path = dir.join("lan-cert.expires");
     let current = std::fs::read_to_string(&ip_path).ok();
     // Without a host name this is the bare address, as before, so existing
     // certificates stay in use.
@@ -84,15 +130,35 @@ pub fn self_signed(dir: &Path, ip: &str, host: Option<&str>) -> Result<LoadedTls
         Some(h) => format!("{ip} {h}"),
         None => ip.to_string(),
     };
-    if current.as_deref() != Some(subject.as_str()) || !cert_path.exists() || !key_path.exists() {
+    let renew_from = now + chrono::Duration::days(SELF_SIGNED_RENEW_BEFORE_DAYS);
+    let ending = self_signed_expiry(dir).is_none_or(|at| at <= renew_from);
+    if current.as_deref() != Some(subject.as_str())
+        || !cert_path.exists()
+        || !key_path.exists()
+        || ending
+    {
         let mut names = vec![ip.to_string(), "localhost".to_string()];
         names.extend(host.map(str::to_string));
-        let generated = rcgen::generate_simple_self_signed(names).map_err(|e| e.to_string())?;
-        write_private(&cert_path, generated.cert.pem().as_bytes()).map_err(|e| e.to_string())?;
-        write_private(&key_path, generated.key_pair.serialize_pem().as_bytes())
+        let mut params = rcgen::CertificateParams::new(names).map_err(|e| e.to_string())?;
+        let not_after = now + chrono::Duration::days(SELF_SIGNED_VALIDITY_DAYS);
+        // A day back, so a phone whose clock runs a little slow does not see
+        // a certificate from the future.
+        let (y, m, d) = ymd(now - chrono::Duration::days(1));
+        params.not_before = rcgen::date_time_ymd(y, m, d);
+        let (y, m, d) = ymd(not_after);
+        params.not_after = rcgen::date_time_ymd(y, m, d);
+        let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
+        let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
+        write_private(&cert_path, cert.pem().as_bytes()).map_err(|e| e.to_string())?;
+        write_private(&key_path, key_pair.serialize_pem().as_bytes())
             .map_err(|e| e.to_string())?;
         write_private(&ip_path, subject.as_bytes()).map_err(|e| e.to_string())?;
-        log::info!("remote: generated a self-signed certificate for {subject}");
+        write_private(&expires_path, not_after.to_rfc3339().as_bytes())
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "remote: generated a self-signed certificate for {subject}, valid until {}",
+            not_after.format("%Y-%m-%d")
+        );
     }
     load_pem(&cert_path, &key_path, None)
 }

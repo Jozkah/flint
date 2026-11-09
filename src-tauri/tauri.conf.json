@@ -46,13 +46,7 @@
             "$APPDATA/jan.ai.app/**",
             "$APPDATA/Flint/**",
             "$APPDATA/Jan/**",
-            "$APPCACHE/**",
-            "$DESKTOP/**",
-            "$DOCUMENT/**",
-            "$DOWNLOAD/**",
-            "$PICTURE/**",
-            "$VIDEO/**",
-            "$AUDIO/**"
+            "$APPCACHE/**"
           ]
         }
       }
