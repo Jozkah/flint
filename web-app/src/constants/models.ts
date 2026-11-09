@@ -118,13 +118,25 @@ export const providerModels = {
     supportsToolCalls: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
     supportsN: true,
   },
+  // M3 and M3.1-Flash take image_url parts (JPEG/PNG/GIF/WebP) and tools, per
+  // platform.minimax.io/docs/api-reference/text-openai-api.
   minimax: {
-    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
+    models: ['MiniMax-M3.1-Flash', 'MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
     supportsCompletion: true,
-    supportsStreaming: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
+    supportsStreaming: [
+      'MiniMax-M3.1-Flash',
+      'MiniMax-M3',
+      'MiniMax-M2.7',
+      'MiniMax-M2.7-highspeed',
+    ],
     supportsJSON: [],
-    supportsImages: [],
-    supportsToolCalls: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
+    supportsImages: ['MiniMax-M3.1-Flash', 'MiniMax-M3'],
+    supportsToolCalls: [
+      'MiniMax-M3.1-Flash',
+      'MiniMax-M3',
+      'MiniMax-M2.7',
+      'MiniMax-M2.7-highspeed',
+    ],
     supportsN: true,
   },
   openrouter: {
