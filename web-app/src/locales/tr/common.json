@@ -194,6 +194,7 @@
   "forkedSession": "Çatallandı. Yeni oturumda bu konuşma var ancak erişim yok.",
   "forkRefused": "Bu oturum çatallanamadı.",
   "deleteSession": "Oturumu sil",
+  "renameSession": "Oturumu yeniden adlandır",
   "deleteSessionTitle": "Oturumu sil",
   "deleteSessionBody": "\"{{title}}\" ve dökümü kalıcı olarak silinecek. Bu geri alınamaz.",
   "newChat": "Yeni Sohbet",

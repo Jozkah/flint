@@ -194,6 +194,7 @@
   "forkedSession": "已分岔。新工作階段包含此對話，但沒有其存取權限。",
   "forkRefused": "無法分岔此工作階段。",
   "deleteSession": "刪除工作階段",
+  "renameSession": "重新命名工作階段",
   "deleteSessionTitle": "刪除工作階段？",
   "deleteSessionBody": "「{{title}}」及其記錄將被永久刪除。此操作無法復原。",
   "newChat": "新聊天",
