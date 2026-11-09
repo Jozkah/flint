@@ -14,6 +14,8 @@ import type {
   MCPTrustReport,
   ServerSummary,
   ToolCallWithCancellationResult,
+  MCPPromptInfo,
+  MCPPromptContent,
 } from './types'
 
 export class DefaultMCPService implements MCPService {
@@ -48,6 +50,19 @@ export class DefaultMCPService implements MCPService {
 
   async getServerSummaries(): Promise<ServerSummary[]> {
     return []
+  }
+
+  async listPrompts(): Promise<MCPPromptInfo[]> {
+    return []
+  }
+
+  async getPrompt(
+    server: string,
+    name: string,
+    args?: Record<string, string>
+  ): Promise<MCPPromptContent> {
+    void args
+    throw new Error(`MCP prompt ${server}/${name} is not available here`)
   }
 
   async getServerLog(serverName: string, lines?: number): Promise<string[]> {
