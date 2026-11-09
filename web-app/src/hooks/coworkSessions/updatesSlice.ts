@@ -62,6 +62,7 @@ export type SessionUpdatesSlice = Pick<
   | 'setMode'
   | 'setCodePanel'
   | 'setTitle'
+  | 'renameSession'
   | 'setCampaign'
 >
 
@@ -357,6 +358,16 @@ export const createSessionUpdatesSlice: StateCreator<
     set((s) => ({
       sessions: s.sessions.map((x) => (x.id === id ? { ...x, title } : x)),
     })),
+
+  renameSession: (id, title) => {
+    const name = title.trim()
+    if (!name) return
+    set((s) => ({
+      sessions: s.sessions.map((x) =>
+        x.id === id ? { ...x, title: name, titleManual: true } : x
+      ),
+    }))
+  },
 
   setCampaign: (id, campaign) =>
     set((s) => ({

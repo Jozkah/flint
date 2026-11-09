@@ -180,7 +180,7 @@ export async function handleMobileMutation(
     const id = str(p.id)
     const title = str(p.title)
     if (!id || !title) throw new Error('Session id and title are required')
-    useCoworkSessions.getState().setTitle(id, title)
+    useCoworkSessions.getState().renameSession(id, title)
     return { ok: true }
   }
 

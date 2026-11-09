@@ -196,6 +196,7 @@
   "forkedSession": "Rozvětveno. Nová relace obsahuje tuto konverzaci, ale žádný z jejích přístupů.",
   "forkRefused": "Tuto relaci se nepodařilo rozvětvit.",
   "deleteSession": "Smazat relaci",
+  "renameSession": "Přejmenovat relaci",
   "deleteSessionTitle": "Smazat relaci?",
   "deleteSessionBody": "Relace „{{title}}“ a její přepis budou trvale smazány. Tuto akci nelze vrátit zpět.",
   "newChat": "Nový chat",

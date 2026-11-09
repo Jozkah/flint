@@ -87,6 +87,7 @@ export function pruneEmptySessions(
     (session) =>
       session.id === keepId ||
       !isSessionEmpty(session) ||
+      session.titleManual === true ||
       session.title !== DEFAULT_SESSION_TITLE
   )
   return pruned.length === sessions.length ? sessions : pruned
