@@ -69,6 +69,22 @@ pub(super) fn explicit_model_choice(
         .map(str::to_string)
 }
 
+/// Whether the per-turn todo table and "make a list" nudge are on.
+pub(super) fn body_todo_reminders(json_body: &serde_json::Value) -> bool {
+    json_body
+        .get("todo_reminders")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(crate::core::agent::todo::TODO_REMINDERS_ENABLED_BY_DEFAULT)
+}
+
+/// How many repair turns `--json-schema` allows the final answer.
+pub(super) fn body_json_schema_attempts(json_body: &serde_json::Value) -> u64 {
+    json_body
+        .get("jan_json_schema_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(crate::core::agent::structured_output::DEFAULT_ATTEMPTS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,4 +145,22 @@ mod tests {
         assert_eq!(explicit_model_choice(&json!({"model": 7}), None), None);
     }
 
+    #[test]
+    fn turn_cycle_switches_default_when_absent() {
+        assert_eq!(
+            body_todo_reminders(&json!({})),
+            crate::core::agent::todo::TODO_REMINDERS_ENABLED_BY_DEFAULT
+        );
+        assert!(!body_todo_reminders(&json!({ "todo_reminders": false })));
+        assert!(body_todo_reminders(&json!({ "todo_reminders": true })));
+        assert_eq!(
+            body_json_schema_attempts(&json!({})),
+            crate::core::agent::structured_output::DEFAULT_ATTEMPTS
+        );
+        assert_eq!(body_json_schema_attempts(&json!({ "jan_json_schema_attempts": 1 })), 1);
+        assert_eq!(
+            body_json_schema_attempts(&json!({ "jan_json_schema_attempts": -1 })),
+            crate::core::agent::structured_output::DEFAULT_ATTEMPTS
+        );
+    }
 }

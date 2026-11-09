@@ -4594,6 +4594,33 @@ fn halted_with(mut completion: serde_json::Value, finish_reason: &str) -> serde_
     completion
 }
 
+/// The answer a run ends on when it has nothing to say: a scripted `!cmd` turn
+/// once its result is in, or a run halted before any completion.
+fn empty_stop_completion() -> serde_json::Value {
+    serde_json::json!({
+        "choices": [{
+            "message": { "role": "assistant", "content": "" },
+            "finish_reason": "stop",
+        }]
+    })
+}
+
+/// The system note a run stopped at its spend pause leaves in the history.
+fn spend_pause_note(spent: f64, pause: f64) -> String {
+    format!(
+        "[spend pause] This run stopped after spending about ${spent:.4}: it reached its ${pause:.4} pause and the user chose to stop. The task may be unfinished."
+    )
+}
+
+/// The system note a run stopped at its money ceiling leaves in the history.
+fn cost_ceiling_note(spent: f64, max: f64) -> String {
+    format!(
+        "[cost ceiling reached] This run stopped after spending about \
+         ${spent:.4} against its ${max:.4} ceiling. The task may be \
+         unfinished; raising --max-budget-usd and resuming continues it."
+    )
+}
+
 fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
     json_body
         .get("max_session_tokens")
@@ -4779,10 +4806,7 @@ async fn run_turn_cycle(
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
     // Per-turn todo table / one-time "make a list" nudge; see `TodoReminderState`.
-    let todo_reminders_on = json_body
-        .get("todo_reminders")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(crate::core::agent::todo::TODO_REMINDERS_ENABLED_BY_DEFAULT);
+    let todo_reminders_on = body_todo_reminders(json_body);
     let mut todo_reminders = crate::core::agent::todo::TodoReminderState::default();
     // janhq/jan#8712: one corrective retry per cycle for a reply with neither
     // an answer nor a tool call, so an empty turn is not reported as finished.
@@ -4818,10 +4842,7 @@ async fn run_turn_cycle(
     let mut run_end_blocks = 0usize;
     // `--json-schema`: the final answer must validate; a bounded repair loop.
     let json_schema = json_body.get("jan_json_schema").cloned();
-    let json_schema_attempts = json_body
-        .get("jan_json_schema_attempts")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(crate::core::agent::structured_output::DEFAULT_ATTEMPTS);
+    let json_schema_attempts = body_json_schema_attempts(json_body);
     let mut json_schema_repairs = 0u64;
     // `!cmd` from a composer: the turn's first "model reply" is this tool call,
     // dispatched through the same gate, sandbox and approvals as any bash call
@@ -4884,12 +4905,7 @@ async fn run_turn_cycle(
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });
-            return Ok(serde_json::json!({
-                "choices": [{
-                    "message": { "role": "assistant", "content": "" },
-                    "finish_reason": "stop",
-                }]
-            }));
+            return Ok(empty_stop_completion());
         }
         // A call was put off to be answered later (`[approvals] defer`): the run
         // ends here instead of carrying on without it. Once the answer is given
@@ -4898,14 +4914,7 @@ async fn run_turn_cycle(
         if !waiting_for_answer.is_empty() {
             // The completion is only kept when a money ceiling is set; without
             // one the run ends on an empty answer that says what it waits for.
-            let completion = last_completion.take().unwrap_or_else(|| {
-                serde_json::json!({
-                    "choices": [{
-                        "message": { "role": "assistant", "content": "" },
-                        "finish_reason": "stop",
-                    }]
-                })
-            });
+            let completion = last_completion.take().unwrap_or_else(empty_stop_completion);
             let note = crate::core::agent::approval_flow::halt_note(&waiting_for_answer);
             log::info!("agent: stopping the run, {note}");
             conversation_messages.push(serde_json::json!({
@@ -4936,9 +4945,7 @@ async fn run_turn_cycle(
                     log::info!("agent: stopping the run at the spend pause, spent ${spent:.4}");
                     conversation_messages.push(serde_json::json!({
                         "role": "system",
-                        "content": format!(
-                            "[spend pause] This run stopped after spending about ${spent:.4}: it reached its ${pause:.4} pause and the user chose to stop. The task may be unfinished."
-                        ),
+                        "content": spend_pause_note(spent, pause),
                     }));
                     let _ = events.send(StreamEvent::MessagesUpdated {
                         messages: conversation_messages.clone(),
@@ -4954,11 +4961,7 @@ async fn run_turn_cycle(
                 log::info!("agent: stopping the run, spent ${spent:.4} of a ${max:.4} ceiling");
                 conversation_messages.push(serde_json::json!({
                     "role": "system",
-                    "content": format!(
-                        "[cost ceiling reached] This run stopped after spending about \
-                         ${spent:.4} against its ${max:.4} ceiling. The task may be \
-                         unfinished; raising --max-budget-usd and resuming continues it."
-                    ),
+                    "content": cost_ceiling_note(spent, max),
                 }));
                 let _ = events.send(StreamEvent::MessagesUpdated {
                     messages: conversation_messages.clone(),

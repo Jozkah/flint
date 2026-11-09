@@ -9348,6 +9348,28 @@ fn advertised_tool_names_match_the_snapshot() {
     assert_eq!(got, want, "the advertised tool set changed; if on purpose, rerun with UPDATE_OFFERED_SNAPSHOT=1");
 }
 
+/// The texts a halted turn cycle leaves behind, pinned word for word.
+#[test]
+fn turn_cycle_halt_texts_are_unchanged() {
+    assert_eq!(
+        empty_stop_completion(),
+        json!({ "choices": [{ "message": { "role": "assistant", "content": "" }, "finish_reason": "stop" }] })
+    );
+    assert_eq!(
+        spend_pause_note(1.5, 1.0),
+        "[spend pause] This run stopped after spending about $1.5000: it reached its $1.0000 pause and the user chose to stop. The task may be unfinished."
+    );
+    assert_eq!(
+        cost_ceiling_note(2.25, 2.0),
+        "[cost ceiling reached] This run stopped after spending about $2.2500 against its $2.0000 ceiling. The task may be unfinished; raising --max-budget-usd and resuming continues it."
+    );
+    // A run halted for approval before any completion ends on the empty answer
+    // carrying the note.
+    let halted = halted_for_approval(empty_stop_completion(), "waiting on x");
+    assert_eq!(halted["choices"][0]["message"]["content"], "waiting on x");
+    assert_eq!(halted["choices"][0]["finish_reason"], "awaiting_approval");
+}
+
 #[test]
 fn thresholds_for_prefers_configured_then_learned_then_the_default_window() {
     let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(None, None, None).unwrap();
