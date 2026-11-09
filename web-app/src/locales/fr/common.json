@@ -195,6 +195,7 @@
   "forkedSession": "Session dupliquée. La nouvelle session contient cette conversation mais aucun de ses accès.",
   "forkRefused": "Cette session n'a pas pu être dupliquée.",
   "deleteSession": "Supprimer la session",
+  "renameSession": "Renommer la session",
   "deleteSessionTitle": "Supprimer la session ?",
   "deleteSessionBody": "\"{{title}}\" et sa transcription seront définitivement supprimées. Cette action est irréversible.",
   "newChat": "Nouvelle discussion",

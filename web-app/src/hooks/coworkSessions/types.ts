@@ -39,6 +39,11 @@ export type ProgressUi = { expanded?: boolean; unpinned?: boolean }
 export type CoworkSession = {
   id: string
   title: string
+  /**
+   * The user named this session (Rename). The automatic title (the prompt
+   * placeholder, then the model's) never replaces a name the user gave.
+   */
+  titleManual?: boolean
   /** An attached project folder, mounted read-only. Writes always land in the
    * session's own sandbox, never here. */
   folder: string | null
@@ -331,6 +336,8 @@ export type CoworkSessionsState = {
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
+  /** The user's own name for the session; empty input is ignored. */
+  renameSession: (id: string, title: string) => void
   setCampaign: (id: string, campaign: CampaignLink | null) => void
   setMessages: (id: string, messages: UIMessage[]) => void
   setGoal: (id: string, goal: CoworkGoal | null) => void

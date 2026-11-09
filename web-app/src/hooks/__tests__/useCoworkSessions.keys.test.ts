@@ -40,6 +40,7 @@ describe('useCoworkSessions state shape', () => {
       'setMode',
       'setCodePanel',
       'setTitle',
+      'renameSession',
       'setCampaign',
       'commitTurns',
       'appendTurns',
