@@ -19,7 +19,11 @@ import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescripti
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { rememberedWindowFor, resolveCompactionWindow } from '@/lib/compactionWindowSource'
 import { listedWindow } from '@/lib/listedWindows'
-import { assertEstimatedContextFits, ContextEstimate } from '@/lib/contextEstimate'
+import {
+  assertEstimatedContextFits,
+  ContextEstimate,
+  estimateCountsEveryPart,
+} from '@/lib/contextEstimate'
 import {
   appendSessionContext,
   runCcContextHooks,
@@ -111,6 +115,7 @@ import type { MCPTool } from '@janhq/core'
 import {
   trimMessages,
   estimateTokens,
+  estimateMessageTokens,
   estimateToolTokens,
   estimateToolSchemaTokens,
   contextSafetyMargin,
@@ -170,7 +175,7 @@ import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { mergeRequestParams } from '@/lib/chat/transport/requestParams'
 import { recordGeneration } from '@/stores/engine-activity-store'
-import { sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
+import { canRecoverFromOverflow, sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
 import {
   BUILTIN_WEB_TOOLS,
@@ -361,6 +366,29 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * this off so a request is never compacted twice.
    */
   protected compactsAtThreshold = true
+
+  /**
+   * Whether a length refusal of this request would be compacted and sent
+   * again. The pre-flight context check is lenient only then: with no such
+   * path, the provider's raw refusal would reach the user in place of Flint's
+   * own breakdown. Chat recovers in `sendMessagesCore` when automatic
+   * compaction is on and summarizes; Cowork answers for its run loop.
+   */
+  protected async lengthRecoveryAvailable(): Promise<boolean> {
+    return (
+      this.compactsAtThreshold &&
+      (await canRecoverFromOverflow({ getActiveInferenceParams: () => this.getActiveInferenceParams() }))
+    )
+  }
+  /**
+   * The strict pre-flight refusal of the last request, when that request was
+   * sent only because its overage was within the learned calibration and a
+   * length refusal would be recovered. Null when the strict check passed (or
+   * the server is local and is not checked). A run loop asks for it when a
+   * length refusal leaves nothing to compact: Flint's breakdown then ends the
+   * run without another provider request.
+   */
+  lastPreflightRefusal: Error | null = null
   private contextEstimate = new ContextEstimate()
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
@@ -2012,23 +2040,64 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ]
       : baseMessages
 
-    const dispatchedEstimate = estimateHistoryTokens(effectiveMessages) +
-      (requestSystem ? estimateTokens(requestSystem) + 4 : 0) + toolSchemaTokens +
-      (continueContent ? estimateTokens((continueContent.text ?? '') + (continueContent.reasoning ?? '')) : 0)
+    const latestMessage = effectiveMessages[effectiveMessages.length - 1]
+    const latestTokens = latestMessage ? estimateMessageTokens(latestMessage) : 0
+    const estimateParts = {
+      systemPrompt: requestSystem ? estimateTokens(requestSystem) + 4 : 0,
+      tools: toolSchemaTokens,
+      toolCount: toolSchemaTokens > 0 ? Object.keys(this.tools).length : 0,
+      history: estimateHistoryTokens(effectiveMessages) - latestTokens,
+      latest: latestTokens +
+        (continueContent ? estimateTokens((continueContent.text ?? '') + (continueContent.reasoning ?? '')) : 0),
+    }
+    const dispatchedEstimate = estimateParts.systemPrompt + estimateParts.tools +
+      estimateParts.history + estimateParts.latest
     // The trimmer preserves a newest message even when that one message is
     // larger than the budget. Refuse that payload instead of silently sending
     // it past the chosen cap. Overflow recovery may compact it once more.
-    // A local server is asked once even when the estimate says it is tight:
-    // the estimate is a heuristic, and the server's own refusal names the real
-    // window, which the overflow recovery then plans against. Only the resend
-    // after such a refusal is checked here (with no reserve: a request that
-    // fits the window without it is never refused).
+    // When a length refusal would be compacted and sent again, the first send
+    // is refused only when even the plain heuristic count does not fit: a
+    // request over by no more than the learned calibration is sent, and the
+    // resend after a refusal is checked strictly. With no recovery path the
+    // calibrated count decides, as before. A local server is asked once even when the estimate
+    // says it is tight: its refusal names the real window. Only its resend is
+    // checked here (with no reserve: a request that fits the window without it
+    // is never refused).
+    this.lastPreflightRefusal = null
     if (!localServer) {
-      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
-        reserveTokens, this.overflowRetry ? 'the last refusal' : resolvedWindow.source)
+      const check = {
+        source: this.overflowRetry ? 'the last refusal' : resolvedWindow.source,
+        breakdown: estimateParts,
+      }
+      const strict = this.overflowRetry != null || !(await this.lengthRecoveryAvailable())
+      // What the strict check says, kept even when this send goes out on the
+      // lenient one: a run loop whose compaction then has nothing to fold
+      // ends on this explanation instead of resending (`preflightRefusal`).
+      try {
+        assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
+          reserveTokens, { ...check, strict: true })
+      } catch (refusal) {
+        if (strict) throw refusal
+        this.lastPreflightRefusal = refusal as Error
+      }
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, reserveTokens, {
+        ...check,
+        strict: false,
+      })
     } else if (this.overflowRetry) {
-      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, 'the last refusal')
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, {
+        source: 'the last refusal',
+        breakdown: estimateParts,
+      })
     }
+    // Parts the estimate does not count (an attached image, PDF or audio
+    // file, a screenshot sent beside the transcript) are in the provider's
+    // count: calibrating on such a request read them as tokenizer density and
+    // inflated every later estimate for this model by up to 1.6x.
+    const estimateIsComplete = estimateCountsEveryPart(
+      effectiveMessages,
+      screenshotsToAttach(effectiveMessages)
+    )
 
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
@@ -2239,7 +2308,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: string
           }
           const usage = usageCollector.total(finishPart.totalUsage)
-          this.contextEstimate.observe(estimateKey, dispatchedEstimate, usage.inputTokens)
+          if (estimateIsComplete) {
+            this.contextEstimate.observe(estimateKey, dispatchedEstimate, usage.inputTokens)
+          }
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
 
           // Only for the speed figure; the stored usage keeps an unreported

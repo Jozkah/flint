@@ -485,6 +485,43 @@ describe('CustomChatTransport reply reserve (local vs cloud)', () => {
     await expect(send(transport, big())).rejects.toThrow('exceeds the available context size')
     expect(streamTextCalls).toHaveLength(0)
   })
+
+  it('sends a hosted prompt that is over only by the learned calibration', async () => {
+    h.providerId = 'openai'
+    provider.provider = 'openai'
+    selectedModel.id = 'gpt'
+    const transport = new CustomChatTransport('you are jan', 'thread-reserve-calibrated')
+    // An earlier reply reported 1.6x the heuristic count for this model.
+    ;(transport as unknown as {
+      contextEstimate: { observe(key: string, estimated: number, reported: number): void }
+    }).contextEstimate.observe('openai:gpt', 1000, 1600)
+    // About 18,000 heuristic tokens: fits 32K minus the 8K reserve as
+    // counted, but not once scaled by 1.6.
+    const prompt = [user('u1', `summarize ${'pasted '.repeat(9_000)}`)]
+    await drain(await send(transport, prompt))
+    expect(streamTextCalls).toHaveLength(1)
+    // The strict verdict is kept for a run loop with nothing left to fold.
+    expect(transport.lastPreflightRefusal?.message).toMatch(/Most of it is the latest message/)
+    // A request that fits on either count leaves none behind.
+    await drain(await send(transport, [user('u2', 'hi')]))
+    expect(transport.lastPreflightRefusal).toBeNull()
+  })
+
+  it('stops the same prompt on the calibrated count when nothing would recover a refusal', async () => {
+    h.providerId = 'openai'
+    provider.provider = 'openai'
+    selectedModel.id = 'gpt'
+    // Auto-compact off: a length refusal would reach the user as the
+    // provider's raw text, so Flint's own breakdown stops it instead.
+    h.assistantParameters = { max_context_tokens: 32_768, auto_compact: false }
+    const transport = new CustomChatTransport('you are jan', 'thread-reserve-no-recovery')
+    ;(transport as unknown as {
+      contextEstimate: { observe(key: string, estimated: number, reported: number): void }
+    }).contextEstimate.observe('openai:gpt', 1000, 1600)
+    const prompt = [user('u1', `summarize ${'pasted '.repeat(9_000)}`)]
+    await expect(send(transport, prompt)).rejects.toThrow(/Most of it is the latest message/)
+    expect(streamTextCalls).toHaveLength(0)
+  })
 })
 
 describe('CustomChatTransport plain chat on a small window', () => {

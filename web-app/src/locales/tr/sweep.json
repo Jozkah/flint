@@ -201,6 +201,7 @@
     "exists": "Model zaten var",
     "failed": "Model içe aktarılamadı",
     "hasBeenImported": "{{name}} içe aktarıldı",
+    "notListed": "{{name}} kaydedildi, ancak Flint onu listeleyemedi. Flint'i yeniden başlatın; model hâlâ görünmüyorsa bildirin.",
     "import": "Modeli içe aktar",
     "importing": "İçe aktarılıyor…",
     "success": "Model içe aktarıldı"

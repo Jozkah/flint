@@ -1116,6 +1116,17 @@ pub fn read_only_root_refusal(path: &str) -> String {
     )
 }
 
+/// Why a shell command whose paths could not all be checked in time is
+/// refused (`gate::DenyReason::TooComplex`), in the one wording every surface
+/// shares.
+pub fn too_complex_refusal(name: &str) -> String {
+    format!(
+        "tool '{name}' was refused: the command names too many paths, or paths too deep, to \
+         check in time, so it was not run. Split it into smaller commands, or write the list \
+         of paths to a file and pass that file instead."
+    )
+}
+
 pub fn lookup(name: &str) -> Option<&'static BuiltinTool> {
     BUILTIN_TOOLS.iter().find(|t| t.name == name)
 }

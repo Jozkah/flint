@@ -204,6 +204,7 @@
     "exists": "El model ja existeix",
     "failed": "No s’ha pogut importar el model",
     "hasBeenImported": "S’ha importat {{name}}",
+    "notListed": "{{name}} s’ha desat, però Flint no l’ha pogut llistar. Reinicia Flint i informa-ho si el model encara no hi és.",
     "import": "Importa el model",
     "importing": "Important…",
     "success": "Model importat correctament"

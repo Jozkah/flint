@@ -145,8 +145,8 @@ export async function sendMessagesCore<O extends { abortSignal?: AbortSignal }>(
  * and sent again: automatic compaction is on, by summary, and the model does
  * not shift its own context.
  */
-async function canRecoverFromOverflow(
-  host: OverflowRecoveryHost<unknown>
+export async function canRecoverFromOverflow(
+  host: Pick<OverflowRecoveryHost<unknown>, 'getActiveInferenceParams'>
 ): Promise<boolean> {
   try {
     const params = host.getActiveInferenceParams()
