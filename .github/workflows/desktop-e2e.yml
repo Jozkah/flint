@@ -1,9 +1,14 @@
 name: Desktop e2e
-# Manual only: it compiles the desktop app and drives it with WebdriverIO,
-# which is not cheap. Run it on the branch that changes startup, setup or
-# settings. The suite is macOS only (see e2e/README.md).
+# Manual, plus once a week on main: it compiles the desktop app and drives it
+# with WebdriverIO, which is not cheap, so it does not run per push. The weekly
+# run catches startup and route regressions nobody thought to test by hand.
+# Run it manually on a branch that changes startup, setup, routes or settings.
+# The suite is macOS only (see e2e/README.md).
 on:
   workflow_dispatch:
+  schedule:
+    # Mondays 06:00 UTC; scheduled runs use the default branch.
+    - cron: '0 6 * * 1'
 
 concurrency:
   group: desktop-e2e-${{ github.ref }}

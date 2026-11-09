@@ -1,0 +1,80 @@
+name: Semantic search e2e
+# Manual only: indexes a small fixture project with a real embedding model
+# served by llama-server and checks that three plain-language queries find
+# the right files (core::agent::semantic real_embedding_model test). Run it on
+# a branch that changes semantic search or the embeddings request.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: semantic-search-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Both downloads are pinned and checked against these digests.
+  LLAMA_TAG: b9967
+  LLAMA_SHA256: 8580726eb233b13c26275bf211a19ae19b05e0d2e9dd8ad53b64b664406de288
+  MODEL_REPO: second-state/All-MiniLM-L6-v2-Embedding-GGUF
+  MODEL_REV: 544f204f2eaa2d71361ffc74d6df7170285b286a
+  MODEL_FILE: all-MiniLM-L6-v2-Q4_K_M.gguf
+  MODEL_SHA256: 2ec4cee28a27a9c973d5f5230930d6ef6e52694bd2bc71be26a9bef5b1d755e6
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: semantic search with a real model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          key: semantic-e2e
+          # Branches restore but never save, as in rust-check.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Fetch llama-server and the embedding model
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e"
+          cd "$RUNNER_TEMP/e2e"
+          curl -fsSL -o llama.tar.gz \
+            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+          echo "${LLAMA_SHA256}  llama.tar.gz" | sha256sum -c -
+          tar -xzf llama.tar.gz
+          curl -fsSL -o model.gguf "https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REV}/${MODEL_FILE}"
+          echo "${MODEL_SHA256}  model.gguf" | sha256sum -c -
+
+      - name: Start llama-server in embeddings mode
+        run: |
+          cd "$RUNNER_TEMP/e2e"
+          server="$(find . -name llama-server -type f | head -n 1)"
+          test -n "$server"
+          chmod +x "$server"
+          LD_LIBRARY_PATH="$(dirname "$server")" nohup "$server" \
+            --embeddings -m model.gguf --host 127.0.0.1 --port 8098 > server.log 2>&1 &
+          for _ in $(seq 60); do
+            curl -fs http://127.0.0.1:8098/health && exit 0
+            sleep 1
+          done
+          cat server.log
+          exit 1
+
+      - name: Run the semantic search e2e test
+        env:
+          FLINT_E2E_EMBEDDINGS_URL: http://127.0.0.1:8098/v1
+          FLINT_E2E_EMBEDDINGS_MODEL: all-minilm-l6-v2
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml \
+            --no-default-features --features cli --lib \
+            real_embedding_model -- --nocapture
+
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/e2e/server.log" || true

@@ -29,6 +29,7 @@
     "hardware:default",
     "deep-link:default",
     "llamacpp:default",
+    "app-commands",
     {
       "identifier": "http:default",
       "allow": [

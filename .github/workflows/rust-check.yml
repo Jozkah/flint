@@ -8,11 +8,50 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The lint gate runs one known compiler, not whatever `stable` is that day:
+  # a new stable release adds clippy lints, and with -D warnings that turns a
+  # green branch red without a code change. Bump it on purpose, together with
+  # the fixes the new lints ask for. The build and release workflows keep
+  # `stable` (they also install extra targets for it).
+  LINT_TOOLCHAIN: '1.98.1'
 
 permissions:
   contents: read
 
 jobs:
+  # The oldest compiler Cargo.toml promises (`rust-version`). Clippy's
+  # incompatible_msrv lint catches newer std APIs; this catches newer syntax
+  # and dependencies. The CLI feature set needs no system libraries.
+  msrv:
+    name: msrv (rust-version)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read rust-version
+        id: msrv
+        run: |
+          version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | head -n 1)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          key: msrv
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo check on rust-version
+        run: |
+          cargo +${{ steps.msrv.outputs.version }} check --locked \
+            --manifest-path src-tauri/Cargo.toml --no-default-features --features cli --lib
+
+
   # The desktop and CLI feature sets are mutually exclusive configs of the same
   # crate, so neither one alone proves the other compiles.
   app:
@@ -54,7 +93,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.LINT_TOOLCHAIN }}
           components: clippy
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -170,7 +209,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.LINT_TOOLCHAIN }}
           components: clippy
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -200,7 +239,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.LINT_TOOLCHAIN }}
           components: rustfmt
 
       - name: cargo fmt --check

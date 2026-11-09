@@ -761,6 +761,39 @@ describe('generatePreset embedding ctx-size', () => {
   })
 })
 
+// AtomicBot-ai/Atomic-Chat#405: an embedder inheriting a multi-GPU split mode
+// aborts in ggml ("unsupported mul_mat split states").
+describe('generatePreset embedding split-mode', () => {
+  const embedderSection = () => {
+    const ini = writtenFiles['/p/router.preset.ini']
+    return ini.slice(ini.indexOf('[minilm]'))
+  }
+
+  it.each([
+    ['the split mode setting', { split_mode: 'tensor' }],
+    ['the global extra args', { extra_args: '--split-mode row' }],
+  ])('pins an embedder to one device despite %s', async (_, config) => {
+    setupModel('minilm', { embedding: true })
+    await generatePreset('/p', '/jan', config as any, {})
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.slice(0, ini.indexOf('[minilm]'))).toMatch(/^split-mode = (tensor|row)$/m)
+    expect(embedderSection()).toMatch(/^split-mode = none$/m)
+  })
+
+  it("lets the embedder's own extra_args choose a split mode after the pin", async () => {
+    setupModel('minilm', { embedding: true, extra_args: '--split-mode layer' })
+    await generatePreset('/p', '/jan', {} as any, {})
+    const s = embedderSection()
+    expect(s.indexOf('split-mode = layer')).toBeGreaterThan(s.indexOf('split-mode = none'))
+  })
+
+  it('leaves a chat model on the global split mode', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { split_mode: 'tensor' } as any, {})
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('split-mode = none')
+  })
+})
+
 describe('generatePreset global engine options', () => {
   const globalSection = () => {
     const ini = writtenFiles['/p/router.preset.ini']
