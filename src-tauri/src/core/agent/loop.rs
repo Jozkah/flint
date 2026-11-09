@@ -259,6 +259,60 @@ pub(crate) trait ModelInvoker: Send + Sync {
         request: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<serde_json::Value, HarnessError>;
+
+    /// The provider this invoker sends to, when it knows one. Keys what the
+    /// process remembers about a route (see [`reasoning_routes`]); a wrapper
+    /// passes its inner invoker's answer on.
+    fn provider(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// Routes (provider, model) that rejected a resent `reasoning_content`, kept
+/// for the life of the process. The turn loop learns this from a rejection and
+/// retries without the field; remembered here, later runs, subagents and
+/// resumed sessions on the same route drop the field up front instead of
+/// paying a rejected request each time. A route that never rejected it keeps
+/// receiving reasoning exactly as before. Nothing is written to disk.
+pub(crate) mod reasoning_routes {
+    use std::collections::HashSet;
+    use std::sync::{LazyLock, Mutex};
+
+    static REJECTS: LazyLock<Mutex<HashSet<(String, String)>>> =
+        LazyLock::new(|| Mutex::new(HashSet::new()));
+
+    /// `(provider, bare model id)`: a `<provider>/` qualifier on the id names
+    /// the same route as the bare id.
+    fn route(provider: Option<&str>, model_id: &str) -> (String, String) {
+        let provider = provider.unwrap_or("").trim();
+        let model = (!provider.is_empty())
+            .then(|| model_id.strip_prefix(provider).and_then(|r| r.strip_prefix('/')))
+            .flatten()
+            .unwrap_or(model_id);
+        (provider.to_string(), model.to_string())
+    }
+
+    pub(crate) fn rejects(provider: Option<&str>, model_id: &str) -> bool {
+        REJECTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&route(provider, model_id))
+    }
+
+    pub(crate) fn remember(provider: Option<&str>, model_id: &str) {
+        REJECTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(route(provider, model_id));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn forget(provider: Option<&str>, model_id: &str) {
+        REJECTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&route(provider, model_id));
+    }
 }
 
 /// One tool call's outcome: `content` is the model-facing result string,
@@ -5182,6 +5236,14 @@ async fn run_turn_cycle(
                 } else {
                     std::borrow::Cow::Owned(openai_tools.iter().cloned().chain(loaded).collect())
                 };
+                // A route already known to reject resent reasoning gets none,
+                // rather than one rejected request per run to find out again.
+                if body_send_reasoning(json_body)
+                    && reasoning_routes::rejects(model.provider(), model_id)
+                    && carries_assistant_reasoning(&conversation_messages)
+                {
+                    conversation_messages = strip_assistant_reasoning(&conversation_messages);
+                }
                 let request_value = build_completion_request(
                     model_id,
                     &conversation_messages,
@@ -5327,6 +5389,7 @@ async fn run_turn_cycle(
                         log::info!(
                             "agent: upstream rejected reasoning_content, retrying without it"
                         );
+                        reasoning_routes::remember(model.provider(), model_id);
                         conversation_messages = strip_assistant_reasoning(&conversation_messages);
                         let _ = events.send(StreamEvent::MessagesUpdated {
                             messages: conversation_messages.clone(),

@@ -3441,7 +3441,7 @@ async fn turn_cycle_strips_reasoning_and_retries_when_the_upstream_rejects_it() 
     let result = run_turn_cycle(
         &tx,
         &json!({}),
-        "m",
+        "m-strips-reasoning",
         &[],
         convo,
         8,
@@ -3498,7 +3498,7 @@ async fn a_persistent_reasoning_rejection_fails_the_turn() {
     let result = run_turn_cycle(
         &tx,
         &json!({}),
-        "m",
+        "m-persistent-rejection",
         &[],
         convo,
         8,
@@ -3519,6 +3519,86 @@ async fn a_persistent_reasoning_rejection_fails_the_turn() {
         1,
         "exactly one retry after the strip"
     );
+}
+
+/// Records every request and refuses any that still carries
+/// `reasoning_content`, like a strict endpoint.
+struct StrictReasoningModel {
+    requests: StdMutex<Vec<serde_json::Value>>,
+}
+
+#[async_trait]
+impl ModelInvoker for StrictReasoningModel {
+    async fn invoke(
+        &self,
+        request: &serde_json::Value,
+        _events: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<serde_json::Value, HarnessError> {
+        self.requests.lock().unwrap().push(request.clone());
+        if request.to_string().contains("reasoning_content") {
+            return Err("Upstream returned HTTP 400: property 'reasoning_content' is unsupported"
+                .to_string()
+                .into());
+        }
+        Ok(json!({ "choices": [{ "message": { "content": "final" }, "finish_reason": "stop" }] }))
+    }
+}
+
+/// janhq/jan#9602: once a route has rejected resent reasoning, a later run on
+/// it drops the field up front: one request, not a rejected one and a retry.
+/// Another model is not affected.
+#[tokio::test]
+async fn a_route_that_rejected_reasoning_is_not_sent_it_again() {
+    let convo = || {
+        vec![
+            json!({ "role": "user", "content": "hi" }),
+            json!({ "role": "assistant", "content": "hey", "reasoning_content": "thinking" }),
+            json!({ "role": "user", "content": "again" }),
+        ]
+    };
+    let run = |model_id: &'static str| {
+        let convo = convo();
+        async move {
+            let (tx, _rx) = mpsc::unbounded_channel();
+            let model = StrictReasoningModel { requests: StdMutex::new(Vec::new()) };
+            let mut budget = SessionBudget::new(None);
+            let result = run_turn_cycle(
+                &tx,
+                &json!({}),
+                model_id,
+                &[],
+                convo,
+                8,
+                &mut budget,
+                &model,
+                &MockTool::default(),
+                crate::core::agent::plan::RunMode::Normal,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(result["choices"][0]["message"]["content"], "final");
+            let n = model.requests.lock().unwrap().len();
+            n
+        }
+    };
+    assert_eq!(run("m-learns-reasoning").await, 2, "the first run finds out: rejected, then retried");
+    assert_eq!(run("m-learns-reasoning").await, 1, "a later run on the route sends none");
+    assert_eq!(run("m-other-route").await, 2, "another route still finds out for itself");
+    super::reasoning_routes::forget(None, "m-learns-reasoning");
+    super::reasoning_routes::forget(None, "m-other-route");
+}
+
+#[test]
+fn a_provider_qualified_model_id_is_the_same_route() {
+    super::reasoning_routes::remember(Some("prov-x"), "prov-x/model-y");
+    assert!(super::reasoning_routes::rejects(Some("prov-x"), "model-y"));
+    assert!(!super::reasoning_routes::rejects(Some("prov-z"), "model-y"));
+    assert!(!super::reasoning_routes::rejects(None, "model-y"));
+    super::reasoning_routes::forget(Some("prov-x"), "model-y");
 }
 
 /// A run that never recovers from overflow still has to hand its compacted
