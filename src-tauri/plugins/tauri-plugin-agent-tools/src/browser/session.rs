@@ -1015,7 +1015,7 @@ async fn start(
     browser_name: String,
     policy: OriginPolicy,
 ) -> Result<Arc<Session>, String> {
-    let launch::Spawned { mut child, profile } = launch::spawn(browser_path, &profile_prefix(), &policy)?;
+    let launch::Spawned { mut child, profile, devtools } = launch::spawn(browser_path, &profile_prefix(), &policy)?;
     let pid = child.id().ok_or("the browser exited at once")?;
     // The session's token lives under the run's scope: stopping the run kills the browser.
     let token = Token::new(caller.scope());
@@ -1023,7 +1023,7 @@ async fn start(
     token.adopt(pid);
     let seen = Arc::new(Mutex::new(Seen::default()));
     let connected = async {
-        let (cdp, events) = launch::connect(&mut child).await?;
+        let (cdp, events) = launch::connect(&mut child, devtools).await?;
         let (target, session) = launch::open_confined_tab(&cdp).await?;
         Ok::<_, String>((cdp, events, target, session))
     }

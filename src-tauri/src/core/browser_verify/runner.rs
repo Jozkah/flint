@@ -414,7 +414,7 @@ pub async fn run(
     }
 
     // 2. A throwaway profile and a confined browser.
-    let launch::Spawned { mut child, profile } =
+    let launch::Spawned { mut child, profile, devtools } =
         match launch::spawn(&browser_path, "flint-verify-", &policy) {
             Ok(v) => v,
             Err(e) => return fail(report, e),
@@ -431,6 +431,7 @@ pub async fn run(
 
     let outcome = drive(
         &mut child,
+        devtools,
         &guard,
         &policy,
         &base,
@@ -475,6 +476,7 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn drive(
     child: &mut Child,
+    devtools: launch::DevTools,
     guard: &Guard,
     policy: &OriginPolicy,
     base: &Url,
@@ -490,7 +492,7 @@ async fn drive(
         Halt::Stopped(why) => (Outcome::Failed, why),
     };
     let (cdp, events) = match tokio::select! {
-        r = launch::connect(child) => r,
+        r = launch::connect(child, devtools) => r,
         _ = wait_cancel(guard.cancel.clone()) => return halt(Halt::Cancelled),
     } {
         Ok(v) => v,
