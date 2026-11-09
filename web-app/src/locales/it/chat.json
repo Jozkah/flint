@@ -338,5 +338,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Il motore del modello si è fermato. Ricaricamento del modello…",
+    "retrying": "Modello ricaricato. Nuovo invio del messaggio…",
+    "recovered": "Ripristinato: il motore del modello si era fermato, è stato riavviato e il messaggio ha ricevuto risposta.",
+    "retryFailed": "Il motore del modello si è fermato di nuovo. Flint ha riprovato una volta; usa Rigenera per riprovare.",
+    "restartFailed": "Impossibile ricaricare automaticamente il modello. Usa Rigenera o seleziona di nuovo il modello."
   }
 }

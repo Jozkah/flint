@@ -338,5 +338,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "El motor del modelo se detuvo. Cargando el modelo de nuevo…",
+    "retrying": "Modelo cargado de nuevo. Reintentando tu mensaje…",
+    "recovered": "Recuperado: el motor del modelo se detuvo, se reinició y tu mensaje recibió respuesta.",
+    "retryFailed": "El motor del modelo se detuvo otra vez. Flint lo reintentó una vez; usa Regenerar para volver a intentarlo.",
+    "restartFailed": "No se pudo volver a cargar el modelo automáticamente. Usa Regenerar o vuelve a elegir el modelo."
   }
 }
