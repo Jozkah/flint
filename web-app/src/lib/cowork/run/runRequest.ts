@@ -1305,6 +1305,7 @@ export async function runCoworkRequest(
           // unfinished optimistic rows before the new request.
           clearStreamedTurns()
           transport.textOnlyNext = stepOpts?.textOnly === true
+          transport.lengthRecoveryNext = stepOpts?.lengthRecovery === true
           return transport.sendMessages({
             chatId: sid,
             messages: msgs,

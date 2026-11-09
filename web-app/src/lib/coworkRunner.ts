@@ -272,7 +272,17 @@ export type RunDeps = {
   sendStep: (
     messages: UIMessage[],
     signal: AbortSignal,
-    opts?: { textOnly?: boolean }
+    opts?: {
+      textOnly?: boolean
+      /**
+       * True when a length refusal of this step would be compacted and sent
+       * again (`compact` is wired and the one length retry is unspent). The
+       * transport's pre-flight check is lenient only then: with no retry
+       * left, the provider's raw refusal would end the run instead of
+       * Flint's own explanation.
+       */
+      lengthRecovery?: boolean
+    }
   ) => Promise<ReadableStream<UIMessageChunk>>
   /** Run one tool call. Must resolve, never reject. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
@@ -569,7 +579,9 @@ async function sendStepWithRetries(
         // (trimming, compaction) without expecting it to move underneath.
         // Not left to the transport to notice Stop: see `untilStopped`.
         const stream = await untilStopped(
-          deps.sendStep(withToolInputs([...st.messages]), operation.signal),
+          deps.sendStep(withToolInputs([...st.messages]), operation.signal, {
+            lengthRecovery: !!deps.compact && !lengthRetried,
+          }),
           operation.signal,
           (late) => void late.cancel().catch(() => {})
         )
@@ -605,6 +617,12 @@ async function sendStepWithRetries(
             applyCompaction(st, compacted)
             continue
           }
+          // Nothing to fold (the fixed prompt and tools are what is large):
+          // send once more with the recovery spent. A step the transport let
+          // through only on its lenient pre-flight check is then stopped by
+          // that check, with Flint's breakdown of what is large, instead of
+          // ending on the provider's raw refusal.
+          continue
         }
         const decision = decideRetry({
           facts: {

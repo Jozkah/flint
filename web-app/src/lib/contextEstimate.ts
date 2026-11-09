@@ -78,17 +78,21 @@ export function assertEstimatedContextFits(
       ] as const
     : []
   const largest = [...parts].sort((a, b) => b[1] - a[1])[0]
-  const advice =
-    largest?.[0].startsWith('tool definitions')
-      ? 'Most of it is tool definitions: turn off MCP servers or tools this conversation does not need.'
-      : largest?.[0] === 'system prompt'
-        ? 'Most of it is the system prompt: shorten the assistant instructions, project instructions or remembered facts.'
-        : largest?.[0] === 'latest message'
-          ? 'Most of it is the latest message: shorten it or attach less.'
-          : largest
-            ? 'Most of it is the earlier conversation: compact it or start a new one.'
-            : 'Shorten the latest message or reduce the enabled tools.'
-  throw new Error(`${PREFLIGHT_CONTEXT_ERROR_PREFIX} ` +
+  const action = !largest
+    ? undefined
+    : largest[0].startsWith('tool definitions')
+      ? 'turn off MCP servers or tools this conversation does not need'
+      : largest[0] === 'system prompt'
+        ? 'shorten the assistant instructions, project instructions or remembered facts'
+        : largest[0] === 'latest message'
+          ? 'shorten it or attach less'
+          : 'compact it or start a new one'
+  // The largest part comes first: a Cowork run card shows only the first 300
+  // characters of a run's error.
+  const lead = largest
+    ? `Most of it is the ${largest[0]}: ${scale(largest[1])} of ${tokens(need)} prompt tokens; ${action}. `
+    : 'Shorten the latest message or reduce the enabled tools. '
+  throw new Error(`${PREFLIGHT_CONTEXT_ERROR_PREFIX} ${lead}` +
     `Flint estimated ${tokens(need)} prompt tokens plus ${tokens(reserve)} reserved for the reply, ` +
     `against a window of ${tokens(window)}${source ? ` (from ${source})` : ''}.` +
     (parts.length
@@ -98,7 +102,7 @@ export function assertEstimatedContextFits(
       ? ` This includes a x${ratio.toFixed(2)} correction learned from this model's reported usage ` +
         `(${tokens(plain)} before it).`
       : '') +
-    ` ${advice} Or pick a larger-context model or raise Max Context Tokens in Assistant settings.`)
+    ' Or pick a larger-context model or raise Max Context Tokens in Assistant settings.')
 }
 
 /**

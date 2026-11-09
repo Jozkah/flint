@@ -175,7 +175,7 @@ import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { mergeRequestParams } from '@/lib/chat/transport/requestParams'
 import { recordGeneration } from '@/stores/engine-activity-store'
-import { sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
+import { canRecoverFromOverflow, sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
 import {
   BUILTIN_WEB_TOOLS,
@@ -366,6 +366,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * this off so a request is never compacted twice.
    */
   protected compactsAtThreshold = true
+
+  /**
+   * Whether a length refusal of this request would be compacted and sent
+   * again. The pre-flight context check is lenient only then: with no such
+   * path, the provider's raw refusal would reach the user in place of Flint's
+   * own breakdown. Chat recovers in `sendMessagesCore` when automatic
+   * compaction is on and summarizes; Cowork answers for its run loop.
+   */
+  protected async lengthRecoveryAvailable(): Promise<boolean> {
+    return (
+      this.compactsAtThreshold &&
+      (await canRecoverFromOverflow({ getActiveInferenceParams: () => this.getActiveInferenceParams() }))
+    )
+  }
   private contextEstimate = new ContextEstimate()
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
@@ -2032,10 +2046,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The trimmer preserves a newest message even when that one message is
     // larger than the budget. Refuse that payload instead of silently sending
     // it past the chosen cap. Overflow recovery may compact it once more.
-    // The first send is refused only when even the plain heuristic count does
-    // not fit: a request over by no more than the learned calibration is sent,
-    // and a length refusal goes through overflow recovery, whose resend is then
-    // checked strictly. A local server is asked once even when the estimate
+    // When a length refusal would be compacted and sent again, the first send
+    // is refused only when even the plain heuristic count does not fit: a
+    // request over by no more than the learned calibration is sent, and the
+    // resend after a refusal is checked strictly. With no recovery path the
+    // calibrated count decides, as before. A local server is asked once even when the estimate
     // says it is tight: its refusal names the real window. Only its resend is
     // checked here (with no reserve: a request that fits the window without it
     // is never refused).
@@ -2043,7 +2058,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, reserveTokens, {
         source: this.overflowRetry ? 'the last refusal' : resolvedWindow.source,
         breakdown: estimateParts,
-        strict: this.overflowRetry != null,
+        strict: this.overflowRetry != null || !(await this.lengthRecoveryAvailable()),
       })
     } else if (this.overflowRetry) {
       assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, {

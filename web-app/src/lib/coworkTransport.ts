@@ -132,6 +132,20 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   textOnlyNext = false
 
+  /**
+   * Set for one request by the run loop: whether a length refusal of it would
+   * be compacted and sent again (`runTurn`'s `compact`, once per step). Off,
+   * the pre-flight context check stops on the calibrated estimate, as there is
+   * nothing to catch the provider's refusal.
+   */
+  lengthRecoveryNext = false
+
+  protected override async lengthRecoveryAvailable(): Promise<boolean> {
+    const available = this.lengthRecoveryNext
+    this.lengthRecoveryNext = false
+    return available
+  }
+
   /** Cowork gates by tool group and `enable_tools`; chat's triggers do not apply. */
   protected override appliesChatToolGating(): boolean {
     return false

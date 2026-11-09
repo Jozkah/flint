@@ -93,7 +93,23 @@ describe('context cap and calibration', () => {
         breakdown: reported,
       })
     ).toThrow(
-      /system prompt 14,400, tool definitions \(240 tools\) 192,000, earlier conversation 2,720, latest message 26\. This includes a x1\.60 correction learned from this model's reported usage \(130,716 before it\)\. Most of it is tool definitions/
+      /system prompt 14,400, tool definitions \(240 tools\) 192,000, earlier conversation 2,720, latest message 26\. This includes a x1\.60 correction learned from this model's reported usage \(130,716 before it\)\./
+    )
+  })
+
+  it('names the largest part within the 300 characters a Cowork run card shows', () => {
+    let message = ''
+    try {
+      assertEstimatedContextFits(reportedEstimate, 1.6, 200_000, 22_000, {
+        source: 'configured',
+        breakdown: reported,
+      })
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message.slice(0, 300)).toContain(
+      'Most of it is the tool definitions (240 tools): 192,000 of 209,146 prompt tokens; ' +
+        'turn off MCP servers or tools this conversation does not need.'
     )
   })
 

@@ -205,6 +205,65 @@ describe('Cowork run crossing the compaction threshold', () => {
     expect(compact.mock.calls.filter((c) => c[1] === 'context-error')).toHaveLength(1)
   })
 
+  it('tells the transport whether a length refusal would be recovered', async () => {
+    const offered: Array<boolean | undefined> = []
+    const refuse = vi.fn(
+      async (_m: UIMessage[], _s: AbortSignal, opts?: { lengthRecovery?: boolean }) => {
+        offered.push(opts?.lengthRecovery)
+        throw new Error('prompt is too long: 9000 tokens > 8192 maximum')
+      }
+    )
+    const deps = {
+      sendStep: refuse,
+      dispatch: vi.fn(),
+      sink: sink(),
+      onStep: vi.fn(),
+      nextMessageId: () => 'm',
+    }
+    // With compaction wired: the first send may be lenient, the retry not.
+    await runTurn({
+      messages: [user('hi')],
+      signal: new AbortController().signal,
+      deps: { ...deps, compact: vi.fn(async (m: UIMessage[]) => [...m]) },
+    })
+    expect(offered.slice(0, 2)).toEqual([true, false])
+    // Without it, never.
+    offered.length = 0
+    await runTurn({ messages: [user('hi')], signal: new AbortController().signal, deps })
+    expect(offered.every((v) => v === false)).toBe(true)
+  })
+
+  it('with nothing to fold, sends once more without recovery so the pre-flight explanation ends the run', async () => {
+    const offered: Array<boolean | undefined> = []
+    const sendStep = vi.fn(
+      async (_m: UIMessage[], _s: AbortSignal, opts?: { lengthRecovery?: boolean }) => {
+        offered.push(opts?.lengthRecovery)
+        // The transport's strict check: Flint's own breakdown.
+        if (!opts?.lengthRecovery) {
+          throw new Error(
+            'The estimated request exceeds the available context size. Most of it is the tool definitions (240 tools)'
+          )
+        }
+        throw new Error('prompt is too long: 215000 tokens > 200000 maximum')
+      }
+    )
+    const outcome = await runTurn({
+      messages: [user('test')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+        compact: vi.fn(async () => null),
+      },
+    })
+    expect(outcome.stoppedBy).toBe('error')
+    expect(offered.slice(0, 2)).toEqual([true, false])
+    expect(outcome.errorText).toContain('Most of it is the tool definitions')
+  })
+
   it('with compaction off, a refusal ends the run as before', async () => {
     const sendStep = vi.fn(async () => {
       throw new Error("This model's maximum context length is 8192 tokens")
