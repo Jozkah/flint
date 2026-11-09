@@ -129,11 +129,6 @@
     "downloading": "Mengunduh…",
     "button": "Unduh ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} d",
-    "min": "{{count}} mnt",
-    "minS": "{{minutes}} mnt {{seconds}} d"
-  },
   "phase": {
     "queued": "Menunggu",
     "encoding": "Membaca prompt",

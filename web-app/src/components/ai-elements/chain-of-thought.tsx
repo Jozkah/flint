@@ -27,7 +27,7 @@ import {
 } from 'react'
 import { Streamdown } from 'streamdown'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import { Shimmer } from './shimmer'
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds'
 

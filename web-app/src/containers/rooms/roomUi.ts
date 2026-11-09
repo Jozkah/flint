@@ -12,7 +12,7 @@ import type {
   VoteChoice,
 } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
-import { formatClock } from '@/lib/time'
+import { formatDuration as formatTime, timeAgo as ageText } from '@/lib/time'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -181,21 +181,7 @@ export const plainPreview = (text: string) =>
 
 /** "2 minutes ago", "yesterday": how long since a moment, in the reader's language. */
 export function timeAgo(at: number, lang = 'en', now = Date.now()): string {
-  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
-  const steps: Array<[number, Intl.RelativeTimeFormatUnit]> = [
-    [60, 'second'],
-    [60, 'minute'],
-    [24, 'hour'],
-    [7, 'day'],
-    [4.35, 'week'],
-    [12, 'month'],
-  ]
-  let v = (at - now) / 1000
-  for (const [size, unit] of steps) {
-    if (Math.abs(v) < size) return rtf.format(Math.round(v), unit)
-    v /= size
-  }
-  return rtf.format(Math.round(v), 'year')
+  return ageText(at, { locale: lang, now })
 }
 
 export type VoteTally =Record<VoteChoice, number>
@@ -325,7 +311,7 @@ export function stopReasonText(reason: StopReason, t: T): string {
 }
 
 export function formatDuration(ms: number): string {
-  return formatClock(Math.max(0, Math.round(ms / 1000)))
+  return formatTime(ms, { style: 'clock' })
 }
 
 export const formatNumber = (n: number, locale = 'en-US') => n.toLocaleString(locale)

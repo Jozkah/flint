@@ -7,5 +7,10 @@
 // Kept free of app imports so the phone bundle can use it as is.
 
 export * from './protocolTypes'
+export * from './protocolActing'
+export * from './protocolDesktop'
+export * from './protocolCampaigns'
+export * from './protocolStudio'
+export * from './protocolPush'
 export * from './protocolRequests'
 export * from './protocolEvents'

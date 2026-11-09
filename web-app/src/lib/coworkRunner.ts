@@ -1,15 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  recordToolActivity,
-  type ToolActivityContext,
-} from '@/lib/toolActivity'
+import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import type {
-  AskAnswer,
-  CoworkTurn,
-  TurnMemory,
-  Usage,
-} from '@/types/coworkSession'
+import type { CoworkTurn, TurnMemory, Usage } from '@/types/coworkSession'
 import {
   MAX_AGENT_STEPS,
   budgetExceeded,
@@ -32,8 +23,53 @@ import {
 } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
 import { WEB_TOOL_NAMES } from '@/lib/webSearchTool'
-import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
 import { estimateHistoryTokens, isContextLengthError } from '@/lib/compaction'
+import { withToolInputs } from '@/lib/coworkTurns'
+import type { ToolImage } from '@/lib/toolOutputImages'
+import { refusalKindOf } from '@/lib/cowork/run/runnerToolArgs'
+import { handles, isAbortLike } from '@/lib/cowork/run/runHandles'
+import {
+  StreamSink,
+  untilStopped,
+  consumeStep,
+  assistantMessageFor,
+  turnsFor,
+} from '@/lib/cowork/run/runStepStream'
+
+export {
+  looksTruncatedArgs,
+  refusalKindOf,
+  schemaIssues,
+} from '@/lib/cowork/run/runnerToolArgs'
+export {
+  abortAll,
+  abortRun,
+  abortSubagent,
+  answerAsk,
+  beginRun,
+  endRun,
+  ensureRun,
+  getRunHandle,
+  hasSubagent,
+  isAbortLike,
+  isRunning,
+  registerSubagent,
+  unregisterSubagent,
+} from '@/lib/cowork/run/runHandles'
+export type {
+  RunHandle,
+} from '@/lib/cowork/run/runHandles'
+export {
+  NO_ARG_TOOLS,
+  assistantMessageFor,
+  consumeStep,
+  turnsFor,
+  untilStopped,
+} from '@/lib/cowork/run/runStepStream'
+export type {
+  StreamSink,
+} from '@/lib/cowork/run/runStepStream'
+
 
 /**
  * How much smaller a compacted history is, by the estimator compaction itself
@@ -193,25 +229,6 @@ export type ToolOutcome = {
   full?: string
 }
 
-/**
- * Why the harness declined a call without running anything.
- *
- * - `tool-not-offered`: the agent asked for a tool it was never given -- for a
- *   role, a tool outside its allowlist. Authority is not widened by asking.
- * - `invalid-call`: the call named an offered tool but its arguments could not
- *   be used.
- */
-/**
- * Built-in tools whose schema has no properties: any arguments mean `{}`.
- * `skill_list` is not here: it takes an optional `query`, so its arguments are
- * kept (an empty or unparseable call is still recovered as `{}` below).
- */
-export const NO_ARG_TOOLS: ReadonlySet<string> = new Set([
-  'memory_list',
-  'list_sessions',
-  'message_check',
-])
-
 export type HarnessRefusalKind = 'tool-not-offered' | 'invalid-call'
 
 export type HarnessRefusal = {
@@ -221,158 +238,11 @@ export type HarnessRefusal = {
   agent?: string
 }
 
-import { recoverToolArgs, firstJsonObject } from '@/lib/toolCallRepair'
-import { withToolInputs } from '@/lib/coworkTurns'
-import { toolOutputWithImages, type ToolImage } from '@/lib/toolOutputImages'
-
 // Re-exported so existing callers/tests of the old names keep working; the
 // recovery itself lives in the one shared module.
 export { recoverToolArgs } from '@/lib/toolCallRepair'
 /** Backward-compatible alias for the old name; same conservative rules. */
 export { recoverToolArgs as salvageToolArgs } from '@/lib/toolCallRepair'
-
-/** Cap on how much of a rejected call's raw arguments is echoed back. A whole
- * file's worth of `content` would otherwise flood the transcript and the next
- * request's context. */
-const ARGS_ECHO_CAP = 300
-
-/** Echo a rejected call's arguments, capped so a huge value is not dumped. */
-function capArgs(raw: unknown): string {
-  const s = typeof raw === 'string' ? raw : JSON.stringify(raw)
-  return s.length > ARGS_ECHO_CAP
-    ? `${s.slice(0, ARGS_ECHO_CAP)}... (${s.length} chars, truncated)`
-    : s
-}
-
-/**
- * Roughly, whether a string is JSON that was cut off before it closed -- a tool
- * call whose arguments ran past the model's output-token budget mid-value (a
- * `write` of a whole large file is the usual cause). Long, opens like JSON, and
- * has no complete top-level object, so it never balanced.
- */
-export function looksTruncatedArgs(raw: unknown): boolean {
-  if (typeof raw !== 'string') return false
-  const t = raw.trimStart()
-  if (t.length < 200) return false
-  if (!t.startsWith('{') && !t.startsWith('[')) return false
-  // Ends where JSON ends: complete but malformed (an unquoted value), not cut off.
-  if (/[}\]]\s*$/.test(t)) return false
-  return firstJsonObject(t) === undefined
-}
-
-/**
- * The refusal text for a call the SDK could not parse. A call cut off by the
- * output limit gets specific, actionable guidance -- resending the same giant
- * value just truncates again and loops -- rather than the generic parse error,
- * which the model cannot act on.
- */
-/**
- * The one-line shape of a valid call to each built-in tool, for a refusal
- * that should show what was expected (transcript audit #12). Required
- * arguments only; the schema the model was given has the rest.
- */
-const EXPECTED_SHAPES: Record<string, string> = {
-  read: '{"path": "<file>"}',
-  write: '{"path": "<file>", "content": "<text>"}',
-  edit: '{"path": "<file>", "edits": [{"old_string": "<exact text>", "new_string": "<replacement>"}]}',
-  ls: '{"path": "<folder>"}',
-  find: '{"pattern": "<glob>"}',
-  grep: '{"pattern": "<regex>"}',
-  bash: '{"command": "<command>"}',
-  git: '{"args": ["status"]} or {"program": "gh", "args": ["pr", "list", "--repo", "owner/repo"]}',
-  request_access: '{"path": "<absolute folder>", "reason": "<why>", "access_mode": "read"}',
-}
-
-/**
- * The fields a schema validation error names, as "`path`: Required". The AI
- * SDK reports them as a JSON list of issues inside its message.
- */
-export function schemaIssues(errorText: string): string[] {
-  const out: string[] = []
-  const issue =
-    /\{[^{}]*?"path"\s*:\s*\[([^\]]*)\][^{}]*?"message"\s*:\s*"([^"]*)"[^{}]*?\}/g
-  for (const m of errorText.matchAll(issue)) {
-    const field = m[1]
-      .split(',')
-      .map((p) => p.trim().replace(/^"|"$/g, ''))
-      .filter(Boolean)
-      .join('.')
-    out.push(`\`${field || '(arguments)'}\`: ${m[2]}`)
-  }
-  const missing = /missing required (?:argument|property) '?"?([\w.]+)/gi
-  for (const m of errorText.matchAll(missing)) {
-    const line = `\`${m[1]}\`: Required`
-    if (!out.includes(line)) out.push(line)
-  }
-  return out
-}
-
-/**
- * Why a `bash` call was refused when the shell is not offered, and what to use
- * instead. Without it the model saw only a list of tool names, called `bash`
- * again with a different command, and each retry counted toward the loop guard.
- */
-function noShellAdvice(base: string, tool: string | undefined): string {
-  if (tool !== 'bash' || refusalKindOf(base) !== 'tool-not-offered') return ''
-  return (
-    ' `bash` is not offered in this run (the shell is unavailable on this machine or turned' +
-    ' off), so no command can run through it. ' +
-    (/(^|[^a-z_])host_powershell($|[^a-z_])/.test(base)
-      ? 'Use `host_powershell` for commands, and the file tools for files.'
-      : 'Use the file tools (read, ls, find, grep, write, edit) instead.')
-  )
-}
-
-function explainInvalid(base: string, tool: string | undefined, raw: unknown): string {
-  const issues = schemaIssues(base)
-  const shape = tool ? EXPECTED_SHAPES[tool] : undefined
-  const sent =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? Object.keys(raw as Record<string, unknown>)
-      : []
-  return (
-    (issues.length ? ` Invalid or missing: ${issues.join('; ')}.` : '') +
-    noShellAdvice(base, tool) +
-    (shape ? ` Expected call shape: ${shape}.` : '') +
-    (shape && sent.length
-      ? ` You sent: ${sent.map((k) => `\`${k}\``).join(', ')}.`
-      : '')
-  )
-}
-
-function invalidArgsMessage(
-  errorText: unknown,
-  raw: unknown,
-  usable: boolean,
-  tool?: string
-): string {
-  const base = String(errorText ?? 'the call was not valid')
-  if (looksTruncatedArgs(raw)) {
-    return (
-      `${base} -- the arguments were cut off before they were complete, which ` +
-      'happens when the content is too large to return in one turn. Do not ' +
-      'resend the whole thing: ' +
-      (tool === 'write' || tool === 'edit'
-        ? 'create the file with a first `write` of its opening portion, then ' +
-          'extend it with `edit` in further calls (or write fewer lines per call).'
-        : 'resend the call with shorter argument values.')
-    )
-  }
-  return (
-    base +
-    (usable || raw === undefined
-      ? ''
-      : ` (the arguments sent were: ${capArgs(raw)})`) +
-    explainInvalid(base, tool, raw)
-  )
-}
-
-/** The kind of refusal an invalid call is, from the SDK's own reason. */
-export function refusalKindOf(invalid: string): HarnessRefusalKind {
-  return /unavailable tool|no such tool|not (?:a|an) (?:available|offered) tool/i.test(invalid)
-    ? 'tool-not-offered'
-    : 'invalid-call'
-}
 
 /** One model turn's worth of stream, folded into a shape the loop can act on. */
 export type StepResult = {
@@ -388,528 +258,6 @@ export type StepResult = {
   aborted: boolean
   /** The provider's finish reason: `length` means the output cap cut it. */
   finishReason?: string
-}
-
-export type RunHandle = {
-  runId: string
-  outer: AbortController
-  tools: AbortController
-  subagents: Map<string, AbortController>
-  pendingAsks: Map<string, (answers: AskAnswer[] | null) => void>
-}
-
-const handles = new Map<string, RunHandle>()
-
-export function getRunHandle(sid: string): RunHandle | undefined {
-  return handles.get(sid)
-}
-
-export function isRunning(sid: string): boolean {
-  return handles.has(sid)
-}
-
-/**
- * Register a run so its children can be cancelled individually.
- *
- * The caller owns the outer controller — it is the one the route already
- * passes to `runTurn` and aborts from the stop button — and hands it over here
- * so `abortRun` reaches the same stream the route started. Without this the
- * handle map held nothing and every cancellation path was a no-op.
- */
-export function beginRun(
-  sid: string,
-  runId: string,
-  outer: AbortController
-): RunHandle {
-  const handle: RunHandle = {
-    runId,
-    outer,
-    tools: new AbortController(),
-    subagents: new Map(),
-    pendingAsks: new Map(),
-  }
-  handles.set(sid, handle)
-  return handle
-}
-
-/**
- * Make sure `sid` has a run handle, creating one only when there is none.
- *
- * Cowork begins a run per turn. A surface with no such turn (plain chat, a
- * Room) still needs somewhere for a child's own cancellation to live, or
- * `registerSubagent` hands back a controller that is already aborted and every
- * child it starts is cancelled before it begins. Unlike `beginRun` this never
- * replaces a handle that is already there.
- */
-export function ensureRun(sid: string, runId: string, outer: AbortController): void {
-  if (handles.has(sid)) return
-  beginRun(sid, runId, outer)
-}
-
-/** Forget a run once it is over, without aborting anything. */
-export function endRun(sid: string, runId?: string): void {
-  const handle = handles.get(sid)
-  // Guarded by run id: a turn that finishes after the next one has already
-  // started must not unregister the run now in flight.
-  if (!handle || (runId != null && handle.runId !== runId)) return
-  handles.delete(sid)
-}
-
-/**
- * Give one dispatched subagent its own cancellation, chained to the run's.
- *
- * Returns the controller to pass as that child's signal. Registering it is what
- * makes a single child cancellable: without it every child shared the run's
- * controller, so the only way to stop one was to stop the whole run.
- *
- * `taskId` is the dispatching tool call id — the same id the activity record
- * uses — so a cancel request from the UI finds the right controller.
- */
-export function registerSubagent(sid: string, taskId: string): AbortController {
-  const controller = new AbortController()
-  const handle = handles.get(sid)
-  if (!handle) {
-    // The run is already gone: hand back a controller that is already aborted
-    // rather than one that will never fire, so the caller does not start work
-    // nothing can stop.
-    controller.abort('cancelled')
-    return controller
-  }
-  handle.subagents.set(taskId, controller)
-  return controller
-}
-
-/** Forget a child's controller once it has finished. */
-export function unregisterSubagent(sid: string, taskId: string): void {
-  handles.get(sid)?.subagents.delete(taskId)
-}
-
-/**
- * Is there still a controller for this child?
- *
- * What makes an agent task genuinely cancellable. A surface that offers to
- * stop work the run can no longer reach can only report failure, so it asks
- * this first rather than assuming.
- */
-export function hasSubagent(sid: string, taskId: string): boolean {
-  return handles.get(sid)?.subagents.has(taskId) ?? false
-}
-
-/**
- * Stop one dispatched subagent, leaving the rest of the run going.
- *
- * Returns false when there is nothing to stop — the child already finished, or
- * the run is over — so a caller can report that rather than claim a cancel it
- * did not perform.
- */
-export function abortSubagent(
-  sid: string,
-  taskId: string,
-  reason = 'cancelled'
-): boolean {
-  const controller = handles.get(sid)?.subagents.get(taskId)
-  if (!controller) return false
-  controller.abort(reason)
-  handles.get(sid)?.subagents.delete(taskId)
-  return true
-}
-
-/**
- * Stop a session's run: the model stream, the tool dispatch loop, every nested
- * subagent, and any question the user was being asked.
- *
- * A `bash` call already in flight is not stopped here — `execute_tool` is a
- * plain `invoke` with no cancellation token — so its result is discarded and
- * the process runs to completion. A command that has been *backgrounded* does
- * have a job id, and is killed through `bash_job_kill` by the activity layer,
- * which is the only place that knows which job belongs to which task.
- */
-export function abortRun(sid: string, reason = 'cancelled'): void {
-  const handle = handles.get(sid)
-  if (!handle) return
-  handle.outer.abort(reason)
-  handle.tools.abort(reason)
-  for (const child of handle.subagents.values()) child.abort(reason)
-  handle.subagents.clear()
-  // Reject rather than hang: an unanswered ask would otherwise keep its
-  // promise, and the dispatch loop awaiting it, alive forever.
-  for (const resolve of handle.pendingAsks.values()) resolve(null)
-  handle.pendingAsks.clear()
-  handles.delete(sid)
-}
-
-/**
- * Abort every running session, not just one.
- *
- * "Stop all activity" must reach the renderer-side run loops the same way
- * `abortRun` does — the Rust emergency-stop only sweeps subprocess Tokens and
- * never touches these JS `AbortController`s, so without this the model stream,
- * tool loop and subagents keep going after the user asked for everything to
- * stop. Returns how many sessions were aborted.
- */
-export function abortAll(reason = 'cancelled'): number {
-  const sids = [...handles.keys()]
-  for (const sid of sids) abortRun(sid, reason)
-  return sids.length
-}
-
-/**
- * Whether a rejection means "the user stopped this", not "this failed".
- *
- * Needed because the abort does not arrive as an `AbortError`: Flint streams
- * through the provider transport, whose `fetch` rejects with a plain
- * `Error('Request cancelled')` when the signal fires. Matched exactly rather
- * than by substring — "connection aborted" is a network failure and must keep
- * being reported as one.
- */
-export function isAbortLike(e: unknown, signal?: AbortSignal): boolean {
-  if (signal?.aborted) return true
-  if (e instanceof Error && e.name === 'AbortError') return true
-  const message = (e instanceof Error ? e.message : String(e)).trim()
-  return /^(request cancelled|the operation was aborted\.?|the user aborted a request\.?)$/i.test(
-    message
-  )
-}
-
-/** Settle a pending `ask`. Returns false when the request is already gone. */
-export function answerAsk(
-  sid: string,
-  requestId: string,
-  answers: AskAnswer[] | null
-): boolean {
-  const handle = handles.get(sid)
-  const resolve = handle?.pendingAsks.get(requestId)
-  if (!handle || !resolve) return false
-  handle.pendingAsks.delete(requestId)
-  resolve(answers)
-  return true
-}
-
-// The cache counts ride along: dropping them here was where a provider's
-// cache report used to stop on its way to the Cowork counter.
-const idList = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-
-const memoryOf = (meta: unknown): TurnMemory | undefined => {
-  const m = (meta as { memory?: unknown } | undefined)?.memory
-  if (!m || typeof m !== 'object') return undefined
-  const r = m as Record<string, unknown>
-  const issues = idList(r.storageIssues)
-  const off = idList(r.recallOff)
-  const recall = Array.isArray(r.recall)
-    ? r.recall.flatMap((x) => {
-        const v = x as Record<string, unknown>
-        return typeof v?.id === 'string' && typeof v.reason === 'string'
-          ? [{ id: v.id, rank: typeof v.rank === 'number' ? v.rank : 0, reason: v.reason }]
-          : []
-      })
-    : []
-  return {
-    injectedIds: idList(r.injectedIds),
-    conflictIds: idList(r.conflictIds),
-    ...(issues.length > 0 ? { storageIssues: issues } : {}),
-    ...(off.length > 0 ? { recallOff: off } : {}),
-    ...(recall.length > 0 ? { recall } : {}),
-    ...(Array.isArray(r.overridden) && r.overridden.length > 0
-      ? { overridden: r.overridden as NonNullable<TurnMemory['overridden']> }
-      : {}),
-    ...(Array.isArray(r.refused) && r.refused.length > 0
-      ? { refused: r.refused as NonNullable<TurnMemory['refused']> }
-      : {}),
-  }
-}
-
-const usageOf = (meta: unknown): Usage | null => {
-  const usage = readTokenUsage(
-    (meta as { usage?: unknown } | undefined)?.usage
-  )
-  return usage ? toCoworkUsage(usage) : null
-}
-
-export type StreamSink = {
-  onText: (delta: string) => void
-  onToolStart: (toolCallId: string, toolName: string) => void
-  onToolArgsDelta: (toolCallId: string, delta: string) => void
-  onToolCall: (call: PendingToolCall) => void
-  /**
-   * Any generated output arrived: text, reasoning or tool-call arguments. The
-   * span between the first and last is what a generation speed divides by.
-   */
-  onOutput?: (chars: number) => void
-}
-
-function stopReason(signal: AbortSignal): unknown {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException(String(signal.reason ?? 'aborted'), 'AbortError')
-}
-
-/**
- * `work`, or a rejection the moment `signal` fires, whichever comes first.
- * janhq/jan#8905.
- *
- * Stop has to end a run at once, whatever the run is waiting on. The transport
- * is handed the signal too, but does not always act on it -- a request still
- * waiting for its response to start, a stream it does not close -- and a run
- * that waited for it stayed running long after Stop. Whatever `work` produces
- * after that is handed to `release`, so it is not left open.
- */
-export function untilStopped<T>(
-  work: Promise<T>,
-  signal: AbortSignal,
-  release?: (late: T) => void
-): Promise<T> {
-  const settleLate = () =>
-    work.then(
-      (late) => release?.(late),
-      () => {}
-    )
-  if (signal.aborted) {
-    settleLate()
-    return Promise.reject(stopReason(signal))
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      settleLate()
-      reject(stopReason(signal))
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    work.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      }
-    )
-  })
-}
-
-/**
- * Fold one `sendMessages` stream into a `StepResult`, reporting progress as it
- * goes. Reading to completion is what makes tool dispatch safe: results land on
- * a finished assistant message, never interleaved with one still streaming.
- */
-export async function consumeStep(
-  stream: ReadableStream<UIMessageChunk>,
-  sink: StreamSink,
-  signal?: AbortSignal,
-  /** Called for every chunk, so an idle timeout measures silence, not length. */
-  onActivity?: () => void
-): Promise<StepResult> {
-  const reader = stream.getReader()
-  const result: StepResult = {
-    text: '',
-    toolCalls: [],
-    usage: null,
-    aborted: false,
-  }
-  try {
-    for (;;) {
-      // The read watches the signal itself. Leaving it to the transport to
-      // close the stream on abort meant a stream it did not close -- a
-      // provider still streaming -- kept the run going after Stop.
-      const { done, value } = await (signal
-        ? untilStopped(reader.read(), signal)
-        : reader.read())
-      if (done) break
-      onActivity?.()
-      const chunk = value as any
-      switch (chunk.type) {
-        case 'text-delta':
-          result.text += chunk.delta
-          sink.onOutput?.(chunk.delta.length)
-          sink.onText(chunk.delta)
-          break
-        case 'reasoning-delta':
-          sink.onOutput?.(chunk.delta?.length ?? 0)
-          break
-        case 'tool-input-start':
-          sink.onToolStart(chunk.toolCallId, chunk.toolName)
-          break
-        case 'tool-input-delta':
-          sink.onOutput?.(chunk.inputTextDelta?.length ?? 0)
-          sink.onToolArgsDelta(chunk.toolCallId, chunk.inputTextDelta)
-          break
-        case 'tool-input-available': {
-          const call: PendingToolCall = {
-            toolCallId: chunk.toolCallId,
-            toolName: chunk.toolName,
-            input: chunk.input,
-          }
-          result.toolCalls.push(call)
-          sink.onToolCall(call)
-          break
-        }
-        // The model asked for a tool it was not offered, or with input its
-        // schema rejects. Kept as a call that failed, not dropped: dropping it
-        // left the step with no tool calls, so the loop read it as a finished
-        // answer -- the run ended with nothing done, nothing recorded and
-        // nothing said, and the model never learned its call was refused.
-        case 'tool-input-error': {
-          // Arguments that are not JSON arrive as their raw text. That text
-          // must not become the call's input: the history replays it to the
-          // model, and a tool call whose input is a string rather than an
-          // object broke every later request in the session. The text goes in
-          // the refusal instead, so the model still sees what it sent.
-          const raw = chunk.input
-          const usable =
-            raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-          // Only the parse-failure case is recoverable: the arguments arrived as
-          // raw text (a string) the SDK could not parse, but the model appended
-          // a stray brace or trailing text after valid JSON (e.g. `{"path":"…"}}`).
-          // Salvage the first complete object and dispatch it as a normal call.
-          // An object that already reached the SDK failed for another reason --
-          // an unavailable tool, a schema violation -- and is refused below.
-          // A call to an offered tool that arrived with no arguments at all
-          // (`null`, nothing, or an empty string) is a call with an empty
-          // object: the model meant `ls {}` or `skill_list {}`. Refusing it
-          // cost a turn and taught the model nothing. A tool that needs
-          // arguments still says which one is missing when it runs.
-          const empty =
-            raw === null ||
-            raw === undefined ||
-            (typeof raw === 'string' && /^\s*(null)?\s*$/.test(raw))
-          const offered =
-            refusalKindOf(String(chunk.errorText ?? '')) !== 'tool-not-offered'
-          // A tool that takes no arguments has nothing to get wrong: local
-          // models send `[]`, `"list"` or a stray template fragment for
-          // `memory_list`, and refusing that cost a turn every time.
-          const salvaged =
-            (empty || NO_ARG_TOOLS.has(chunk.toolName)) && offered
-              ? {}
-              : // Never for a tool the run did not offer: repairing its
-                // arguments would dispatch it past the refusal below.
-                offered && typeof raw === 'string'
-                ? recoverToolArgs(raw)
-                : undefined
-          if (salvaged) {
-            const call: PendingToolCall = {
-              toolCallId: chunk.toolCallId,
-              toolName: chunk.toolName,
-              input: salvaged,
-            }
-            result.toolCalls.push(call)
-            sink.onToolCall(call)
-            break
-          }
-          const call: PendingToolCall = {
-            toolCallId: chunk.toolCallId,
-            toolName: chunk.toolName,
-            input: usable ? raw : {},
-            invalid: invalidArgsMessage(
-              chunk.errorText,
-              raw,
-              usable,
-              chunk.toolName
-            ),
-          }
-          result.toolCalls.push(call)
-          sink.onToolCall(call)
-          break
-        }
-        case 'error':
-          result.errorText = chunk.errorText
-          break
-        case 'abort':
-          result.aborted = true
-          break
-        case 'finish':
-          result.usage = usageOf(chunk.messageMetadata) ?? result.usage
-          result.memory = memoryOf(chunk.messageMetadata) ?? result.memory
-          {
-            const reason = (chunk.messageMetadata as { finishReason?: unknown } | undefined)
-              ?.finishReason
-            if (typeof reason === 'string') result.finishReason = reason
-          }
-          // A reply the provider never finished -- the connection dropped
-          // mid-stream -- still ends with a `finish` chunk, carrying whatever
-          // text arrived. Read as an answer, a child cut off after one word
-          // was reported as a completed task. See `streamCutOff`.
-          if (chunk.messageMetadata?.streamCutOff && !result.errorText) {
-            result.errorText =
-              "the model's reply ended before it finished: the stream was cut off"
-          }
-          break
-        default:
-          break
-      }
-    }
-  } catch (e) {
-    // Stopped mid-read: cancel the stream so the request underneath is
-    // released rather than left streaming into nothing.
-    if (signal?.aborted) void reader.cancel(signal.reason).catch(() => {})
-    throw e
-  } finally {
-    reader.releaseLock()
-  }
-  return result
-}
-
-/** Assemble the assistant message for a completed step, results included. */
-export function assistantMessageFor(
-  id: string,
-  step: StepResult,
-  outcomes: Map<string, ToolOutcome>
-): UIMessage {
-  const parts: any[] = []
-  if (step.text) parts.push({ type: 'text', text: step.text })
-  for (const call of step.toolCalls) {
-    const outcome = outcomes.get(call.toolCallId)
-    const part: any = {
-      type: `tool-${call.toolName}`,
-      toolCallId: call.toolCallId,
-      input: outcome?.ranInput ?? call.input,
-      state: outcome
-        ? outcome.isError
-          ? 'output-error'
-          : 'output-available'
-        : 'input-available',
-    }
-    if (outcome) {
-      if (outcome.isError) part.errorText = outcome.output
-      else part.output = toolOutputWithImages(outcome.output, outcome.images)
-    }
-    parts.push(part)
-  }
-  return { id, role: 'assistant', parts } as UIMessage
-}
-
-/** Transcript rows for a completed step, for the Cowork run store. */
-export function turnsFor(
-  step: StepResult,
-  outcomes: Map<string, ToolOutcome>
-): CoworkTurn[] {
-  const turns: CoworkTurn[] = []
-  // The request's own usage and memory ride on the turn it produced, so an
-  // earlier turn's breakdown -- and which memories it carried -- can be shown
-  // for that turn rather than only the session's latest.
-  if (step.text) {
-    turns.push({
-      role: 'assistant',
-      content: step.text,
-      ...(step.usage ? { usage: step.usage } : {}),
-      ...(step.memory ? { memory: step.memory } : {}),
-    })
-  }
-  for (const call of step.toolCalls) {
-    const outcome = outcomes.get(call.toolCallId)
-    turns.push({
-      role: 'tool',
-      content: '',
-      callId: call.toolCallId,
-      name: call.toolName,
-      args: outcome?.ranInput ?? call.input,
-      result: outcome?.output ?? '',
-      isError: outcome?.isError,
-      diff: outcome?.diff,
-      ...(outcome?.images?.length ? { toolImages: outcome.images } : {}),
-      status: outcome ? 'done' : 'running',
-    })
-  }
-  return turns
 }
 
 export type RunDeps = {

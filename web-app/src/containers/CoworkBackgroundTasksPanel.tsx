@@ -9,7 +9,7 @@ import { TaskCheckoutLink } from '@/containers/TaskCheckoutLink'
 import { StatStrip } from '@/containers/SubagentStats'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { formatCompactDuration } from '@/lib/duration'
+import { formatCompactDuration } from '@/lib/time'
 import { redactSecrets } from '@/lib/redact'
 import { PhaseRow } from '@/containers/CoworkWorkflowCard'
 import {

@@ -135,11 +135,6 @@
     "downloading": "Baixando…",
     "button": "Baixar ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} min",
-    "minS": "{{minutes}} min {{seconds}} s"
-  },
   "phase": {
     "queued": "Aguardando",
     "encoding": "Lendo o prompt",

@@ -3,7 +3,7 @@
  * and cached by URL, so a card shows real content without loading the whole
  * file (or reading it again on every render).
  */
-import { formatClock } from '@/lib/time'
+import { formatDuration as formatTime } from '@/lib/time'
 
 /** How much of a file a card preview reads. */
 export const CARD_PREVIEW_BYTES = 4096
@@ -121,5 +121,5 @@ export function htmlLines(source: string): PreviewLine[] {
 /** "3:07" for an audio length in seconds. */
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return ''
-  return formatClock(Math.round(seconds))
+  return formatTime(seconds * 1000, { style: 'clock' })
 }

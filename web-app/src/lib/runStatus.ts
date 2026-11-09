@@ -8,6 +8,7 @@
  */
 import type { CoworkTurn } from '@/types/coworkSession'
 import { uiText } from '@/lib/uiText'
+import { formatDuration } from '@/lib/time'
 
 const rs = (key: string, english: string) => uiText(`tools:runStatus.${key}`, english)
 
@@ -152,7 +153,10 @@ export function runStatus(
 
 /** `9s`, `1m 05s`. */
 export function formatElapsed(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+  return formatDuration(Math.max(0, ms), {
+    style: 'units',
+    rounding: 'floor',
+    largest: 'minute',
+    pad: true,
+  })
 }

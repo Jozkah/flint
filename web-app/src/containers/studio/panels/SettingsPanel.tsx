@@ -181,7 +181,7 @@ export function SettingsPanel({
                     onClick={() => setForm({ seconds: n })}
                     className={cn(tile(form.seconds === n), 'h-10 px-3 tabular-nums')}
                   >
-                    {t('studio:duration.s', { count: n })}
+                    {t('common:duration.seconds', { count: n })}
                   </button>
                 ))}
               </div>

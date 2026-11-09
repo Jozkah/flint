@@ -129,11 +129,6 @@
     "downloading": "ダウンロード中…",
     "button": "ダウンロード（{{size}}）"
   },
-  "duration": {
-    "s": "{{count}} 秒",
-    "min": "{{count}} 分",
-    "minS": "{{minutes}} 分 {{seconds}} 秒"
-  },
   "phase": {
     "queued": "待機中",
     "encoding": "プロンプトを読み取り中",

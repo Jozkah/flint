@@ -135,11 +135,6 @@
     "downloading": "Download in corso…",
     "button": "Scarica ({{size}})"
   },
-  "duration": {
-    "s": "{{count}} s",
-    "min": "{{count}} min",
-    "minS": "{{minutes}} min {{seconds}} s"
-  },
   "phase": {
     "queued": "In attesa",
     "encoding": "Lettura del prompt",

@@ -129,11 +129,6 @@
     "downloading": "正在下載…",
     "button": "下載（{{size}}）"
   },
-  "duration": {
-    "s": "{{count}} 秒",
-    "min": "{{count}} 分鐘",
-    "minS": "{{minutes}} 分 {{seconds}} 秒"
-  },
   "phase": {
     "queued": "等待中",
     "encoding": "正在讀取提示詞",
