@@ -371,7 +371,13 @@ export async function runCoworkRequest(
   )
     return
   // Another session's message is not what this session is about.
-  if (text && !from && !hidden && current?.title === DEFAULT_SESSION_TITLE) {
+  if (
+    text &&
+    !from &&
+    !hidden &&
+    !current?.titleManual &&
+    current?.title === DEFAULT_SESSION_TITLE
+  ) {
     // The prompt, cut short, until the model's own title arrives.
     const placeholder = slashTitle(text).slice(0, 40)
     store.setTitle(sid, placeholder)

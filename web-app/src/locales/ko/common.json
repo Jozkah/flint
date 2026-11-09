@@ -194,6 +194,7 @@
   "forkedSession": "분기했습니다. 새 세션에는 이 대화가 있지만 접근 권한은 없습니다.",
   "forkRefused": "이 세션을 분기할 수 없습니다.",
   "deleteSession": "세션 삭제",
+  "renameSession": "세션 이름 변경",
   "deleteSessionTitle": "세션을 삭제할까요?",
   "deleteSessionBody": "\"{{title}}\"과(와) 해당 대화 기록이 영구 삭제됩니다. 되돌릴 수 없습니다.",
   "newChat": "새 채팅",

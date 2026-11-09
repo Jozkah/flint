@@ -196,6 +196,7 @@
   "forkedSession": "Rozgałęziono. Nowa sesja zawiera tę rozmowę, ale nie ma żadnych jej uprawnień dostępu.",
   "forkRefused": "Nie udało się rozgałęzić tej sesji.",
   "deleteSession": "Usuń sesję",
+  "renameSession": "Zmień nazwę sesji",
   "deleteSessionTitle": "Usunąć sesję?",
   "deleteSessionBody": "„{{title}}” i jej transkrypcja zostaną usunięte na stałe. Tej operacji nie można cofnąć.",
   "newChat": "Nowy Czat",
