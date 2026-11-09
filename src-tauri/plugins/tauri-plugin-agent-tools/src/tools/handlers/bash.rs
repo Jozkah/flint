@@ -127,21 +127,20 @@ pub(super) async fn bash_job_action(args: &serde_json::Value, ctx: &ToolContext<
 /// straight away rather than after an arbitrary wait. A timeout given with
 /// it still means "wait this long first". The schema caps a foreground wait
 /// at 120 s (the lifecycle watchdog stops it then anyway); a larger value is
-/// clamped rather than trusted. 0 keeps its meaning of "no wait". Background
-/// calls keep their own ceiling.
+/// clamped rather than trusted. Not every provider validates arguments
+/// against the schema's minimum of 1, so a foreground 0 is read as the
+/// default rather than as "kill it at once". With `background`, 0 keeps its
+/// meaning of "no wait", and the wait before backgrounding has the same cap,
+/// since the call blocks for all of it.
 pub(super) fn bash_timeout(args: &serde_json::Value) -> (bool, u64) {
     let background = arg_bool(args, "background");
-    let timeout_secs = arg_u64(args, "timeout").unwrap_or(if background {
-        0
-    } else {
-        DEFAULT_BASH_TIMEOUT_SECS
-    });
-    let timeout_secs = if background {
-        timeout_secs
-    } else {
-        timeout_secs.min(MAX_FOREGROUND_BASH_TIMEOUT_SECS)
+    let timeout_secs = match arg_u64(args, "timeout") {
+        Some(0) if !background => DEFAULT_BASH_TIMEOUT_SECS,
+        Some(secs) => secs,
+        None if background => 0,
+        None => DEFAULT_BASH_TIMEOUT_SECS,
     };
-    (background, timeout_secs)
+    (background, timeout_secs.min(MAX_FOREGROUND_BASH_TIMEOUT_SECS))
 }
 
 pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
