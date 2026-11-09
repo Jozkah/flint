@@ -1467,6 +1467,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "engine"))]
     #[test]
     fn make_room_returns_victims_instead_of_dropping() {
         let mut r = Registry::new(1);
@@ -1483,6 +1484,7 @@ mod tests {
         drop(retired);
     }
 
+    #[cfg(not(feature = "engine"))]
     #[tokio::test]
     async fn drain_tears_the_engines_down_and_dropping_does_too() {
         let mut r = Registry::new(0);
@@ -1504,6 +1506,7 @@ mod tests {
         panic!("a dropped Retired never released its engine");
     }
 
+    #[cfg(not(feature = "engine"))]
     #[test]
     fn shutdown_and_retire_park_engines() {
         let mut r = Registry::new(0);

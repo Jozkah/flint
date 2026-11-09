@@ -13,10 +13,10 @@
 // vendor/llama.cpp and with engine::PINNED_* on the Rust side; the shim
 // re-exports llama_version()/llama_build_number() so a mismatch is caught at
 // runtime instead of producing a silently wrong engine.
-pub const LLAMA_CPP_TAG: &str = "b11887";
-pub const LLAMA_CPP_BUILD_NUMBER: u32 = 11887;
-pub const LLAMA_CPP_COMMIT: &str = "6050b467c07a95c7b87debd4ddac2f8ba8d9b807";
-pub const LLAMA_CPP_VERSION: &str = "0.7.0";
+pub const LLAMA_CPP_TAG: &str = "b12219";
+pub const LLAMA_CPP_BUILD_NUMBER: u32 = 12219;
+pub const LLAMA_CPP_COMMIT: &str = "f3178366b9bfd7a99605a499b7997328f33abafa";
+pub const LLAMA_CPP_VERSION: &str = "0.9.0";
 
 const COMMANDS: &[&str] = &[
     // Cleanup command
