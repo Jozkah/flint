@@ -332,9 +332,9 @@ mod tests {
 
     #[test]
     fn pin_constants_are_populated_from_build_rs() {
-        assert_eq!(PINNED_TAG, "b11887");
-        assert_eq!(PINNED_BUILD_NUMBER, "11887");
-        assert_eq!(PINNED_VERSION, "0.7.0");
+        assert_eq!(PINNED_TAG, "b12219");
+        assert_eq!(PINNED_BUILD_NUMBER, "12219");
+        assert_eq!(PINNED_VERSION, "0.9.0");
         assert_eq!(PINNED_COMMIT.len(), 40, "commit should be a full sha");
     }
 
