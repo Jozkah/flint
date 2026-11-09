@@ -344,11 +344,18 @@ export const predefinedProviders = [
     ],
     models: [
       {
+        id: 'MiniMax-M3.1-Flash',
+        name: 'MiniMax-M3.1-Flash',
+        version: '1.0',
+        description: 'Fast M3-series model with image input. 1M context window.',
+        capabilities: ['completion', 'tools', 'vision'],
+      },
+      {
         id: 'MiniMax-M3',
         name: 'MiniMax-M3',
         version: '1.0',
-        description: 'Latest flagship model for agents, coding and long documents. 1M context window.',
-        capabilities: ['completion', 'tools'],
+        description: 'Latest flagship model for agents, coding and long documents, with image input. 1M context window.',
+        capabilities: ['completion', 'tools', 'vision'],
       },
       {
         id: 'MiniMax-M2.7',

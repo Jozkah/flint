@@ -418,6 +418,24 @@ describe('getModelCapabilities', () => {
     expect(capabilities).toContain(ModelCapabilities.VISION)
   })
 
+  // Refresh / Add Model created these with no image input.
+  it.each(['MiniMax-M3', 'MiniMax-M3.1-Flash'])(
+    'knows %s takes tools and images',
+    (modelId) => {
+      expect(getModelCapabilities('minimax', modelId)).toEqual([
+        ModelCapabilities.COMPLETION,
+        ModelCapabilities.TOOLS,
+        ModelCapabilities.VISION,
+      ])
+    }
+  )
+
+  it('keeps MiniMax M2.7 text-only', () => {
+    expect(getModelCapabilities('minimax', 'MiniMax-M2.7')).not.toContain(
+      ModelCapabilities.VISION
+    )
+  })
+
   it('handles provider with no capability arrays gracefully', () => {
     const capabilities = getModelCapabilities('ai21', 'jamba-instruct')
     expect(capabilities).toEqual([ModelCapabilities.COMPLETION])
