@@ -11,16 +11,28 @@ fn foreground_timeout_defaults_and_is_clamped() {
         bash_timeout(&json!({"timeout": 100_000})),
         (false, MAX_FOREGROUND_BASH_TIMEOUT_SECS)
     );
-    assert_eq!(bash_timeout(&json!({"timeout": 0})), (false, 0));
+    // The schema's minimum is 1: a 0 the provider did not validate is the
+    // default wait, not an instant kill.
+    assert_eq!(bash_timeout(&json!({"timeout": 0})), (false, DEFAULT_BASH_TIMEOUT_SECS));
+    assert_eq!(bash_timeout(&json!({"timeout": 1})), (false, 1));
     assert_eq!(bash_timeout(&json!({"timeout": 7})), (false, 7));
+    assert_eq!(bash_timeout(&json!({"timeout": 120})), (false, 120));
 }
 
 #[test]
-fn background_timeout_defaults_to_zero_and_is_not_clamped() {
+fn background_timeout_defaults_to_zero_and_waits_at_most_the_foreground_cap() {
     assert_eq!(bash_timeout(&json!({"background": true})), (true, 0));
+    // 0 keeps meaning "background straight away".
+    assert_eq!(bash_timeout(&json!({"background": true, "timeout": 0})), (true, 0));
+    assert_eq!(bash_timeout(&json!({"background": true, "timeout": 30})), (true, 30));
+    // The wait before backgrounding blocks the call, so it has the same cap.
     assert_eq!(
         bash_timeout(&json!({"background": true, "timeout": 100_000})),
-        (true, 100_000)
+        (true, MAX_FOREGROUND_BASH_TIMEOUT_SECS)
+    );
+    assert_eq!(
+        bash_timeout(&json!({"background": true, "timeout": u64::MAX})),
+        (true, MAX_FOREGROUND_BASH_TIMEOUT_SECS)
     );
 }
 
