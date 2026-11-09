@@ -353,6 +353,37 @@ fn tmp_relative(raw: &str) -> Option<String> {
     Some(raw.strip_prefix("/tmp/")?.to_string())
 }
 
+/// True iff a `write`/`edit` of `raw` would land in a folder the user attached
+/// read-only: inside one of `read_roots` and not inside a root the session may
+/// write (`write_roots`, which wins when nested in a read-only folder), the
+/// project or the scratch (the run's own area even when an attached folder
+/// encloses it). A root that cannot be canonicalized contains nothing.
+///
+/// Independent of write confinement: an unconfined run may reach paths it was
+/// approved for, but an attached read-only folder stays read-only.
+pub fn in_read_only_attached_root(
+    project_root: &Path,
+    scratch: Option<&Path>,
+    read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
+    raw: &str,
+) -> bool {
+    if read_roots.is_empty() {
+        return false;
+    }
+    let Ok(real) = canonicalize_lenient(&resolve_path(project_root, scratch, raw)) else {
+        return false;
+    };
+    let inside = |root: &Path| root.canonicalize().is_ok_and(|r| real.starts_with(r));
+    if inside(project_root) || scratch.is_some_and(inside) {
+        return false;
+    }
+    if write_roots.iter().any(|r| inside(r)) {
+        return false;
+    }
+    read_roots.iter().any(|r| inside(r))
+}
+
 /// The agent's own state directory inside a project. Hidden wholesale rather
 /// than per-subdirectory: it holds `agent.toml`, the skills/memory workspaces
 /// (reachable only through the dedicated skill_*/memory_* tools), and the thread
