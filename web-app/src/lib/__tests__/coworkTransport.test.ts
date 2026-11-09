@@ -135,9 +135,11 @@ describe('CoworkChatTransport', () => {
 
   it('injects a specialist persona and advisory mode before project rules', () => {
     const t = new CoworkChatTransport('s1', config({ projectInstructions: 'Use yarn.' }))
-    ;(t as unknown as { routedAssistantInstructions: string }).routedAssistantInstructions =
-      'You are Quartz.'
-    ;(t as unknown as { routedMode: string }).routedMode = 'review'
+    const router = (t as unknown as {
+      router: { routedAssistantInstructions: string; routedMode: string }
+    }).router
+    router.routedAssistantInstructions = 'You are Quartz.'
+    router.routedMode = 'review'
     const prompt = (t as unknown as { buildSystemPrompt: (m: unknown[]) => string })
       .buildSystemPrompt([])
     expect(prompt).toContain('You are Quartz.')

@@ -33,7 +33,8 @@ const send = (t: CoworkChatTransport, messages: UIMessage[]) =>
   t.sendMessages({ messages, trigger: 'submit-message', chatId: 'c' } as never)
 
 const instructionsOf = (t: CoworkChatTransport) =>
-  (t as unknown as { routedAssistantInstructions?: string }).routedAssistantInstructions
+  (t as unknown as { router: { routedAssistantInstructions?: string } }).router
+    .routedAssistantInstructions
 
 describe('Cowork prompt routing', () => {
   let setCurrent: ReturnType<typeof vi.fn>
