@@ -377,9 +377,12 @@ export const ImportLlamacppModelDialog = ({
 
       // The import wrote the model's files, but only the engine's own listing
       // decides whether it shows up. Say so instead of claiming success when
-      // that listing leaves it out.
+      // that listing leaves it out. A nested id (`org/model`) is compared with
+      // either separator, so a Windows-spelled `org\model` still counts.
+      const sameId = (id: string) =>
+        id.replace(/\\/g, '/') === modelName.replace(/\\/g, '/')
       const listed = await serviceHub.models().fetchModels()
-      if (!listed.some((model) => model.id === modelName)) {
+      if (!listed.some((model) => sameId(model.id))) {
         throw new Error(t('sweep:modelImport.notListed', { name: modelName }))
       }
 

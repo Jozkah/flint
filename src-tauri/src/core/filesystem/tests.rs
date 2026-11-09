@@ -159,10 +159,64 @@ fn test_readdir_sync() {
     let _ = fs::remove_dir_all(dir_path);
 }
 
+/// The listing echoes the folder exactly as the caller spelled it, even a
+/// non-canonical spelling, while the scope check still runs on the resolved
+/// path. Off Windows `join_path` and the canonical form agree, so this is the
+/// test that catches a listing re-spelled in canonical form on every OS.
+#[test]
+fn test_readdir_entries_start_with_the_callers_spelling() {
+    use super::grants::{ReadGrants, DENIED_PREFIX};
+    use tauri::Manager;
+
+    let app = mock_app();
+    app.manage(ReadGrants::default());
+    let data = get_jan_data_folder_path(app.handle().clone());
+    let models = data.join("llamacpp").join("models");
+    fs::create_dir_all(models.join("org").join("model")).unwrap();
+    File::create(models.join("flat.yml")).unwrap();
+
+    let spelled = data
+        .join("llamacpp")
+        .join("..")
+        .join("llamacpp")
+        .join("models")
+        .to_string_lossy()
+        .to_string();
+    let listed = readdir_sync(app.handle().clone(), vec![spelled.clone()]).unwrap();
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    for entry in &listed {
+        let rest = entry
+            .strip_prefix(&spelled)
+            .unwrap_or_else(|| panic!("{entry} does not start with {spelled}"));
+        assert!(rest.starts_with(['/', '\\']), "{entry}");
+    }
+
+    // A non-canonical spelling of a folder outside the scope is still refused,
+    // in either form, and so is a relative one that climbs out.
+    let outside = tempfile::tempdir().unwrap();
+    fs::create_dir_all(outside.path().join("sub")).unwrap();
+    fs::write(outside.path().join("secret.txt"), "x").unwrap();
+    for escape in [
+        outside.path().join("sub").join(".."),
+        outside.path().to_path_buf(),
+        PathBuf::from("llamacpp/../../outside"),
+    ] {
+        let err = readdir_sync(
+            app.handle().clone(),
+            vec![escape.to_string_lossy().to_string()],
+        )
+        .unwrap_err();
+        assert!(err.starts_with(DENIED_PREFIX), "{escape:?}: {err}");
+    }
+
+    let _ = fs::remove_dir_all(data.join("llamacpp"));
+}
+
 /// The llama.cpp extension builds its models folder with `join_path` and takes
-/// each model id as the entry with that folder cut off the front. `join_path`
-/// canonicalizes (on Windows that adds `\\?\`), so the listing has to come back
-/// in the same spelling or every model id is garbled and no model is listed.
+/// each model id as the entry with that folder cut off the front. On Windows
+/// `join_path` canonicalizes to the `\\?\` form, so the listing has to come back
+/// in that spelling or every model id is garbled and no model is listed.
+#[cfg(windows)]
 #[test]
 fn test_readdir_entries_keep_the_spelling_join_path_returned() {
     let app = mock_app();

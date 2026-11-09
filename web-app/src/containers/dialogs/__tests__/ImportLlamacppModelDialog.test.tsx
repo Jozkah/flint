@@ -565,6 +565,47 @@ describe('ImportLlamacppModelDialog', () => {
     expect(screen.getByText('beta')).toBeInTheDocument()
   })
 
+  it.each([
+    ['org/model', 'forward slashes'],
+    ['org\\model', 'a Windows backslash'],
+  ])(
+    'counts a nested id listed back as %s (%s) as imported',
+    async (listedId) => {
+      useModelLibrary.setState({ folders: ['C:/lib'] })
+      hoisted.invoke.mockImplementation(async (cmd: string) =>
+        cmd === 'scan_local_models'
+          ? [{ path: 'C:/lib/org/model.gguf', name: 'org/model', source: 'Custom folder', size_bytes: 1000 }]
+          : { metadata: { 'general.architecture': 'llama' } }
+      )
+      hoisted.pullModel.mockResolvedValueOnce(undefined)
+      hoisted.fetchModels.mockResolvedValueOnce([{ id: listedId }])
+      const onSuccess = vi.fn()
+      render(
+        <ImportLlamacppModelDialog
+          provider={provider}
+          trigger={<button>Open</button>}
+          onSuccess={onSuccess}
+        />
+      )
+      openDialog()
+      fireEvent.click(screen.getByText('Find models already on this computer'))
+      fireEvent.click(await screen.findByText('org/model'))
+      await waitFor(() => expect(hoisted.validateGgufFile).toHaveBeenCalled())
+      const importBtn = await screen.findByRole('button', { name: /Import Model/i })
+      await waitFor(() => expect(importBtn).not.toBeDisabled())
+      fireEvent.click(importBtn)
+      await waitFor(() =>
+        expect(hoisted.toast.success).toHaveBeenCalledWith(
+          'Model imported successfully',
+          expect.any(Object)
+        )
+      )
+      expect(hoisted.pullModel.mock.calls[0][0]).toBe('org/model')
+      expect(hoisted.toast.error).not.toHaveBeenCalled()
+      expect(onSuccess).toHaveBeenCalledWith('org/model')
+    }
+  )
+
   it('imports an Ollama blob under the scanned name, not its digest file name', async () => {
     useModelLibrary.setState({ folders: ['C:/ollama'] })
     hoisted.invoke.mockImplementation(async (cmd: string) =>
