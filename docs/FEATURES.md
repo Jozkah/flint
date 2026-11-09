@@ -231,7 +231,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 
 ## Not finished yet
 
-- Semantic code search is built but has not been verified against a real embedding model.
+- Semantic code search has been checked against a real model only in embedding mode of a general chat model (Qwen3 4B through llama-server); the same check with a dedicated small embedding model is a manual CI job that has not been run yet.
 - Custom CA certificates are verified on Windows only.
 - A full screen-reader pass has not been done.
 - PDF export through print and PNG export have not been verified on macOS and Linux. PNG refuses pages taller than about 16,000 pixels.

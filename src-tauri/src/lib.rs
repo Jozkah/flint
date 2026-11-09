@@ -11,6 +11,9 @@ compile_error!(
 
 pub mod core;
 
+#[cfg(all(test, feature = "tauri-app"))]
+mod app_acl_tests;
+
 #[cfg(not(feature = "cli"))]
 use core::{
     app::commands::get_jan_data_folder_path,

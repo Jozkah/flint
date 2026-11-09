@@ -167,12 +167,26 @@ pub fn proxy_bypass_list(allowed: &[Origin]) -> String {
     rules.join(";")
 }
 
+/// How this process reaches the browser's DevTools. Everything the browser is
+/// confined by is enforced from that channel, so whoever else can open it can
+/// undo the confinement. On Unix it is a pipe on fds 3 and 4 that only this
+/// process holds: a TCP debugging port answers any local client, including a
+/// sandboxed shell that shares the host network (bubblewrap without pasta,
+/// Seatbelt with network allowed). Windows keeps the loopback port: handing a
+/// child extra pipe handles needs the CRT inheritance protocol, and the
+/// AppContainer sandbox has no loopback exemption, so its shell cannot reach it.
+pub const DEVTOOLS_TRANSPORT_ARG: &str = if cfg!(unix) {
+    "--remote-debugging-pipe"
+} else {
+    "--remote-debugging-port=0"
+};
+
 /// Arguments for a throwaway, confined, headless browser that may connect
 /// only to `allowed`.
 pub fn browser_args(profile: &Path, as_root: bool, allowed: &[Origin]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--headless=new",
-        "--remote-debugging-port=0",
+        DEVTOOLS_TRANSPORT_ARG,
         // No page origin may open the DevTools socket (we send none).
         "--remote-allow-origins=",
         // The dead proxy does not cover WebRTC UDP: no direct UDP/STUN.
@@ -278,6 +292,19 @@ mod tests {
         assert!(!args.contains(&"--no-sandbox".to_string()));
         assert!(args.contains(&"--remote-allow-origins=".to_string()));
         assert!(browser_args(Path::new("/p"), true, &[o]).contains(&"--no-sandbox".to_string()));
+    }
+
+    #[test]
+    fn devtools_has_no_tcp_listener_on_unix() {
+        let (_, o) = local_origin("http://localhost:5173/").unwrap();
+        let args = browser_args(Path::new("/p"), false, &[o]);
+        let ports = args.iter().filter(|a| a.starts_with("--remote-debugging-port")).count();
+        let pipes = args.iter().filter(|a| *a == "--remote-debugging-pipe").count();
+        if cfg!(unix) {
+            assert_eq!((ports, pipes), (0, 1), "{args:?}");
+        } else {
+            assert_eq!((ports, pipes), (1, 0), "{args:?}");
+        }
     }
 
     #[test]

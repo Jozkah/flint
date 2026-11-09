@@ -1,3 +1,7 @@
+#[cfg(feature = "tauri-app")]
+#[allow(dead_code)]
+mod build_acl;
+
 fn main() {
     // Cargo re-runs a build script on any change *until* the script emits a
     // `rerun-if-changed` of its own, at which point that list becomes the whole
@@ -39,7 +43,32 @@ fn main() {
             )
             .expect("tauri build failed");
         } else {
-            tauri_build::build();
+            // The app's own commands go through the ACL too (build_acl.rs);
+            // the phone build above keeps the old behaviour until mobile.json
+            // grants them.
+            println!("cargo:rerun-if-changed=src/lib.rs");
+            println!("cargo:rerun-if-changed=build_acl.rs");
+            let lib_rs = std::fs::read_to_string("src/lib.rs").expect("read src/lib.rs for the command list");
+            let commands = build_acl::registered_commands(&lib_rs);
+            assert!(commands.len() > 100, "found only {} commands in src/lib.rs; the parser no longer matches it", commands.len());
+            let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
+            let perm_dir = std::path::Path::new(&out_dir).join("app-permissions");
+            std::fs::create_dir_all(&perm_dir).expect("create the app permission folder");
+            std::fs::write(perm_dir.join("commands.toml"), build_acl::permission_sets_toml(&commands))
+                .expect("write the app permission sets");
+            let pattern: &'static str =
+                Box::leak(format!("{}/*.toml", perm_dir.display().to_string().replace('\\', "/")).into_boxed_str());
+            let names: &'static [&'static str] = Box::leak(
+                commands
+                    .into_iter()
+                    .map(|c| &*Box::leak(c.into_boxed_str()))
+                    .collect::<Vec<&'static str>>()
+                    .into_boxed_slice(),
+            );
+            tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+                tauri_build::AppManifest::new().commands(names).permissions_path_pattern(pattern),
+            ))
+            .expect("tauri build failed");
         }
     }
 

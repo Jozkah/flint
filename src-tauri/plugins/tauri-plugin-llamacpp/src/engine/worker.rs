@@ -1062,7 +1062,9 @@ async fn spawn_external_attempt(
 /// Whether the TCP listener on loopback `port` belongs to `pid` or one of its
 /// descendants (a launcher script may front the real server). When the OS
 /// cannot say, the child still being the one that was started is accepted.
-fn port_owned_by_tree(port: u16, pid: u32) -> bool {
+/// Also used by the app for the image engine, which has the same
+/// pick-a-free-port-then-let-the-child-bind race.
+pub fn port_owned_by_tree(port: u16, pid: u32) -> bool {
     match listener_pid(port) {
         None => true,
         Some(owner) => pid_in_tree(pid, owner),
