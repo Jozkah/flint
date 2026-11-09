@@ -701,11 +701,35 @@ describe('DataProvider', () => {
 
   it('does not start server on mount when enableOnStartup is false', async () => {
     render(<DataProvider />)
+    await waitFor(() => {
+      expect(hubState.getServerStatus).toHaveBeenCalled()
+    })
+    expect(h.setServerStatus).not.toHaveBeenCalledWith('pending')
+    expect(hubState.startServer).not.toHaveBeenCalled()
+  })
+
+  // The server outlives the webview (a reload, a hide-to-tray recovery): the
+  // page must show it running even with auto-start off.
+  it('reflects an already-running server on boot even when enableOnStartup is false', async () => {
+    hubState.getServerStatus.mockResolvedValue(true)
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(h.setServerStatus).toHaveBeenCalledWith('running')
+    })
+    expect(hubState.startServer).not.toHaveBeenCalled()
+  })
+
+  // A start the user began meanwhile is 'pending'; a stopped answer must not
+  // overwrite it.
+  it('sets no status when the server is stopped and auto-start is off', async () => {
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(hubState.getServerStatus).toHaveBeenCalled()
+    })
     await act(async () => {
       await Promise.resolve()
     })
-    expect(hubState.getServerStatus).not.toHaveBeenCalled()
-    expect(hubState.startServer).not.toHaveBeenCalled()
+    expect(h.setServerStatus).not.toHaveBeenCalled()
   })
 
   it('short-circuits when server is already running', async () => {
@@ -760,14 +784,27 @@ describe('DataProvider', () => {
     delete (h.localApi as Record<string, unknown>).enableServerToolExecution
   })
 
-  it('sets server status to stopped on startup failure', async () => {
+  it('sets server status to stopped when the startup start fails', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.localApi.enableOnStartup = true
+    hubState.getServerStatus.mockResolvedValue(false)
+    hubState.startServer.mockRejectedValue(new Error('fail'))
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(h.setServerStatus).toHaveBeenCalledWith('stopped')
+    })
+    err.mockRestore()
+  })
+
+  it('leaves the status alone when only the status query fails', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     h.localApi.enableOnStartup = true
     hubState.getServerStatus.mockRejectedValue(new Error('fail'))
     render(<DataProvider />)
     await waitFor(() => {
-      expect(h.setServerStatus).toHaveBeenCalledWith('stopped')
+      expect(err).toHaveBeenCalled()
     })
+    expect(h.setServerStatus).not.toHaveBeenCalled()
     err.mockRestore()
   })
 
