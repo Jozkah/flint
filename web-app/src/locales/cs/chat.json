@@ -353,5 +353,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Engine modelu se zastavil. Model se znovu načítá…",
+    "retrying": "Model je znovu načten. Zpráva se odesílá znovu…",
+    "recovered": "Obnoveno: engine modelu se zastavil, byl restartován a na zprávu přišla odpověď.",
+    "retryFailed": "Engine modelu se znovu zastavil. Flint to jednou zkusil znovu; pro další pokus použijte Vygenerovat znovu.",
+    "restartFailed": "Model se nepodařilo automaticky znovu načíst. Použijte Vygenerovat znovu nebo model vyberte znovu."
   }
 }

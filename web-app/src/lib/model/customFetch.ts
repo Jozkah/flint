@@ -15,6 +15,7 @@ import {
   cleanUpstreamErrorMessage,
   describeTransportFailure,
   isSamplingParamRejection,
+  LLAMACPP_CRASH_MESSAGE,
   requestUrlOf,
   withTransportDetail,
 } from './transportErrors'
@@ -140,8 +141,7 @@ export function createCustomFetch(
     if (isLlamacpp500 && !innerMessage) {
       // 500 with no JSON body = router couldn't reach the child (crash). Recover.
       onLlamacppServerError?.()
-      const synthMessage =
-        'The model crashed and is being reloaded. Please retry.'
+      const synthMessage = LLAMACPP_CRASH_MESSAGE
       const nextBody = JSON.stringify({
         error: {
           message: synthMessage,
