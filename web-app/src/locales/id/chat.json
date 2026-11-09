@@ -309,5 +309,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Mesin model berhenti. Memuat ulang model…",
+    "retrying": "Model sudah dimuat ulang. Mengirim ulang pesan Anda…",
+    "recovered": "Pulih: mesin model sempat berhenti, telah dimulai ulang, dan pesan Anda sudah dijawab.",
+    "retryFailed": "Mesin model berhenti lagi. Flint sudah mencoba ulang sekali; gunakan Buat ulang untuk mencoba lagi.",
+    "restartFailed": "Model tidak dapat dimuat ulang secara otomatis. Gunakan Buat ulang, atau pilih model lagi."
   }
 }

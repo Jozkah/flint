@@ -589,6 +589,80 @@ pub async fn get_prompt(
         .map_err(|e| format!("prompts/get failed: {e}"))
 }
 
+/// Every prompt the enabled, running MCP servers offer, for the composer's
+/// `/` menu.
+///
+/// Servers are asked at once with the short listing limit, outside the
+/// servers lock, as tools are. A server that does not implement prompts, or
+/// fails or is slow to answer, is left out of the menu; nothing else about its
+/// connection changes. A stopped server is not started for this.
+#[tauri::command]
+pub async fn list_mcp_prompts(
+    state: State<'_, AppState>,
+) -> Result<Vec<super::models::McpPromptInfo>, String> {
+    let list_timeout = tool_call_timeout(&state).await.min(MCP_LIST_TOOLS_TIMEOUT);
+    let enabled: HashSet<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+    let peers: Vec<(String, rmcp::Peer<rmcp::RoleClient>)> = {
+        let servers = state.mcp_servers.lock().await;
+        servers
+            .iter()
+            .filter(|(name, _)| enabled.contains(*name))
+            .map(|(name, service)| (name.clone(), service.peer().clone()))
+            .collect()
+    };
+    let listed = futures_util::future::join_all(peers.into_iter().map(|(name, peer)| async move {
+        let result = timeout(list_timeout, peer.list_all_prompts()).await;
+        (name, result)
+    }))
+    .await;
+    let mut prompts = Vec::new();
+    for (name, result) in listed {
+        match result {
+            Ok(Ok(listed)) => prompts.extend(super::models::prompts_with_server(&name, listed)),
+            Ok(Err(e)) => log::debug!("MCP server {name} listed no prompts: {e}"),
+            Err(_) => log::debug!("MCP server {name}: listing prompts timed out"),
+        }
+    }
+    prompts.sort_by(|a, b| (&a.server, &a.name).cmp(&(&b.server, &b.name)));
+    Ok(prompts)
+}
+
+/// One prompt from a server, filled in with the user's arguments, for the
+/// composer to insert as the user's own draft (AH-138). A stopped server is
+/// started first, as a tool call would.
+#[tauri::command]
+pub async fn get_mcp_prompt<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    server: String,
+    name: String,
+    arguments: Option<Map<String, Value>>,
+) -> Result<super::models::McpPromptContent, String> {
+    let timeout_duration = tool_call_timeout(&state).await;
+    super::helpers::ensure_mcp_server_started(&app, &server).await?;
+    let peer = state
+        .mcp_servers
+        .lock()
+        .await
+        .get(&server)
+        .map(|s| s.peer().clone())
+        .ok_or_else(|| format!("MCP server '{server}' is not connected"))?;
+    let mut params = rmcp::model::GetPromptRequestParams::new(name.clone());
+    if let Some(arguments) = arguments.filter(|a| !a.is_empty()) {
+        params = params.with_arguments(arguments);
+    }
+    let result = timeout(timeout_duration, peer.get_prompt(params))
+        .await
+        .map_err(|_| {
+            format!(
+                "Prompt '{name}' on '{server}' timed out after {}s",
+                timeout_duration.as_secs()
+            )
+        })?
+        .map_err(|e| format!("Prompt '{name}' on '{server}' failed: {e}"))?;
+    Ok(super::models::prompt_content(result))
+}
+
 /// One server's own log, newest last (AH-140).
 #[tauri::command]
 pub async fn get_mcp_server_log(name: String, lines: Option<usize>) -> Result<Vec<String>, String> {

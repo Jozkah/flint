@@ -5,6 +5,14 @@
  */
 
 /**
+ * What a llama.cpp turn fails with when the router answered 500 with no body:
+ * its child crashed. The model is reloaded at once; the chat's automatic
+ * retry (lib/chat/turnRecovery.ts) recognises the turn by this text.
+ */
+export const LLAMACPP_CRASH_MESSAGE =
+  'The model crashed and is being reloaded. Please retry.'
+
+/**
  * Strip Jinja-stack-trace noise and other diagnostic prelude from upstream
  * error messages so the UI shows the human-readable cause. Examples:
  *

@@ -1939,8 +1939,8 @@ async fn write_and_edit_errors_name_the_path() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `find` from a legitimate `/tmp` base must not walk *out* through a
-/// symlinked directory inside the scratch. Pins `WalkBuilder`'s
+/// `find` from the scratch must not walk *out* through a symlinked directory
+/// inside it. Pins `WalkBuilder`'s
 /// no-follow default, which is what the containment check cannot cover:
 /// the base path here is honest, only the recursion would escape.
 #[tokio::test]
@@ -1955,7 +1955,7 @@ async fn find_does_not_recurse_out_of_the_scratch_via_a_symlink() {
     let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
     let out = super::execute_builtin(
         lookup("find").unwrap(),
-        &json!({"pattern": "*.txt", "path": "/tmp"}),
+        &json!({"pattern": "*.txt", "path": scratch.to_string_lossy()}),
         &ctx,
     )
     .await
@@ -2083,12 +2083,11 @@ fn spill_file_writes_never_follow_a_planted_symlink() {
     let _ = std::fs::remove_dir_all(&outside);
 }
 
-/// The write escape the scratch clamp is there to stop, spelled with a
-/// symlink instead of `..`: a confined `write` through `/tmp/esc` must be
+/// A confined `write` through a symlink planted in the scratch must be
 /// refused and must leave nothing behind outside the scratch.
 #[tokio::test]
 #[cfg(target_os = "linux")]
-async fn confined_write_refuses_a_tmp_symlink_escape() {
+async fn confined_write_refuses_a_scratch_symlink_escape() {
     let root = unique_root();
     let scratch = unique_root();
     let outside = unique_root();
@@ -2099,7 +2098,7 @@ async fn confined_write_refuses_a_tmp_symlink_escape() {
         .with_confined_writes(true);
     let out = super::execute_builtin(
         lookup("write").unwrap(),
-        &json!({"path": "/tmp/esc/pwned.txt", "content": "x"}),
+        &json!({"path": scratch.join("esc/pwned.txt").to_string_lossy(), "content": "x"}),
         &ctx,
     )
     .await
@@ -2172,96 +2171,66 @@ async fn write_and_edit_refuse_a_symlink_redirected_file() {
     let _ = std::fs::remove_dir_all(&outside);
 }
 
-/// A `write` to `/tmp/x` lands in the session scratch, and a `read` of the
-/// same path sees it: every fs tool shares the one `/tmp` the shell sees.
+/// A `write` into the scratch by its real path lands there, a `read` of the
+/// same path sees it, and the path it reports is that same real path (the one
+/// the shell's `TMPDIR` names).
 #[tokio::test]
-#[cfg(target_os = "linux")]
-async fn write_then_read_via_tmp_persists_in_scratch() {
+#[cfg(unix)]
+async fn write_then_read_via_the_scratch_path_persists() {
     let root = unique_root();
     let scratch = unique_root();
     let store = crate::workspace::project_store(&root);
     let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
+    let file = scratch.join("scratch.txt");
     let out = super::execute_builtin(
         lookup("write").unwrap(),
-        &json!({"path": "/tmp/scratch.txt", "content": "persist"}),
+        &json!({"path": file.to_string_lossy(), "content": "persist"}),
         &ctx,
     )
     .await
     .0;
-    assert!(out.starts_with("Created /tmp/scratch.txt"), "got: {out}");
-    assert!(scratch.join("scratch.txt").exists(), "wrote into scratch");
+    assert!(out.starts_with(&format!("Created {}", file.display())), "got: {out}");
+    assert!(file.exists(), "wrote into scratch");
 
     let out = super::execute_builtin(
         lookup("read").unwrap(),
-        &json!({"path": "/tmp/scratch.txt"}),
+        &json!({"path": file.to_string_lossy()}),
         &ctx,
     )
     .await
     .0;
     assert_eq!(out, "persist");
-
-    // No stray file on the real host /tmp.
-    assert!(!Path::new("/tmp/scratch.txt").exists());
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// The bare `/tmp` dir resolves to the scratch root; files written there by
-/// the shell (or a sibling tool) are listable through the file tools.
+/// `/tmp` is no longer an alias for the scratch: it resolves to itself, with
+/// or without one, so the shell (which has a throwaway `/tmp`), an escalated
+/// command and the tools never disagree about where a file is.
 #[test]
-#[cfg(target_os = "linux")]
-fn resolve_path_maps_tmp_into_scratch() {
+#[cfg(unix)]
+fn resolve_path_leaves_tmp_alone() {
     let root = unique_root();
     let scratch = unique_root();
-    assert_eq!(
-        crate::tools::sandbox::resolve_path(&root, Some(&scratch), "/tmp/a/b.txt"),
-        scratch.join("a/b.txt")
-    );
-    assert_eq!(
-        crate::tools::sandbox::resolve_path(&root, Some(&scratch), "/tmp"),
-        scratch
-    );
-    // Without a scratch, /tmp stays the host path (i.e. never the project).
-    assert_eq!(
-        crate::tools::sandbox::resolve_path(&root, None, "/tmp/a.txt"),
-        Path::new("/tmp/a.txt")
-    );
+    for scratch in [Some(scratch.as_path()), None] {
+        assert_eq!(
+            crate::tools::sandbox::resolve_path(&root, scratch, "/tmp/a/b.txt"),
+            Path::new("/tmp/a/b.txt")
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// A `..` climb inside `/tmp` must NOT escape the session scratch: an
-/// absolute path maps into the scratch, and a `..` is clamped back to the
-/// scratch root (chroot semantics, matching the `/tmp` bind mount), so it
-/// can never reach the host temp.
+/// The gate treats a write into the scratch as inside, not an escape.
 #[test]
-#[cfg(target_os = "linux")]
-fn tmp_path_cannot_climb_out_with_dotdot() {
-    let root = unique_root();
-    let scratch = unique_root();
-    // `/tmp/../evil.txt` clamps inside the scratch, never the host parent.
-    let out = crate::tools::sandbox::resolve_path(&root, Some(&scratch), "/tmp/../evil.txt");
-    assert!(
-        out.starts_with(&scratch),
-        "must stay inside the scratch, got: {out:?}"
-    );
-    assert_eq!(out, scratch.join("evil.txt"));
-    // Even a deeper climb stays clamped at the scratch root.
-    let deep = crate::tools::sandbox::resolve_path(&root, Some(&scratch), "/tmp/../../deep.txt");
-    assert_eq!(deep, scratch.join("deep.txt"));
-    let _ = std::fs::remove_dir_all(&root);
-    let _ = std::fs::remove_dir_all(&scratch);
-}
-
-/// The gate treats a scratch-backed `/tmp` write as inside, not an escape.
-#[test]
-#[cfg(target_os = "linux")]
-fn gate_allows_tmp_write_when_scratch_is_set() {
+#[cfg(unix)]
+fn gate_allows_a_scratch_write_when_scratch_is_set() {
     let root = unique_root();
     let scratch = unique_root();
     let d = crate::tools::gate::resolve_decision(
         lookup("write").unwrap(),
-        &json!({"path": "/tmp/x.txt", "content": "y"}),
+        &json!({"path": scratch.join("x.txt").to_string_lossy(), "content": "y"}),
         &root,
         Some(&scratch),
         &[],
@@ -2284,15 +2253,15 @@ fn gate_allows_tmp_write_when_scratch_is_set() {
 /// scratch is an escape, so it takes the escape prompt (refused outright on
 /// the desktop) rather than the ordinary in-project one.
 #[test]
-#[cfg(target_os = "linux")]
-fn gate_treats_a_tmp_symlink_escape_as_an_escape() {
+#[cfg(unix)]
+fn gate_treats_a_scratch_symlink_escape_as_an_escape() {
     let root = unique_root();
     let scratch = unique_root();
     let outside = unique_root();
     std::os::unix::fs::symlink(&outside, scratch.join("esc")).unwrap();
     let d = crate::tools::gate::resolve_decision(
         lookup("write").unwrap(),
-        &json!({"path": "/tmp/esc/x.txt", "content": "y"}),
+        &json!({"path": scratch.join("esc/x.txt").to_string_lossy(), "content": "y"}),
         &root,
         Some(&scratch),
         &[],
@@ -3621,9 +3590,8 @@ async fn bash_output_overflow_spills_to_readable_temp_file() {
 }
 
 /// The same overflow with a session scratch set: the spill must land in the
-/// scratch and be advertised by the one name that works from both the fs
-/// tools and the shell, so the `read` the note asks for actually finds it.
-/// The no-scratch case above cannot catch this -- there `/tmp` is not remapped.
+/// scratch and be advertised by its real path, the one name that works from
+/// both the fs tools and the shell, so the `read` the note asks for finds it.
 #[tokio::test]
 async fn bash_spill_is_readable_when_a_scratch_is_set() {
     let root = unique_root();
@@ -3643,12 +3611,10 @@ async fn bash_spill_is_readable_when_a_scratch_is_set() {
         .next()
         .and_then(|s| s.split(". Use the read tool").next())
         .unwrap_or("");
-    if cfg!(target_os = "linux") {
-        assert!(
-            path.starts_with("/tmp/"),
-            "must be advertised as the /tmp name the shell also sees: {out}"
-        );
-    }
+    assert!(
+        !path.starts_with("/tmp/") || scratch.starts_with("/tmp"),
+        "must be advertised by the scratch's real path, not a /tmp alias: {out}"
+    );
     let full = super::execute_builtin(
         lookup("read").unwrap(),
         &json!({"path": path, "offset": 15999, "limit": 1}),
@@ -5156,4 +5122,44 @@ fn stale_edit_tracking_forgets_the_least_recently_used_session() {
     all.insert("d".to_string(), 0);
     assert!(all.contains_key("b") && all.contains_key("d"));
     assert!(!all.contains_key("c"));
+}
+
+/// janhq/jan#9604: an unconfined `write`/`edit` (the escape prompt approved)
+/// still refuses a folder attached read-only, and leaves it untouched; a
+/// writable root nested in it, and the project, still take the write.
+#[tokio::test]
+async fn write_and_edit_refuse_a_read_only_attached_root_even_unconfined() {
+    let root = unique_root();
+    let ro = unique_root();
+    std::fs::write(ro.join("main.rs"), b"keep").unwrap();
+    let nested = ro.join("rw");
+    std::fs::create_dir_all(&nested).unwrap();
+    let read_roots = vec![ro.clone(), nested.clone()];
+    let write_roots = vec![nested.clone()];
+    let store = crate::workspace::project_store(&root);
+    let ctx = ToolContext::new(&root, &store, &[])
+        .with_read_roots(&read_roots)
+        .with_write_roots(&write_roots)
+        .with_confined_writes(false);
+
+    let args = json!({"path": ro.join("new.txt").to_string_lossy(), "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+    assert!(!ro.join("new.txt").exists());
+    let args = json!({
+        "path": ro.join("main.rs").to_string_lossy(),
+        "edits": [{"old_string": "keep", "new_string": "lost"}]
+    });
+    let out = super::execute_builtin(lookup("edit").unwrap(), &args, &ctx).await.0;
+    assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+    assert_eq!(std::fs::read_to_string(ro.join("main.rs")).unwrap(), "keep");
+
+    let args = json!({"path": nested.join("ok.txt").to_string_lossy(), "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(!out.starts_with("ERROR"), "{out}");
+    let args = json!({"path": "in-project.txt", "content": "x"});
+    let out = super::execute_builtin(lookup("write").unwrap(), &args, &ctx).await.0;
+    assert!(!out.starts_with("ERROR"), "{out}");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&ro);
 }

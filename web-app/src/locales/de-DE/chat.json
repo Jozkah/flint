@@ -323,5 +323,12 @@
   },
   "chainOfThought": {
     "fallbackTool": "tool"
+  },
+  "turnRecovery": {
+    "restarting": "Die Modell-Engine wurde beendet. Das Modell wird neu geladen…",
+    "retrying": "Modell neu geladen. Deine Nachricht wird erneut gesendet…",
+    "recovered": "Wiederhergestellt: Die Modell-Engine wurde beendet und neu gestartet, und deine Nachricht wurde beantwortet.",
+    "retryFailed": "Die Modell-Engine wurde erneut beendet. Flint hat es einmal erneut versucht; nutze „Neu generieren“ für einen weiteren Versuch.",
+    "restartFailed": "Das Modell konnte nicht automatisch neu geladen werden. Nutze „Neu generieren“ oder wähle das Modell erneut aus."
   }
 }
