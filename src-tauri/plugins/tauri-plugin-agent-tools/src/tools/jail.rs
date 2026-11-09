@@ -92,10 +92,11 @@ pub struct Policy {
     /// stay out of the shell's reach.
     pub home_readonly: bool,
     /// A session-scoped host directory the shell may write to for the whole run,
-    /// instead of a scratch that vanishes between commands. How it is exposed is
-    /// per backend: bubblewrap binds it over `/tmp`, replacing the volatile
-    /// overlay that would otherwise discard scratch files with each command;
-    /// Seatbelt grants it by `SCRATCH` parameter; AppContainer grants it an ACE.
+    /// instead of a scratch that vanishes between commands. It is reached by its
+    /// real path under every backend, so an escalated (unsandboxed) command and
+    /// the filesystem tools see the same files: bubblewrap binds it at that path
+    /// (`/tmp` stays a throwaway tmpfs); Seatbelt grants it by `SCRATCH`
+    /// parameter; AppContainer grants it an ACE.
     /// The directory must already exist before the sandbox is built (the
     /// backends reference it, they do not create it).
     pub scratch_root: Option<PathBuf>,
@@ -138,6 +139,48 @@ pub struct Policy {
     /// of the policy by [`fs_rules`] when a backend builds its rules, never
     /// earlier, so the workspace and the other layers are known by then.
     pub fs: FsConfig,
+    /// The project's own package-cache folder on Linux and macOS (see
+    /// `workspace::pkg_cache_dir`): writable to the shell, and every name in
+    /// [`PKG_CACHE_ENV`] points into it. Package managers' defaults sit in a
+    /// `$HOME` the sandbox masks or makes read-only, so without it a build
+    /// re-downloads on every call or fails. Must exist before the sandbox is
+    /// built. Windows keeps its caches in the synthetic home (`win_env`).
+    pub pkg_cache: Option<PathBuf>,
+}
+
+/// Where package managers keep their caches in a sandboxed command on Linux
+/// and macOS: each name, and its folder under [`Policy::pkg_cache`]. Set only
+/// inside the sandbox, so an unconfined command keeps the user's real caches
+/// and a download made in a sandbox never feeds a later unsandboxed build.
+/// `CARGO_HOME` is left out: it also holds the user's cargo config and, with
+/// rustup, the toolchain proxies.
+pub const PKG_CACHE_ENV: &[(&str, &str)] = &[
+    // XDG-aware tools (pip, uv, pnpm's cache and many more) on Linux.
+    #[cfg(target_os = "linux")]
+    ("XDG_CACHE_HOME", "xdg-cache"),
+    ("npm_config_cache", "npm"),
+    ("YARN_CACHE_FOLDER", "yarn-cache"),
+    ("COREPACK_HOME", "corepack"),
+    ("pnpm_config_store_dir", "pnpm-store"),
+    ("pnpm_config_cache_dir", "pnpm-cache"),
+    ("PIP_CACHE_DIR", "pip"),
+    ("UV_CACHE_DIR", "uv"),
+    ("GOCACHE", "go-build"),
+    ("GOMODCACHE", "go-mod"),
+    ("GRADLE_USER_HOME", "gradle"),
+    ("CCACHE_DIR", "ccache"),
+    ("SCCACHE_DIR", "sccache"),
+    ("DENO_DIR", "deno"),
+    ("BUN_INSTALL_CACHE_DIR", "bun-cache"),
+];
+
+/// The package-cache variables a sandboxed shell under `policy` gets, each with
+/// its folder. Empty without a package cache.
+pub fn pkg_cache_env(policy: &Policy) -> Vec<(&'static str, PathBuf)> {
+    match &policy.pkg_cache {
+        Some(dir) => PKG_CACHE_ENV.iter().map(|(name, sub)| (*name, dir.join(sub))).collect(),
+        None => Vec::new(),
+    }
 }
 
 impl Policy {
@@ -156,7 +199,15 @@ impl Policy {
             unreachable_read_grants: Vec::new(),
             own_grant_holder: false,
             fs: FsConfig::default(),
+            pkg_cache: None,
         }
+    }
+
+    /// Give the shell the project's package-cache folder; see
+    /// [`Policy::pkg_cache`]. The folder must already exist.
+    pub fn with_pkg_cache(mut self, dir: &Path) -> Self {
+        self.pkg_cache = Some(dir.to_path_buf());
+        self
     }
 
     /// Apply the configured `[tools.fs]` lists. See [`Policy::fs`].
@@ -392,18 +443,13 @@ fn detect() -> Backend {
 }
 
 /// Where the session scratch is reachable from *inside* the sandbox, which is
-/// what the shell's `TMPDIR`/`TMP`/`TEMP` must name. Bubblewrap binds the
-/// scratch over `/tmp`, so the host path does not exist in that namespace;
-/// Seatbelt and AppContainer mount nothing, so the real path is the only one
-/// that resolves -- and it is the same name the filesystem tools use there, so
-/// a file written by `bash` can be read back by `read`. `None` when the caller
-/// set no scratch: the shell then keeps the host's own temp dir.
-pub fn scratch_env_path(backend: Backend, policy: &Policy) -> Option<PathBuf> {
-    let scratch = policy.scratch_root.as_ref()?;
-    Some(match backend {
-        Backend::Bubblewrap => PathBuf::from("/tmp"),
-        _ => scratch.clone(),
-    })
+/// what the shell's `TMPDIR`/`TMP`/`TEMP` must name: its real path under every
+/// backend (bubblewrap binds it there, Seatbelt and AppContainer mount
+/// nothing), the same name the filesystem tools and an escalated command use,
+/// so a file written by `bash` can be read back by `read`. `None` when the
+/// caller set no scratch: the shell then keeps the host's own temp dir.
+pub fn scratch_env_path(_backend: Backend, policy: &Policy) -> Option<PathBuf> {
+    policy.scratch_root.clone()
 }
 
 /// Wrap `cfg` so the shell it describes runs confined. The returned config keeps
@@ -891,16 +937,10 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
             push(&mut args, &["--ro-bind-try", keep, keep]);
         }
     }
-    // `/tmp`: by default a private tmpfs, writable and discarded with the
-    // sandbox. When a session-scoped scratch root is set, bind it over `/tmp`
-    // instead (the tmpfs would shadow it), so scratch files persist across
-    // `bash` calls for the whole run.
-    if let Some(scratch) = &policy.scratch_root {
-        let scratch = scratch.to_string_lossy();
-        push(&mut args, &["--bind", &scratch, "/tmp"]);
-    } else {
-        push(&mut args, &["--tmpfs", "/tmp"]);
-    }
+    // `/tmp`: always a private tmpfs, writable and discarded with the sandbox,
+    // so the shell never sees the machine's other temp files. Work that must
+    // persist goes in the scratch, bound at its real path below.
+    push(&mut args, &["--tmpfs", "/tmp"]);
 
     // An empty tmpfs over $HOME hides user files without needing a deny rule.
     // The workspace is re-bound on top, so it survives while its siblings (the
@@ -948,6 +988,26 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     for root in &policy.write_roots {
         let root = root.to_string_lossy();
         push(&mut args, &["--bind", &root, &root]);
+    }
+    // The scratch at its real path, so the name the shell uses (`TMPDIR`)
+    // also exists outside the sandbox: an escalated command and the file tools
+    // see the same files. After the `/tmp` and `$HOME`/data-folder tmpfs masks,
+    // which would hide it again (it lives in the host temp dir), and before
+    // the workspace bind, like the roots above.
+    if let Some(scratch) = &policy.scratch_root {
+        let scratch = scratch.to_string_lossy();
+        push(&mut args, &["--bind", &scratch, &scratch]);
+    }
+
+    // The project's package cache, at its real path, after the `$HOME` tmpfs
+    // (it lives in the user's cache folder) and before the workspace bind,
+    // like the roots above; every cache variable points into it.
+    if let Some(pkg) = &policy.pkg_cache {
+        let pkg = pkg.to_string_lossy();
+        push(&mut args, &["--bind", &pkg, &pkg]);
+    }
+    for (name, dir) in pkg_cache_env(policy) {
+        push(&mut args, &["--setenv", name, &dir.to_string_lossy()]);
     }
 
     push(&mut args, &["--bind", &ws, &ws]);
@@ -1060,6 +1120,14 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
         p.push_str(
             "(allow file-read* (subpath (param \"SCRATCH\")))\n\
              (allow file-write* (subpath (param \"SCRATCH\")))\n",
+        );
+    }
+    // The project's package cache, by name for the same reason: it sits in
+    // `~/Library/Caches`, under the home denial above.
+    if policy.pkg_cache.is_some() {
+        p.push_str(
+            "(allow file-read* (subpath (param \"PKG_CACHE\")))\n\
+             (allow file-write* (subpath (param \"PKG_CACHE\")))\n",
         );
     }
     // After the HOME/MASK denials, so an attached folder inside either is read
@@ -1217,10 +1285,20 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     if let Some(scratch) = &policy.scratch_root {
         args.push(format!("-DSCRATCH={}", scratch.to_string_lossy()));
     }
+    if let Some(pkg) = &policy.pkg_cache {
+        args.push(format!("-DPKG_CACHE={}", pkg.to_string_lossy()));
+    }
     if let Some(home) = home_dir() {
         args.push(format!("-DHOME_ROOT={}", home.to_string_lossy()));
     }
     args.push("--".to_string());
+    // sandbox-exec has no `--setenv`: the cache variables go through `env`,
+    // inside the sandbox, so only the confined command sees them.
+    let cache_env = pkg_cache_env(policy);
+    if !cache_env.is_empty() {
+        args.push("/usr/bin/env".to_string());
+        args.extend(cache_env.iter().map(|(name, dir)| format!("{name}={}", dir.to_string_lossy())));
+    }
     args.push(cfg.program.to_string_lossy().to_string());
     args.extend(cfg.args.iter().cloned());
     args
@@ -2535,21 +2613,72 @@ mod tests {
         assert!(text.contains("--tmpfs /tmp"));
     }
 
+    /// The scratch is bound at its own path, never over `/tmp`, so the name the
+    /// shell uses exists outside the sandbox too (an escalated command, the file
+    /// tools). `/tmp` stays a throwaway tmpfs, mounted before the scratch so a
+    /// scratch inside the host temp dir is not hidden by it, and the scratch is
+    /// bound before the workspace, like the attached roots.
     #[test]
-    fn bwrap_binds_scratch_over_tmp_instead_of_a_tmpfs() {
-        let scratch = Path::new("/data/agent-workspace/threads/t1/agent-scratch");
-        let scratch_bind = format!("--bind {} /tmp", scratch.to_string_lossy());
+    fn bwrap_binds_the_scratch_at_its_real_path() {
+        let scratch = Path::new("/tmp/jan-agent-s1");
+        let s = scratch.to_string_lossy();
 
-        // Default: a throwaway tmpfs per command, no scratch bind.
         let default = joined(&bwrap_args(&policy(), &cfg()));
         assert!(default.contains("--tmpfs /tmp"), "{default}");
-        assert!(!default.contains(&scratch_bind), "{default}");
+        assert!(!default.contains(&format!("--bind {s}")), "{default}");
 
-        // With a scratch root, /tmp is a real bind so files written there by one
-        // bash call survive into the next.
         let bound = joined(&bwrap_args(&policy().with_scratch_root(scratch), &cfg()));
-        assert!(!bound.contains("--tmpfs /tmp"), "{bound}");
-        assert!(bound.contains(&scratch_bind), "{bound}");
+        assert!(!bound.contains(&format!("--bind {s} /tmp ")), "{bound}");
+        let tmp = bound.find("--tmpfs /tmp ").expect(&bound);
+        let at = bound.find(&format!("--bind {s} {s} ")).expect(&bound);
+        let ws = bound.find("--bind /data/agent-workspace/threads/t1 ").expect(&bound);
+        assert!(tmp < at && at < ws, "{bound}");
+    }
+
+    /// The project's package cache is bound read-write at its real path after
+    /// the `$HOME` tmpfs (it lives in the user's cache folder) and before the
+    /// workspace, and every cache variable is set inside the sandbox only.
+    #[test]
+    fn bwrap_binds_the_package_cache_and_points_the_cache_env_at_it() {
+        let pkg = Path::new("/home/u/.cache/flint/pkg/proj-0123456789ab");
+        let p = pkg.to_string_lossy();
+        let plain = joined(&bwrap_args(&policy(), &cfg()));
+        assert!(!plain.contains("--setenv"), "{plain}");
+        let text = joined(&bwrap_args(&policy().with_pkg_cache(pkg), &cfg()));
+        let bind = text.find(&format!("--bind {p} {p} ")).expect(&text);
+        let ws = text.find("--bind /data/agent-workspace/threads/t1 ").expect(&text);
+        assert!(bind < ws, "{text}");
+        if let Some(home) = home_dir() {
+            let mask = text.find(&format!("--tmpfs {} ", home.to_string_lossy())).expect(&text);
+            assert!(mask < bind, "{text}");
+        }
+        for (name, sub) in PKG_CACHE_ENV {
+            assert!(
+                text.contains(&format!("--setenv {name} {}", pkg.join(sub).to_string_lossy())),
+                "{name}: {text}"
+            );
+        }
+        assert!(text.contains("npm_config_cache") && text.contains("PIP_CACHE_DIR"), "{text}");
+        assert!(!text.contains("CARGO_HOME"), "{text}");
+    }
+
+    /// Seatbelt grants the package cache by parameter, after the home denial,
+    /// and sets the cache variables through `env` inside the sandbox.
+    #[test]
+    fn seatbelt_grants_the_package_cache_and_sets_its_env_inside() {
+        let pkg = Path::new("/Users/u/Library/Caches/flint/pkg/proj-0123456789ab");
+        let with = policy().with_pkg_cache(pkg);
+        let profile = seatbelt_policy(&with);
+        assert!(profile.contains("(allow file-write* (subpath (param \"PKG_CACHE\")))"), "{profile}");
+        assert!(!seatbelt_policy(&policy()).contains("PKG_CACHE"));
+        let args = seatbelt_args(&with, &cfg());
+        assert!(args.iter().any(|a| a == &format!("-DPKG_CACHE={}", pkg.to_string_lossy())));
+        let sep = args.iter().position(|a| a == "--").expect("separator");
+        assert_eq!(args[sep + 1], "/usr/bin/env");
+        let npm = format!("npm_config_cache={}", pkg.join("npm").to_string_lossy());
+        assert!(args[sep + 1..].contains(&npm), "{args:?}");
+        let plain = seatbelt_args(&policy(), &cfg());
+        assert!(!plain.iter().any(|a| a == "/usr/bin/env"), "{plain:?}");
     }
 
     #[test]
@@ -2636,22 +2765,17 @@ mod tests {
         assert!(!args.iter().any(|a| a.starts_with("-DSCRATCH=")));
     }
 
-    /// What `TMPDIR` must say inside the sandbox: bubblewrap binds the scratch
-    /// over `/tmp`, so the host path is meaningless there; the other backends
-    /// have no mount, so the real path is the only one that resolves.
+    /// What `TMPDIR` says inside the sandbox: the scratch's real path under
+    /// every backend, the same name it has outside.
     #[test]
-    fn scratch_env_path_follows_what_the_backend_actually_mounts() {
+    fn scratch_env_path_is_the_real_path_under_every_backend() {
         let scratch = Path::new("/var/scratch/jan-agent-s1");
         let with = policy().with_scratch_root(scratch);
-        assert_eq!(
-            scratch_env_path(Backend::Bubblewrap, &with).as_deref(),
-            Some(Path::new("/tmp"))
-        );
-        for backend in [Backend::Seatbelt, Backend::AppContainer] {
+        for backend in [Backend::Bubblewrap, Backend::Seatbelt, Backend::AppContainer] {
             assert_eq!(
                 scratch_env_path(backend, &with).as_deref(),
                 Some(scratch),
-                "{backend:?} has no mount, so the real path is the scratch"
+                "{backend:?}"
             );
         }
         // No scratch, nothing to point at: the shell keeps the default temp dir.
@@ -3395,25 +3519,56 @@ mod enforcement_tests {
     }
 
     #[tokio::test]
-    async fn scratch_persists_across_bash_calls_when_bound_over_tmp() {
+    async fn scratch_persists_across_bash_calls_at_its_real_path() {
         require_backend!();
         let ws = workspace();
         let scratch = ws.join("agent-scratch");
         std::fs::create_dir_all(&scratch).unwrap();
         let policy = Policy::new(&ws, false).with_scratch_root(&scratch);
 
-        // Write into /tmp in the first call, then read it back in a second,
-        // separate sandboxed process. This is exactly the pattern the fix
-        // exists for: a scratch pad that outlives a single bash invocation.
-        let (ok, out) = run_policy(policy.clone(), &ws, "echo persistent > /tmp/scratch.txt").await;
+        // Write through `$TMPDIR` in the first call, then read it back in a
+        // second, separate sandboxed process: a scratch pad that outlives a
+        // single bash invocation, at the path it has on the host too.
+        let (ok, out) = run_policy(
+            policy.clone(),
+            &ws,
+            "echo persistent > \"$TMPDIR/scratch.txt\" && echo \"$TMPDIR\"",
+        )
+        .await;
         assert!(ok, "scratch write must succeed: {out}");
-        let (ok, out) = run_policy(policy, &ws, "cat /tmp/scratch.txt").await;
+        assert!(out.contains(&*scratch.to_string_lossy()), "TMPDIR is the real path: {out}");
+        let on_host = std::fs::read_to_string(scratch.join("scratch.txt")).unwrap_or_default();
+        let (ok, out) = run_policy(policy, &ws, "cat \"$TMPDIR/scratch.txt\"").await;
         let _ = std::fs::remove_dir_all(&ws);
+        assert!(on_host.contains("persistent"), "the host sees the same file");
         assert!(ok, "scratch read must succeed: {out}");
         assert!(
             out.contains("persistent"),
             "scratch must survive a second bash call: {out}"
         );
+    }
+
+    /// The package cache is writable from inside the sandbox, the cache
+    /// variables name it, and what a command caches there is on the host for
+    /// the next call (the point: no re-download per call).
+    #[tokio::test]
+    async fn the_package_cache_is_writable_and_named_by_the_cache_env() {
+        require_backend!();
+        let ws = workspace();
+        let pkg = ws.join("pkg-cache");
+        std::fs::create_dir_all(&pkg).unwrap();
+        let policy = Policy::new(&ws, false).with_pkg_cache(&pkg);
+        let (ok, out) = run_policy(
+            policy,
+            &ws,
+            "mkdir -p \"$npm_config_cache\" && echo cached > \"$npm_config_cache/probe\" && echo \"$PIP_CACHE_DIR\"",
+        )
+        .await;
+        let on_host = std::fs::read_to_string(pkg.join("npm/probe")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(ok, "cache write must succeed: {out}");
+        assert!(out.contains(&*pkg.join("pip").to_string_lossy()), "{out}");
+        assert!(on_host.contains("cached"), "the host keeps the cache: {out}");
     }
 
     #[tokio::test]

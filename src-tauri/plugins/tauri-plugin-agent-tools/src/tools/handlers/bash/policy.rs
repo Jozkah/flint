@@ -63,6 +63,17 @@ pub(crate) fn build_bash_policy(ctx: &ToolContext<'_>, roots: &AnchoredRoots) ->
     if let Some(scratch) = roots.scratch.as_deref() {
         policy = policy.with_scratch_root(scratch);
     }
+    // Linux and macOS: the project's own package caches, so a build in the
+    // sandbox neither fails on a masked `$HOME` nor re-downloads every call.
+    // Skipped (never fatal) when the folder cannot be made.
+    if ctx.sandbox {
+        if let Some(dir) = crate::workspace::pkg_cache_dir(root) {
+            match std::fs::create_dir_all(&dir) {
+                Ok(()) => policy = policy.with_pkg_cache(&dir),
+                Err(e) => eprintln!("package cache {} unavailable: {e}", dir.display()),
+            }
+        }
+    }
     if !read_abs.is_empty() {
         policy = policy.with_read_roots(read_abs.clone());
     }

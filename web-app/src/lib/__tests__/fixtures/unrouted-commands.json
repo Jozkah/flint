@@ -268,6 +268,7 @@
   ],
   "agent_copy_changes": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/components/shell/nav/CoworkSessionMark.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
@@ -275,9 +276,9 @@
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/coworkSessions/updatesSlice.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
-    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
@@ -287,7 +288,7 @@
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
-    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via useCoworkWorktrees)",
     "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
@@ -299,14 +300,15 @@
   ],
   "agent_copy_discard": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/components/shell/nav/CoworkSessionMark.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/coworkSessions/updatesSlice.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
-    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
@@ -315,7 +317,7 @@
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
-    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via useCoworkWorktrees)",
     "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
@@ -345,7 +347,7 @@
     "web-app/src/containers/CoworkStopMenu.tsx",
     "web-app/src/containers/EmergencyStop.tsx",
     "web-app/src/lib/coworkDispatch.ts (via stopBackendCall)",
-    "web-app/src/lib/remote/appActions.ts",
+    "web-app/src/lib/remote/appActionsStop.ts",
     "web-app/src/lib/toolCallStop.ts"
   ],
   "agent_events_export": [
@@ -460,7 +462,7 @@
     "web-app/src/lib/hydrateStores.ts (via usePrStatusStore)",
     "web-app/src/lib/prClaimBackfill.ts (via usePrStatusStore)",
     "web-app/src/lib/remote/push.ts (via usePrStatusStore)",
-    "web-app/src/lib/remote/sources.ts (via usePrStatusStore)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via usePrStatusStore)",
     "web-app/src/stores/pr-status-store.ts"
   ],
   "agent_projects_list": [
@@ -475,12 +477,12 @@
   "agent_prompt_snapshots": [
     "web-app/src/containers/CoworkTranscript.tsx (via PromptSnapshotView)",
     "web-app/src/containers/PromptSnapshotView.tsx",
-    "web-app/src/containers/ThreadConversation.tsx (via WhatJanIsUsingPanel)",
     "web-app/src/containers/WhatJanIsUsing.tsx",
-    "web-app/src/containers/WhatJanIsUsing.tsx (via PromptSnapshotView)"
+    "web-app/src/containers/WhatJanIsUsing.tsx (via PromptSnapshotView)",
+    "web-app/src/containers/threadConversation/ThreadConversationView.tsx (via WhatJanIsUsingPanel)"
   ],
   "agent_prompt_snapshots_delete": [
-    "web-app/src/hooks/useCoworkSessions.ts (via deletePromptSnapshots)",
+    "web-app/src/hooks/coworkSessions/lifecycleSlice.ts (via deletePromptSnapshots)",
     "web-app/src/lib/promptSnapshotRetention.ts"
   ],
   "agent_proposal_from_worktree": [
@@ -622,14 +624,15 @@
   ],
   "agent_worktree_ensure": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/components/shell/nav/CoworkSessionMark.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/coworkSessions/updatesSlice.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
-    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
@@ -638,7 +641,7 @@
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
-    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via useCoworkWorktrees)",
     "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
@@ -649,14 +652,15 @@
   ],
   "agent_worktree_optimize": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/components/shell/nav/CoworkSessionMark.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/coworkSessions/updatesSlice.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
-    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
@@ -665,21 +669,22 @@
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
-    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via useCoworkWorktrees)",
     "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
   ],
   "agent_worktree_resume": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/components/shell/nav/CoworkSessionMark.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/coworkSessions/updatesSlice.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
-    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
@@ -688,7 +693,7 @@
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
-    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sourcesSessions.ts (via useCoworkWorktrees)",
     "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
@@ -796,7 +801,7 @@
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "attribute_git_call": [
-    "web-app/src/containers/ThreadConversation.tsx (via attributeGitInput)",
+    "web-app/src/lib/chat/chatToolLoop.ts (via attributeGitInput)",
     "web-app/src/lib/cowork/approvalGate.ts (via attributeGitInput)",
     "web-app/src/lib/gitAttribution.ts"
   ],
@@ -871,6 +876,7 @@
     "web-app/src/containers/ThreadConversation.tsx (via closeBrowserSession)",
     "web-app/src/lib/agentTools.ts (via closeBrowserSession)",
     "web-app/src/lib/browserTool.ts",
+    "web-app/src/lib/chat/chatToolLoop.ts (via closeBrowserSession)",
     "web-app/src/lib/cowork/run/runRequest.ts (via closeBrowserSession)",
     "web-app/src/lib/cowork/run/settleRun.ts (via closeBrowserSession)"
   ],
@@ -1228,14 +1234,14 @@
     "web-app/src/components/TokenCounter.tsx (via getCompactionPolicy)",
     "web-app/src/containers/ChatDetailsCards.tsx (via getCompactionPolicy)",
     "web-app/src/containers/CompactionPolicySettings.tsx (via getCompactionPolicy)",
-    "web-app/src/containers/ThreadConversation.tsx (via getCompactionPolicy)",
     "web-app/src/containers/WhatJanIsUsing.tsx (via getCompactionPolicy)",
     "web-app/src/hooks/cowork/useCoworkRunActions.ts (via getCompactionPolicy)",
+    "web-app/src/hooks/threadConversation/useChatCompaction.ts (via getCompactionPolicy)",
     "web-app/src/lib/chat/transport/overflowRecovery.ts (via getCompactionPolicy)",
     "web-app/src/lib/compactionPolicy.ts",
     "web-app/src/lib/cowork/run/runRequest.ts (via getCompactionPolicy)",
     "web-app/src/lib/custom-chat-transport.ts (via getCompactionPolicy)",
-    "web-app/src/lib/remote/appExtras.ts (via getCompactionPolicy)",
+    "web-app/src/lib/remote/appExtrasChat.ts (via getCompactionPolicy)",
     "web-app/src/lib/rooms/compactionSettings.ts (via getCompactionPolicy)"
   ],
   "get_computer_exclusions": [
@@ -1246,6 +1252,12 @@
     "web-app/src/services/app/tauri.ts"
   ],
   "get_mcp_auth_status": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_mcp_budget_report": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_mcp_prompt": [
     "web-app/src/services/mcp/tauri.ts"
   ],
   "get_mcp_server_log": [
@@ -1269,71 +1281,8 @@
     "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
   ],
   "get_thread_assistant": [
-    "web-app/src/components/shell/HeaderLiveChips.tsx (via useThreads)",
-    "web-app/src/components/shell/TopHeader.tsx (via useThreads)",
-    "web-app/src/components/shell/nav/ChatsNav.tsx (via useThreads)",
-    "web-app/src/containers/BulkConversationsCard.tsx (via useThreads)",
-    "web-app/src/containers/BulkKindDialog.tsx (via useThreads)",
-    "web-app/src/containers/ChatFoldersChip.tsx (via useThreads)",
-    "web-app/src/containers/ChatInput.tsx (via useThreads)",
-    "web-app/src/containers/CommandPalette.tsx (via useThreads)",
-    "web-app/src/containers/DropdownModelProvider.tsx (via useThreads)",
-    "web-app/src/containers/DropdownToolsAvailable.tsx (via useThreads)",
-    "web-app/src/containers/GettingStartedCard.tsx (via useThreads)",
-    "web-app/src/containers/NewTemporaryChatButton.tsx (via useThreads)",
-    "web-app/src/containers/SetupScreen.tsx (via useThreads)",
-    "web-app/src/containers/SplitConversation.tsx (via useThreads)",
-    "web-app/src/containers/ThreadConversation.tsx (via useThreads)",
-    "web-app/src/containers/ThreadList.tsx (via useThreads)",
-    "web-app/src/containers/WhatJanIsUsing.tsx (via useThreads)",
-    "web-app/src/containers/dialogs/DeleteProjectDialog.tsx (via useThreads)",
-    "web-app/src/containers/dialogs/SearchDialog.tsx (via useThreads)",
-    "web-app/src/containers/permissions/ConversationGrantsSection.tsx (via useThreads)",
-    "web-app/src/containers/settings-data/DataImportCard.tsx (via useThreads)",
-    "web-app/src/hooks/useActiveMessages.ts (via useThreads)",
-    "web-app/src/hooks/useAssistant.ts (via useThreads)",
-    "web-app/src/hooks/useChatMemoryBinding.ts (via useThreads)",
-    "web-app/src/hooks/useComposerSend.ts (via useThreads)",
-    "web-app/src/hooks/useConversationPane.ts (via useThreads)",
-    "web-app/src/hooks/useMemoryConversations.ts (via useThreads)",
-    "web-app/src/hooks/useNestStatus.ts (via useThreads)",
-    "web-app/src/hooks/useSplitPaneTitle.ts (via useThreads)",
-    "web-app/src/hooks/useTemporaryChat.ts (via useThreads)",
-    "web-app/src/hooks/useThreadManagement.ts (via useThreads)",
-    "web-app/src/hooks/useThreads.ts",
-    "web-app/src/hooks/useTokensCount.ts (via useThreads)",
-    "web-app/src/hooks/useWindowTitle.ts (via useThreads)",
-    "web-app/src/lib/archiveRestore.ts (via useThreads)",
-    "web-app/src/lib/branchSelect.ts (via useThreads)",
-    "web-app/src/lib/bulkConversationsDeps.ts (via useThreads)",
-    "web-app/src/lib/chat/transport/promptBuilder.ts (via useThreads)",
-    "web-app/src/lib/chat/transport/toolRefresh.ts (via useThreads)",
-    "web-app/src/lib/chatCompaction.ts (via useThreads)",
-    "web-app/src/lib/chatDelegation.ts (via useThreads)",
-    "web-app/src/lib/chatFolders.ts (via useThreads)",
-    "web-app/src/lib/chatMentionSources.ts (via useThreads)",
-    "web-app/src/lib/continueFromSummary.ts (via useThreads)",
-    "web-app/src/lib/convertChatToCowork.ts (via useThreads)",
-    "web-app/src/lib/custom-chat-transport.ts (via useThreads)",
-    "web-app/src/lib/forkThread.ts (via useThreads)",
-    "web-app/src/lib/grandfatherFolderTrust.ts (via useThreads)",
-    "web-app/src/lib/groups/homeMirror.ts (via useThreads)",
-    "web-app/src/lib/nestPrune.ts (via useThreads)",
-    "web-app/src/lib/persistInterruptedReplies.ts (via useThreads)",
-    "web-app/src/lib/projectMcpServers.ts (via useThreads)",
-    "web-app/src/lib/regenerateTitle.ts (via useThreads)",
-    "web-app/src/lib/remote/appActions.ts (via useThreads)",
-    "web-app/src/lib/remote/appExtras.ts (via useThreads)",
-    "web-app/src/lib/remote/mobileMutations.ts (via useThreads)",
-    "web-app/src/lib/remote/push.ts (via useThreads)",
-    "web-app/src/lib/remote/sources.ts (via useThreads)",
-    "web-app/src/lib/routed-chat-transport.ts (via useThreads)",
-    "web-app/src/lib/threadDocuments.ts (via useThreads)",
-    "web-app/src/lib/threadPreview.ts (via useThreads)",
-    "web-app/src/providers/dataProviderHooks.ts (via useThreads)",
-    "web-app/src/routes/index.tsx (via useThreads)",
-    "web-app/src/routes/project/$projectId.tsx (via useThreads)",
-    "web-app/src/routes/settings/general.tsx (via useThreads)"
+    "web-app/src/hooks/threads/creationSlice.ts",
+    "web-app/src/hooks/useThreads.ts (via threadCreationSlice)"
   ],
   "get_titlebar_layout": [
     "web-app/src/components/WindowControls.tsx",
@@ -1398,6 +1347,9 @@
   "launch_claude_code_with_config": [
     "web-app/src/containers/ClaudeCodeSettings.tsx",
     "web-app/src/routes/settings/integrations.tsx (via ClaudeCodeSettings)"
+  ],
+  "list_mcp_prompts": [
+    "web-app/src/services/mcp/tauri.ts"
   ],
   "list_open_apps": [
     "web-app/src/containers/ComputerExclusionSettings.tsx (via listOpenApps)",
@@ -1697,9 +1649,6 @@
     "web-app/src/containers/McpElicitationCard.tsx (via respondToElicitation)",
     "web-app/src/hooks/useMcpElicitation.ts"
   ],
-  "get_mcp_budget_report": [
-    "web-app/src/services/mcp/tauri.ts"
-  ],
   "mcp_forget_server": [
     "web-app/src/services/mcp/tauri.ts"
   ],
@@ -1953,7 +1902,7 @@
     "web-app/src/containers/CoworkDetailsBody.tsx (via projectListDir)",
     "web-app/src/hooks/useCodePanelFiles.ts (via projectListDir)",
     "web-app/src/hooks/useCompatManifest.ts (via projectListDir)",
-    "web-app/src/lib/remote/appExtras.ts (via projectListDir)",
+    "web-app/src/lib/remote/appExtrasCowork.ts (via projectListDir)",
     "web-app/src/lib/safeReferences.ts (via projectListDir)"
   ],
   "plugin:agent-tools|project_read_file": [
@@ -1963,7 +1912,7 @@
     "web-app/src/hooks/cowork/useCoworkPathActions.ts (via projectReadFile)",
     "web-app/src/hooks/useCodePanelFiles.ts (via projectReadFile)",
     "web-app/src/hooks/useCompatManifest.ts (via projectReadFile)",
-    "web-app/src/lib/remote/appExtras.ts (via projectReadFile)",
+    "web-app/src/lib/remote/appExtrasCowork.ts (via projectReadFile)",
     "web-app/src/lib/safeReferences.ts (via projectReadFile)"
   ],
   "plugin:agent-tools|project_survey": [
@@ -2057,9 +2006,11 @@
     "web-app/src/lib/agentWorkspace.ts (via workspacePath)"
   ],
   "plugin:hardware|get_system_snapshot": [
+    "src-tauri/plugins/tauri-plugin-hardware/guest-js/index.ts",
     "web-app/src/services/hardware/tauri.ts"
   ],
   "plugin:hardware|refresh_system_info": [
+    "src-tauri/plugins/tauri-plugin-hardware/guest-js/index.ts",
     "web-app/src/services/hardware/tauri.ts"
   ],
   "plugin:llamacpp|cancel_model_load": [
@@ -2244,8 +2195,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_confirm_pairing": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2253,8 +2205,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_emit_event": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2262,8 +2215,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_get_status": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2271,8 +2225,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_list_devices": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2280,8 +2235,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_revoke_device": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2289,8 +2245,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_rpc_respond": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2298,8 +2255,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_set_config": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2307,8 +2265,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_set_preview": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2316,8 +2275,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_start_pairing": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2325,8 +2285,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "remote_upload_take": [
     "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
@@ -2334,8 +2295,9 @@
     "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
     "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
     "web-app/src/lib/remote/api.ts",
-    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
-    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+    "web-app/src/lib/remote/appActionsAnswers.ts (via remoteApi)",
+    "web-app/src/lib/remote/appActionsSend.ts (via remoteApi)",
+    "web-app/src/lib/remote/sourcesApp.ts (via remoteApi)"
   ],
   "rename_mcp_server": [
     "web-app/src/services/mcp/tauri.ts"
@@ -2387,7 +2349,7 @@
     "web-app/src/services/dialog/tauri.ts"
   ],
   "scan_local_models": [
-    "web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx (via scanLocalModels)",
+    "web-app/src/hooks/useModelFolderScan.ts (via scanLocalModels)",
     "web-app/src/lib/localModelScan.ts"
   ],
   "schedule_cancel_run": [
@@ -2598,7 +2560,7 @@
     "web-app/src/lib/toolActivity.ts"
   ],
   "tool_activity_record": [
-    "web-app/src/containers/ThreadConversation.tsx (via recordToolActivity)",
+    "web-app/src/lib/chat/chatToolLoop.ts (via recordToolActivity)",
     "web-app/src/lib/cowork/approvalGate.ts (via recordToolActivity)",
     "web-app/src/lib/coworkChildRunner.ts (via recordToolActivity)",
     "web-app/src/lib/coworkDispatch.ts (via recordToolActivity)",

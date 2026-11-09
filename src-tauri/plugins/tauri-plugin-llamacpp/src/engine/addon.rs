@@ -45,6 +45,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use jan_utils::fs_retry::rename_retrying_blocking;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -772,16 +773,18 @@ pub fn install_pack(
     let target = install_dir(root, &manifest.kind, &manifest.release_tag);
     let backup = root.join(format!(".old-{}", random_suffix()));
     let had_old = target.exists();
+    // Each rename waits out a transient lock: on Windows, Defender scans the
+    // freshly extracted libraries and holds them for seconds.
     if had_old {
-        if let Err(e) = fs::rename(&target, &backup) {
+        if let Err(e) = rename_retrying_blocking(&target, &backup) {
             let _ = fs::remove_dir_all(&staging);
             return Err(e.into());
         }
     }
-    if let Err(e) = fs::rename(&staging, &target) {
+    if let Err(e) = rename_retrying_blocking(&staging, &target) {
         // Roll back: the old add-on goes back where it was.
         if had_old {
-            let _ = fs::rename(&backup, &target);
+            let _ = rename_retrying_blocking(&backup, &target);
         }
         let _ = fs::remove_dir_all(&staging);
         return Err(e.into());

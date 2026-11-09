@@ -10,7 +10,8 @@
     "pluginNamed": "Plugin {{plugin}}",
     "skill": "Skill",
     "builtin": "integriert",
-    "prompt": "Prompt"
+    "prompt": "Prompt",
+    "mcp": "MCP-Prompt"
   },
   "scope": {
     "project": "Projekt",

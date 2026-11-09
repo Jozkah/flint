@@ -10,7 +10,8 @@
     "pluginNamed": "{{plugin}} eklentisi",
     "skill": "beceri",
     "builtin": "yerleşik",
-    "prompt": "istem"
+    "prompt": "istem",
+    "mcp": "MCP istemi"
   },
   "scope": {
     "project": "proje",

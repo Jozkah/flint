@@ -3607,5 +3607,11 @@
     "uploadFailed": "Could not upload {{name}}",
     "mcpSignInNeedsDesktop": "Signing in to an MCP server needs a browser on the machine running Flint. Do it from the desktop app.",
     "embeddingsUnavailable": "Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead."
+  },
+  "mcpPrompts": {
+    "from": "Výzva ze serveru MCP {{server}}.",
+    "empty": "Výzva {{name}} se vrátila prázdná.",
+    "failed": "Výzvu {{name}} se nepodařilo získat",
+    "omitted": "Části této výzvy, které editor zprávy nepojme (zvuk nebo binární soubory), byly vynechány: {{count}}."
   }
 }

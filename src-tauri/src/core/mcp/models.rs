@@ -522,3 +522,202 @@ pub fn render_prompt(result: &rmcp::model::GetPromptResult) -> String {
     }
     out
 }
+
+/// One argument a server's prompt declares, as the desktop's fill-in form
+/// shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptArgument {
+    pub name: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub required: bool,
+}
+
+/// A prompt a connected server offers, tagged with that server.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptInfo {
+    pub server: String,
+    pub name: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub arguments: Vec<McpPromptArgument>,
+}
+
+/// The prompts one server listed, in the shape the web app reads.
+pub fn prompts_with_server(server: &str, prompts: Vec<rmcp::model::Prompt>) -> Vec<McpPromptInfo> {
+    prompts
+        .into_iter()
+        .map(|p| McpPromptInfo {
+            server: server.to_string(),
+            name: p.name,
+            title: p.title,
+            description: p.description,
+            arguments: p
+                .arguments
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| McpPromptArgument {
+                    name: a.name,
+                    title: a.title,
+                    description: a.description,
+                    required: a.required.unwrap_or(false),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// An image a prompt message carries, base64 as the server sent it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptImage {
+    pub data: String,
+    pub mime_type: String,
+}
+
+/// One message of a filled-in prompt: its role and its text or image.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptMessage {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<McpPromptImage>,
+}
+
+/// A filled-in prompt for the composer. The server's content is handed on as
+/// the user's draft, never merged into the harness's own instructions.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptContent {
+    pub description: Option<String>,
+    pub messages: Vec<McpPromptMessage>,
+    /// Parts the composer cannot hold (audio, binary resources), left out.
+    pub omitted: usize,
+}
+
+/// Text and images from a prompt result; an embedded text resource is its
+/// text, a resource link its uri. Audio and binary resources are counted in
+/// `omitted` rather than passed on as raw data.
+pub fn prompt_content(result: rmcp::model::GetPromptResult) -> McpPromptContent {
+    use rmcp::model::{ContentBlock, ResourceContents, Role};
+    let mut omitted = 0;
+    let mut messages = Vec::new();
+    for message in result.messages {
+        let role = match message.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+        }
+        .to_string();
+        let (text, image) = match message.content {
+            ContentBlock::Text(t) => (Some(t.text), None),
+            ContentBlock::Image(i) => (
+                None,
+                Some(McpPromptImage {
+                    data: i.data,
+                    mime_type: i.mime_type,
+                }),
+            ),
+            ContentBlock::Resource(r) => match r.resource {
+                ResourceContents::TextResourceContents { text, .. } => (Some(text), None),
+                _ => (None, None),
+            },
+            ContentBlock::ResourceLink(link) => (Some(link.uri), None),
+            _ => (None, None),
+        };
+        if text.is_none() && image.is_none() {
+            omitted += 1;
+            continue;
+        }
+        messages.push(McpPromptMessage { role, text, image });
+    }
+    McpPromptContent {
+        description: result.description,
+        messages,
+        omitted,
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::{prompt_content, prompts_with_server, McpPromptArgument, McpPromptImage};
+    use rmcp::model::{
+        ContentBlock, GetPromptResult, Prompt, PromptArgument, PromptMessage, ResourceContents, Role,
+    };
+
+    #[test]
+    fn listed_prompts_carry_their_server_and_arguments() {
+        let mut name = PromptArgument::new("name");
+        name.description = Some("Who to greet".into());
+        name.required = Some(true);
+        let prompts = vec![
+            Prompt::new("greet", Some("Say hello"), Some(vec![name, PromptArgument::new("tone")])),
+            Prompt::new::<_, String>("plain", None, None),
+        ];
+        let listed = prompts_with_server("fixture", prompts);
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].server, "fixture");
+        assert_eq!(listed[0].description.as_deref(), Some("Say hello"));
+        assert_eq!(
+            listed[0].arguments,
+            vec![
+                McpPromptArgument {
+                    name: "name".into(),
+                    title: None,
+                    description: Some("Who to greet".into()),
+                    required: true,
+                },
+                McpPromptArgument {
+                    name: "tone".into(),
+                    title: None,
+                    description: None,
+                    required: false,
+                },
+            ]
+        );
+        assert!(listed[1].arguments.is_empty());
+        let json = serde_json::to_value(&listed[0]).unwrap();
+        assert_eq!(json["arguments"][0]["required"], true);
+    }
+
+    #[test]
+    fn prompt_content_keeps_text_and_images_and_counts_the_rest() {
+        let result = GetPromptResult::new(vec![
+            PromptMessage::new_text(Role::User, "Review this diff."),
+            PromptMessage::new(Role::Assistant, ContentBlock::text("Sure.")),
+            PromptMessage::new(Role::User, ContentBlock::image("AAAA", "image/png")),
+            PromptMessage::new(Role::User, ContentBlock::embedded_text("file:///a.txt", "alpha")),
+            PromptMessage::new(
+                Role::User,
+                ContentBlock::resource(ResourceContents::BlobResourceContents {
+                    uri: "file:///b.bin".into(),
+                    mime_type: None,
+                    blob: "AAAA".into(),
+                    meta: None,
+                }),
+            ),
+            PromptMessage::new(Role::User, ContentBlock::audio("AAAA", "audio/wav")),
+        ])
+        .with_description("A review");
+        let content = prompt_content(result);
+        assert_eq!(content.description.as_deref(), Some("A review"));
+        assert_eq!(content.omitted, 2);
+        let roles: Vec<_> = content.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["user", "assistant", "user", "user"]);
+        assert_eq!(content.messages[0].text.as_deref(), Some("Review this diff."));
+        assert_eq!(
+            content.messages[2].image,
+            Some(McpPromptImage {
+                data: "AAAA".into(),
+                mime_type: "image/png".into()
+            })
+        );
+        assert_eq!(content.messages[3].text.as_deref(), Some("alpha"));
+        let json = serde_json::to_value(&content.messages[2]).unwrap();
+        assert_eq!(json["image"]["mimeType"], "image/png");
+        assert!(json.get("text").is_none());
+    }
+}
