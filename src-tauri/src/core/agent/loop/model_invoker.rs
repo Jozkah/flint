@@ -170,6 +170,10 @@ impl ProvenanceIdentity {
 
 #[async_trait]
 impl ModelInvoker for HttpModelInvoker {
+    fn provider(&self) -> Option<&str> {
+        self.provenance.provider.as_deref().filter(|p| !p.is_empty())
+    }
+
     async fn invoke(
         &self,
         request: &serde_json::Value,
@@ -624,4 +628,5 @@ impl HttpModelInvoker {
             }),
         );
     }
-}
+}
+
