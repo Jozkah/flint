@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::permissions::ToolPermissions;
 use crate::tools::cmdscan::normalize;
-use crate::tools::sandbox::{
-    command_touches_hidden_jan_path_in, escapes_read_roots, escapes_write_roots,
-    is_hidden_jan_path_in,
-};
+// The frozen pre-staging copy the differential tests compare against still
+// calls the unbounded scan.
+#[cfg(test)]
+use crate::tools::sandbox::command_touches_hidden_jan_path_in;
+use crate::tools::sandbox::{escapes_read_roots, escapes_write_roots, is_hidden_jan_path_in};
 use crate::tools::{BuiltinTool, Capability};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -209,6 +210,10 @@ pub enum DenyReason {
     /// of a linked worktree). Hooks and config there are programs git runs
     /// outside the sandbox, so no tool may plant them.
     GitInternals,
+    /// A shell command whose paths could not all be resolved within
+    /// `sandbox::COMMAND_SCAN_BUDGET`. Refused rather than let a check cut
+    /// short read as clean; a simpler command gets through.
+    TooComplex,
     /// A `write`/`edit` into a folder the user attached read-only. Refused
     /// whatever was approved: an allow rule or a session grant approves a
     /// write, not turning a read-only folder writable, so a prompt would only
@@ -877,13 +882,25 @@ fn stage_hidden_paths(c: &GateCtx) -> Option<Decision> {
                 .map(|p| is_hidden_jan_path_in(project_root, write_roots, p))
                 .unwrap_or(false)
         });
-    let exec_hits_hidden = (hide_jan || mutating)
-        && tool.capability == Capability::Exec
-        && args
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(|c| command_touches_hidden_jan_path_in(project_root, write_roots, c))
-            .unwrap_or(false);
+    let exec_hits_hidden = if (hide_jan || mutating) && tool.capability == Capability::Exec {
+        match args.get("command").and_then(|v| v.as_str()) {
+            Some(c) => {
+                let deadline = std::time::Instant::now() + crate::tools::sandbox::COMMAND_SCAN_BUDGET;
+                match crate::tools::sandbox::command_touches_hidden_jan_path_within(
+                    project_root,
+                    write_roots,
+                    c,
+                    deadline,
+                ) {
+                    Some(hit) => hit,
+                    None => return Some(Decision::HardDeny(DenyReason::TooComplex)),
+                }
+            }
+            None => false,
+        }
+    } else {
+        false
+    };
     if hits_hidden || exec_hits_hidden {
         return Some(Decision::HardDeny(DenyReason::Hidden));
     }
@@ -3013,6 +3030,37 @@ mod tests {
         for d in [&root, &repo, &elsewhere] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+
+    /// janhq/jan#9625: the shell's own directory spelled through `/proc` or a
+    /// tilde form still reaches the hidden `.jan`, with or without hiding.
+    #[test]
+    fn the_shells_cwd_spellings_cannot_reach_the_hidden_state() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(".jan/agent")).unwrap();
+        let perms = ToolPermissions::allow_all();
+        let grants = SessionGrants::default();
+        for command in [
+            "/bin/cp x /proc/self/cwd/.jan/agent/hooks.toml",
+            "echo x > ~+/.jan/agent/hooks.toml",
+            "echo x > $OLDPWD/.jan/agent/hooks.toml",
+        ] {
+            for hide in [true, false] {
+                let d = resolve_decision(
+                    lookup("bash").unwrap(),
+                    &json!({ "command": command }),
+                    &root,
+                    None,
+                    &[],
+                    &perms,
+                    &grants,
+                    hide,
+                    &crate::subject::Subject::MainAgent,
+                );
+                assert_eq!(d, Decision::HardDeny(DenyReason::Hidden), "{command} (hide {hide})");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Jozkah/jan#124: the `.jan` of a granted write root (a managed worktree,

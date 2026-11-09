@@ -1619,6 +1619,10 @@ pub(crate) fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::
         DenyReason::GitInternals => format!(
             "ERROR: tool '{name}' refused: it would change a repository's .git folder (hooks, config), which Git runs outside the sandbox. Use the `git` tool for repository changes."
         ),
+        DenyReason::TooComplex => format!(
+            "ERROR: {}",
+            tauri_plugin_agent_tools::tools::too_complex_refusal(name)
+        ),
         DenyReason::ReadOnlyRoot => format!(
             "ERROR: tool '{name}' {}",
             tauri_plugin_agent_tools::tools::read_only_root_refusal("there")
