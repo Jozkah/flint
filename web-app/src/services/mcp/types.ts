@@ -110,6 +110,38 @@ export interface MCPBudgetEntry {
   limitChars: number
 }
 
+/** One argument an MCP prompt declares. */
+export interface MCPPromptArgument {
+  name: string
+  title?: string | null
+  description?: string | null
+  required: boolean
+}
+
+/** A prompt a running MCP server offers (prompts/list). */
+export interface MCPPromptInfo {
+  server: string
+  name: string
+  title?: string | null
+  description?: string | null
+  arguments: MCPPromptArgument[]
+}
+
+/** One message of a filled-in prompt: its text or its image. */
+export interface MCPPromptMessage {
+  role: 'user' | 'assistant'
+  text?: string
+  image?: { data: string; mimeType: string }
+}
+
+/** A filled-in prompt (prompts/get), for the composer. */
+export interface MCPPromptContent {
+  description?: string | null
+  messages: MCPPromptMessage[]
+  /** Parts the composer cannot hold (audio, binary resources), left out. */
+  omitted: number
+}
+
 export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
   /**
@@ -124,6 +156,14 @@ export interface MCPService {
   getToolsForServers(serverNames: string[], options?: ListToolsOptions): Promise<MCPTool[]>
   /** Return name/capabilities/description for all connected servers. */
   getServerSummaries(): Promise<ServerSummary[]>
+  /** Prompts the enabled, running servers offer (MCP prompts/list). */
+  listPrompts(): Promise<MCPPromptInfo[]>
+  /** One prompt filled in with `args` (MCP prompts/get). */
+  getPrompt(
+    server: string,
+    name: string,
+    args?: Record<string, string>
+  ): Promise<MCPPromptContent>
   /** One server's own stderr log, scrubbed and bounded, newest last (AH-140). */
   getServerLog(serverName: string, lines?: number): Promise<string[]>
   getConnectedServers(): Promise<string[]>

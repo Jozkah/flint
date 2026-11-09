@@ -10,7 +10,8 @@
     "pluginNamed": "plugin {{plugin}}",
     "skill": "compétence",
     "builtin": "intégrée",
-    "prompt": "invite"
+    "prompt": "invite",
+    "mcp": "prompt MCP"
   },
   "scope": {
     "project": "projet",

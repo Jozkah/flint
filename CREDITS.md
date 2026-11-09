@@ -20,6 +20,7 @@ When a port lands, its commit credits the upstream author (as the commit author,
 - [@Alphaxiaoteng](https://github.com/Alphaxiaoteng): [janhq/jan#8836](https://github.com/janhq/jan/pull/8836)
 - [@aniketkrs](https://github.com/aniketkrs): [janhq/jan#9150](https://github.com/janhq/jan/pull/9150)
 - [@Ayush7614](https://github.com/Ayush7614): [AtomicBot-ai/Atomic-Chat#234](https://github.com/AtomicBot-ai/Atomic-Chat/pull/234), [AtomicBot-ai/Atomic-Chat#243](https://github.com/AtomicBot-ai/Atomic-Chat/pull/243)
+- [@bytrangle](https://github.com/bytrangle): [janhq/jan#9303](https://github.com/janhq/jan/pull/9303)
 - [@cpius](https://github.com/cpius): [janhq/jan#9188](https://github.com/janhq/jan/pull/9188)
 - [@danyurkin](https://github.com/danyurkin): [AtomicBot-ai/Atomic-Chat#15](https://github.com/AtomicBot-ai/Atomic-Chat/pull/15), [AtomicBot-ai/Atomic-Chat#58](https://github.com/AtomicBot-ai/Atomic-Chat/pull/58), [AtomicBot-ai/Atomic-Chat#300](https://github.com/AtomicBot-ai/Atomic-Chat/pull/300)
 - [@dawNotPoi](https://github.com/dawNotPoi): [janhq/jan#8801](https://github.com/janhq/jan/pull/8801)

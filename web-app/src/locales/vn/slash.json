@@ -10,7 +10,8 @@
     "pluginNamed": "plugin {{plugin}}",
     "skill": "kỹ năng",
     "builtin": "tích hợp sẵn",
-    "prompt": "lời nhắc"
+    "prompt": "lời nhắc",
+    "mcp": "lời nhắc MCP"
   },
   "scope": {
     "project": "dự án",

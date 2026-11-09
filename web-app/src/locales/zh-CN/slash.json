@@ -10,7 +10,8 @@
     "pluginNamed": "插件 {{plugin}}",
     "skill": "技能",
     "builtin": "内置",
-    "prompt": "提示词"
+    "prompt": "提示词",
+    "mcp": "MCP 提示词"
   },
   "scope": {
     "project": "项目",

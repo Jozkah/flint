@@ -35,12 +35,15 @@ export function useComposerSlashCommands({
   slashBuiltins,
   currentThreadId,
   setPrompt,
+  extraBuiltins = [],
 }: {
   slashSurface: SlashSurface
   slashProject?: string | null
   slashBuiltins?: SlashBuiltin[]
   currentThreadId: string | undefined
   setPrompt: (value: string) => void
+  /** Appended after the library prompts (the MCP servers' prompts). */
+  extraBuiltins?: SlashBuiltin[]
 }) {
   const { t } = useTranslation()
   const router = useRouter()
@@ -132,7 +135,11 @@ export function useComposerSlashCommands({
   const slashCommands = useSlashCommands({
     surface: slashSurface,
     project: slashProject,
-    builtins: [...(slashBuiltins ?? defaultSlashBuiltins), ...promptBuiltins],
+    builtins: [
+      ...(slashBuiltins ?? defaultSlashBuiltins),
+      ...promptBuiltins,
+      ...extraBuiltins,
+    ],
     helpDescription: t('slash:builtin.help'),
   })
   return {
