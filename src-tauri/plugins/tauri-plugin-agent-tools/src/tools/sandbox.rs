@@ -562,6 +562,128 @@ pub fn command_touches_hidden_jan_path_in(
             .any(|r| command_touches_hidden_jan_path(r, command))
 }
 
+/// How long the gate may spend resolving one command's paths. Each token is
+/// resolved on disk (links followed), so a command of thousands of deep paths
+/// could hold a tool call for many seconds; past this it is refused as too
+/// complex to check, rather than let a scan cut short read as clean.
+pub const COMMAND_SCAN_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// [`command_touches_hidden_jan_path_in`] within `deadline`: `None` when the
+/// scan ran out of time before it could say, which callers must not read as
+/// "no".
+pub fn command_touches_hidden_jan_path_within(
+    project_root: &Path,
+    write_roots: &[PathBuf],
+    command: &str,
+    deadline: std::time::Instant,
+) -> Option<bool> {
+    for root in std::iter::once(project_root).chain(write_roots.iter().map(PathBuf::as_path)) {
+        if scan_hidden(root, command, Some(deadline))? {
+            return Some(true);
+        }
+    }
+    Some(false)
+}
+
+/// Where a shell token names the shell's own working directory under another
+/// spelling, the rest of the path after it (`""` for the directory itself).
+/// The gate resolves these against the directory the shell starts in, since
+/// resolving them in this process would answer for Jan's own working
+/// directory, not the shell's:
+///
+/// - `~+`, `$PWD`, `${PWD}`: the current directory;
+/// - `~-`, `$OLDPWD`, `${OLDPWD}`: the previous one, which a fresh shell has
+///   not got; checked as the start directory, failing closed;
+/// - `/proc/<anything>/cwd` however the pid and the path to it are spelled
+///   (`self`, `thread-self`, `$$`, `$BASHPID`, a number, `task/<n>`, a `root/`
+///   detour, a `..`), and `/proc/<anything>/fd/<n>` or `/dev/fd/<n>` with a
+///   path after it, since a descriptor can be held open on the directory
+///   (`exec 3<.`).
+fn shell_cwd_alias_rest(token: &str) -> Option<String> {
+    let token = token.replace('\\', "/");
+    for alias in ["~+", "~-", "${PWD}", "$PWD", "${OLDPWD}", "$OLDPWD"] {
+        if let Some(rest) = token.strip_prefix(alias) {
+            // `~-0`, `~+1`: the directory stack, which a fresh shell does not
+            // have past its start either.
+            let rest = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+            if rest.is_empty() {
+                return Some(String::new());
+            }
+            // `$PWDX` is another variable, not `$PWD` and an X.
+            if let Some(rest) = rest.strip_prefix('/') {
+                return Some(rest.to_string());
+            }
+        }
+    }
+    let squeezed = {
+        let mut out = String::with_capacity(token.len());
+        for c in token.chars() {
+            if !(c == '/' && out.ends_with('/')) {
+                out.push(c);
+            }
+        }
+        out
+    };
+    if !(squeezed.starts_with("/proc/") || squeezed.starts_with("/dev/fd/")) {
+        return None;
+    }
+    let parts: Vec<&str> = squeezed.split('/').filter(|p| !p.is_empty() && *p != ".").collect();
+    // The last `cwd`, or `fd/<n>` with a path after it: whatever came before is
+    // some spelling of a process, and only what follows names a file.
+    let mut cut = None;
+    for (i, part) in parts.iter().enumerate() {
+        let fd_then_path = *part == "fd"
+            && parts.get(i + 1).is_some_and(|n| n.chars().all(|c| c.is_ascii_digit() || c == '$' || c == '{' || c == '}'))
+            && i + 2 < parts.len();
+        if *part == "cwd" {
+            cut = Some(i + 1);
+        } else if fd_then_path {
+            cut = Some(i + 2);
+        }
+    }
+    cut.map(|at| parts[at..].join("/"))
+}
+
+/// The token scan behind [`command_touches_hidden_jan_path`]; `None` when
+/// `deadline` passed before it finished.
+fn scan_hidden(project_root: &Path, command: &str, deadline: Option<std::time::Instant>) -> Option<bool> {
+    let late = || deadline.is_some_and(|d| std::time::Instant::now() >= d);
+    let names = |t: &str| {
+        is_hidden_jan_path(project_root, t)
+            || glob_names_jan(project_root, t)
+            || shell_cwd_alias_rest(t).is_some_and(|rest| {
+                !rest.is_empty()
+                    && (is_hidden_jan_path(project_root, &rest) || glob_names_jan(project_root, &rest))
+            })
+    };
+    let names_jan = |text: &str| -> Option<bool> {
+        for t in text
+            .split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
+            .filter(|t| !t.is_empty())
+        {
+            if late() {
+                return None;
+            }
+            if names(t) {
+                return Some(true);
+            }
+        }
+        Some(false)
+    };
+    if names_jan(command)? {
+        return Some(true);
+    }
+    let dequoted: String = command
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '"' | '\\'))
+        .collect();
+    if names_jan(&dequoted)? {
+        return Some(true);
+    }
+    let substitutes = command.contains('$') || command.contains('`');
+    Some(substitutes && (could_spell_jan(&dequoted) || builds_agent_dir(&dequoted)))
+}
+
 /// True iff a shell command references a hidden path.
 ///
 /// Splits on whitespace and shell metacharacters and checks each token, so
@@ -574,23 +696,8 @@ pub fn command_touches_hidden_jan_path_in(
 /// backticks) out of the pieces of one (`${d}an/agent`). It errs towards
 /// refusing: a false positive costs a rephrased command, a miss costs hooks.
 pub fn command_touches_hidden_jan_path(project_root: &Path, command: &str) -> bool {
-    let names_jan = |text: &str| {
-        text.split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
-            .filter(|t| !t.is_empty())
-            .any(|t| is_hidden_jan_path(project_root, t) || glob_names_jan(project_root, t))
-    };
-    if names_jan(command) {
-        return true;
-    }
-    let dequoted: String = command
-        .chars()
-        .filter(|c| !matches!(c, '\'' | '"' | '\\'))
-        .collect();
-    if names_jan(&dequoted) {
-        return true;
-    }
-    let substitutes = command.contains('$') || command.contains('`');
-    substitutes && (could_spell_jan(&dequoted) || builds_agent_dir(&dequoted))
+    // No deadline here, so the scan always finishes.
+    scan_hidden(project_root, command, None).unwrap_or(true)
 }
 
 /// Whether the text holds a `.j` or `.ja` that a substitution could finish
@@ -1230,6 +1337,68 @@ mod tests {
         assert!(command_touches_hidden_jan_path(&root, "ls -la .jan"));
         assert!(!command_touches_hidden_jan_path(&root, "cat JAN.md"));
         assert!(!command_touches_hidden_jan_path(&root, "ls -la src"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// janhq/jan#9625: the shell's own directory spelled another way. Resolved
+    /// in this process, `/proc/self/cwd` would name Jan's working directory,
+    /// not the shell's, so `cat /proc/self/cwd/.jan/...` read as harmless.
+    /// Every spelling is checked against the directory the shell starts in.
+    #[test]
+    fn command_scan_resolves_the_shells_cwd_spellings() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(".jan/agent")).unwrap();
+        for command in [
+            "/bin/cat /proc/self/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/thread-self/cwd/.jan/agent/agent.toml",
+            "/bin/cat //proc/./self/cwd/.jan/agent/agent.toml",
+            "/bin/tar cf /dev/null /proc/self/cwd/.jan",
+            "/bin/cat /proc/$$/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/$BASHPID/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/1/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/self/../self/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/self/root/proc/self/cwd/.jan/agent/agent.toml",
+            "/bin/cat /proc/self/task/1/cwd/.jan/agent/agent.toml",
+            "/bin/cat ~+/.jan/agent/agent.toml",
+            "/bin/cat ~-/.jan/agent/agent.toml",
+            "/bin/cat ~-0/.jan/agent/agent.toml",
+            "/bin/cat $OLDPWD/.jan/agent/agent.toml",
+            "/bin/cat ${OLDPWD}/.jan/agent/agent.toml",
+            "/bin/cat $PWD/.jan/agent/agent.toml",
+            "exec 3<.; /bin/cat /proc/self/fd/3/.jan/agent/agent.toml",
+            "/bin/cat /dev/fd/3/.jan/agent/agent.toml",
+            "/bin/cat /proc/self/cwd/.j*/agent/agent.toml",
+        ] {
+            assert!(command_touches_hidden_jan_path(&root, command), "{command}");
+        }
+        for command in [
+            "ls /proc/self/fd",
+            "cat /proc/self/cwd/README.md",
+            "cat /proc/cpuinfo",
+            "echo $PWDX/x",
+        ] {
+            assert!(!command_touches_hidden_jan_path(&root, command), "{command}");
+        }
+        assert_eq!(shell_cwd_alias_rest("/proc/self/cwd").as_deref(), Some(""));
+        assert_eq!(shell_cwd_alias_rest("~+").as_deref(), Some(""));
+        assert_eq!(shell_cwd_alias_rest("/proc/self/fd/3"), None, "no path after it");
+        assert_eq!(shell_cwd_alias_rest("/usr/bin/cwd"), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A scan that runs out of time answers "cannot say", never "clean".
+    #[test]
+    fn a_scan_past_its_deadline_cannot_say() {
+        let root = unique_root();
+        let command = "cat a b c d";
+        let past = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        assert_eq!(command_touches_hidden_jan_path_within(&root, &[], command, past), None);
+        let later = std::time::Instant::now() + COMMAND_SCAN_BUDGET;
+        assert_eq!(command_touches_hidden_jan_path_within(&root, &[], command, later), Some(false));
+        assert_eq!(
+            command_touches_hidden_jan_path_within(&root, &[], "cat .jan/agent/hooks.toml", later),
+            Some(true)
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
