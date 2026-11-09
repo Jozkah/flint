@@ -220,7 +220,7 @@ async function targetFor(
       }
     }
     return {
-      url: `http://localhost:${session.port}/v1/chat/completions`,
+      url: `http://127.0.0.1:${session.port}/v1/chat/completions`,
       headers: {
         Authorization: `Bearer ${session.api_key}`,
         Origin: 'tauri://localhost',
