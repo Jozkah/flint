@@ -299,7 +299,11 @@ pub fn render(thread: &Value, messages: &[Value], format: Format, verbose: bool,
 }
 
 fn render_unredacted(thread: &Value, messages: &[Value], format: Format, verbose: bool, exported_at: &str) -> String {
-    let title = thread.get("title").and_then(Value::as_str).map(one_line).unwrap_or_default();
+    let title = thread
+        .get("title")
+        .and_then(Value::as_str)
+        .map(|t| one_line(&clean_title(t)))
+        .unwrap_or_default();
     let title = if title.is_empty() { "Untitled".to_string() } else { title };
     let model = thread
         .pointer("/assistants/0/model/id")
@@ -347,6 +351,16 @@ fn render_unredacted(thread: &Value, messages: &[Value], format: Format, verbose
         line.push(m);
     }
     format!("# {title}\n\n> {}\n\n{body}\n", line.join(" · "))
+}
+
+/// The exported title without direction overrides and isolates, zero-width
+/// space or BOM. Joiners, marks and variation selectors stay: scripts and
+/// emoji need them, and they cannot reorder text.
+fn clean_title(title: &str) -> String {
+    title
+        .chars()
+        .filter(|c| !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200B}' | '\u{FEFF}'))
+        .collect()
 }
 
 /// Bidirectional controls, zero-width characters and the byte-order mark:
@@ -532,6 +546,18 @@ mod tests {
         // A direction override cannot disguise the extension.
         assert_eq!(file_name("notes\u{202E}dm.exe", "md"), "notesdm.exe.md");
         assert_eq!(file_name("\u{200B}a\u{2066}b\u{FEFF}", "md"), "ab.md");
+    }
+
+    #[test]
+    fn the_exported_title_loses_direction_overrides_but_keeps_joiners() {
+        let thread = json!({ "title": "a\u{202E}b\u{2066}c\u{200B}d\u{FEFF}e \u{200D}\u{200C}\u{200E}\u{200F}\u{FE0F}" });
+        for format in [Format::Markdown, Format::Obsidian, Format::Json] {
+            let out = render(&thread, &[], format, false, "2026-10-09T00:00:00Z");
+            for bad in ['\u{202E}', '\u{2066}', '\u{200B}', '\u{FEFF}'] {
+                assert!(!out.contains(bad), "{format:?} kept {bad:?}");
+            }
+            assert!(out.contains("abcde \u{200D}\u{200C}\u{200E}\u{200F}\u{FE0F}"), "{format:?}: {out}");
+        }
     }
 
     #[test]
