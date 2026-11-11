@@ -111,6 +111,8 @@
     "steps_one": "{{count}} 步",
     "steps_other": "{{count}} 個步驟",
     "working": "處理中",
+
+    "workingEllipsis": "Working…",
     "failed": "失敗：",
     "failedToRun": "執行失敗",
     "summary": {

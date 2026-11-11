@@ -112,6 +112,8 @@
     "steps_other": "{{count}} bước",
     "steps_many": "{{count}} bước",
     "working": "Đang làm",
+
+    "workingEllipsis": "Working…",
     "failed": "Thất bại:",
     "failedToRun": "Chạy thất bại",
     "summary": {

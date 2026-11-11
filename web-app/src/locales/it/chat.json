@@ -111,6 +111,8 @@
     "steps_one": "{{count}} passaggio",
     "steps_other": "{{count}} passaggi",
     "working": "In corso",
+
+    "workingEllipsis": "Working…",
     "failed": "Non riuscito:",
     "failedToRun": "Esecuzione non riuscita",
     "summary": {

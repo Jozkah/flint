@@ -111,6 +111,8 @@
     "steps_one": "{{count}} adım",
     "steps_other": "{{count}} adım",
     "working": "Çalışıyor",
+
+    "workingEllipsis": "Working…",
     "failed": "Başarısız:",
     "failedToRun": "Çalıştırılamadı",
     "summary": {

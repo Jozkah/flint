@@ -110,6 +110,8 @@
   "transcriptView": {
     "steps_other": "{{count}} langkah",
     "working": "Bekerja",
+
+    "workingEllipsis": "Working…",
     "failed": "Gagal:",
     "failedToRun": "Gagal dijalankan",
     "summary": {

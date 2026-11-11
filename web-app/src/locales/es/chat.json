@@ -112,6 +112,8 @@
     "steps_many": "{{count}} pasos",
     "steps_other": "{{count}} pasos",
     "working": "Trabajando",
+
+    "workingEllipsis": "Working…",
     "failed": "Error:",
     "failedToRun": "No se pudo ejecutar",
     "summary": {

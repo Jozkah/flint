@@ -35,6 +35,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Split conversations:** two independent chats side by side, each with its own model, draft, attachments, queue, approvals and Stop.
 - **Temporary chats** that you can keep or discard, with a warning before you leave.
 - Per-chat model and reasoning settings.
+- **Transcript view:** five levels, from Zen (your message and the final reply only, shown when the turn ends) and Hide tool calls (a Working line instead of the steps row) through Normal and Thinking to Verbose. Failed calls, approvals, questions and errors always show; nothing is deleted, so exports, search and copy are unchanged. Applies in Chat, Cowork and Rooms.
 - **Text and code attachments** also work with models that have no vision.
 - **What Flint is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
 - **Collection memory** follows a chat's collection; temporary chats use no memory.

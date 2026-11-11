@@ -111,6 +111,8 @@
     "steps_one": "{{count}} ステップ",
     "steps_other": "{{count}} ステップ",
     "working": "作業中",
+
+    "workingEllipsis": "Working…",
     "failed": "失敗:",
     "failedToRun": "実行に失敗しました",
     "summary": {

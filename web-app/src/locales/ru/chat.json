@@ -113,6 +113,8 @@
     "steps_many": "{{count}} шагов",
     "steps_other": "{{count}} шага",
     "working": "Работаю",
+
+    "workingEllipsis": "Working…",
     "failed": "Ошибка:",
     "failedToRun": "Не удалось выполнить",
     "summary": {

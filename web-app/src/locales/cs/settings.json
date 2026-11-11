@@ -198,6 +198,14 @@
     "resetCodeBlockSuccessDesc": "Styl bloku kódu byl obnoven na výchozí.",
     "transcriptView": "Zobrazení přepisu",
     "transcriptViewDesc": "Kolik z každého tahu ukazují Chat, Cowork a Místnosti. Schválení, dotazy a chyby se zobrazují vždy.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normální",
     "transcriptViewNormalDesc": "Odpověď a vše, co vyžaduje vás. Volání nástrojů se sbalí do jednoho řádku kroků.",
     "transcriptViewThinking": "Uvažování",

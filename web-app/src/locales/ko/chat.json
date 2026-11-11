@@ -111,6 +111,8 @@
     "steps_one": "{{count}}단계",
     "steps_other": "{{count}}단계",
     "working": "작업 중",
+
+    "workingEllipsis": "Working…",
     "failed": "실패:",
     "failedToRun": "실행하지 못함",
     "summary": {

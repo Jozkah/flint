@@ -125,6 +125,8 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "working": "Working",
+
+    "workingEllipsis": "Working…",
     "failed": "Failed:",
     "failedToRun": "Failed to run",
     "summary": {

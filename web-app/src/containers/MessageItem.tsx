@@ -16,6 +16,8 @@ import type { SubagentRun } from '@/types/coworkSession'
 import { Loader, RefreshCw, TriangleAlert } from 'lucide-react'
 
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { WorkingIndicator } from './message/WorkingIndicator'
+import { interimTextParts, isQuietView } from '@/lib/transcriptView'
 import { AssistantMessageHeader } from './message/AssistantMessageHeader'
 import { MessageContextMenu } from './message/MessageContextMenu'
 import {
@@ -182,6 +184,7 @@ export const MessageItem = memo(
     const grantThreadTools = useThreadToolGrants((s) => s.grant)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const renderUserMarkdown = useInterfaceSettings((s) => s.renderUserMarkdown)
+    const transcriptView = useInterfaceSettings((s) => s.transcriptView)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
     // The stored time. A message that has none yet (a reply whose first part
@@ -364,6 +367,13 @@ export const MessageItem = memo(
       // two reasoning blocks renders as a normal message.
       let cotEntries: PartEntry[] = []
       let groupSeq = 0
+      // Zen: the agent's in-between messages stay out of the transcript (they
+      // are still in the message, its export and its search) and the answer
+      // waits for the turn to end. A run split into rounds is judged whole.
+      const interim =
+        transcriptView === 'zen' && message.role === 'assistant'
+          ? interimTextParts((runParts ?? parts) as MessagePartLike[], isStreaming)
+          : null
       const flushCot = (hasFollowing: boolean) => {
         if (cotEntries.length === 0) return
         elements.push(
@@ -396,6 +406,7 @@ export const MessageItem = memo(
         }
         if (t === CONTENT_TYPE.TEXT) {
           if (!part.text || part.text.trim() === '') continue
+          if (interim?.has(part)) continue
           flushCot(true)
           elements.push(
             renderTextPart(part as { type: 'text'; text: string }, i)
@@ -408,6 +419,21 @@ export const MessageItem = memo(
         }
       }
       flushCot(false)
+      // Quiet and Zen: one "Working" line instead of the steps. Zen has no
+      // text to show while the turn runs; Quiet shows it while a trace is the
+      // latest thing, and never over a call waiting for the user.
+      if (
+        isQuietView(transcriptView) &&
+        message.role === 'assistant' &&
+        isStreaming &&
+        !awaitingApproval
+      ) {
+        const latest = [...parts]
+          .reverse()
+          .find((p) => !p.type.startsWith('data-') && p.type !== 'step-start')
+        if (transcriptView === 'zen' || !latest || isCotPart(latest.type))
+          elements.push(<WorkingIndicator key={`${message.id}-working`} />)
+      }
       // A run that ended after tool calls with no reply: say so, and name
       // the last tool failure, rather than leaving only the tool trace.
       // Not for a reply the user stopped: that was not the model giving up.
@@ -471,6 +497,7 @@ export const MessageItem = memo(
       runParts,
       isStopped,
       persistedThoughtSeconds,
+      transcriptView,
     ])
 
     const versionNav =

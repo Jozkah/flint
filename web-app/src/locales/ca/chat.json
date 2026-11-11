@@ -112,6 +112,8 @@
     "steps_many": "{{count}} de passos",
     "steps_other": "{{count}} passos",
     "working": "Treballant",
+
+    "workingEllipsis": "Working…",
     "failed": "Ha fallat:",
     "failedToRun": "No s'ha pogut executar",
     "summary": {

@@ -113,6 +113,8 @@
     "steps_many": "{{count}} kroku",
     "steps_other": "{{count}} kroků",
     "working": "Pracuji",
+
+    "workingEllipsis": "Working…",
     "failed": "Selhalo:",
     "failedToRun": "Spuštění selhalo",
     "summary": {

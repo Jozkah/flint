@@ -113,6 +113,8 @@
     "steps_few": "{{count}} kroki",
     "steps_many": "{{count}} kroków",
     "working": "Pracuję",
+
+    "workingEllipsis": "Working…",
     "failed": "Niepowodzenie:",
     "failedToRun": "Nie udało się uruchomić",
     "summary": {
