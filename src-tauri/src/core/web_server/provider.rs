@@ -29,7 +29,7 @@ const QUEUE_LINES: usize = 256;
 /// slow to keep up, and a chunk is never dropped from the middle of a stream.
 struct LineSink {
     tx: mpsc::Sender<Bytes>,
-    stream_id: Option<String>,
+    stream_id: String,
 }
 
 impl ChunkSink for LineSink {
@@ -39,11 +39,33 @@ impl ChunkSink for LineSink {
         };
         line.push(b'\n');
         if self.tx.try_send(Bytes::from(line)).is_err() {
-            if let Some(id) = &self.stream_id {
-                transport::cancel_stream(id);
-            }
+            transport::cancel_stream(&self.stream_id);
         }
     }
+}
+
+/// Cancels the upstream request when the response body is dropped (the
+/// browser disconnected) while the transport still holds the sender, i.e.
+/// the request is still running. A stream that already ended is left alone.
+struct CancelOnDrop {
+    stream_id: String,
+    running: mpsc::WeakSender<Bytes>,
+}
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if self.running.upgrade().is_some() {
+            transport::cancel_stream(&self.stream_id);
+        }
+    }
+}
+
+/// The id the relay cancels by. A client that sent none still gets one, so
+/// its request stops when it disconnects like one that did.
+fn relay_stream_id(requested: &mut Option<String>) -> String {
+    requested
+        .get_or_insert_with(|| format!("relay-{}", uuid::Uuid::new_v4()))
+        .clone()
 }
 
 const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(15);
@@ -57,7 +79,7 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let Ok(request) = serde_json::from_value::<ProviderRequest>(value) else {
+    let Ok(mut request) = serde_json::from_value::<ProviderRequest>(value) else {
         return text(StatusCode::BAD_REQUEST, "Invalid provider request");
     };
     if !valid_url(&request.url) {
@@ -65,11 +87,13 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
     }
     let (tx, rx) = mpsc::channel::<Bytes>(QUEUE_LINES);
     let keepalive = tx.downgrade();
-    let keepalive_stream = request.stream_id.clone();
-    let sink = LineSink {
-        tx,
-        stream_id: request.stream_id.clone(),
+    let stream_id = relay_stream_id(&mut request.stream_id);
+    let keepalive_stream = stream_id.clone();
+    let guard = CancelOnDrop {
+        stream_id: stream_id.clone(),
+        running: tx.downgrade(),
     };
+    let sink = LineSink { tx, stream_id };
     // A line every few seconds keeps proxies and phone radios from dropping a
     // stream that is only waiting on the model. The ticker holds a weak sender,
     // so it ends with the stream instead of keeping it open.
@@ -86,9 +110,7 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
             {
                 // The browser went away while the model was silent: stop the
                 // upstream request too instead of letting it run on.
-                if let Some(id) = &keepalive_stream {
-                    transport::cancel_stream(id);
-                }
+                transport::cancel_stream(&keepalive_stream);
                 break;
             }
         }
@@ -99,7 +121,11 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
         let _ = transport::send_stream(request, sink).await;
     });
     let body = StreamBody::new(
-        ReceiverStream::new(rx).map(|bytes| Ok::<_, Infallible>(Frame::data(bytes))),
+        ReceiverStream::new(rx).map(move |bytes| {
+            // Owned by the body: dropped (and checked) when the body is.
+            let _ = &guard;
+            Ok::<_, Infallible>(Frame::data(bytes))
+        }),
     );
     let mut response = Response::new(body.boxed_unsync());
     let headers = response.headers_mut();
@@ -128,7 +154,7 @@ mod tests {
     #[test]
     fn sink_writes_one_json_line_per_chunk() {
         let (tx, mut rx) = mpsc::channel(8);
-        let sink = LineSink { tx, stream_id: None };
+        let sink = LineSink { tx, stream_id: "lines".into() };
         sink.send(StreamChunk::Data { b64: "aGk=".into() });
         sink.send(StreamChunk::End);
         let first = rx.try_recv().unwrap();
@@ -141,7 +167,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(2);
         let sink = LineSink {
             tx,
-            stream_id: Some("slow-reader".into()),
+            stream_id: "slow-reader".into(),
         };
         for _ in 0..5 {
             sink.send(StreamChunk::Data { b64: "aGk=".into() });
@@ -150,6 +176,29 @@ mod tests {
         assert!(rx.try_recv().is_ok());
         assert!(rx.try_recv().is_ok());
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_request_without_a_stream_id_gets_its_own() {
+        let mut none = None;
+        let a = relay_stream_id(&mut none);
+        assert_eq!(none.as_deref(), Some(a.as_str()));
+        assert_ne!(a, relay_stream_id(&mut None));
+        let mut given = Some("mine".to_string());
+        assert_eq!(relay_stream_id(&mut given), "mine");
+    }
+
+    /// The browser going away while the request still runs cancels it; a
+    /// body dropped after the request ended does not.
+    #[test]
+    fn dropping_the_body_cancels_only_a_running_request() {
+        let (tx, _rx) = mpsc::channel::<Bytes>(1);
+        drop(CancelOnDrop { stream_id: "relay-drop-test-running".into(), running: tx.downgrade() });
+        assert!(transport::take_early_cancel_for_test("relay-drop-test-running"));
+        let weak = tx.downgrade();
+        drop(tx);
+        drop(CancelOnDrop { stream_id: "relay-drop-test-ended".into(), running: weak });
+        assert!(!transport::take_early_cancel_for_test("relay-drop-test-ended"));
     }
 
     #[test]
