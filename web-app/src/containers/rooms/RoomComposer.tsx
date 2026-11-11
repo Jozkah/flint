@@ -364,7 +364,7 @@ export function RoomComposer({ room }: { room: Room }) {
           />
         )}
         {mentionOpen && (
-          <ul
+          <div
             id={`${id}-mention`}
             role="listbox"
             aria-label={t('rooms:composer.mention')}
@@ -372,10 +372,11 @@ export function RoomComposer({ room }: { room: Room }) {
             className="mx-2.5 mt-2 max-h-48 overflow-y-auto rounded-lg border-[0.8px] border-border bg-popover p-1 text-sm shadow-pop"
           >
             {mentionList.map((x, i) => (
-              <li
+              <div
                 key={x.value}
                 id={`${id}-mention-${i}`}
                 role="option"
+                tabIndex={-1}
                 aria-selected={i === mentionIndex}
                 onMouseDown={(e) => {
                   e.preventDefault()
@@ -388,9 +389,9 @@ export function RoomComposer({ room }: { room: Room }) {
               >
                 {x.avatar ?? <AtSign aria-hidden className="size-[13px]" />}
                 <span className="truncate">{x.label}</span>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
         <label htmlFor={`${id}-text`} className="sr-only">
           {t('rooms:composer.label')}
