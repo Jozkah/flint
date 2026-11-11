@@ -7,17 +7,13 @@
 //! a thread's to delete.
 use super::commands::ATTACHMENTS_DIR;
 use crate::core::threads::utils::validate_thread_id;
-use std::fs;
 use std::path::Path;
 
 /// Remove `attachments/<thread id>/` under the data folder.
 pub fn remove_thread_attachments(data: &Path, thread_id: &str) -> Result<(), String> {
     validate_thread_id(thread_id)?;
-    match fs::remove_dir_all(data.join(ATTACHMENTS_DIR).join(thread_id)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+    let base = data.join(ATTACHMENTS_DIR);
+    crate::core::path_ids::remove_dir_within(&base, &base.join(thread_id)).map_err(|e| e.to_string())
 }
 
 /// Remove the thread's `attachments_<thread id>` document index from the
@@ -43,6 +39,7 @@ pub fn remove_thread_data(data: &Path, thread_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn removes_only_the_thread_attachment_folder() {

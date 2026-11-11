@@ -272,7 +272,8 @@ pub(crate) fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -
         });
     let thread_dir = get_thread_dir(data_folder, thread_id);
     if thread_dir.exists() {
-        fs::remove_dir_all(thread_dir).map_err(|e| e.to_string())?;
+        let base = crate::core::threads::utils::get_data_dir(data_folder);
+        crate::core::path_ids::remove_dir_within(&base, &thread_dir).map_err(|e| e.to_string())?;
     }
     crate::core::agent::git::cleanup_snapshot_index(thread_id);
     // The ref is what keeps the snapshot commit chain alive; the index above
