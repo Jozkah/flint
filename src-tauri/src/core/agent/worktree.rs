@@ -189,11 +189,13 @@ pub fn identity(path: &Path) -> Result<RepoIdentity, String> {
 pub fn uncommitted(repo: &Path) -> Vec<String> {
     let mut paths: Vec<String> = Vec::new();
     // Tracked files differing from HEAD, staged or not.
-    if let Ok(out) = run(repo, &["diff", "--name-only", "HEAD"]) {
-        paths.extend(out.lines().map(str::to_string));
+    // NUL-separated: a name may hold a newline, and without `-z` git quotes
+    // and escapes unusual names instead of giving them as they are.
+    if let Ok(out) = run(repo, &["diff", "--name-only", "-z", "HEAD"]) {
+        paths.extend(out.split('\0').map(str::to_string));
     }
-    if let Ok(out) = run(repo, &["ls-files", "--others", "--exclude-standard"]) {
-        paths.extend(out.lines().map(str::to_string));
+    if let Ok(out) = run(repo, &["ls-files", "--others", "--exclude-standard", "-z"]) {
+        paths.extend(out.split('\0').map(str::to_string));
     }
     paths.retain(|p| !p.is_empty());
     paths.sort();
