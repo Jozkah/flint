@@ -178,6 +178,7 @@
       "summary": "{{on}} di {{total}} attivi · ~{{tokens}} token",
       "loading": "Caricamento strumenti…",
       "empty": "Nessuno strumento disponibile con questo accesso.",
+      "filesDesktopOnly": "Gli strumenti per i file funzionano solo nell'app desktop di Flint. In questa sessione del browser il partecipante non può leggere la cartella allegata.",
       "group": {
         "files": "File e comandi",
         "web": "Web",

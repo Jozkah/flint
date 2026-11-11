@@ -180,6 +180,7 @@
       "summary": "{{on}} z {{total}} zapnuto · ~{{tokens}} tokenů",
       "loading": "Načítání nástrojů…",
       "empty": "S tímto přístupem nejsou k dispozici žádné nástroje.",
+      "filesDesktopOnly": "Souborové nástroje fungují jen v desktopové aplikaci Flint. V této relaci prohlížeče účastník nemůže číst připojenou složku.",
       "group": {
         "files": "Soubory a příkazy",
         "web": "Web",

@@ -36,7 +36,12 @@ import { executeVisualizeTool, visualizeSchemas } from '@/lib/visualize/tools'
 import { READ_ME_TOOL } from '@/lib/visualize/constants'
 import { callMcpToolCancellable } from '@/lib/mcpCancellable'
 
-import { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS, disabledMcpServers } from './toolCatalog'
+import {
+  ROOM_READ_TOOLS,
+  ROOM_WRITE_TOOLS,
+  disabledMcpServers,
+  roomFileToolsAvailable,
+} from './toolCatalog'
 export { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS }
 
 /** Upper bound on tool steps in one participant turn, so a turn cannot loop. */
@@ -147,9 +152,12 @@ export async function buildRoomTools(
 
   // File tools only make sense against an attached folder. With `edit` access,
   // mint a write grant confined to that folder so write/edit can be offered.
-  if (ctx.folder && ctx.access === 'full') {
+  // Not in the browser build: it has no tool executor (see
+  // `roomFileToolsAvailable`), so the prompt says the folder cannot be read.
+  const folderTools = roomFileToolsAvailable()
+  if (ctx.folder && folderTools && ctx.access === 'full') {
     Object.assign(tools, await buildFullFolderTools(ctx, onActivity, delegation))
-  } else if (ctx.folder) {
+  } else if (ctx.folder && folderTools) {
     const extras = ctx.extraFolders ?? []
     let writeGrant: string | undefined
     if (ctx.access === 'edit') {

@@ -176,6 +176,7 @@
       "summary": "{{total}} araçtan {{on}} açık · ~{{tokens}} token",
       "loading": "Araçlar yükleniyor…",
       "empty": "Bu erişimle kullanılabilir araç yok.",
+      "filesDesktopOnly": "Dosya araçları yalnızca Flint masaüstü uygulamasında çalışır. Bu tarayıcı oturumunda katılımcı ekli klasörü okuyamaz.",
       "group": {
         "files": "Dosyalar ve komutlar",
         "web": "Web",

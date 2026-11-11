@@ -19,6 +19,7 @@ import { CONCLUDE_SIGNAL } from './consensus'
 import { pinnedReplyLanguage, replyLanguageLine } from '@/lib/replyLanguage'
 import { turnToolAccess, type Participant, type Room, type RoomMessage } from './types'
 import { workspacePromptLine } from './isolation'
+import { roomFileToolsAvailable } from './toolCatalog'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -226,6 +227,14 @@ function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
       ? ' You have web tools (web_search / web_fetch); any other tool you may use is in your tool list.'
       : ' Use only the tools in your tool list this turn; if it is empty, answer without tools. Do not attempt file or command tools.'
     return `No working folder is attached, so file tools are unavailable.${webNote}`
+  }
+  if (!roomFileToolsAvailable()) {
+    // The browser build has no file tools; a participant told it can read the
+    // folder would only guess at what is in it.
+    const webNote = web
+      ? ' You have web tools (web_search / web_fetch); any other tool you may use is in your tool list.'
+      : ' Use only the tools in your tool list this turn; if it is empty, answer without tools.'
+    return `A working folder is attached (${room.folder}), but file tools only run in the Flint desktop app, not in this browser session, so you cannot read or change its files. If the question needs them, say so instead of guessing.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')
   const extras = room.extraFolders ?? []

@@ -176,6 +176,7 @@
       "summary": "{{on}} von {{total}} an · ~{{tokens}} Tokens",
       "loading": "Werkzeuge werden geladen…",
       "empty": "Mit diesem Zugriff sind keine Werkzeuge verfügbar.",
+      "filesDesktopOnly": "Dateiwerkzeuge laufen nur in der Flint-Desktop-App. In dieser Browsersitzung kann der Teilnehmer den angehängten Ordner nicht lesen.",
       "group": {
         "files": "Dateien und Befehle",
         "web": "Web",

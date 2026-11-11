@@ -178,6 +178,7 @@
       "summary": "{{on}} sur {{total}} activés · ~{{tokens}} jetons",
       "loading": "Chargement des outils…",
       "empty": "Aucun outil disponible avec cet accès.",
+      "filesDesktopOnly": "Les outils de fichiers ne fonctionnent que dans l'application de bureau Flint. Dans cette session du navigateur, le participant ne peut pas lire le dossier joint.",
       "group": {
         "files": "Fichiers et commandes",
         "web": "Web",
