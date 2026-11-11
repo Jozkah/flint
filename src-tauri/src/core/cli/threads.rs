@@ -222,6 +222,9 @@ pub fn cli_list_messages_active_in(
     thread_id: &str,
     all_versions: bool,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // Refused like every other thread command: `..`, `...` or `CON` is not a
+    // thread, and an empty list would read as "a thread with no messages".
+    crate::core::threads::utils::validate_thread_id(thread_id)?;
     let messages = read_messages_from_file(base, thread_id)?;
     if all_versions {
         return Ok(messages);

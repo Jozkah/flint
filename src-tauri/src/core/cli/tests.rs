@@ -870,6 +870,17 @@ fn ids_of(v: &[serde_json::Value]) -> Vec<String> {
 }
 
 #[test]
+fn list_messages_refuses_an_invalid_thread_id() {
+    let dir = tempfile::tempdir().unwrap();
+    for id in ["...", "..", "CON", "NUL", "", "a/b"] {
+        for all in [false, true] {
+            let err = cli_list_messages_active_in(dir.path(), id, all).unwrap_err();
+            assert!(err.contains("invalid thread id"), "{id:?}: {err}");
+        }
+    }
+}
+
+#[test]
 fn list_messages_shows_the_active_versions_unless_all_are_asked_for() {
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path();
