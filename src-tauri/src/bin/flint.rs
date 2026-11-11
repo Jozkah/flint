@@ -2153,10 +2153,13 @@ enum McpCommands {
         #[arg(long)]
         show_secrets: bool,
     },
-    /// Print a single server's full config as JSON
+    /// Print a single server's config as JSON (env/header values redacted)
     Get {
         /// Server name
         name: String,
+        /// Show env/header values (they may contain secrets); redacted by default
+        #[arg(long, alias = "reveal")]
+        show_secrets: bool,
     },
     /// Add a server, or replace an existing one with the same name (edit)
     Add {
@@ -4165,16 +4168,20 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             println!("{}", serde_json::to_string_pretty(&out).unwrap());
             Ok(())
         }
-        McpCommands::Get { name } => match mcp::get_server(&name) {
-            Some(entry) => {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&mcp_list_entry(&entry, true)).unwrap()
-                );
-                Ok(())
+        McpCommands::Get { name, show_secrets } => {
+            match mcp::get_server(&name) {
+                Some(entry) => {
+                    // Redacted like `list` unless asked: a value printed to a
+                    // terminal ends up in scrollback, logs and screenshots.
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&mcp_list_entry(&entry, show_secrets)).unwrap()
+                    );
+                    Ok(())
+                }
+                None => Err(format!("server '{name}' not found")),
             }
-            None => Err(format!("server '{name}' not found")),
-        },
+        }
         McpCommands::Add {
             name,
             command,
