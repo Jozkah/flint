@@ -112,6 +112,15 @@ struct AgentFrontmatter {
 fn map_tool(name: &str) -> Option<&'static str> {
     match name.trim().to_ascii_lowercase().as_str() {
         "read" => Some("read"),
+        // Qwen Code's own names.
+        "read_file" | "read_many_files" => Some("read"),
+        "write_file" => Some("write"),
+        "replace" | "edit_file" => Some("edit"),
+        "list_directory" => Some("ls"),
+        "search_file_content" | "grep_search" => Some("grep"),
+        "run_shell_command" => Some("bash"),
+        "google_web_search" => Some("web_search"),
+        "todo_write" => Some("todo"),
         "ls" | "list" => Some("ls"),
         "glob" => Some("find"),
         "grep" => Some("grep"),
@@ -578,9 +587,10 @@ fn read_opencode_json(path: &Path, skipped: &mut Vec<String>) -> Result<Vec<Impo
 
 /// Every definition at `path`, which may be one file or a directory of them.
 ///
-/// Reading is separate from writing on purpose: a directory where one file is
-/// malformed refuses as a whole, rather than importing the good half and
-/// leaving somebody to work out which half that was.
+/// Reading is separate from writing. In a directory, a file that cannot be
+/// read as a definition is skipped and reported by name (in the second list)
+/// rather than stopping every other file; one file given on its own still
+/// fails with its error.
 pub fn read_all(path: &Path) -> Result<(Vec<Imported>, Vec<String>), HarnessError> {
     let mut skipped = Vec::new();
     if !path.exists() {
@@ -615,8 +625,10 @@ pub fn read_all(path: &Path) -> Result<(Vec<Imported>, Vec<String>), HarnessErro
     }
     let mut out = Vec::new();
     for file in files {
-        if let Some(imported) = read_markdown(&file, &mut skipped)? {
-            out.push(imported);
+        match read_markdown(&file, &mut skipped) {
+            Ok(Some(imported)) => out.push(imported),
+            Ok(None) => {}
+            Err(e) => skipped.push(format!("{}: not imported: {}", file.display(), e.message())),
         }
     }
     Ok((out, skipped))
@@ -1053,18 +1065,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A directory where one definition is malformed imports none of them: a
-    /// half-imported directory is a state nobody can reason about.
+    /// A directory where one definition is malformed imports the others and
+    /// names the bad file in the skipped list.
     #[test]
-    fn one_bad_definition_stops_the_whole_import() {
+    fn one_bad_definition_is_skipped_and_reported() {
         let root = temp_root("atomic");
         let dir = root.join(".qwen").join("agents");
         write(&dir, "good.md", "---\nname: good\ndescription: Fine\n---\n\nbody\n");
         write(&dir, "bad.md", "---\nname: bad\n---\n\nbody\n");
         let scope_dir = root.join("subagents");
-        let err = import(&dir, &scope_dir, SubagentScope::User, false, false).unwrap_err();
+        let report = import(&dir, &scope_dir, SubagentScope::User, false, false).unwrap();
+        assert!(scope_dir.join("good.toml").exists());
+        assert!(!scope_dir.join("bad.toml").exists());
+        assert!(
+            report.skipped.iter().any(|s| s.contains("bad.md") && s.contains("not imported")),
+            "{:?}",
+            report.skipped
+        );
+        // On its own, the bad file is still an error.
+        let err = import(&dir.join("bad.md"), &scope_dir, SubagentScope::User, false, true).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
-        assert!(!scope_dir.join("good.toml").exists(), "a refused import still wrote");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn qwen_tool_names_map_to_flint_tools() {
+        for (qwen, flint) in [
+            ("read_file", "read"),
+            ("read_many_files", "read"),
+            ("write_file", "write"),
+            ("replace", "edit"),
+            ("list_directory", "ls"),
+            ("glob", "find"),
+            ("search_file_content", "grep"),
+            ("run_shell_command", "bash"),
+            ("web_fetch", "web_fetch"),
+            ("google_web_search", "web_search"),
+            ("todo_write", "todo"),
+        ] {
+            assert_eq!(map_tool(qwen), Some(flint), "{qwen}");
+        }
+        assert_eq!(map_tool("save_memory"), None);
     }
 }
