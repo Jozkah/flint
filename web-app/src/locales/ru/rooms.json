@@ -631,6 +631,7 @@
     "details": "Подробнее"
   },
   "notes": {
+    "objectiveMet": "Участник завершил обсуждение; цель достигнута.",
     "modelNone": "Модель не выбрана.",
     "providerMissing": "Провайдер «{{provider}}» не настроен в Flint.",
     "providerNotReady": "Провайдер «{{provider}}» не готов (например, нет API-ключа).",

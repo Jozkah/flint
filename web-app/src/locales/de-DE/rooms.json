@@ -601,6 +601,7 @@
     "details": "Einzelheiten"
   },
   "notes": {
+    "objectiveMet": "Ein Teilnehmer hat die Diskussion abgeschlossen; das Ziel ist erreicht.",
     "modelNone": "Es ist kein Modell ausgewählt.",
     "providerMissing": "Der Anbieter „{{provider}}“ ist in Flint nicht konfiguriert.",
     "providerNotReady": "Der Anbieter „{{provider}}“ ist nicht bereit (zum Beispiel fehlt ein API-Schlüssel).",

@@ -348,6 +348,12 @@ describe('room controller', () => {
       status: 'completed',
       stopReason: { kind: 'converged', by: 'consensus' },
     })
+    // The conclusion note is stored as a key, so it is drawn in the reader's language.
+    expect(
+      messagesOf(persistence, room.id).some(
+        (m) => m.kind === 'system' && m.note?.key === 'objectiveMet'
+      )
+    ).toBe(true)
     const afterConclude = calls.length
 
     await ctl.sendUserMessage(room.id, 'one more question', { kind: 'room' })
