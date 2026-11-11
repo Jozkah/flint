@@ -1,5 +1,6 @@
 // The threads store's updates to one thread or several.
 
+import { cleanTitle } from '@/lib/invisibleText'
 import type { StoreApi } from 'zustand'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -88,7 +89,7 @@ export const threadUpdatesSlice = (
       if (!thread) return state
       const updatedThread = {
         ...thread,
-        title: newTitle,
+        title: cleanTitle(newTitle),
         updated: Date.now() / 1000,
         metadata: { ...thread.metadata, titleSetManually: true },
       }

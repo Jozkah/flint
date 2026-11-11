@@ -46,3 +46,15 @@ export function stripInvisible(text: string): { text: string; removed: number } 
   })
   return { text: removed === 0 ? text : out, removed }
 }
+
+/**
+ * A title safe to show in a list: bidi overrides and isolates (which would show
+ * it reversed), zero-width characters and control characters removed. Ordinary
+ * right-to-left text has no such characters and is left exactly as it is.
+ */
+export function cleanTitle(title: string): string {
+  if (typeof title !== 'string') return title
+  const { text } = stripInvisible(title)
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+}

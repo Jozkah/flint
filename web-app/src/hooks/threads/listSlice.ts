@@ -1,5 +1,6 @@
 // The threads store's list: loading, searching, starring and selecting.
 
+import { cleanTitle } from '@/lib/invisibleText'
 import type { StoreApi } from 'zustand'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { Fzf } from 'fzf'
@@ -41,6 +42,7 @@ export const threadListSlice = (
             : thread.assistants
         acc[thread.id] = {
           ...thread,
+          ...(typeof thread.title === 'string' && { title: cleanTitle(thread.title) }),
           assistants,
           model: thread.model
             ? {
