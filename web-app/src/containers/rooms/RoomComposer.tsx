@@ -84,9 +84,15 @@ export function RoomComposer({ room }: { room: Room }) {
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
   const trackMention = (value: string, caret: number) => {
-    setMention(mentionAt(value, caret))
+    const next = mentionAt(value, caret)
+    // Unchanged (a caret event after a keystroke): keep the highlighted row.
+    if (next?.start === mention?.start && next?.query === mention?.query) return
+    setMention(next)
     setMentionIndex(0)
   }
+  // Set once the user picks an address chip themselves; a typed `@Name` then
+  // no longer moves it.
+  const [toChosen, setToChosen] = useState(false)
 
   /** The message the room gets for a draft, or null when nothing is sent. */
   const expand = async (body: string): Promise<string | null> => {
@@ -124,14 +130,10 @@ export function RoomComposer({ room }: { room: Room }) {
       const body = await expand(typed)
       if (body === null) return
       // The address shown, not a removed participant still held in `to` (F8-004).
-      // A message to everyone that starts with `@Name` goes to that participant.
-      const address =
-        current.value === 'room'
-          ? (mentionedTarget(typed, mentionTargets)?.value ?? current.value)
-          : current.value
-      await api.controller.sendUserMessage(room.id, body, fromValue(address))
+      await api.controller.sendUserMessage(room.id, body, fromValue(current.value))
       setText('')
       setMention(null)
+      setToChosen(false)
     } catch (err) {
       setError(normalizeError(err))
     } finally {
@@ -185,6 +187,12 @@ export function RoomComposer({ room }: { room: Room }) {
   const mentionOpen = mentionList.length > 0
   const pickMention = (target: (typeof targets)[number]) => {
     if (!mention) return
+    // The text changed under the list (caret moved, text edited): do not
+    // splice a name into the wrong place.
+    if (text.slice(mention.start, mention.start + 1 + mention.query.length) !== `@${mention.query}`) {
+      setMention(null)
+      return
+    }
     const next = insertMention(text, mention.start, mention.query, target.label)
     changeText(next.text)
     setTo(target.value)
@@ -329,7 +337,10 @@ export function RoomComposer({ room }: { room: Room }) {
                   role="radio"
                   aria-checked={on}
                   tabIndex={on ? 0 : -1}
-                  onClick={() => setTo(x.value)}
+                  onClick={() => {
+                    setTo(x.value)
+                    setToChosen(true)
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                       e.preventDefault()
@@ -417,8 +428,21 @@ export function RoomComposer({ room }: { room: Room }) {
           placeholder={placeholder}
           aria-describedby={`${id}-hint`}
           onChange={(e) => {
-            changeText(e.target.value)
-            trackMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
+            const value = e.target.value
+            changeText(value)
+            trackMention(value, e.target.selectionStart ?? value.length)
+            // A message to everyone that starts with `@Name` moves the address
+            // chip to that participant, so the reader sees where it goes
+            // before sending; a chip the user picked is left alone.
+            if (!toChosen) {
+              const named = mentionedTarget(value, mentionTargets)
+              if (named) setTo(named.value)
+              else if (current.value !== 'room' && mentionedTarget(text, mentionTargets)) setTo('room')
+            }
+          }}
+          onSelect={(e) => {
+            const box = e.currentTarget
+            trackMention(box.value, box.selectionStart ?? box.value.length)
           }}
           onPaste={(e) => {
             // Files copied in GNOME Files paste as URIs, not files. Only its
@@ -429,6 +453,8 @@ export function RoomComposer({ room }: { room: Room }) {
             void dropPaths(named.paths)
           }}
           onKeyDown={(e) => {
+            // An IME confirming a candidate owns Enter and Tab.
+            if (mentionOpen && (e.nativeEvent.isComposing || e.keyCode === 229)) return
             if (mentionOpen) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault()
