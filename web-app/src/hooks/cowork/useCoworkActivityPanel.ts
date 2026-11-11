@@ -8,7 +8,7 @@ import {
 import { toast } from 'sonner'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
-  finishedJobPatch,
+  liveJobPatch,
 } from '@/lib/coworkTasks'
 import {
   findTaskByJob,
@@ -90,12 +90,10 @@ export function useCoworkActivityPanel({
     if (!liveJobsSession) return
     const state = useCoworkActivity.getState()
     for (const job of liveJobs) {
-      if (!job.finished) continue
       const task = findTaskByJob(state, job.jobId, liveJobsSession)
-      if (task && task.status === 'running') {
-        const patch = finishedJobPatch(job)
-        state.patchTask(task.id, { ...patch, endedAt: patch.endedAt ?? Date.now() })
-      }
+      if (!task) continue
+      const patch = liveJobPatch(task, job, Date.now())
+      if (patch) state.patchTask(task.id, patch)
     }
   }, [liveJobs, liveJobsSession])
 

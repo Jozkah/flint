@@ -83,6 +83,23 @@ export function mergeToolResult(
  * same rule, and a rule that lives in one store action is a rule the other
  * lane silently does not have.
  */
+/**
+ * The row a question was hung on, for a row that is a copy made to hold it.
+ * A run's settling step drops the rows it streamed by identity; without this
+ * the copy survived next to the settled row and its text showed twice.
+ */
+const askCopies = new WeakMap<CoworkTurn, CoworkTurn>()
+
+/** The row `turn` was copied from to carry a question, if it was. */
+export function askCopyOrigin(turn: CoworkTurn): CoworkTurn | undefined {
+  return askCopies.get(turn)
+}
+
+function copyForAsk(turn: CoworkTurn, next: CoworkTurn): CoworkTurn {
+  askCopies.set(next, askCopies.get(turn) ?? turn)
+  return next
+}
+
 export function attachAskToTurns(
   turns: CoworkTurn[],
   record: AskRecord
@@ -104,7 +121,10 @@ export function attachAskToTurns(
   }
   return [
     ...turns.slice(0, idx),
-    { ...turns[idx], asks: [...(turns[idx].asks ?? []), record] },
+    copyForAsk(turns[idx], {
+      ...turns[idx],
+      asks: [...(turns[idx].asks ?? []), record],
+    }),
     ...turns.slice(idx + 1),
   ]
 }
@@ -120,12 +140,12 @@ export function settleAskInTurns(
   const next = turns.map((turn) => {
     if (!turn.asks?.some((a) => a.requestId === requestId)) return turn
     changed = true
-    return {
+    return copyForAsk(turn, {
       ...turn,
       asks: turn.asks.map((a) =>
         a.requestId === requestId ? { ...a, state, answers } : a
       ),
-    }
+    })
   })
   return changed ? next : turns
 }

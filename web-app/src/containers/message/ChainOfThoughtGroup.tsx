@@ -29,6 +29,10 @@ import {
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
+
+/** The diff a file call made, so the summary counts what the card shows. */
+const diffOfCall = (callId: string): string | undefined =>
+  useToolCallRuntime.getState().diffs[callId]
 import { CONTENT_TYPE, isToolPart, type PartEntry } from './types'
 
 // Turn a tool identifier (e.g. "web_search", "exa_search") into a readable
@@ -118,7 +122,7 @@ const CompactTrace = ({
   // Once the run is over, the folded toggle says what it did, not just how
   // many steps it took.
   const summary = summaryLabelParts(
-    summarizeTrace(steps.map((e) => e.part)),
+    summarizeTrace(steps.map((e) => e.part), diffOfCall),
     t as never
   )
   const summaryText = working ? undefined : summary?.text
@@ -473,7 +477,7 @@ export const ChainOfThoughtGroup = memo(
               ? undefined
               : (() => {
                   const parts = summaryLabelParts(
-                    summarizeTrace(entries.map((e) => e.part)),
+                    summarizeTrace(entries.map((e) => e.part), diffOfCall),
                     t as never
                   )
                   if (!parts) return undefined

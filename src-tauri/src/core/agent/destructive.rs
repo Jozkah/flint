@@ -308,11 +308,22 @@ fn check_segment(
     match cmd.as_str() {
         "rm" | "unlink" | "shred" | "remove-item" | "ri" => {
             // Recursive or not, a target outside the workspace is asked about.
-            let (_recursive, targets) = deletion_flags(args, false);
+            let (recursive, targets) = deletion_flags(args, false);
             targets
                 .iter()
                 .find(|t| outside_workspace(t, workspace))
                 .map(|t| format!("`{}` deletes `{t}`, outside the workspace", words.join(" ")))
+                .or_else(|| {
+                    // Inside it too, a delete that cannot be taken back is
+                    // worth one look: shredding, or recursive and forced.
+                    if cmd == "shred" {
+                        Some("`shred` destroys file contents beyond recovery".into())
+                    } else if recursive && forced(&lower_args) {
+                        Some(format!("`{}` deletes recursively and forcibly", words.join(" ")))
+                    } else {
+                        None
+                    }
+                })
         }
         "del" | "erase" => {
             if lower_args.iter().any(|a| a == "/s") {
@@ -330,6 +341,7 @@ fn check_segment(
             if !(slash_s || recursive) {
                 return None;
             }
+            let quiet = (slash_s && lower_args.iter().any(|a| a == "/q")) || (recursive && forced(&lower_args));
             let targets: Vec<&String> = targets.iter().collect();
             let default = ".".to_string();
             let targets = if targets.is_empty() {
@@ -341,6 +353,7 @@ fn check_segment(
                 .into_iter()
                 .find(|t| outside_workspace(t, workspace))
                 .map(|t| format!("`{}` deletes `{t}`, outside the workspace", words.join(" ")))
+                .or_else(|| quiet.then(|| format!("`{}` deletes recursively without asking", words.join(" "))))
         }
         "xargs" => {
             // The paths come from input the checker never sees.
@@ -385,6 +398,7 @@ fn check_segment(
                         words.join(" ")
                     )
                 })
+                .or_else(|| Some("`find` with a delete action removes every match".into()))
         }
         "git" => check_git(args, &lower_args),
         c if c == "mkfs" || c.starts_with("mkfs.") => Some("`mkfs` formats a filesystem".into()),
@@ -570,6 +584,18 @@ fn deletion_flags(args: &[String], cmd_switches: bool) -> (bool, Vec<String>) {
         }
     }
     (recursive, targets)
+}
+
+/// Whether a delete is told not to ask or stop: `-f`/`--force` (also inside
+/// a bundle such as `-rf`), or PowerShell's `-Force`.
+fn forced(lower_args: &[String]) -> bool {
+    lower_args.iter().any(|a| {
+        a == "--force"
+            || a.starts_with("-fo")
+            || a.strip_prefix('-').is_some_and(|body| {
+                !body.is_empty() && !body.starts_with('-') && body.chars().all(|c| "rfivdi".contains(c)) && body.contains('f')
+            })
+    })
 }
 
 /// A cmd.exe switch such as `/s` or `/q` -- not a path like `/*` or `/x/y`.
@@ -931,7 +957,7 @@ mod tests {
     #[test]
     fn non_ascii_delete_target_does_not_panic() {
         let ws = Path::new("/home/me/project");
-        for cmd in ["rm -rf é", "rm -rf aé", "rm -rf 中", "Remove-Item -Recurse 中"] {
+        for cmd in ["rm -r é", "rm -r aé", "rm -r 中", "Remove-Item -Recurse 中"] {
             assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
         }
     }
@@ -946,6 +972,30 @@ mod tests {
             r"Remove-Item C:\Users\me\a.txt",
         ] {
             assert!(destructive_reason(cmd, ws).is_some(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn recursive_forced_or_unrecoverable_deletes_ask_inside_the_workspace() {
+        let ws = Path::new("/home/me/project");
+        for cmd in [
+            "rm -rf src",
+            "rm -fr src",
+            "rm -r -f src",
+            "rm --recursive --force src",
+            "Remove-Item -Recurse -Force src",
+            "rmdir /s /q build",
+            "rd /s /q build",
+            "del /s *.tmp",
+            "git clean -fdx",
+            "find . -delete",
+            "find . -name '*.log' -exec rm {} ;",
+            "shred notes.txt",
+        ] {
+            assert!(destructive_reason(cmd, ws).is_some(), "{cmd}");
+        }
+        for cmd in ["rm notes.txt", "rm -f notes.txt", "rm -r build", "ls -la", "rd /s build", "rmdir build"] {
+            assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
         }
     }
 
@@ -979,20 +1029,20 @@ mod tests {
     fn changing_directory_out_of_the_workspace_is_tracked() {
         let ws = Path::new("/home/me/project");
         for cmd in [
-            "cd ~ && rm -rf *",
-            "cd / ; rm -rf ./*",
-            "cd .. && rm -rf proj",
-            "cd && rm -rf build",
-            "cd - && rm -rf build",
-            "pushd /etc && rm -rf conf",
-            "cd $HOME; rm -r -f stuff",
+            "cd ~ && rm -r *",
+            "cd / ; rm -r ./*",
+            "cd .. && rm -r proj",
+            "cd && rm -r build",
+            "cd - && rm -r build",
+            "pushd /etc && rm -r conf",
+            "cd $HOME; rm -r stuff",
             r"Set-Location C:\; Remove-Item -Recurse *",
-            r"cd /d C:\ && rd /s /q stuff",
-            "cd sub && popd && rm -rf build",
+            r"cd /d C:\ && rd /s stuff",
+            "cd sub && popd && rm -r build",
         ] {
             assert!(destructive_reason(cmd, ws).is_some(), "{cmd}");
         }
-        for cmd in ["cd src && rm -rf build", "cd ./a/b; rm -rf node_modules"] {
+        for cmd in ["cd src && rm -r build", "cd ./a/b; rm -r node_modules"] {
             assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
         }
     }
@@ -1018,7 +1068,7 @@ mod tests {
     }
 
     fn rm(path: &std::path::Path) -> String {
-        format!("rm -rf \"{}\"", path.to_string_lossy())
+        format!("rm -r \"{}\"", path.to_string_lossy())
     }
 
     /// Absolute paths inside any root are inside, with spaces, either
@@ -1040,14 +1090,14 @@ mod tests {
             // The second root counts as much as the first.
             scratch.join("tmp").to_string_lossy().to_string(),
         ] {
-            let cmd = format!("rm -rf \"{target}\"");
+            let cmd = format!("rm -r \"{target}\"");
             assert_eq!(destructive_reason_in(&cmd, &scope), None, "{cmd}");
         }
         if cfg!(windows) {
             // Mixed separators and case.
             let mixed = format!("{}\\sub/x", p.to_uppercase());
             assert_eq!(
-                destructive_reason_in(&format!("rm -rf \"{mixed}\""), &scope),
+                destructive_reason_in(&format!("rm -r \"{mixed}\""), &scope),
                 None
             );
         }

@@ -107,17 +107,17 @@
       "expect": "ask"
     },
     {
-      "command": "rm -rf node_modules",
+      "command": "rm -r node_modules",
       "workspace": "/home/me/project",
       "expect": "allow"
     },
     {
-      "command": "rm -rf ./target dist",
+      "command": "rm -r ./target dist",
       "workspace": "/home/me/project",
       "expect": "allow"
     },
     {
-      "command": "rm -rf /home/me/project/build",
+      "command": "rm -r /home/me/project/build",
       "workspace": "/home/me/project",
       "expect": "allow"
     },
@@ -211,7 +211,7 @@
     {
       "command": "find . -name '*.log' -delete",
       "workspace": "/home/me/project",
-      "expect": "allow"
+      "expect": "ask"
     },
     {
       "command": "find / -name core -exec rm {} ;",
@@ -347,12 +347,12 @@
       "expect": "ask"
     },
     {
-      "command": "Remove-Item -Recurse -Force C:\\work\\proj\\bin",
+      "command": "Remove-Item -Recurse C:\\work\\proj\\bin",
       "workspace": "C:\\work\\proj",
       "expect": "allow"
     },
     {
-      "command": "Remove-Item -Recurse -Force .\\bin",
+      "command": "Remove-Item -Recurse .\\bin",
       "workspace": "C:\\work\\proj",
       "expect": "allow"
     },
@@ -418,7 +418,7 @@
       "expect": "allow"
     },
     {
-      "command": "rd /s /q build",
+      "command": "rd /s build",
       "workspace": "C:\\work\\proj",
       "expect": "allow"
     },
@@ -437,10 +437,10 @@
     { "command": "cd sub && popd && rm -rf build", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "Set-Location C:\\; Remove-Item -Recurse *", "workspace": "C:\\work\\proj", "expect": "ask" },
     { "command": "cd /d C:\\ && rd /s /q stuff", "workspace": "C:\\work\\proj", "expect": "ask" },
-    { "command": "cd src && rm -rf build", "workspace": "/home/me/project", "expect": "allow" },
-    { "command": "cd ./a/b; rm -rf node_modules", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "cd src && rm -r build", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "cd ./a/b; rm -r node_modules", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "echo \\\"; rm -rf ~; echo \\\"", "workspace": "/home/me/project", "expect": "ask" },
-    { "command": "rm -rf /home/me/project/a\\ b", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -r /home/me/project/a\\ b", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "echo C:\\Users\\me", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "sudo -u root rm -rf /", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "sudo -g wheel rm -rf /", "workspace": "/home/me/project", "expect": "ask" },
@@ -490,9 +490,9 @@
     { "command": "rm /etc/hosts", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "del %APPDATA%\\x", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "Remove-Item C:\\Users\\me\\a.txt", "workspace": "/home/me/project", "expect": "ask" },
-    { "command": "rm -rf é", "workspace": "/home/me/project", "expect": "allow" },
-    { "command": "rm -rf aé", "workspace": "/home/me/project", "expect": "allow" },
-    { "command": "rm -rf 中", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -r é", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -r aé", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -r 中", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "Remove-Item -Recurse 中", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "rm notes.txt src/a.txt", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "python -c \"import shutil; shutil.rmtree('/tmp/x')\"", "workspace": "/home/me/project", "expect": "ask" },
@@ -502,6 +502,21 @@
     { "command": "perl -e 'unlink glob q(*)'", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "python script.py -c config.toml", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "node build.js", "workspace": "/home/me/project", "expect": "allow" },
-    { "command": "perl -v", "workspace": "/home/me/project", "expect": "allow" }
+    { "command": "perl -v", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -rf src", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm -fr src", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm -r -f src", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm --recursive --force src", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "Remove-Item -Recurse -Force src", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rmdir /s /q build", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rd /s /q build", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "del /s *.tmp", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "git clean -fdx", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "find . -delete", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "shred notes.txt", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm -f notes.txt", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -r build", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "ls -la", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rmdir build", "workspace": "/home/me/project", "expect": "allow" }
   ]
 }
