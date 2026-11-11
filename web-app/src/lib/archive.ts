@@ -1,6 +1,7 @@
 import { invokeCommand as invoke } from '@/lib/backend'
 import { create } from 'zustand'
 import { formatSizeCompact } from '@/lib/formatBytes'
+import { isServedByFlint } from '@/lib/platform/utils'
 
 /**
  * The archive: deleting moves an item here first (src-tauri core/archive).
@@ -168,6 +169,9 @@ let cached: boolean | null = null
  */
 export async function archiveEnabled(): Promise<boolean> {
   if (cached !== null) return cached
+  // `flint serve` reads the archive setting but cannot write the archive or
+  // show the Archive page, so a browser delete is a plain, permanent delete.
+  if (isServedByFlint()) return (cached = false)
   try {
     cached = (await archiveApi.getSettings()).enabled
   } catch {
