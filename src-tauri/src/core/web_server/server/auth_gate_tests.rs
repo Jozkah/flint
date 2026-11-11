@@ -200,6 +200,21 @@ pub(super) async fn sign_in(addr: &str, dir: &std::path::Path) -> String {
     format!("Host: {addr}\r\nAuthorization: Bearer {token}\r\n")
 }
 
+/// Two Host headers are refused whichever comes first: this server would
+/// check one while a proxy in front could route by the other.
+#[tokio::test]
+async fn more_than_one_host_header_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (addr, server) = start_test_server(dir.path()).await;
+    let good = format!("Host: {addr}\r\n");
+    let evil = "Host: evil.example\r\n";
+    assert_eq!(send(&addr, "GET", "/healthz", &good, "").await.0, 200);
+    assert_eq!(send(&addr, "GET", "/healthz", &format!("{good}{evil}"), "").await.0, 400);
+    assert_eq!(send(&addr, "GET", "/healthz", &format!("{evil}{good}"), "").await.0, 400);
+    assert_eq!(send(&addr, "GET", "/healthz", &format!("{good}{good}"), "").await.0, 400);
+    server.abort();
+}
+
 /// Ids Windows rewrites (`...` is the parent folder there, `abc.` is `abc`)
 /// and device names are refused on every route, so nothing is deleted or
 /// aliased; a real id still works.

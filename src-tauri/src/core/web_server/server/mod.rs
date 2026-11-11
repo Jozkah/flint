@@ -571,6 +571,11 @@ async fn token_sign_in(state: &State, req: Request<Incoming>, client: std::net::
 
 
 async fn route(state: Arc<State>, req: Request<Incoming>, peer: std::net::IpAddr) -> Resp {
+    // HTTP/1.1 allows exactly one Host. With two, this server would check the
+    // first while a proxy in front may route by the other, so refuse outright.
+    if req.headers().get_all(header::HOST).iter().count() > 1 {
+        return text(StatusCode::BAD_REQUEST, "More than one Host header");
+    }
     if !host_allowed(&state, req.headers()) {
         return text(StatusCode::MISDIRECTED_REQUEST, "Unknown host");
     }
