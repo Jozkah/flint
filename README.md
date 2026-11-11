@@ -104,6 +104,8 @@ Flint keeps Jan's bundle identifier (`jan.ai.app`) and data path, so it detects 
 
 Jan compatibility is kept: `JAN_*` environment variables (with `FLINT_*` preferred), the `jan://` protocol (alongside `flint://`), and `JAN.md` project files (alongside `FLINT.md`) all still work. API keys stay in the OS keyring.
 
+For an isolated run (tests, a throwaway `FLINT_DATA_FOLDER`), set `FLINT_SECRET_STORE=file`: provider keys are then kept only in the encrypted `provider_secrets.enc` inside that data folder and never written to the OS keyring, so deleting the folder removes them. Without it, a non-default data folder gets its own keyring entries (`flint-providers:<hash of the folder>`), which stay in the keyring after the folder is deleted; remove them with your OS credential manager. Switching is safe both ways: in file mode a key that is replaced or removed is also deleted from the keyring if an older copy is there, and a key kept in the file is read before any keyring copy, so turning file mode off never brings back an old or deleted key, and keys saved in file mode are still found afterwards.
+
 ## Build from source
 
 ```bash

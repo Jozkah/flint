@@ -328,6 +328,13 @@ impl CompositeToolInvoker {
     /// interactive UI (the TUI, a duplex client), or a terminal the one-shot
     /// CLI prompts on. Elsewhere a prompt is auto-denied, which would read as
     /// the user saying no when nobody was asked.
+    /// Whether this run's own duplex host is attached and reading prompts.
+    pub(super) fn host_answers_prompts(&self) -> bool {
+        self.host_answers_prompts
+            .as_ref()
+            .is_some_and(|f| f.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
     pub(super) fn can_prompt(&self) -> bool {
         self.ask_requests.is_some() || super::stdin_is_terminal()
     }
@@ -2475,7 +2482,7 @@ impl CompositeToolInvoker {
         let trusted_here = || {
             let unattended = std::env::var_os(crate::core::agent::auto_mode::UNATTENDED_ENV)
                 .is_some_and(|v| v == "1");
-            trust_grant_applies(self.can_prompt(), unattended)
+            trust_grant_applies(self.can_prompt() || self.host_answers_prompts(), unattended)
                 && crate::core::agent::upstream::mcp_server_trusted(&server)
         };
         if (!self_approval || self.bypass)

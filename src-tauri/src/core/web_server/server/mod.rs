@@ -519,6 +519,15 @@ fn percent_decode(raw: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// One id path segment, percent-decoded exactly once and checked as a thread
+/// id. `%2E%2E%2E` is `...`, which is refused; `%252E` decodes to the plain
+/// name `%2E` and is never decoded again. `None` for anything not valid.
+pub(super) fn path_id(raw: &str) -> Option<String> {
+    let id = percent_decode(raw)?;
+    crate::core::threads::utils::validate_thread_id(&id).ok()?;
+    Some(id)
+}
+
 fn query_param(query: Option<&str>, key: &str) -> Option<String> {
     form_urlencoded::parse(query?.as_bytes())
         .find(|(name, _)| name == key)
@@ -1042,10 +1051,10 @@ async fn thread_write_routes(
     let Some(rest) = path.strip_prefix("/api/v1/threads/") else {
         return Err(req);
     };
-    let parts: Vec<_> = rest.split('/').collect();
-    if parts.iter().any(|part| crate::core::threads::utils::validate_thread_id(part).is_err()) {
+    let Some(decoded) = rest.split('/').map(path_id).collect::<Option<Vec<String>>>() else {
         return Ok(text(StatusCode::BAD_REQUEST, "Invalid id"));
-    }
+    };
+    let parts: Vec<&str> = decoded.iter().map(String::as_str).collect();
     match (method.clone(), parts.as_slice()) {
         (Method::PUT, [id]) => {
             let thread = match read_json(req).await {
@@ -1236,10 +1245,9 @@ async fn thread_read_routes(state: &State, method: &Method, path: &str) -> Optio
                 None => (rest, false),
                 _ => return Some(text(StatusCode::NOT_FOUND, "Unknown API route")),
             };
-            if crate::core::threads::utils::validate_thread_id(id).is_err() {
+            let Some(id) = path_id(id) else {
                 return Some(text(StatusCode::BAD_REQUEST, "Invalid thread id"));
-            }
-            let id = id.to_owned();
+            };
             let root = state.data_folder.clone();
             return Some(
                 match tokio::task::spawn_blocking(move || {

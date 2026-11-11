@@ -387,6 +387,9 @@ pub(crate) struct StreamInput {
     aborted: AtomicBool,
     abort: Notify,
     gone: AtomicBool,
+    /// This run's "a host is reading prompts" flag, handed to the agent loop.
+    /// Set while attached, cleared when the reader stops.
+    answering: std::sync::Arc<AtomicBool>,
 }
 
 /// Most follow-ups (and steers) held for a run at once. A client that keeps
@@ -437,6 +440,21 @@ impl StreamInput {
     /// once per request, at whatever point in the run it arrives.
     pub(crate) fn mark_client_gone(&self) {
         self.gone.store(true, Ordering::SeqCst);
+        self.answering.store(false, Ordering::SeqCst);
+    }
+
+    /// The flag the agent loop reads to know this run's host can answer a
+    /// prompt. Marked attached here; [`Self::mark_client_gone`] clears it.
+    pub(crate) fn answering_flag(&self) -> std::sync::Arc<AtomicBool> {
+        if !self.client_gone() {
+            self.answering.store(true, Ordering::SeqCst);
+        }
+        std::sync::Arc::clone(&self.answering)
+    }
+
+    /// The run is over: nothing answers for it any more.
+    pub(crate) fn stop_answering(&self) {
+        self.answering.store(false, Ordering::SeqCst);
     }
 
     pub(crate) fn client_gone(&self) -> bool {

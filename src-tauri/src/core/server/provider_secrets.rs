@@ -251,7 +251,40 @@ fn unique_tmp(path: &std::path::Path, ext: &str) -> PathBuf {
 static KEYRING_DOWN: AtomicBool = AtomicBool::new(false);
 
 fn keyring_down() -> bool {
-    KEYRING_DOWN.load(Ordering::Relaxed) || !keyring_trusts_this_binary()
+    KEYRING_DOWN.load(Ordering::Relaxed) || file_store_chosen() || !keyring_trusts_this_binary()
+}
+
+/// `FLINT_SECRET_STORE=file` (or `JAN_SECRET_STORE`): keep provider keys only
+/// in the encrypted file inside the data folder and never touch the OS
+/// keyring. For isolated runs (tests, a throwaway data folder), whose keys
+/// would otherwise outlive the folder in the user's keyring. Unset, or any
+/// other value, keeps the keyring as before.
+fn file_store_chosen() -> bool {
+    secret_store_is_file(crate::core::compat_env::var("SECRET_STORE").ok().as_deref())
+}
+
+/// Whether a stale keyring copy can be removed: the keyring works for this
+/// binary, whichever store is chosen. In file mode the keyring is never
+/// written or read, but an entry left there from before is still deleted when
+/// the key is replaced or removed, so turning file mode off later cannot bring
+/// an old or deleted key back.
+fn keyring_cleanup_possible() -> bool {
+    !KEYRING_DOWN.load(Ordering::Relaxed) && keyring_trusts_this_binary()
+}
+
+/// Which copy a read returns when both stores might hold one. The file is
+/// written only when the keyring was not used for that write (file mode, or
+/// the keyring failing), and a keyring write removes the file copy, so a file
+/// copy is always the newer one.
+fn newest_copy(file: Vec<String>, keyring: impl FnOnce() -> Option<Vec<String>>) -> Vec<String> {
+    if !file.is_empty() {
+        return file;
+    }
+    keyring().unwrap_or_default()
+}
+
+fn secret_store_is_file(value: Option<&str>) -> bool {
+    value.is_some_and(|v| v.trim().eq_ignore_ascii_case("file"))
 }
 
 /// Whether the OS keyring can remember an access grant for this executable.
@@ -802,7 +835,7 @@ pub fn store_provider_keys(provider: &str, keys: &[String]) -> Result<(), String
         index_set(provider, true);
         // The keyring could not take the new value; a copy it still holds
         // from before is stale, and must not be what a later read finds.
-        if !keyring_down() {
+        if keyring_cleanup_possible() {
             let _ = keyring_entry(provider).and_then(|e| e.delete_credential());
         }
     }
@@ -812,7 +845,8 @@ pub fn store_provider_keys(provider: &str, keys: &[String]) -> Result<(), String
 /// Remove a provider's stored keys from both the keyring and the fallback file.
 /// Missing entries are not an error.
 pub fn delete_provider_keys(provider: &str) -> Result<(), String> {
-    if !keyring_down() {
+    // Also in file mode: a keyring copy from before must not outlive this.
+    if keyring_cleanup_possible() {
         match keyring_entry(provider).and_then(|e| e.delete_credential()) {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
             Err(err) => {
@@ -853,20 +887,19 @@ pub fn wipe_all_secrets() -> usize {
 /// Read a provider's key chain: keyring first, then the fallback file. Returns
 /// an empty vec when neither has it (caller falls back to env/flag).
 pub fn load_provider_keys(provider: &str) -> Vec<String> {
-    if !keyring_down() {
-        match keyring_entry(provider).and_then(|e| e.get_password()) {
-            Ok(serialized) => {
-                if let Ok(keys) = serde_json::from_str::<Vec<String>>(&serialized) {
-                    if !keys.is_empty() {
-                        return keys;
-                    }
-                }
-            }
-            Err(keyring::Error::NoEntry) => {}
-            Err(err) => note_keyring_failure(&err),
+    newest_copy(file_load(provider), || {
+        if keyring_down() {
+            return None;
         }
-    }
-    file_load(provider)
+        match keyring_entry(provider).and_then(|e| e.get_password()) {
+            Ok(serialized) => serde_json::from_str::<Vec<String>>(&serialized).ok(),
+            Err(keyring::Error::NoEntry) => None,
+            Err(err) => {
+                note_keyring_failure(&err);
+                None
+            }
+        }
+    })
 }
 
 /// `auth:*` names hold internal login/credential records (see
@@ -989,6 +1022,10 @@ pub fn load_secret_record(key: &str) -> Option<String> {
 /// overwrite a record they failed to read. `Ok(None)` means absent.
 pub fn try_load_secret_record(key: &str) -> Result<Option<String>, String> {
     let name = format!("auth:{key}");
+    // The file copy is the newer one when there is one (see `newest_copy`).
+    if let Some(first) = file_load(&name).into_iter().next() {
+        return Ok(Some(first));
+    }
     if !keyring_down() {
         match keyring_entry(&name).and_then(|e| e.get_password()) {
             Ok(serialized) => {
@@ -1235,6 +1272,27 @@ mod tests {
         assert!(scoped.starts_with("flint-providers:"), "{scoped}");
         assert_ne!(scoped, KEYRING_SERVICE, "a fresh start must not read JAN's keys");
         assert_eq!(scoped, flint_scoped_service(dir.path()));
+    }
+
+    #[test]
+    fn a_file_copy_wins_over_an_older_keyring_copy() {
+        let k = |v: &str| vec![v.to_string()];
+        // Rotated to K2 in file mode while the keyring still held K1.
+        assert_eq!(newest_copy(k("K2"), || Some(k("K1"))), k("K2"));
+        // Keyring only (default mode): read from it.
+        assert_eq!(newest_copy(Vec::new(), || Some(k("K1"))), k("K1"));
+        // The keyring is not even asked when the file has the key.
+        assert_eq!(newest_copy(k("K2"), || panic!("keyring read")), k("K2"));
+        assert!(newest_copy(Vec::new(), || None).is_empty());
+    }
+
+    #[test]
+    fn only_secret_store_file_skips_the_keyring() {
+        assert!(secret_store_is_file(Some("file")));
+        assert!(secret_store_is_file(Some(" FILE ")));
+        assert!(!secret_store_is_file(None));
+        assert!(!secret_store_is_file(Some("")));
+        assert!(!secret_store_is_file(Some("keyring")));
     }
 
     #[test]
