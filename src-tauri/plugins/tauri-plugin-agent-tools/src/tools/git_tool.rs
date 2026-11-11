@@ -1482,9 +1482,69 @@ pub(crate) fn inside(p: &Path, roots: &[PathBuf]) -> bool {
         .any(|r| p.starts_with(&r))
 }
 
+/// Whether `p` is inside an agent control folder (`.jan`): a project's
+/// `.jan` (config, memory, records) or the global one's internals. A session
+/// worktree lives at `<home>/.jan/worktrees/<name>`; that folder and what is
+/// below it are a checkout like any other, so a `.jan` that is only followed
+/// by `worktrees/<name>` does not count. Anything else under that `.jan`
+/// (including `worktrees` itself) and any `.jan` inside the worktree still does.
 pub(crate) fn in_jan_dir(p: &Path) -> bool {
-    p.components()
-        .any(|c| matches!(c, Component::Normal(n) if n == crate::tools::sandbox::JAN_DIR))
+    let is_jan = |s: &std::ffi::OsStr| {
+        s.to_string_lossy()
+            .trim_end_matches(['.', ' '])
+            .eq_ignore_ascii_case(crate::tools::sandbox::JAN_DIR)
+    };
+    let parts: Vec<&std::ffi::OsStr> = p
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(n) => Some(n),
+            _ => None,
+        })
+        .collect();
+    let mut i = 0;
+    while i < parts.len() {
+        if is_jan(parts[i]) {
+            let session_worktree = parts
+                .get(i + 1)
+                .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("worktrees"))
+                && parts.get(i + 2).is_some_and(|n| !is_jan(n));
+            if !session_worktree {
+                return true;
+            }
+            i += 3;
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Refuse an argument that names a path inside an agent control folder,
+/// relative to `cwd`: a pathspec such as `.jan/agent/memory`, or a link
+/// whose target is in one. Now that a session worktree under the global
+/// `.jan` is a valid working folder, its own `.jan` must stay out of reach.
+pub fn check_jan_pathspecs(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
+    for arg in &plan.args {
+        // `--` separators and options; `:(top)x` / `:/x` pathspec magic is
+        // judged by the path after it.
+        let raw = arg.rsplit_once(')').map(|(_, r)| r).unwrap_or(arg);
+        let raw = raw.strip_prefix(":/").or_else(|| raw.strip_prefix(':')).unwrap_or(raw);
+        if raw.is_empty() || raw.starts_with('-') {
+            continue;
+        }
+        let target = if Path::new(raw).is_absolute() { PathBuf::from(raw) } else { cwd.join(raw) };
+        let names_jan = raw.split(['/', '\\']).any(|c| {
+            c == ".." || c.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(crate::tools::sandbox::JAN_DIR)
+        });
+        if !names_jan && !target.exists() {
+            continue;
+        }
+        let resolved = canon_new(&target).unwrap_or(target);
+        if in_jan_dir(&resolved) {
+            return Err(format!("`{arg}` is inside the agent's own `.jan` folder, which is not reachable through git"));
+        }
+    }
+    Ok(())
 }
 
 /// Folders a call may run in.
@@ -2509,6 +2569,9 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
     if let Err(e) = check_message_file_paths(&plan, &cwd, &roots) {
         return format!("ERROR: git: {e}");
     }
+    if let Err(e) = check_jan_pathspecs(&plan, &cwd) {
+        return format!("ERROR: git: {e}");
+    }
     if let Err(e) = check_diff_in_work_tree(&plan, &cwd).await {
         return format!("ERROR: git: {e}");
     }
@@ -2934,6 +2997,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         canon(&d).unwrap()
+    }
+
+    #[test]
+    fn session_worktree_under_global_jan_is_usable() {
+        let base = temp("jan-worktree");
+        let home_jan = base.join(".jan");
+        let wt = home_jan.join("worktrees").join("s1");
+        let project = base.join("proj");
+        for d in [&wt.join(".jan").join("agent").join("memory"), &project.join(".jan").join("agent").join("memory")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(wt.join("a.txt"), "x").unwrap();
+        let roots = Roots { granted: vec![wt.clone()], workspace: vec![project.clone()], read: vec![] };
+        let add = p("git", &["add", "a.txt"]).unwrap();
+        let commit = p("git", &["commit", "-m", "x"]).unwrap();
+        assert_eq!(resolve_cwd(None, &commit, &roots).unwrap(), wt);
+        assert_eq!(resolve_cwd(Some(wt.to_str().unwrap()), &add, &roots).unwrap(), wt);
+        assert!(check_jan_pathspecs(&add, &wt).is_ok());
+        assert!(check_jan_pathspecs(&commit, &wt).is_ok());
+
+        // The protected folders themselves stay refused.
+        for d in [project.join(".jan"), wt.join(".jan"), wt.join(".jan").join("agent").join("memory")] {
+            assert!(resolve_cwd(Some(d.to_str().unwrap()), &add, &roots).is_err(), "{}", d.display());
+        }
+        assert!(in_jan_dir(&home_jan));
+        assert!(in_jan_dir(&home_jan.join("worktrees")));
+        assert!(in_jan_dir(&home_jan.join("settings.json")));
+        assert!(!in_jan_dir(&wt.join("src")));
+        for spec in [".jan/agent/memory", ".JAN/agent", ":(top).jan/agent/memory/x.md", "../../settings.json"] {
+            let plan = p("git", &["add", "--", spec]).unwrap();
+            assert!(check_jan_pathspecs(&plan, &wt).is_err(), "{spec}");
+        }
+        // A link into the project's memory folder is judged by its target.
+        let link = wt.join("mem");
+        #[cfg(windows)]
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J", link.to_str().unwrap(), project.join(".jan").join("agent").join("memory").to_str().unwrap()])
+            .output()
+            .is_ok_and(|o| o.status.success());
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(project.join(".jan").join("agent").join("memory"), &link).is_ok();
+        if made {
+            let plan = p("git", &["add", "mem"]).unwrap();
+            assert!(check_jan_pathspecs(&plan, &wt).is_err());
+            assert!(resolve_cwd(Some(link.to_str().unwrap()), &add, &roots).is_err());
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
