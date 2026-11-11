@@ -201,7 +201,9 @@ export function recordShellOutcome(
   useCoworkActivity.getState().patchTask(
     taskIdFor(run.sessionId, run.runId, callId),
     jobId
-      ? { jobId, status: 'running' }
+      ? // What it printed before it went to the background is kept (redacted
+        // and bounded), so a job nobody collects still has details to show.
+        { jobId, status: 'running', ...keptOutput(outcome.output) }
       : { ...settledShell(outcome), endedAt: Date.now() }
   )
 }
@@ -227,6 +229,12 @@ export function recordJobCollected(
 /** Output kept on a shell task: its tail, which is where it says how it ended. */
 export const MAX_KEPT_OUTPUT_CHARS = 64 * 1024
 export const MAX_KEPT_OUTPUT_LINES = 2000
+
+/** A command's output as a row keeps it: redacted, then its bounded tail. */
+function keptOutput(output: string): Pick<ActivityTask, 'output' | 'outputTruncated'> {
+  const kept = boundTail(redactSecrets(output), MAX_KEPT_OUTPUT_CHARS, MAX_KEPT_OUTPUT_LINES)
+  return kept.text ? { output: kept.text, outputTruncated: kept.truncated || undefined } : {}
+}
 
 /**
  * What a finished shell command's row records: how it ended, and its output

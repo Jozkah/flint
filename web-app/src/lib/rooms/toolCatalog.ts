@@ -7,7 +7,16 @@
  * `roomTools.ts` / `fullTools.ts`); this only lists them.
  */
 import { estimateToolTokens } from '@/lib/context-manager'
+import { isServedByFlint } from '@/lib/platform/utils'
 import type { ToolAccess } from './types'
+
+/**
+ * Whether a room participant can have file tools here. They run in the desktop
+ * app's sandbox; the browser build `flint serve` serves has no tool executor
+ * (the server refuses it, `--agent-root` or not), so a participant there gets
+ * no file tools whatever its access, and the editor and prompt say so.
+ */
+export const roomFileToolsAvailable = (): boolean => !isServedByFlint()
 
 /** The read-only built-in file tools a room participant may use. */
 export const ROOM_READ_TOOLS = ['read', 'ls', 'find', 'grep'] as const
@@ -93,7 +102,7 @@ export async function loadRoomToolCatalog(
     if (out.some((e) => e.name === name)) return
     out.push({ name, group, tokens: estimateToolTokens(name, schema), ...(server ? { server } : {}) })
   }
-  if (folder) {
+  if (folder && roomFileToolsAvailable()) {
     try {
       const { getAgentToolSchemas } = await import('@/lib/agentTools')
       const schemas = await getAgentToolSchemas(folder, undefined, 'thread')

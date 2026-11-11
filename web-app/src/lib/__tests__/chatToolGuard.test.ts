@@ -59,7 +59,7 @@ describe('chatToolGuard', () => {
 
   it('falls back to the text check against the same roots, erring toward asking', async () => {
     invoke.mockRejectedValue(new Error('unavailable'))
-    expect(await chatDestructiveReason(`rm -rf ${WS}/build`, [WS])).toBeNull()
+    expect(await chatDestructiveReason(`rm -r ${WS}/build`, [WS])).toBeNull()
     expect(await chatDestructiveReason('rm -rf /etc', [WS])).not.toBeNull()
     expect(
       await chatDestructiveReason(`rm -rf ${WS}/../x`, [WS])

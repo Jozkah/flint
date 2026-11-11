@@ -11,7 +11,8 @@ describe('destructiveCommandReason', () => {
     expect(flagged('find /etc -name x -delete')).toBe(true)
     expect(flagged('find -L /etc -name x -delete')).toBe(true)
     expect(flagged('find -H -O2 /var -delete')).toBe(true)
-    expect(flagged('find -L ./build -name x -delete')).toBe(false)
+    // Inside the workspace a delete action is still asked about, for its own reason.
+    expect(destructiveCommandReason('find -L ./build -name x -delete', WS)).toMatch(/removes every match/)
   })
 
   it('flags rm -rf outside the workspace', () => {
@@ -30,11 +31,28 @@ describe('destructiveCommandReason', () => {
     }
   })
 
+  it('asks about recursive forced and unrecoverable deletes inside the workspace too', () => {
+    for (const cmd of [
+      'rm -rf src',
+      'rm -fr src',
+      'rm -r -f src',
+      'Remove-Item -Recurse -Force src',
+      'rmdir /s /q build',
+      'find . -delete',
+      'shred notes.txt',
+      'git clean -fdx',
+    ]) {
+      expect(flagged(cmd), cmd).toBe(true)
+    }
+    expect(destructiveCommandReason('rm -rf src', WS)).toMatch(/recursively and forcibly/)
+  })
+
   it('leaves ordinary deletes inside the workspace alone', () => {
     for (const cmd of [
-      'rm -rf node_modules',
-      'rm -rf ./target dist',
-      'rm -rf /home/me/project/build',
+      'rm -r node_modules',
+      'rm -r ./target dist',
+      'rm -r /home/me/project/build',
+      'rm -f file.txt',
       'rm file.txt',
       'rm -r build',
       "echo 'rm -rf /'",
@@ -78,13 +96,15 @@ describe('destructiveCommandReason', () => {
     expect(flagged('Remove-Item -Recurse -Force C:\\Users\\me', win)).toBe(true)
     expect(flagged('Remove-Item C:\\ -Recurse -Force', win)).toBe(true)
     expect(
-      flagged('Remove-Item -Recurse -Force C:\\work\\proj\\bin', win)
+      flagged('Remove-Item -Recurse C:\\work\\proj\\bin', win)
     ).toBe(false)
-    expect(flagged('Remove-Item -Recurse -Force .\\bin', win)).toBe(false)
+    expect(flagged('Remove-Item -Recurse .\\bin', win)).toBe(false)
+    expect(flagged('Remove-Item -Recurse -Force .\\bin', win)).toBe(true)
     expect(flagged('format C: /q', win)).toBe(true)
     expect(flagged('del /s /q *.*', win)).toBe(true)
     expect(flagged('rd /s /q C:\\Windows', win)).toBe(true)
-    expect(flagged('rd /s /q build', win)).toBe(false)
+    expect(flagged('rd /s build', win)).toBe(false)
+    expect(flagged('rd /s /q build', win)).toBe(true)
     expect(flagged('del file.txt', win)).toBe(false)
   })
 
@@ -119,7 +139,7 @@ describe('destructiveCommandReason', () => {
   describe('approved scope', () => {
     const POSIX = ['/home/me/my project', '/tmp/scratch']
     const WIN = [String.raw`C:\Users\me\my project`]
-    const rm = (p: string) => `rm -rf "${p}"`
+    const rm = (p: string) => `rm -r "${p}"`
 
     it('treats absolute paths inside any root as inside', () => {
       for (const p of [

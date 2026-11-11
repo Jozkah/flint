@@ -76,6 +76,27 @@ export type LiveJob = {
 }
 
 /**
+ * What a background job's row needs from one look at the live job, or null.
+ * The backend's start is when the command began; the row's own start was
+ * taken when the call arrived, before anyone allowed it, so it is replaced.
+ * A finished job also says how it ended.
+ */
+export function liveJobPatch(
+  task: { status: string; startedAt: number },
+  job: LiveJob,
+  now: number
+): Partial<{ status: 'done' | 'error' | 'cancelled'; startedAt: number; endedAt: number; exitCode: number; signalled: boolean }> | null {
+  if (task.status !== 'running') return null
+  const startedAt =
+    job.startedAtMs != null && job.startedAtMs !== task.startedAt
+      ? { startedAt: job.startedAtMs }
+      : {}
+  if (!job.finished) return startedAt.startedAt !== undefined ? startedAt : null
+  const patch = finishedJobPatch(job)
+  return { ...startedAt, ...patch, endedAt: patch.endedAt ?? now }
+}
+
+/**
  * How a finished job's row should read, from what the backend observed.
  *
  * A job the agent has not collected yet still says how it ended: the exit

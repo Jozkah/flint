@@ -286,7 +286,7 @@ describe('useToolApprovalRequests', () => {
         'thread-1',
         undefined,
         {
-          input: { command: 'npm test && rm -rf node_modules' },
+          input: { command: 'npm test && rm -r node_modules' },
           workspaceLabel: '/home/me/project',
         }
       )
@@ -325,14 +325,14 @@ describe('useToolApprovalRequests', () => {
     let inside: Promise<boolean>
     act(() => {
       // Inside the second root: runs on the grant.
-      inside = ask('tc-in', 'rm -rf "/data/ws one/build"', [
+      inside = ask('tc-in', 'rm -r "/data/ws one/build"', [
         '/p',
         '/data/ws one',
       ])
       // A sibling sharing the root's prefix, and unknown scope (a display
       // label is not a path): both still ask.
-      void ask('tc-sib', 'rm -rf "/data/ws one-other"', ['/data/ws one'])
-      void ask('tc-unknown', 'rm -rf "/data/ws one/build"')
+      void ask('tc-sib', 'rm -r "/data/ws one-other"', ['/data/ws one'])
+      void ask('tc-unknown', 'rm -r "/data/ws one/build"')
     })
     await expect(inside!).resolves.toBe(true)
     expect(result.current.pending['tc-sib']).toBeDefined()

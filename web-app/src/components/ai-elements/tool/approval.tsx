@@ -132,7 +132,8 @@ export const ToolApprovalActions = memo(() => {
       pending
         ? describePermissionRequest({
             toolName: pending.toolName,
-            input: pending.input,
+            // A flagged write shows its arguments masked.
+            input: pending.shownInput ?? pending.input,
             serverName: pending.serverName,
             workspaceLabel: pending.workspaceLabel,
             taskContext: pending.taskContext,
@@ -222,7 +223,10 @@ export const ToolApprovalActions = memo(() => {
     : null
   const alwaysEverywhere =
     !scopeFormChoice || chosenScopeId === EVERYWHERE_CHOICE
-  const subject = requestSubject(pending.input, request.resources)
+  const subject = requestSubject(
+    pending.shownInput ?? pending.input,
+    request.resources
+  )
   const planCard = planCardOf(pending.toolName, pending.input)
   const planUnsaved = Boolean(planCard && planDirty[planCard.campaignId])
   const pendingText =

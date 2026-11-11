@@ -176,6 +176,7 @@
       "summary": "{{on}} of {{total}} on · ~{{tokens}} tokens",
       "loading": "Loading tools…",
       "empty": "No tools are available with this access.",
+      "filesDesktopOnly": "File tools only run in the Flint desktop app. In this browser session the participant cannot read the attached folder.",
       "group": {
         "files": "Files and commands",
         "web": "Web",

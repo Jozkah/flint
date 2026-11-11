@@ -337,6 +337,7 @@
     "search": "Suchen",
     "noMatches": "Nichts entspricht dieser Suche.",
     "skillsHelp": "Skills sind Anweisungen, die der Agent laden kann, wenn eine Aufgabe sie braucht. Skills, die aus einem Plugin stammen, sind hier schreibgeschützt.",
+    "skillWarning": "Problem im Front Matter",
     "yourSkills": "Deine Skills ({{count}})",
     "pluginSkills": "Aus Plugins ({{count}})",
     "computerApps": "Auf diese Apps beschränken",

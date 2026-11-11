@@ -515,6 +515,17 @@ describe('ToolHeader runtime state', () => {
     expect(screen.getByText(/tools:toolCall.running/)).toBeInTheDocument()
   })
 
+  it('says a question is waiting for the user, without a run timer', () => {
+    const runtime = useToolCallRuntime.getState()
+    runtime.enqueue(['tc1'])
+    runtime.markRunning('tc1')
+    vi.setSystemTime(Date.now() + 120_000)
+    renderHeader({ title: 'ask', type: 'tool-ask', state: 'input-available' })
+    expect(screen.getByText('common:waitingForYou')).toBeInTheDocument()
+    expect(screen.queryByText(/tools:toolCall.running/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/common:duration/)).not.toBeInTheDocument()
+  })
+
   it('shows how long a finished call took', () => {
     const runtime = useToolCallRuntime.getState()
     runtime.enqueue(['tc1'])

@@ -28,6 +28,24 @@ describe('AgentEntryRow', () => {
     expect(onDelete).toHaveBeenCalledTimes(1)
   })
 
+  it('shows what was wrong with a skill front matter, and nothing when it read cleanly', () => {
+    const { unmount } = render(
+      <AgentEntryRow
+        name="deploy"
+        description="Ship it"
+        warning="Quote values that contain a colon."
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('skill-warning')).toHaveTextContent('settings:agentTools.skillWarning')
+    expect(screen.getByText('Quote values that contain a colon.')).toBeInTheDocument()
+    expect(screen.getByText('Ship it')).toBeInTheDocument()
+    unmount()
+    render(<AgentEntryRow name="deploy" description="Ship it" onEdit={vi.fn()} onDelete={vi.fn()} />)
+    expect(screen.queryByTestId('skill-warning')).not.toBeInTheDocument()
+  })
+
   it('shows the plugin name instead of actions for a plugin skill', () => {
     render(
       <AgentEntryRow name="lint" plugin="acme" onEdit={vi.fn()} onDelete={vi.fn()} />

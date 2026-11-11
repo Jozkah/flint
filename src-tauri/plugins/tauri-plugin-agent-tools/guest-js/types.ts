@@ -5,6 +5,11 @@ export interface SkillMeta {
   description: string
   /** The installed plugin this skill ships in; absent for a store skill. */
   plugin?: string
+  /**
+   * What was wrong with the skill's front matter (read leniently, or part of
+   * it ignored). Absent when it read cleanly, and from older backends.
+   */
+  warning?: string
 }
 
 /**

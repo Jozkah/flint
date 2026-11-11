@@ -339,6 +339,7 @@
     "search": "Hledat",
     "noMatches": "Tomuto hledání nic neodpovídá.",
     "skillsHelp": "Dovednosti jsou pokyny, které agent může načíst, když je úkol potřebuje. Dovednosti pocházející z pluginu jsou zde jen pro čtení.",
+    "skillWarning": "Problém v hlavičce",
     "yourSkills": "Vaše dovednosti ({{count}})",
     "pluginSkills": "Z pluginů ({{count}})",
     "computerApps": "Omezit na tyto aplikace",

@@ -178,6 +178,7 @@
       "summary": "{{on}} de {{total}} actives · ~{{tokens}} tokens",
       "loading": "Carregant les eines…",
       "empty": "No hi ha eines disponibles amb aquest accés.",
+      "filesDesktopOnly": "Les eines de fitxers només funcionen a l'aplicació d'escriptori de Flint. En aquesta sessió del navegador el participant no pot llegir la carpeta adjunta.",
       "group": {
         "files": "Fitxers i ordres",
         "web": "Web",

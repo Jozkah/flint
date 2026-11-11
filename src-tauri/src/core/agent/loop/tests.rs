@@ -7976,7 +7976,7 @@ async fn absolute_paths_inside_the_project_are_not_asked_about() {
     std::fs::create_dir_all(root.join("build")).unwrap();
     let root_str = root.to_string_lossy().to_string();
     let scope = crate::core::agent::destructive::Scope::new([&root]);
-    let inside = format!("rm -rf \"{}\"", root.join("build").to_string_lossy());
+    let inside = format!("rm -r \"{}\"", root.join("build").to_string_lossy());
     assert_eq!(
         crate::core::agent::destructive::destructive_reason_in(&inside, &scope),
         None

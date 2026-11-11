@@ -26,7 +26,8 @@ import { generationSpeed, type createDecodeClock } from '@/lib/tokenSpeed'
 import { fromCoworkUsage } from '@/lib/tokenUsage'
 import { recordLifecycle } from '@/lib/toolActivity'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import type { CoworkTurn } from '@/types/coworkSession'
+import type { AskRecord, CoworkTurn } from '@/types/coworkSession'
+import { askCopyOrigin } from '@/hooks/coworkRun/turns'
 import type { RunState } from './runState'
 
 type RunTurnDeps = Parameters<typeof runTurn>[0]['deps']
@@ -124,11 +125,12 @@ export function createStepHandlers(ctx: StepHandlersContext) {
     }
     // Replace the optimistic running rows with the settled ones so the
     // transcript shows results, not spinners.
-    rs.runTurns = rs.runTurns.filter(
-      (turn) =>
-        !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
-        !ctx.streamed.has(turn)
-    )
+    // A streamed row that a question was hung on is a copy of it: drop it
+    // with the rest, and carry its questions to the settled row, or its text
+    // is shown twice (before the card, and again once answered).
+    const dropped = dropSettledRows(rs.runTurns, ctx.streamed, outcomes)
+    rs.runTurns = dropped.kept
+    const carriedAsks = dropped.carriedAsks
     ctx.streamed.clear()
     const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
     // Prefer llama.cpp's reported generation speed; otherwise derive it
@@ -166,6 +168,7 @@ export function createStepHandlers(ctx: StepHandlersContext) {
           }
         : turn
     })
+    carryAsks(settledTurns, carriedAsks)
     // Reset the generation span so the next step measures its own.
     decodeClock.reset()
     ctx.pushLive(settledTurns, rs.stepSnapshot ?? ctx.latestSnapshot())
@@ -275,4 +278,42 @@ export function createStepHandlers(ctx: StepHandlersContext) {
     ]
   }
   return { onStep, onResponse, activity, hasSteering, takeSteering }
+}
+
+/**
+ * The live rows a settled step replaces: its running tool rows and the
+ * assistant rows it streamed -- including a copy of one made to hang a
+ * question on, whose questions are handed back to go on the settled row.
+ * Without that, the copy survived next to the settled row and the text before
+ * a question was shown twice.
+ */
+export function dropSettledRows(
+  runTurns: readonly CoworkTurn[],
+  streamed: ReadonlySet<CoworkTurn>,
+  outcomes: ReadonlyMap<string, unknown>
+): { kept: CoworkTurn[]; carriedAsks: AskRecord[] } {
+  const carriedAsks: AskRecord[] = []
+  const kept = runTurns.filter((turn) => {
+    if (turn.role === 'tool' && outcomes.has(turn.callId ?? '')) return false
+    if (streamed.has(turn)) return false
+    const origin = askCopyOrigin(turn)
+    if (origin && streamed.has(origin)) {
+      carriedAsks.push(...(turn.asks ?? []))
+      return false
+    }
+    return true
+  })
+  return { kept, carriedAsks }
+}
+
+/** Hang carried questions on the first settled assistant row, in place. */
+export function carryAsks(settled: CoworkTurn[], asks: readonly AskRecord[]): void {
+  if (asks.length === 0) return
+  const at = settled.findIndex((turn) => turn.role === 'assistant')
+  if (at === -1) {
+    settled.unshift({ role: 'assistant', content: '', asks: [...asks] })
+    return
+  }
+  const host = settled[at]
+  settled[at] = { ...host, asks: [...(host.asks ?? []), ...asks] }
 }

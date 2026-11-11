@@ -179,6 +179,14 @@ describe('settling a shell command', () => {
     })
   })
 
+  it('keeps what a backgrounded command printed, so an uncollected job has details', () => {
+    recordShellOutcome(run, 'call-1', {
+      output:
+        'step 1 ok\nstep 2 ok\nCommand exceeded 120s and is continuing in the background (job_id=bash-3).',
+    })
+    expect(store().tasks[idOf('call-1')].output).toContain('step 2 ok')
+  })
+
   it('settles the original row when the agent collects the job', () => {
     recordShellOutcome(run, 'call-1', {
       output:

@@ -15,6 +15,50 @@ export type TraceSummaryPart = {
   state?: string
   input?: unknown
   output?: unknown
+  toolCallId?: string
+}
+
+/**
+ * The backend's change diff: one `<sign> <line number> | <text>` row per line,
+ * `+` added, `-` removed, a space for context (see `ChangeDiff`).
+ */
+const DIFF_LINE = /^([+\- ]) \s*\d+ \|/
+
+/** Lines added and removed, counted as the change's card counts them. */
+function diffCounts(diff: string): { added: number; removed: number } {
+  let added = 0
+  let removed = 0
+  for (const line of diff.split('\n')) {
+    const sign = DIFF_LINE.exec(line)?.[1]
+    if (sign === '+') added++
+    else if (sign === '-') removed++
+  }
+  return { added, removed }
+}
+
+/** Whether a diff only adds: a file that did not exist before. */
+const diffOnlyAdds = (diff: string) =>
+  diff.split('\n').every((line) => {
+    const sign = DIFF_LINE.exec(line)?.[1]
+    return sign === undefined || sign === '+'
+  })
+
+/**
+ * Whether a finished `write` replaced a file that was there. The backend
+ * says "Overwrote <path>" for that and "Created <path>" for a new one; with
+ * neither, the diff decides.
+ */
+function writeReplaced(part: TraceSummaryPart, diff: string | undefined): boolean {
+  const out = part.output
+  const text =
+    typeof out === 'string'
+      ? out
+      : out && typeof out === 'object' && typeof (out as { content?: unknown }).content === 'string'
+        ? (out as { content: string }).content
+        : ''
+  if (/^\s*Overwrote\b/.test(text)) return true
+  if (/^\s*Created\b/.test(text)) return false
+  return diff !== undefined && diff.trim() !== '' && !diffOnlyAdds(diff)
 }
 
 export type SummaryKey = 'edited' | 'created' | 'commands' | 'read' | 'searched' | 'tools'
@@ -169,7 +213,11 @@ function countsOf(edit: Record<string, unknown> | undefined) {
  * command run again straight after it failed, with no other call between, is
  * the same command retried; one re-run after other work counts again.
  */
-export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
+export function summarizeTrace(
+  parts: TraceSummaryPart[],
+  /** The real diff a file call made, by call id, when it is known. */
+  diffOf?: (callId: string) => string | undefined
+): TraceSummary {
   const out: TraceSummary = {
     commands: 0,
     created: 0,
@@ -197,7 +245,10 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
     if (!part.type.startsWith('tool-') || !partDone(part)) continue
     const failed = partFailed(part)
     const name = part.type.slice('tool-'.length)
-    const key = partKey(name)
+    const diff = part.toolCallId ? diffOf?.(part.toolCallId) : undefined
+    // A write over a file that was there changed it; it did not create one.
+    const key =
+      name === 'write' && writeReplaced(part, diff) ? 'edited' : partKey(name)
     const input = (part.input ?? {}) as Record<string, unknown>
     const previous = prev
     prev = undefined
@@ -205,8 +256,16 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
       const path = str(input.path) ?? str(input.file_path) ?? `#${anonymous++}`
       files[key].set(path, failed)
       if (failed) continue
-      if (key === 'created') out.added += lines(input.content)
-      if (key === 'edited') {
+      // The diff the call made, when there is one, is the count every view
+      // shows; the call's own input is the fallback.
+      if (diff && (name === 'write' || name === 'edit')) {
+        const counts = diffCounts(diff)
+        out.added += counts.added
+        out.removed += counts.removed
+        continue
+      }
+      if (name === 'write') out.added += lines(input.content)
+      else if (key === 'edited') {
         const edits = Array.isArray(input.edits) ? input.edits : []
         for (const e of edits as Record<string, unknown>[]) {
           const { added, removed } = countsOf(e)

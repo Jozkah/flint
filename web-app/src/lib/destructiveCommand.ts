@@ -290,6 +290,19 @@ function deletionFlags(
   return { recursive, targets }
 }
 
+/**
+ * Whether a delete is told not to ask or stop: `-f`/`--force` (also inside a
+ * bundle such as `-rf`), or PowerShell's `-Force`.
+ */
+function forced(lower: string[]): boolean {
+  return lower.some(
+    (a) =>
+      a === '--force' ||
+      a.startsWith('-fo') ||
+      (/^-[rfivdi]+$/.test(a) && a.includes('f'))
+  )
+}
+
 function gitSubcommand(lower: string[]): number {
   let i = 0
   while (i < lower.length) {
@@ -453,9 +466,16 @@ function checkSegment(
     case 'remove-item':
     case 'ri': {
       // Recursive or not, a target outside the workspace is asked about.
-      const { targets } = deletionFlags(args, false)
+      const { recursive, targets } = deletionFlags(args, false)
       const t = targets.find((x) => outside(x, workspace))
-      return t ? outsideReason(words, t, 'deletes') : null
+      if (t) return outsideReason(words, t, 'deletes')
+      // Inside it too, a delete that cannot be taken back is worth one look:
+      // shredding, or recursive and forced.
+      if (cmd === 'shred') return '`shred` destroys file contents beyond recovery'
+      if (recursive && forced(lower)) {
+        return `\`${words.join(' ')}\` deletes recursively and forcibly`
+      }
+      return null
     }
     case 'del':
     case 'erase': {
@@ -467,9 +487,13 @@ function checkSegment(
     case 'rd':
     case 'rmdir': {
       const { recursive, targets } = deletionFlags(args, true)
-      if (!(lower.includes('/s') || recursive)) return null
+      const slashS = lower.includes('/s')
+      if (!(slashS || recursive)) return null
       const t = firstOutside(targets, workspace)
-      return t ? outsideReason(words, t, 'deletes') : null
+      if (t) return outsideReason(words, t, 'deletes')
+      const quiet =
+        (slashS && lower.includes('/q')) || (recursive && forced(lower))
+      return quiet ? `\`${words.join(' ')}\` deletes recursively without asking` : null
     }
     case 'xargs': {
       const inner = xargsCommand(args)
@@ -500,7 +524,9 @@ function checkSegment(
         starts.push(a)
       }
       const t = firstOutside(starts, workspace)
-      return t ? outsideReason(words, t, 'deletes under') : null
+      return t
+        ? outsideReason(words, t, 'deletes under')
+        : '`find` with a delete action removes every match'
     }
     case 'git': {
       const sub = gitSubcommand(lower)

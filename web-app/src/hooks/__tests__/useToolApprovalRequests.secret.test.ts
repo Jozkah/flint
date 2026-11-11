@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useToolApprovalRequests } from '../useToolApprovalRequests'
+import {
+  setSecretWriteProbe,
+  useToolApprovalRequests,
+} from '../useToolApprovalRequests'
 import { useToolApproval } from '../useToolApproval'
 
 vi.mock('@/constants/localStorage', () => ({
@@ -85,5 +88,80 @@ describe('the question about a write the credential scan stopped', () => {
       })
     ).resolves.toBe(true)
     expect(store().pending['c5']).toBeUndefined()
+  })
+})
+
+describe('a write whose line looks like a secret, on its first card', () => {
+  beforeEach(() => {
+    useToolApprovalRequests.setState({
+      pending: {},
+      queued: {},
+      refusals: {},
+      refusalReasons: {},
+      secretAcks: {},
+    })
+    useToolApproval.setState({
+      approvedTools: {},
+      approvedServers: [],
+      approvedToolsGlobal: [],
+      allowAllMCPPermissions: false,
+      permissionMode: 'ask',
+    })
+  })
+
+  it('says so on the ordinary card, masked, and remembers the answer for the write', async () => {
+    setSecretWriteProbe(async () => ({
+      findings: secret,
+      shownInput: { path: 'lib/env.ts', content: 'k = "[redacted]"' },
+      preview: '+k = "[redacted]"',
+    }))
+    try {
+      const answer = store().requestApproval('s1', 'write', 't1', undefined, {
+        input: { path: 'lib/env.ts', content: 'k = "sk-live"' },
+      })
+      await vi.waitFor(() => expect(store().pending['s1']).toBeDefined())
+      const card = store().pending['s1']
+      expect(card.secret).toEqual(secret)
+      expect(card.alwaysAsk).toBe(true)
+      expect(card.shownInput).toEqual({ path: 'lib/env.ts', content: 'k = "[redacted]"' })
+      expect(card.preview).toBe('+k = "[redacted]"')
+      expect(JSON.stringify(card.input)).toContain('sk-live')
+      store().resolveApproval('s1', 'allow-once', card.requestId)
+      await expect(answer).resolves.toBe(true)
+      expect(store().takeSecretAck('s1', secret)).toBe(true)
+      // Once only.
+      expect(store().takeSecretAck('s1', secret)).toBe(false)
+    } finally {
+      setSecretWriteProbe(null)
+    }
+  })
+
+  it('leaves a clean write an ordinary card that a standing grant still answers', async () => {
+    setSecretWriteProbe(async () => ({ findings: [], shownInput: {} }))
+    try {
+      useToolApproval.setState({ approvedToolsGlobal: ['write'] })
+      const answer = store().requestApproval('s2', 'write', 't1', undefined, {
+        input: { path: 'a.ts', content: 'x' },
+      })
+      await expect(answer).resolves.toBe(true)
+      expect(store().secretAcks['s2']).toBeUndefined()
+    } finally {
+      setSecretWriteProbe(null)
+    }
+  })
+
+  it('keeps the ordinary card when the scan cannot run', async () => {
+    setSecretWriteProbe(async () => {
+      throw new Error('no backend')
+    })
+    try {
+      void store().requestApproval('s3', 'write', 't1', undefined, {
+        input: { path: 'a.ts', content: 'x' },
+      })
+      await vi.waitFor(() => expect(store().pending['s3']).toBeDefined())
+      expect(store().pending['s3'].secret).toBeUndefined()
+    } finally {
+      setSecretWriteProbe(null)
+    }
   })
 })

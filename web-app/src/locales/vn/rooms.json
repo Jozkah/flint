@@ -178,6 +178,7 @@
       "summary": "Bật {{on}}/{{total}} · ~{{tokens}} token",
       "loading": "Đang tải công cụ…",
       "empty": "Không có công cụ nào với quyền này.",
+      "filesDesktopOnly": "Công cụ tệp chỉ chạy trong ứng dụng Flint trên máy tính. Trong phiên trình duyệt này, người tham gia không thể đọc thư mục đính kèm.",
       "group": {
         "files": "Tệp và lệnh",
         "web": "Web",

@@ -338,6 +338,7 @@
     "search": "Tìm kiếm",
     "noMatches": "Không có gì khớp với tìm kiếm đó.",
     "skillsHelp": "Kỹ năng là các hướng dẫn mà tác tử có thể tải khi một tác vụ cần. Các kỹ năng đến từ plugin chỉ đọc ở đây.",
+    "skillWarning": "Lỗi phần đầu tệp",
     "yourSkills": "Kỹ năng của bạn ({{count}})",
     "pluginSkills": "Từ plugin ({{count}})",
     "computerApps": "Chỉ giới hạn ở các ứng dụng này",

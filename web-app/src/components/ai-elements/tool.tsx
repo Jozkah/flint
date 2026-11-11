@@ -13,6 +13,7 @@ import { approvalForCall } from '@/lib/toolApprovalScope'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { timingFor } from '@/lib/toolTimingLog'
 import { ToolElapsed } from './tool-runtime'
+import { ASK_TOOL_NAME } from '@/lib/coworkTools'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ToolKindIcon, TOOL_TILE_CLASS } from '@/components/ToolKindTile'
 import { toolKind } from '@/lib/toolKind'
@@ -238,7 +239,13 @@ export const ToolHeader = memo(
     // Colour comes from the card's kind (Tool); the status text below still
     // says what happened, so colour is never the only signal.
     const isQueued = queuePosition >= 0
-    const workState: WorkState = awaitingApproval
+    // A question to the user is a wait for them, not work: say so, and do not
+    // show a run timer for it.
+    const waitingForAnswer =
+      toolName === ASK_TOOL_NAME &&
+      !isQueued &&
+      (state === 'input-streaming' || state === 'input-available')
+    const workState: WorkState = awaitingApproval || waitingForAnswer
       ? 'needs-you'
       : isQueued
         ? 'queued'
@@ -284,13 +291,15 @@ export const ToolHeader = memo(
           data-state={workState}
           className="min-w-0 shrink-0 truncate font-medium text-(--tk)"
         >
-          {getStatusText(
-            t,
-            failed && state === 'output-available' ? 'output-error' : state,
-            toolName,
-            awaitingApproval,
-            isQueued
-          )}
+          {waitingForAnswer
+            ? t('common:waitingForYou')
+            : getStatusText(
+                t,
+                failed && state === 'output-available' ? 'output-error' : state,
+                toolName,
+                awaitingApproval,
+                isQueued
+              )}
         </span>
         {origin && (
           <span className="hidden shrink-0 rounded-[5px] bg-[color-mix(in_oklab,var(--tk)_10%,transparent)] px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.65625)] text-[color-mix(in_oklab,var(--tk)_80%,var(--foreground))] sm:inline">
@@ -317,11 +326,11 @@ export const ToolHeader = memo(
               {t('tools:toolCall.queuedPosition', { count: queuePosition })}
             </span>
           )}
-          <ToolElapsed
+          {!waitingForAnswer && <ToolElapsed
             startedAt={startedAt}
             endedAt={endedAt}
             className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground"
-          />
+          />}
           <ChevronDownIcon
             aria-hidden
             className={cn(

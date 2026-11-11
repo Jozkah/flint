@@ -337,6 +337,7 @@
     "search": "Search",
     "noMatches": "Nothing matches that search.",
     "skillsHelp": "Skills are instructions the agent can load when a task needs them. Skills that come from a plugin are read-only here.",
+    "skillWarning": "Front matter issue",
     "yourSkills": "Your skills ({{count}})",
     "pluginSkills": "From plugins ({{count}})",
     "computerApps": "Limit to these apps",

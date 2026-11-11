@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import {
   TOOL_WINDOW_WARN_SHARE,
   loadRoomToolCatalog,
+  roomFileToolsAvailable,
   summarizeToolTokens,
   type ToolCatalogEntry,
   type ToolGroup,
@@ -90,6 +91,11 @@ export function ParticipantToolsField({
         {summary.warn && <AlertTriangle aria-hidden className="size-3 text-warning" />}
       </summary>
       <div className="mt-2 flex flex-col gap-2">
+        {folder && !roomFileToolsAvailable() && (
+          <p className="text-xs text-warning" role="note" data-testid="participant-tools-files-desktop-only">
+            {t('rooms:editor.tools.filesDesktopOnly')}
+          </p>
+        )}
         {!loaded && <p className="text-xs text-muted-foreground">{t('rooms:editor.tools.loading')}</p>}
         {loaded && entries.length === 0 && (
           <p className="text-xs text-muted-foreground">{t('rooms:editor.tools.empty')}</p>

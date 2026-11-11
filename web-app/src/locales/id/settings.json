@@ -336,6 +336,7 @@
     "search": "Cari",
     "noMatches": "Tidak ada yang cocok dengan pencarian itu.",
     "skillsHelp": "Skill adalah instruksi yang dapat dimuat agen saat tugas membutuhkannya. Skill yang berasal dari plugin hanya-baca di sini.",
+    "skillWarning": "Masalah front matter",
     "yourSkills": "Skill Anda ({{count}})",
     "pluginSkills": "Dari plugin ({{count}})",
     "computerApps": "Batasi ke aplikasi ini",
