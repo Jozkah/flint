@@ -30,7 +30,7 @@ import {
   userMessageText,
   withPromptContext,
 } from '@/lib/ccContextHooks'
-import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchServerWindow, resolveServerWindowHeaders } from '@/lib/serverWindow'
 import {
   fetchOllamaWindow,
   isOllamaProvider,
@@ -1736,7 +1736,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             (ollamaWindow = await fetchOllamaWindow(
               provider?.base_url,
               modelId,
-              serverWindowHeaders(provider)
+              await resolveServerWindowHeaders(provider)
             ))
         : undefined,
       provider: providerWindow.bundled ? null : providerWindow.tokens,
@@ -1747,11 +1747,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         threadId,
         modelId
       ),
-      fetchServer: () =>
+      fetchServer: async () =>
         fetchServerWindow(
           provider?.base_url,
           modelId,
-          serverWindowHeaders(provider)
+          await resolveServerWindowHeaders(provider)
         ),
     })
     const knownContextTokens = resolvedWindow.tokens
