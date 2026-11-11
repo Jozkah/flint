@@ -91,7 +91,11 @@ fn failed(kind: ErrorKind, message: impl Into<String>) -> HarnessError {
 
 /// Run a command, bounded, draining both pipes, returning its combined output.
 fn run(command: &[String], project_root: &Path) -> Result<(bool, String), HarnessError> {
-    let mut process = std::process::Command::new(&command[0]);
+    // `npm`, `npx`, `pnpm` and most Node tools are `.cmd` shims on Windows,
+    // which a bare name never finds: resolved through PATH and PATHEXT the
+    // way an MCP command is.
+    let mut process =
+        std::process::Command::new(crate::core::mcp::launch::launchable_program(&command[0]));
     process
         .args(&command[1..])
         .current_dir(project_root)
@@ -215,6 +219,57 @@ pub fn parse_rust(output: &str) -> Vec<Failure> {
     out
 }
 
+/// The failures in TAP output, which `node --test` prints when its output is
+/// not a terminal (and other runners print on request): a `not ok N - name`
+/// line, then an indented YAML block whose `error:` says what happened. A
+/// failing subtest also fails its parent; the parent's own line (less
+/// indented, after its subtests, saying only that subtests failed) is dropped.
+pub fn parse_tap(output: &str) -> Vec<Failure> {
+    let lines: Vec<&str> = output.lines().collect();
+    let mut found: Vec<(usize, Failure)> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let indent = line.len() - line.trim_start().len();
+        let Some(rest) = line.trim_start().strip_prefix("not ok ") else {
+            continue;
+        };
+        let name = rest
+            .split_once(" - ")
+            .map(|(_, n)| n)
+            .unwrap_or(rest)
+            .split(" # ")
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let mut said = Vec::new();
+        for next in lines.iter().skip(i + 1) {
+            let t = next.trim();
+            if t == "..." || t.starts_with("not ok ") || t.starts_with("ok ") {
+                break;
+            }
+            if let Some(err) = t.strip_prefix("error:") {
+                let err = err.trim().trim_matches(['\'', '"', '|', '>']).trim();
+                if !err.is_empty() {
+                    said.push(err.to_string());
+                }
+            }
+        }
+        found.push((indent, Failure { name, message: tidy(&said) }));
+    }
+    let mut kept: Vec<Failure> = Vec::new();
+    let mut prev_indent: Option<usize> = None;
+    for (indent, failure) in found {
+        let parent = prev_indent.is_some_and(|p| p > indent)
+            && failure.message.to_ascii_lowercase().contains("subtest");
+        prev_indent = Some(indent);
+        if !parent {
+            kept.push(failure);
+        }
+    }
+    kept.retain(|f| !f.name.is_empty());
+    kept
+}
+
 /// The first few lines a test printed, bounded.
 fn tidy(lines: &[String]) -> String {
     let text = lines
@@ -317,7 +372,10 @@ pub fn triage(
         ));
     }
     let (passed, output) = run(command, project_root)?;
-    let failures = parse_rust(&output);
+    let mut failures = parse_rust(&output);
+    if failures.is_empty() {
+        failures = parse_tap(&output);
+    }
     let mut triage = Triage {
         clusters: cluster(&failures),
         // A run that failed and printed nothing this can read is worth saying
@@ -448,6 +506,36 @@ failures:
 
 test result: FAILED. 1 passed; 3 failed; 0 ignored
 "#;
+
+    /// `node --test` output (TAP) is read too, keeping the failing subtest and
+    /// dropping the parent that only says its subtests failed.
+    #[test]
+    fn node_test_tap_output_is_read() {
+        let tap = "TAP version 13
+# Subtest: math
+    # Subtest: adds
+    not ok 1 - adds
+      ---
+      duration_ms: 1.2
+      failureType: 'testCodeFailure'
+      error: 'Expected values to be strictly equal:\\n\\n3 !== 4\\n'
+      code: 'ERR_ASSERTION'
+      ...
+    ok 2 - subtracts
+not ok 1 - math
+  ---
+  duration_ms: 3.1
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  ...
+1..1
+";
+        let failures = parse_tap(tap);
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert_eq!(failures[0].name, "adds");
+        assert!(failures[0].message.contains("strictly equal"), "{:?}", failures[0]);
+        assert!(parse_tap(RUST_OUTPUT).is_empty());
+    }
 
     /// Failures are read from what the runner printed, with the message each
     /// test actually said.
