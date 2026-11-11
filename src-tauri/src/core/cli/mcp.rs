@@ -86,6 +86,20 @@ fn load_config(data_folder: &std::path::Path) -> Result<Value, String> {
     Ok(cfg)
 }
 
+/// Why `mcp_config.json` cannot be read, or `None` when it is fine, missing or
+/// blank. Readers that would otherwise show a broken file as "no servers"
+/// (`mcp list`, `mcp get`) report this instead.
+pub fn config_problem() -> Option<String> {
+    config_problem_in(&default_data_folder())
+}
+
+fn config_problem_in(data_folder: &std::path::Path) -> Option<String> {
+    load_config(data_folder)
+        .err()
+        .map(|e| e.trim_end_matches("; refusing to overwrite").to_string())
+        .map(|e| format!("mcp_config.json cannot be read: {e}"))
+}
+
 /// Atomically persist a full `mcp_config.json` document (tmp + rename), the
 /// same idiom `set_active` already uses. `mcpServers`/`mcpSettings` keys are
 /// ensured so a caller passing a bare servers object still writes a valid doc.
@@ -1005,6 +1019,23 @@ mod tests {
     /// A temporary data folder with a fresh config path, cleaned up on drop.
     fn temp_data() -> tempfile::TempDir {
         tempfile::tempdir().expect("tempdir")
+    }
+
+    #[test]
+    fn a_corrupt_config_is_reported_not_shown_as_empty() {
+        let data = temp_data();
+        let folder = data.path();
+        assert_eq!(config_problem_in(folder), None, "missing is fine");
+        std::fs::write(config_path(folder), "  \n").unwrap();
+        assert_eq!(config_problem_in(folder), None, "blank is fine");
+        std::fs::write(config_path(folder), "{ \"mcpServers\": { broken").unwrap();
+        let problem = config_problem_in(folder).expect("a parse error");
+        assert!(problem.contains("cannot be read"), "{problem}");
+        assert!(!problem.contains("refusing to overwrite"), "{problem}");
+        std::fs::write(config_path(folder), "[1, 2]").unwrap();
+        assert!(config_problem_in(folder).is_some());
+        std::fs::write(config_path(folder), "{\"mcpServers\": {}}").unwrap();
+        assert_eq!(config_problem_in(folder), None);
     }
 
     #[test]

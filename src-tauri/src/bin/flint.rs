@@ -4160,6 +4160,9 @@ fn mcp_list_entry(entry: &McpServerEntry, show_secrets: bool) -> serde_json::Val
 async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
     match cmd {
         McpCommands::List { show_secrets } => {
+            if let Some(problem) = mcp::config_problem() {
+                return Err(problem);
+            }
             let servers = mcp::list_servers();
             let out: Vec<serde_json::Value> = servers
                 .iter()
@@ -4169,6 +4172,9 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             Ok(())
         }
         McpCommands::Get { name, show_secrets } => {
+            if let Some(problem) = mcp::config_problem() {
+                return Err(problem);
+            }
             match mcp::get_server(&name) {
                 Some(entry) => {
                     // Redacted like `list` unless asked: a value printed to a
