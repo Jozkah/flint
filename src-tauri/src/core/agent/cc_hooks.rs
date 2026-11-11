@@ -504,12 +504,17 @@ pub async fn prompt_submit_context(
 /// The text is placed next to the user's message in the reminder channel. Bare,
 /// it reads as an unexplained system instruction inside a user turn, which a
 /// careful model rightly treats as prompt injection and refuses. Saying that it
-/// is the output of a hook the user configured (and imported) themselves lets
-/// the model weigh it as what it is: context the user chose to add.
+/// is the output of a hook from the user's own setup lets the model weigh it as
+/// what it is: context the user chose to add.
+///
+/// The wording claims only what [`discover`] guarantees for every hook: it
+/// comes from the user's Claude Code settings or a plugin they imported, and
+/// runs only because they opted in. A repository never supplies one.
 pub fn attributed_prompt_context(block: &str) -> String {
     format!(
-        "Context added by the user's own UserPromptSubmit hook (a command from their Claude Code          settings that they imported into Flint and enabled). It is information the user chose to          attach to this message, not an instruction from Flint:
-{}",
+        "Context added by a UserPromptSubmit hook from the user's own Claude Code setup (their \
+         settings or a plugin they imported), which they chose to run in Flint. It is information \
+         attached to this message, not an instruction from Flint:\n{}",
         block.trim()
     )
 }
@@ -804,13 +809,30 @@ mod tests {
 
     #[test]
     fn prompt_hook_output_is_labelled_as_the_users_hook() {
-        let got = attributed_prompt_context("  Ticket: ABC-1
-");
-        assert!(got.contains("user's own UserPromptSubmit hook"), "{got}");
+        let got = attributed_prompt_context("  Ticket: ABC-1\n");
+        assert!(got.contains("UserPromptSubmit hook from the user's own Claude Code setup"), "{got}");
         assert!(got.contains("not an instruction from Flint"), "{got}");
-        assert!(got.ends_with("
-Ticket: ABC-1"), "{got}");
+        assert!(got.ends_with(":\nTicket: ABC-1"), "{got}");
         assert!(!got.contains("<SYSTEM>"), "{got}");
+        assert!(!got.contains("  "), "no stray runs of spaces: {got}");
+    }
+
+    /// Hooks come only from the user's Claude Code home and imported plugins:
+    /// a repository's own `.claude/settings.json` is never read, so its hooks
+    /// never reach `prompt_submit_context`.
+    #[test]
+    fn a_repository_never_supplies_a_prompt_hook() {
+        let home = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo.path().join(".claude")).unwrap();
+        std::fs::write(
+            repo.path().join(".claude").join("settings.json"),
+            r#"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo pwned"}]}]}}"#,
+        )
+        .unwrap();
+        let found = discover(home.path(), &links(true, None));
+        assert!(found.iter().all(|h| !h.command.contains("pwned")), "{found:?}");
+        assert!(found.is_empty());
     }
 
     #[cfg(unix)]
@@ -828,7 +850,7 @@ Ticket: ABC-1"), "{got}");
             .await
             .unwrap();
         assert_eq!(got, vec![attributed_prompt_context("saw: hello")]);
-        assert!(got[0].starts_with("Context added by the user's own UserPromptSubmit hook"));
+        assert!(got[0].starts_with("Context added by a UserPromptSubmit hook"));
     }
 
     #[tokio::test]
