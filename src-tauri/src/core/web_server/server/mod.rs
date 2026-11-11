@@ -35,9 +35,11 @@ use super::settings;
 use super::uploads;
 use super::static_files::{self, StaticError};
 
+mod hook_api;
 mod mcp_api;
 mod resource_api;
 mod rpc_api;
+use hook_api::{hook_route, is_hook_request};
 use mcp_api::mcp_route;
 use resource_api::resource_route;
 use rpc_api::rpc_route;
@@ -98,6 +100,10 @@ struct State {
     hosts: HashSet<String>,
     public_host: Option<String>,
     limiter: LoginLimiter,
+    /// Failed webhook calls, counted apart from sign-in so one cannot lock out the other.
+    hook_limiter: LoginLimiter,
+    /// Delivery ids and per-task start counts for the webhook route.
+    deliveries: Arc<crate::core::schedule::webhook::Deliveries>,
     mcp: mcp::Host,
     agent: Option<agent::Agent>,
     allowed_origins: HashSet<String>,
@@ -587,9 +593,14 @@ async fn route(state: Arc<State>, req: Request<Incoming>, peer: std::net::IpAddr
 ///
 /// The order below is the security model, so it is spelled out once:
 /// 1. `Public` routes answer before any session is looked at: the health
-///    probe, the token-guarded shutdown, token and credential sign-in, and the
-///    sign-in page itself. Each has its own guard (a shutdown token, the
-///    credential, the limiter).
+///    probe, the token-guarded shutdown, token and credential sign-in, the
+///    sign-in page itself, and the inbound webhook `POST|PUT|PATCH
+///    /hooks/{task}/{token}`. Each has its own guard (a shutdown token, the
+///    credential, the limiter; for a webhook the per-task URL token, the
+///    optional HMAC signature, a body cap and its own limiter -- see
+///    `hook_api`). A webhook caller is another service, so it carries no
+///    cookie and no `Origin`; it is exempt from the origin check for that
+///    reason and is never given a session.
 /// 2. Everything else is `Session`: a valid bearer token or session cookie, or
 ///    a redirect to `/login` (GET) / a 401.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -605,7 +616,8 @@ fn route_auth(method: &Method, path: &str) -> Auth {
         || (path == "/api/v1/shutdown" && method == Method::POST)
         || (path == "/api/v1/token" && method == Method::POST)
         || (path == "/login" && method == Method::GET)
-        || (path == "/api/v1/session" && method == Method::POST);
+        || (path == "/api/v1/session" && method == Method::POST)
+        || is_hook_request(method, path);
     if public {
         Auth::Public
     } else {
@@ -645,6 +657,11 @@ async fn before_session_gate(
     }
     if path == "/api/v1/shutdown" && *method == Method::POST {
         return Ok(shutdown_route(state, &req));
+    }
+    // Inbound webhooks: guarded by their own token and signature, and sent by
+    // services that add no Origin, so they come before the origin check.
+    if is_hook_request(method, path) {
+        return Ok(hook_route(state, method, path, client, req).await);
     }
     // A page on another site can post well-formed junk to a local server and
     // use up the sign-in attempts of the person it is open for. A request that
@@ -1345,6 +1362,8 @@ fn build_state(
         hosts,
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         limiter: LoginLimiter::new(),
+        hook_limiter: LoginLimiter::new(),
+        deliveries: Arc::new(crate::core::schedule::webhook::Deliveries::new()),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
         agent,
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),

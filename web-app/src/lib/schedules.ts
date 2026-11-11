@@ -14,10 +14,37 @@ export type ScheduleSpec =
   | { kind: 'cron'; expr: string }
   /** One run, at this local date and time (`YYYY-MM-DDTHH:MM`). */
   | { kind: 'once'; at: string }
+  /** Never on a timetable: an inbound HTTP request starts it. */
+  | { kind: 'webhook' }
 
 export type CatchUp = 'skip' | 'once' | 'all_capped'
 export type OnBlock = 'continue' | 'end'
 export type WriteMode = 'read_only' | 'worktree'
+
+export type WebhookEncoding = 'hex' | 'base64'
+export type WebhookFilterOp = 'equals' | 'not_equals' | 'one_of' | 'contains'
+
+/**
+ * How the sender signs a body. The secret is write-only: the backend never
+ * sends it back, `hasSecret` says one is stored, and an empty `secret` on save
+ * keeps it.
+ */
+export type WebhookSignature = {
+  header: string
+  secret?: string
+  encoding: WebhookEncoding
+  prefix: string
+  hasSecret?: boolean
+}
+
+export type WebhookFilter = { path: string; op: WebhookFilterOp; value: string }
+
+export type WebhookConfig = {
+  /** The secret half of the URL; empty for a task not saved yet. */
+  token: string
+  signature?: WebhookSignature | null
+  filters: WebhookFilter[]
+}
 
 export type ScheduledTask = {
   id: string
@@ -39,6 +66,8 @@ export type ScheduledTask = {
   }
   onBlock: OnBlock
   catchUp: CatchUp
+  /** Settings of an `on webhook` schedule. */
+  webhook?: WebhookConfig | null
   enabled: boolean
   createdAtMs?: number
   updatedAtMs?: number
@@ -53,7 +82,7 @@ export type RunStatus =
   | 'cancelled'
   | 'skipped'
 
-export type RunTrigger = 'manual' | 'on_time' | 'catch_up'
+export type RunTrigger = 'manual' | 'on_time' | 'catch_up' | 'webhook'
 
 export type ScheduleRun = {
   version: number
@@ -107,6 +136,13 @@ export const scheduleSetEnabled = (taskId: string, enabled: boolean) =>
 
 export const scheduleRunNow = (taskId: string) =>
   invoke<ScheduleRun>('schedule_run_now', { taskId })
+
+/** Replace a webhook task's URL token; the old URL stops working at once. */
+export const scheduleRotateWebhook = (taskId: string) =>
+  invoke<ScheduledTaskView>('schedule_rotate_webhook', { taskId })
+
+/** The path a sender calls (no host: the server's address is the sender's to know). */
+export const webhookPath = (taskId: string, token: string) => `/hooks/${taskId}/${token}`
 
 export const scheduleRuns = (taskId: string, limit?: number) =>
   invoke<ScheduleRun[]>('schedule_runs', { taskId, limit })

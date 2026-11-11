@@ -56,7 +56,8 @@ impl RunSpec {
         if self.run_id.trim().is_empty() {
             return Err("a schedule spec needs a run id".to_string());
         }
-        self.task.validate().map_err(|e| e.message)
+        let checked = if self.trigger == Trigger::Webhook { self.task.validate_for_run() } else { self.task.validate() };
+        checked.map_err(|e| e.message)
     }
 }
 

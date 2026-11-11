@@ -64,7 +64,15 @@ Start the server with `--public-host flint.example.net --trust-proxy`. Android's
 
 Everything behind the session gate: the same command surface the desktop web app uses (chat, models, providers, MCP servers, threads, Cowork and rooms), and, only with the `--agent-*` flags above, the review and run planes. Phone pairing (`/m/`, `/remote/*`) is not served and answers 404. Treat the administrator credential like a shell login on that machine, especially with `--allow-mcp-stdio` or `--agent-run`.
 
-Public routes: `GET /healthz` (answers `ok`, used by `flint stop`), the sign-in page and its session and token endpoints, and a shutdown route that only `flint stop` can use.
+Public routes: the webhook route below, `GET /healthz` (answers `ok`, used by `flint stop`), the sign-in page and its session and token endpoints, and a shutdown route that only `flint stop` can use.
+
+## Webhooks for scheduled tasks
+
+A scheduled task set to **On webhook** (Settings > Schedules) starts when a service calls `POST`, `PUT` or `PATCH` `/hooks/<task id>/<token>` on this server. Copy the path from the task's editor and put the server's public address in front of it, for example `https://flint.example.net/hooks/task-1a2b3c4d5e6f/<token>`. The caller must be able to reach the server, and its host name must be one the server accepts (`--public-host` or `--allowed-host`).
+
+This is the one route (besides the sign-in and health routes) that answers without a session: its guard is the token in the URL, an optional HMAC-SHA256 signature over the raw body, a 1 MiB body cap and a limiter on failed attempts. Turn the signature on for anything reachable from the internet; without it anyone who learns the URL can start a run. For GitHub use content type `application/json`, the same secret in the repository's webhook settings, and keep the defaults (`x-hub-signature-256`, hex, `sha256=`).
+
+Answers: `202` with the run id when a run started; `200` with `{"ignored":true}` when a filter did not match or the delivery id was already served; `401` for a bad signature; `403` when the task is switched off; `404` for an unknown task or a wrong token (the same answer, so ids cannot be probed); `409` when the previous run is still going; `413` for a body over 1 MiB; `429` when too many requests arrive. The `Rotate` button in the editor replaces the token and the old URL stops working at once. The request text reaches the agent as fenced, untrusted data; read `docs/FEATURES.md` (Scheduled tasks) for what that does and does not protect against.
 
 ## Data folder
 

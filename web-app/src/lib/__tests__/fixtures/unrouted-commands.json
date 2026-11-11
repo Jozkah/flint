@@ -2376,6 +2376,10 @@
     "web-app/src/containers/schedules/ScheduleEditor.tsx (via schedulePreview)",
     "web-app/src/lib/schedules.ts"
   ],
+  "schedule_rotate_webhook": [
+    "web-app/src/containers/schedules/ScheduleWebhookSection.tsx (via scheduleRotateWebhook)",
+    "web-app/src/lib/schedules.ts"
+  ],
   "schedule_run_now": [
     "web-app/src/containers/schedules/useSchedules.ts (via scheduleRunNow)",
     "web-app/src/lib/schedules.ts"

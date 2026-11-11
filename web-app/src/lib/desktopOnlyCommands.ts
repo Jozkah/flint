@@ -533,6 +533,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'schedule_os_enable',
       'schedule_os_status',
       'schedule_preview',
+      'schedule_rotate_webhook',
       'schedule_run_now',
       'schedule_runs',
       'schedule_save',

@@ -114,6 +114,11 @@ pub fn due(
             out.watermarks.insert(task.id.clone(), now);
             continue;
         }
+        if task.schedule.is_webhook() {
+            // Started by a request, never by the clock.
+            out.watermarks.insert(task.id.clone(), now);
+            continue;
+        }
         let Some(&mark) = watermarks.get(&task.id) else {
             out.watermarks.insert(task.id.clone(), now);
             continue;

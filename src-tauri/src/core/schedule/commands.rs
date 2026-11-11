@@ -55,7 +55,7 @@ fn view(store: &Store, task: Task, running: &std::collections::BTreeSet<String>)
     let next_fires = task.next_fires(Utc::now(), 1).unwrap_or_default();
     let last_run = store.list_runs(&task.id, 1).ok().and_then(|mut r| r.pop());
     let running = running.contains(&task.id);
-    TaskView { task, next_fires, last_run, running }
+    TaskView { task: task.redacted(), next_fires, last_run, running }
 }
 
 #[tauri::command]
@@ -119,8 +119,23 @@ pub async fn schedule_run_now<R: Runtime>(app_handle: AppHandle<R>, task_id: Str
             .get_task(&task_id)
             .map_err(|e| e.message)?
             .ok_or_else(|| format!("no scheduled task '{task_id}'"))?;
+        if task.schedule.is_webhook() {
+            return Err("a task that runs on a webhook starts when its URL is called".to_string());
+        }
         runner::start_run(&store, &data, &SupervisorLauncher, &task, Trigger::Manual, Utc::now())
             .map_err(|e| e.message)
+    })
+    .await
+}
+
+/// Replace a webhook task's URL token; the old URL stops working at once.
+#[tauri::command]
+pub async fn schedule_rotate_webhook<R: Runtime>(app_handle: AppHandle<R>, task_id: String) -> Result<TaskView, String> {
+    let data = data_folder(&app_handle);
+    blocking(move || {
+        let store = Store::new(&data);
+        let task = store.rotate_webhook_token(&task_id).map_err(|e| e.message)?;
+        Ok(view(&store, task, &Default::default()))
     })
     .await
 }
@@ -182,6 +197,10 @@ pub struct SchedulePreview {
 pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usize>) -> Result<SchedulePreview, String> {
     let tz = parse_timezone(&timezone).map_err(|e| e.message)?;
     let exprs = schedule.compile().map_err(|e| e.message)?;
+    if schedule.is_webhook() {
+        // Nothing to list: it runs when called.
+        return Ok(SchedulePreview { fires: Vec::new(), never_fires: false });
+    }
     let count = count.unwrap_or(5).clamp(1, 20);
     let now = Utc::now();
     if schedule.is_once() {
