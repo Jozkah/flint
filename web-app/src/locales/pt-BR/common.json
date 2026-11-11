@@ -1100,7 +1100,10 @@
     "thisRoom": "Esta sala",
     "thisSession": "Esta sessão",
     "keyMissingTitle": "Falta uma chave de API",
-    "keyMissingDescription": "{{subject}} usa um provedor que ainda não tem chave de API. Adicione a chave em Configurações ou escolha outro modelo para continuar."
+    "keyMissingDescription": "{{subject}} usa um provedor que ainda não tem chave de API. Adicione a chave em Configurações ou escolha outro modelo para continuar.",
+    "providerOffTitle": "{{provider}} está desativado",
+    "providerOffDescription": "{{subject}} usa {{provider}}, que está desativado, então nada foi enviado. Ative-o de novo para continuar usando aqui ou escolha outro modelo.",
+    "turnOn": "Ativar {{provider}}"
   },
   "skillsUsedCount_one": "Usou {{count}} skill",
   "skillsUsedCount_other": "Usou {{count}} skills",

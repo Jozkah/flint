@@ -39,6 +39,25 @@ describe('ProviderHero', () => {
     rerender(<ProviderHero {...base} provider={undefined} onActiveChange={vi.fn()} />)
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
   })
+
+  it('shows Failed after a refresh could not connect, even with no key saved', () => {
+    const { rerender } = render(
+      <ProviderHero {...base} provider={provider} headerKeyStatus="missing" onActiveChange={vi.fn()} />
+    )
+    expect(screen.getByText('No API key')).toBeTruthy()
+    expect(screen.queryByText('Failed')).toBeNull()
+    rerender(
+      <ProviderHero
+        {...base}
+        provider={provider}
+        headerKeyStatus="missing"
+        connectionFailed
+        onActiveChange={vi.fn()}
+      />
+    )
+    expect(screen.getByText('No API key')).toBeTruthy()
+    expect(screen.getByText('Failed')).toBeTruthy()
+  })
 })
 
 describe('ProviderKpiRow', () => {

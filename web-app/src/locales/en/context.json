@@ -101,9 +101,11 @@
       "disabled": "Request snapshots are switched off.",
       "too-large": "The request was too large to store whole.",
       "missing": "The sanitized copy is no longer on disk (it may have expired or been deleted).",
-      "error": "The sanitized copy could not be read."
+      "error": "The sanitized copy could not be read.",
+      "web": "The web version keeps no copy of requests, so nothing above is marked as verified."
     },
-    "usageRecorded": "The provider reported token usage, recorded against this request."
+    "usageRecorded": "The provider reported token usage, recorded against this request.",
+    "memoryNotOnWeb": "Saved memory is not available in the web version, so none was sent."
   },
   "label": {
     "temporary": "Memory is off in temporary chats",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Memory is turned off",
     "memoryUnavailable": "Memory could not be read",
     "lastRequest": "Last request",
-    "usage": "Token usage"
+    "usage": "Token usage",
+    "memoryNotOnWeb": "Memory is not available on web"
   },
   "empty": {
     "noModel": "No model is selected.",

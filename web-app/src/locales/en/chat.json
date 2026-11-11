@@ -330,5 +330,9 @@
     "recovered": "Recovered: the model engine stopped and was restarted, and your message was answered.",
     "retryFailed": "The model engine stopped again. Flint retried once; use Regenerate to try again.",
     "restartFailed": "Could not load the model again automatically. Use Regenerate, or pick the model again."
+  },
+  "providerBinding": {
+    "off": "This chat uses {{provider}}, which is turned off. Nothing was sent. Turn it back on, or pick another model for this chat.",
+    "other": "This chat uses {{provider}}, but {{selected}} was about to answer. Nothing was sent. Pick a model in this chat to move it to another provider."
   }
 }

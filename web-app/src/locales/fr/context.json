@@ -101,9 +101,11 @@
       "disabled": "Les instantanés de requêtes sont désactivés.",
       "too-large": "La requête était trop volumineuse pour être stockée en entier.",
       "missing": "La copie assainie n'est plus sur le disque (elle a pu expirer ou être supprimée).",
-      "error": "La copie assainie n'a pas pu être lue."
+      "error": "La copie assainie n'a pas pu être lue.",
+      "web": "La version web ne conserve aucune copie des requêtes, donc rien ci-dessus n'est marqué comme vérifié."
     },
-    "usageRecorded": "Le fournisseur a signalé l'utilisation de tokens, enregistrée pour cette requête."
+    "usageRecorded": "Le fournisseur a signalé l'utilisation de tokens, enregistrée pour cette requête.",
+    "memoryNotOnWeb": "La mémoire enregistrée n'est pas disponible dans la version web, donc rien n'a été envoyé."
   },
   "label": {
     "temporary": "La mémoire est désactivée dans les conversations temporaires",
@@ -116,7 +118,8 @@
     "memoryDisabled": "La mémoire est désactivée",
     "memoryUnavailable": "La mémoire n'a pas pu être lue",
     "lastRequest": "Dernière requête",
-    "usage": "Utilisation de tokens"
+    "usage": "Utilisation de tokens",
+    "memoryNotOnWeb": "La mémoire n'est pas disponible sur le web"
   },
   "empty": {
     "noModel": "Aucun modèle n'est sélectionné.",

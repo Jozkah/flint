@@ -560,6 +560,15 @@ function StreamdownViewComponent({
     [className]
   )
 
+  // The word fade-in is for text that appears all at once (a reply that was
+  // not streamed). A reply already shown token by token must not be faded in
+  // again when its stream ends: the finished text went blank and came back
+  // over ~2 s, while the tokens/sec footer below it was already showing.
+  const wasStreamedRef = useRef(false)
+  if (isStreaming) wasStreamedRef.current = true
+  const animate =
+    isStreaming || wasStreamedRef.current ? false : (isAnimating ?? true)
+
   // Skip Shiki on the in-progress code block while streaming.
   const effectiveComponents = useMemo(
     () =>
@@ -571,7 +580,7 @@ function StreamdownViewComponent({
     <Streamdown
       mode={isStreaming ? 'streaming' : 'static'}
       parseIncompleteMarkdown={isStreaming ?? false}
-      animate={isStreaming ? false : (isAnimating ?? true)}
+      animate={animate}
       animationDuration={500}
       linkSafety={LINK_SAFETY}
       className={mergedClassName}

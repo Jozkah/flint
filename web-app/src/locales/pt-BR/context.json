@@ -101,9 +101,11 @@
       "disabled": "Os snapshots de requisição estão desativados.",
       "too-large": "A requisição era grande demais para ser armazenada por inteiro.",
       "missing": "A cópia sanitizada não está mais no disco (pode ter expirado ou sido excluída).",
-      "error": "Não foi possível ler a cópia sanitizada."
+      "error": "Não foi possível ler a cópia sanitizada.",
+      "web": "A versão web não guarda cópias das solicitações, então nada acima é marcado como verificado."
     },
-    "usageRecorded": "O provedor informou o uso de tokens, registrado nesta requisição."
+    "usageRecorded": "O provedor informou o uso de tokens, registrado nesta requisição.",
+    "memoryNotOnWeb": "A memória salva não está disponível na versão web, então nada foi enviado."
   },
   "label": {
     "temporary": "A memória está desativada em chats temporários",
@@ -116,7 +118,8 @@
     "memoryDisabled": "A memória está desativada",
     "memoryUnavailable": "Não foi possível ler a memória",
     "lastRequest": "Última requisição",
-    "usage": "Uso de tokens"
+    "usage": "Uso de tokens",
+    "memoryNotOnWeb": "A memória não está disponível na web"
   },
   "empty": {
     "noModel": "Nenhum modelo selecionado.",

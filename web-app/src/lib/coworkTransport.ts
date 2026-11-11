@@ -47,6 +47,8 @@ export class CoworkChatTransport extends CustomChatTransport {
   protected override recordsMemoryUsesOnFinish = false
   /** The Cowork run records every step; a chat run would duplicate it. */
   protected override recordsChatRun = false
+  /** A Cowork session carries its own model choice. */
+  protected override checksProviderBinding = false
   // The run loop compacts, and persists the summary; see `runTurn`'s `compact`.
   protected override compactsAtThreshold = false
 

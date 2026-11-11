@@ -101,9 +101,11 @@
       "disabled": "Snapshot permintaan dimatikan.",
       "too-large": "Permintaan terlalu besar untuk disimpan utuh.",
       "missing": "Salinan tersanitasi tidak lagi ada di disk (mungkin kedaluwarsa atau dihapus).",
-      "error": "Salinan tersanitasi tidak dapat dibaca."
+      "error": "Salinan tersanitasi tidak dapat dibaca.",
+      "web": "Versi web tidak menyimpan salinan permintaan, jadi tidak ada yang di atas ditandai terverifikasi."
     },
-    "usageRecorded": "Provider melaporkan penggunaan token, dicatat pada permintaan ini."
+    "usageRecorded": "Provider melaporkan penggunaan token, dicatat pada permintaan ini.",
+    "memoryNotOnWeb": "Memori tersimpan tidak tersedia di versi web, jadi tidak ada yang dikirim."
   },
   "label": {
     "temporary": "Memori mati di obrolan sementara",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Memori dimatikan",
     "memoryUnavailable": "Memori tidak dapat dibaca",
     "lastRequest": "Permintaan terakhir",
-    "usage": "Penggunaan token"
+    "usage": "Penggunaan token",
+    "memoryNotOnWeb": "Memori tidak tersedia di web"
   },
   "empty": {
     "noModel": "Tidak ada model yang dipilih.",

@@ -1089,7 +1089,10 @@
     "thisRoom": "Bu oda",
     "thisSession": "Bu oturum",
     "keyMissingTitle": "API anahtarı eksik",
-    "keyMissingDescription": "{{subject}}, henüz API anahtarı olmayan bir sağlayıcı kullanıyor. Ayarlar'dan anahtarı ekleyin veya devam etmek için başka bir model seçin."
+    "keyMissingDescription": "{{subject}}, henüz API anahtarı olmayan bir sağlayıcı kullanıyor. Ayarlar'dan anahtarı ekleyin veya devam etmek için başka bir model seçin.",
+    "providerOffTitle": "{{provider}} kapalı",
+    "providerOffDescription": "{{subject}}, kapalı olan {{provider}} sağlayıcısını kullanıyor, bu yüzden hiçbir şey gönderilmedi. Burada kullanmaya devam etmek için yeniden açın veya başka bir model seçin.",
+    "turnOn": "{{provider}} sağlayıcısını aç"
   },
   "skillsUsedCount_one": "{{count}} beceri kullanıldı",
   "skillsUsedCount_other": "{{count}} beceri kullanıldı",

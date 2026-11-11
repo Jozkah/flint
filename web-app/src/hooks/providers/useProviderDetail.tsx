@@ -80,7 +80,10 @@ export function useProviderDetail() {
     provider ? [provider] : [],
     (name) => name === 'llamacpp' || name === 'mlx'
   )
-  const providerLocation = provider ? locateProvider(provider) : 'unknown'
+  // A bare host name the resolver has not settled counts as the user's own
+  // network, as the model picker lists it; the resolver's answer still wins.
+  const located = provider ? locateProvider(provider) : 'unknown'
+  const providerLocation = located === 'checking' ? 'local' : located
   // A host the resolver has not learned stays "checking" until something
   // connects to it. Say plainly it is unconfirmed after a few seconds, rather
   // than leaving a line that reads as in progress forever.

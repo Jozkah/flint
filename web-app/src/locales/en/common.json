@@ -1181,7 +1181,10 @@
     "thisRoom": "This room",
     "thisSession": "This session",
     "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue.",
+    "providerOffTitle": "{{provider}} is turned off",
+    "providerOffDescription": "{{subject}} uses {{provider}}, which is turned off, so nothing was sent. Turn it back on to keep using it here, or choose another model.",
+    "turnOn": "Turn on {{provider}}"
   },
   "skillsUsedCount_one": "Used {{count}} skill",
   "skillsUsedCount_other": "Used {{count}} skills",

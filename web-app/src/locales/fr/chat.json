@@ -345,5 +345,9 @@
     "recovered": "Rétabli : le moteur du modèle s'était arrêté, il a été redémarré et votre message a obtenu une réponse.",
     "retryFailed": "Le moteur du modèle s'est de nouveau arrêté. Flint a réessayé une fois ; utilisez Régénérer pour réessayer.",
     "restartFailed": "Impossible de recharger le modèle automatiquement. Utilisez Régénérer ou sélectionnez de nouveau le modèle."
+  },
+  "providerBinding": {
+    "off": "Cette discussion utilise {{provider}}, qui est désactivé. Rien n'a été envoyé. Réactivez-le ou choisissez un autre modèle pour cette discussion.",
+    "other": "Cette discussion utilise {{provider}}, mais {{selected}} allait répondre. Rien n'a été envoyé. Choisissez un modèle dans cette discussion pour la passer à un autre fournisseur."
   }
 }

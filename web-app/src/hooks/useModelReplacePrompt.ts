@@ -5,6 +5,11 @@ type Request = {
   /** What the models are for, in the dialog's first line: "this room", "this chat". */
   subject: string
   missing: ModelRef[]
+  /**
+   * The provider the models are on is only switched off: the dialog offers to
+   * turn it back on, which keeps the same models.
+   */
+  offProvider?: string
   resolve: (choices: Record<string, ModelRef> | null) => void
 }
 
@@ -29,12 +34,20 @@ export const useModelReplacePrompt = create<State>((set, get) => ({
  */
 export function promptReplaceModels(
   subject: string,
-  missing: ModelRef[]
+  missing: ModelRef[],
+  options: { offProvider?: string } = {}
 ): Promise<Record<string, ModelRef> | null> {
   if (missing.length === 0) return Promise.resolve({})
   return new Promise((resolve) => {
     useModelReplacePrompt.getState().request?.resolve(null)
-    useModelReplacePrompt.setState({ request: { subject, missing, resolve } })
+    useModelReplacePrompt.setState({
+      request: {
+        subject,
+        missing,
+        ...(options.offProvider ? { offProvider: options.offProvider } : {}),
+        resolve,
+      },
+    })
   })
 }
 

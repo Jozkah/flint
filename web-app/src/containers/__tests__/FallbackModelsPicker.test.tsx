@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import FallbackModelsPicker from '../FallbackModelsPicker'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -37,5 +38,21 @@ describe('FallbackModelsPicker order controls', () => {
     render(<FallbackModelsPicker />)
     expect(screen.getAllByLabelText('settings:general.fallbackModelsMoveUp')[0]).toBeDisabled()
     expect(screen.getAllByLabelText('settings:general.fallbackModelsMoveDown')[2]).toBeDisabled()
+  })
+})
+
+describe('FallbackModelsPicker names', () => {
+  it('lists a renamed provider by its new name', async () => {
+    act(() => {
+      useModelProvider.setState({
+        providers: [
+          { provider: 'p', displayName: 'Tower GPU', active: true, models: [{ id: 'a' }] },
+        ] as never,
+      })
+      useGeneralSetting.setState({ fallbackModels: [] })
+    })
+    render(<FallbackModelsPicker />)
+    await userEvent.click(screen.getByText('settings:general.fallbackModelsAdd'))
+    expect(await screen.findByText('Tower GPU / a')).toBeInTheDocument()
   })
 })
