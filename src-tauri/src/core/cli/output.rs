@@ -421,8 +421,7 @@ pub(super) async fn prompt_permission(
     let tool_name = display_safe::display_safe(&tool_name).into_owned();
     let capability = display_safe::display_safe(&capability).into_owned();
     let detail = display_safe::display_safe(&detail).into_owned();
-    use std::io::IsTerminal;
-    if !std::io::stdin().is_terminal() {
+    if !crate::core::agent::r#loop::stdin_is_terminal() {
         eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
         return PermissionDecision::Deny;
     }

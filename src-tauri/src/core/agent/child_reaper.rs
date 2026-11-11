@@ -96,13 +96,22 @@ fn ending(status: ChildStatus) -> &'static str {
 
 /// Failed or cancelled, with an end time more than `grace` before `at`. A
 /// record without a readable end time is never due.
+///
+/// A child that completed is due as soon as it ended: if its checkout holds
+/// nothing (the same checks below), there is nothing for anyone to review,
+/// and a read-only explorer or reviewer would otherwise leave a checkout and
+/// a branch behind on every dispatch.
 fn due(record: &ChildRecord, grace: chrono::Duration, at: chrono::DateTime<chrono::Utc>) -> bool {
-    matches!(record.status, ChildStatus::Failed | ChildStatus::Cancelled)
-        && record
-            .ended_at
-            .as_deref()
-            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-            .is_some_and(|ended| ended < at - grace)
+    let wait = match record.status {
+        ChildStatus::Failed | ChildStatus::Cancelled => grace,
+        ChildStatus::Completed => chrono::Duration::zero(),
+        _ => return false,
+    };
+    record
+        .ended_at
+        .as_deref()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .is_some_and(|ended| ended <= at - wait)
 }
 
 /// The same ending of the same child in the same worktree: what must not
@@ -379,15 +388,29 @@ mod tests {
     }
 
     #[test]
-    fn a_worktree_inside_its_grace_or_completed_is_not_touched() {
+    fn a_worktree_inside_its_grace_is_not_touched() {
         let f = fixture();
         let now = chrono::Utc::now();
         let fresh = child(&f, "t1", ChildStatus::Cancelled, now - chrono::Duration::hours(2));
-        let done = child(&f, "t2", ChildStatus::Completed, now - chrono::Duration::days(5));
         let out = reap(&f.data, &f.roots, GRACE, now);
         assert!(out.is_empty(), "{out:?}");
         assert!(Path::new(&fresh.worktree_path).exists());
-        assert!(Path::new(&done.worktree_path).exists());
+    }
+
+    /// A completed child that changed nothing (a read-only explorer or
+    /// reviewer) leaves no checkout or branch behind; one with work keeps it.
+    #[test]
+    fn a_completed_child_with_nothing_in_it_is_removed_at_once() {
+        let f = fixture();
+        let now = chrono::Utc::now();
+        let empty = child(&f, "t1", ChildStatus::Completed, now);
+        let worked = child(&f, "t2", ChildStatus::Completed, now);
+        std::fs::write(Path::new(&worked.worktree_path).join("new.txt"), "x").unwrap();
+        let out = reap(&f.data, &f.roots, GRACE, now);
+        assert_eq!(outcome_for(&out, &empty), Some(Outcome::Reaped), "{out:?}");
+        assert!(!Path::new(&empty.worktree_path).exists());
+        assert!(matches!(outcome_for(&out, &worked), Some(Outcome::Kept(_))), "{out:?}");
+        assert!(Path::new(&worked.worktree_path).exists());
     }
 
     #[test]
