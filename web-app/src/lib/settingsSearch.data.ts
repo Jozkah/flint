@@ -419,6 +419,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.themeDesc',
     keywords: ['dark mode', 'light mode', 'color scheme', 'appearance'],
   }),
+  item('appearance', 'accent', 'settings:accent.title', {
+    descriptionKey: 'settings:interface.accentDesc',
+    keywords: ['accent', 'accent color', 'accent colour', 'highlight color', 'tint', 'brand color'],
+  }),
   item('appearance', 'increase-contrast', 'settings:appearance.increaseContrast', {
     descriptionKey: 'settings:appearance.increaseContrastDesc',
     keywords: ['contrast', 'text color', 'white', 'readability', 'accessibility', 'brighter'],
