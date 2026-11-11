@@ -674,6 +674,135 @@ describe('DataProvider', () => {
     expect(regCalls.length).toBe(0)
   })
 
+  describe('keyless providers and the Local API server', () => {
+    const registered = (name: string) =>
+      h.invoke.mock.calls.filter(
+        (c) =>
+          c[0] === 'register_provider_config' &&
+          (c[1] as { request: { provider: string } }).request.provider === name
+      )
+    const unregistered = (name: string) =>
+      h.invoke.mock.calls.filter(
+        (c) =>
+          c[0] === 'unregister_provider_config' &&
+          (c[1] as { provider: string }).provider === name
+      )
+    const noKeys = () => {
+      h.providerHasRemoteApiKeys.mockReturnValue(false)
+      h.providerRemoteApiKeyChain.mockReturnValue([])
+    }
+    const lan = (name: string, extra: Record<string, unknown> = {}) => ({
+      provider: name,
+      active: true,
+      models: [{ id: 'swift15' }],
+      custom_header: [],
+      base_url: 'http://192.168.1.50:8080/v1',
+      ...extra,
+    })
+
+    it('registers a LAN provider with no key, without a key or a keyring write', async () => {
+      noKeys()
+      const fetched = [lan('keyless-lan')]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      const { rerender } = render(<DataProvider />)
+      await waitFor(() => expect(registered('keyless-lan').length).toBeGreaterThan(0))
+      // Any later store update runs the provider-change sync.
+      h.providers = fetched.map((p) => ({ ...p }))
+      rerender(<DataProvider />)
+      const req = (registered('keyless-lan')[0][1] as {
+        request: { api_key?: string; api_keys?: string[]; models: string[] }
+      }).request
+      expect(req.api_key).toBeUndefined()
+      expect(req.api_keys).toEqual([])
+      expect(req.models).toEqual(['swift15'])
+      // The provider-change sync keeps it: it used to take a keyless
+      // provider straight back off the server after the startup registration.
+      await new Promise((r) => setTimeout(r, 0))
+      expect(unregistered('keyless-lan')).toEqual([])
+      // Registration only reads the keyring; nothing is stored or deleted.
+      const keyringWrites = h.invoke.mock.calls.filter(
+        (c) =>
+          /provider_keys/.test(String(c[0])) && c[0] !== 'get_provider_keys'
+      )
+      expect(keyringWrites).toEqual([])
+    })
+
+    it('registers a keyed cloud provider', async () => {
+      const fetched = [
+        { provider: 'keyed-cloud', active: true, models: [{ id: 'm' }], custom_header: [], base_url: 'https://api.example.com/v1' },
+      ]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      render(<DataProvider />)
+      await waitFor(() => expect(registered('keyed-cloud').length).toBeGreaterThan(0))
+    })
+
+    it('does not register a cloud provider without a key', async () => {
+      noKeys()
+      const fetched = [
+        { provider: 'cloud-nokey', active: true, models: [{ id: 'm' }], custom_header: [], base_url: 'https://api.example.com/v1' },
+      ]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      render(<DataProvider />)
+      await waitFor(() => expect(h.setProviders).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 0))
+      expect(registered('cloud-nokey')).toEqual([])
+    })
+
+    it('does not register a disabled keyless provider', async () => {
+      noKeys()
+      const fetched = [lan('keyless-off', { active: false })]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      render(<DataProvider />)
+      await waitFor(() => expect(h.setProviders).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 0))
+      expect(registered('keyless-off')).toEqual([])
+    })
+
+    it('re-registers on a URL change and unregisters when moved to a cloud URL', async () => {
+      noKeys()
+      const fetched = [lan('keyless-move')]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      const { rerender } = render(<DataProvider />)
+      await waitFor(() => expect(registered('keyless-move').length).toBeGreaterThan(0))
+      const before = registered('keyless-move').length
+      // Same content: nothing re-sent.
+      h.providers = fetched.map((p) => ({ ...p }))
+      rerender(<DataProvider />)
+      await new Promise((r) => setTimeout(r, 0))
+      expect(registered('keyless-move').length).toBe(before)
+      // Another LAN host: sent again with the new URL.
+      h.providers = [lan('keyless-move', { base_url: 'http://10.0.0.7:8080/v1' })]
+      rerender(<DataProvider />)
+      await waitFor(() => expect(registered('keyless-move').length).toBe(before + 1))
+      expect(
+        (registered('keyless-move')[before][1] as { request: { base_url: string } })
+          .request.base_url
+      ).toBe('http://10.0.0.7:8080/v1')
+      // A cloud URL needs a key it does not have: taken off the server.
+      h.providers = [lan('keyless-move', { base_url: 'https://api.example.com/v1' })]
+      rerender(<DataProvider />)
+      await waitFor(() => expect(unregistered('keyless-move').length).toBe(1))
+      expect(registered('keyless-move').length).toBe(before + 1)
+    })
+
+    it('unregisters a keyless provider when it is switched off', async () => {
+      noKeys()
+      const fetched = [lan('keyless-toggle')]
+      hubState.getProviders.mockResolvedValue(fetched)
+      h.providers = fetched
+      const { rerender } = render(<DataProvider />)
+      await waitFor(() => expect(registered('keyless-toggle').length).toBeGreaterThan(0))
+      h.providers = [lan('keyless-toggle', { active: false })]
+      rerender(<DataProvider />)
+      await waitFor(() => expect(unregistered('keyless-toggle').length).toBe(1))
+    })
+  })
+
   it('logs provider registration failures without throwing', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     h.invoke.mockRejectedValue(new Error('nope'))
