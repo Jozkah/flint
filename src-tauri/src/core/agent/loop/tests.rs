@@ -4225,6 +4225,7 @@ pub(super) fn build_invoker_for(
         events,
         permission_requests: registry,
         ask_requests: None,
+        host_answers_prompts: None,
         todo_registry: None,
         grants: std::sync::Mutex::new(SessionGrants::default()),
         subagents: None,
@@ -9630,4 +9631,41 @@ mod apply_patch_gate {
         }
         let _ = std::fs::remove_dir_all(&root);
     }
+}
+
+/// The "a host answers prompts" state belongs to one run: a duplex run's flag
+/// never makes another invoker in the same process look interactive, and it
+/// stops counting once the run's reader is gone.
+#[test]
+fn a_duplex_hosts_prompt_flag_is_per_run() {
+    use super::composite::trust_grant_applies;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut duplex = build_prompting_invoker(dir.path().to_path_buf(), tx.clone(), Arc::new(Mutex::new(HashMap::new())));
+    let scheduled = build_prompting_invoker(dir.path().to_path_buf(), tx, Arc::new(Mutex::new(HashMap::new())));
+    let flag = Arc::new(AtomicBool::new(true));
+    duplex.host_answers_prompts = Some(Arc::clone(&flag));
+    assert!(duplex.host_answers_prompts());
+    assert!(!scheduled.host_answers_prompts(), "another run in the process is not interactive");
+    assert!(trust_grant_applies(duplex.host_answers_prompts(), false), "duplex + trusted -> allowed");
+    assert!(!trust_grant_applies(scheduled.host_answers_prompts(), true), "scheduled + trusted -> denied");
+    assert!(!trust_grant_applies(duplex.host_answers_prompts(), true), "unattended still denies");
+    flag.store(false, Ordering::SeqCst);
+    assert!(!duplex.host_answers_prompts(), "the flag does not outlive the host");
+}
+
+#[cfg(feature = "cli")]
+#[test]
+fn a_stream_input_flag_clears_when_the_client_goes_or_the_run_ends() {
+    let input = crate::core::cli::stream_input::StreamInput::default();
+    let flag = input.answering_flag();
+    assert!(flag.load(std::sync::atomic::Ordering::SeqCst));
+    input.mark_client_gone();
+    assert!(!flag.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(!input.answering_flag().load(std::sync::atomic::Ordering::SeqCst), "a gone client is not re-armed");
+    let other = crate::core::cli::stream_input::StreamInput::default();
+    let f2 = other.answering_flag();
+    other.stop_answering();
+    assert!(!f2.load(std::sync::atomic::Ordering::SeqCst));
 }

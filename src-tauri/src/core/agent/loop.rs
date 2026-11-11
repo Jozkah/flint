@@ -172,6 +172,12 @@ pub(crate) struct OrchestrationArgs {
     pub host_tool_route: Option<(mpsc::UnboundedSender<StreamEvent>, String)>,
     /// Present only when a client can render and answer structured questions.
     pub ask_requests: Option<crate::core::agent::interaction::AskRegistry>,
+    /// This run's duplex host (`--input-format stream-json`): true while it is
+    /// attached and reading permission requests, so it can answer prompts the
+    /// way a person at a terminal does (a standing `mcp trust` grant then
+    /// applies). Per run, never process-wide; a subagent shares its parent's.
+    /// `None` for a run without such a host.
+    pub host_answers_prompts: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Session's canonical todo list. Present for the top-level run only;
     /// subagent/child runs never receive it (they cannot read or mutate the
     /// parent's list).
@@ -712,20 +718,6 @@ pub(crate) fn stdin_is_terminal() -> bool {
     })
 }
 
-static HOST_ANSWERS_PROMPTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Record whether a duplex host (`--input-format stream-json`) is attached and
-/// reading permission requests. Such a host answers prompts the way a person
-/// at a terminal does, so it counts as interactive for a standing `mcp trust`
-/// grant. Cleared when the host stops reading.
-pub fn set_host_answers_prompts(on: bool) {
-    HOST_ANSWERS_PROMPTS.store(on, std::sync::atomic::Ordering::SeqCst);
-}
-
-pub(crate) fn host_answers_prompts() -> bool {
-    HOST_ANSWERS_PROMPTS.load(std::sync::atomic::Ordering::SeqCst)
-}
-
 /// Answer [`stdin_is_terminal`] now, before a stdin reader is started.
 pub fn warm_stdin_is_terminal() {
     let _ = stdin_is_terminal();
@@ -1142,6 +1134,7 @@ struct CompositeToolInvoker {
     events: mpsc::UnboundedSender<StreamEvent>,
     permission_requests: PermissionRegistry,
     ask_requests: Option<crate::core::agent::interaction::AskRegistry>,
+    host_answers_prompts: Option<Arc<std::sync::atomic::AtomicBool>>,
     todo_registry: Option<crate::core::agent::todo::TodoRegistry>,
     grants: std::sync::Mutex<tauri_plugin_agent_tools::tools::gate::SessionGrants>,
     subagents: Option<SubagentContext>,
@@ -2327,6 +2320,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
         project_root: None,
         permission_requests: Arc::new(Mutex::new(HashMap::new())),
         ask_requests: None,
+        host_answers_prompts: None,
         todo_registry: None,
         system_prompt_override: None,
         subagents_enabled: false,
@@ -3107,6 +3101,7 @@ async fn orchestrate_inner(
         #[cfg(feature = "cli")]
         host_tool_route,
         ask_requests,
+        host_answers_prompts,
         todo_registry,
         system_prompt_override,
         subagents_enabled,
@@ -4032,6 +4027,7 @@ async fn orchestrate_inner(
             events: events.clone(),
             permission_requests: permission_requests.clone(),
             ask_requests: ask_requests.clone(),
+            host_answers_prompts: host_answers_prompts.clone(),
             todo_registry: todo_registry.clone(),
             grants: std::sync::Mutex::new(
                 tauri_plugin_agent_tools::tools::gate::SessionGrants::default(),

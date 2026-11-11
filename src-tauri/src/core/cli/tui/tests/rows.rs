@@ -2240,6 +2240,7 @@ fn reload_provider_configs_picks_up_login_credentials() {
             host_owns_gate: false,
             host_tool_route: None,
             ask_requests: None,
+            host_answers_prompts: None,
             todo_registry: None,
             system_prompt_override: None,
             subagents_enabled: true,

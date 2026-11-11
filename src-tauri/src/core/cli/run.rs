@@ -110,6 +110,7 @@ pub(super) fn build_cli_orchestration_args(
         host_owns_gate: false,
         host_tool_route: None,
         ask_requests: None,
+        host_answers_prompts: None,
         todo_registry: None,
         system_prompt_override: None,
         subagents_enabled: true,
@@ -741,7 +742,8 @@ pub(super) async fn run_agent_loop(
     });
     // A host reading permission requests can answer them, so a standing
     // `mcp trust` grant applies here as it does at a terminal.
-    crate::core::agent::r#loop::set_host_answers_prompts(input.is_some());
+    // Per run: only this run's own reader counts, and only while attached.
+    args.host_answers_prompts = input.as_ref().map(|i| i.answering_flag());
     let client = input.clone();
     let host_tool_requests = Arc::clone(&args.host_tool_requests);
 
@@ -782,6 +784,9 @@ pub(super) async fn run_agent_loop(
         Some(input) => run_steered(&tx, &body, &args, input).await,
         None => Some(run_orchestration_streamed(&tx, &body, &args).await),
     };
+    if let Some(input) = &input {
+        input.stop_answering();
+    }
     if let Some(reader) = reader {
         reader.abort();
     }

@@ -4802,6 +4802,7 @@ auto_compact_window = 9000
             host_owns_gate: false,
             host_tool_route: None,
             ask_requests: None,
+            host_answers_prompts: None,
             todo_registry: None,
             system_prompt_override: None,
             subagents_enabled: true,
