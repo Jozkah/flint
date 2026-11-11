@@ -60,6 +60,16 @@ pub async fn register_provider_config(
 ) -> Result<(), String> {
     // `auth:*` is the store's internal namespace (Bedrock, CLI login records).
     crate::core::server::provider_secrets::reject_reserved_key(&request.provider)?;
+    // A provider pointed at the Local API server itself would make the server
+    // forward each request back to itself.
+    if let Some(url) = request.base_url.as_deref() {
+        if crate::core::server::proxy::points_at_running_server(url) {
+            return Err(format!(
+                "The base URL {url} is this app's own Local API server; point the provider '{}' at the real upstream instead.",
+                request.provider
+            ));
+        }
+    }
     let key_chain = merge_register_api_keys(request.api_key.clone(), request.api_keys.clone());
     let api_key = key_chain.first().cloned();
     // Before anything can log them: an upstream error that echoes the request

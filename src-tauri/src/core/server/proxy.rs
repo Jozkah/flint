@@ -820,6 +820,140 @@ pub(crate) fn transform_openai_response_to_anthropic(
     })
 }
 
+/// Which remote provider serves `model_id`, and the model id to send it.
+///
+/// In this order, the same way every run:
+/// 1. `provider/model` where `provider` is a registered provider that lists
+///    `model`: that provider, sent `model` without the prefix (the upstream
+///    does not know Flint's provider names).
+/// 2. Providers that list the whole id: one wins outright; with several, a
+///    `provider/` prefix naming one of them picks it, otherwise the first by
+///    provider name, logged. The id is sent unchanged.
+/// 3. A `provider/` prefix naming a registered provider: that provider, sent
+///    the id without the prefix.
+/// 4. The id itself naming a provider.
+fn resolve_provider(
+    pc: &HashMap<String, ProviderConfig>,
+    model_id: &str,
+) -> Option<(String, String)> {
+    if let Some((prefix, rest)) = model_id.split_once('/') {
+        if let Some(cfg) = pc.get(prefix) {
+            if cfg.models.iter().any(|m| m == rest) {
+                return Some((cfg.provider.clone(), rest.to_string()));
+            }
+        }
+    }
+    if let Some(name) = resolve_provider_name(pc, model_id) {
+        // Step 3 of the order above: a prefix that only names the provider.
+        let listed = pc.get(&name).is_some_and(|c| c.models.iter().any(|m| m == model_id));
+        if !listed {
+            if let Some((prefix, rest)) = model_id.split_once('/') {
+                if prefix == name && !rest.is_empty() {
+                    return Some((name, rest.to_string()));
+                }
+            }
+        }
+        return Some((name, model_id.to_string()));
+    }
+    None
+}
+
+/// The remote model ids `/v1/models` lists, in provider-name order. An id
+/// only one provider lists is shown as is; an id several list is shown once
+/// per provider as `provider/id`, which is what picks that provider in a
+/// request ([`resolve_provider`]), so a client can tell them apart.
+fn remote_model_ids(pc: &HashMap<String, ProviderConfig>) -> Vec<String> {
+    let mut providers: Vec<(&String, &ProviderConfig)> = pc.iter().collect();
+    providers.sort_by(|a, b| a.0.cmp(b.0));
+    let mut listed_by: HashMap<&str, usize> = HashMap::new();
+    for (_, cfg) in &providers {
+        let mut seen = std::collections::HashSet::new();
+        for m in &cfg.models {
+            if seen.insert(m.as_str()) {
+                *listed_by.entry(m.as_str()).or_default() += 1;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (name, cfg) in &providers {
+        let mut seen = std::collections::HashSet::new();
+        for m in &cfg.models {
+            if !seen.insert(m.as_str()) {
+                continue;
+            }
+            if listed_by.get(m.as_str()).copied().unwrap_or(0) > 1 {
+                out.push(format!("{name}/{m}"));
+            } else {
+                out.push(m.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Header counting the Flint proxies a request has already passed through.
+pub(crate) const PROXY_HOPS_HEADER: &str = "x-flint-proxy-hops";
+/// A request that has passed this many Flint proxies is refused, so a
+/// provider pointed (directly or through another Flint) back at this server
+/// cannot bounce a request around forever.
+pub(crate) const MAX_PROXY_HOPS: u32 = 3;
+
+/// Hops a request carries in [`PROXY_HOPS_HEADER`]; 0 when absent.
+pub(crate) fn incoming_hops(headers: &hyper::HeaderMap) -> u32 {
+    headers
+        .get(PROXY_HOPS_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Where the Local API server is listening now, for the self-loop check at
+/// provider registration. `None` while it is stopped.
+static LISTENING_ON: std::sync::Mutex<Option<(String, u16)>> = std::sync::Mutex::new(None);
+
+fn set_listening_on(addr: Option<(String, u16)>) {
+    if let Ok(mut slot) = LISTENING_ON.lock() {
+        *slot = addr;
+    }
+}
+
+/// Whether `base_url` points at the running Local API server itself.
+pub(crate) fn points_at_running_server(base_url: &str) -> bool {
+    let listening = LISTENING_ON.lock().ok().and_then(|g| g.clone());
+    listening.is_some_and(|(host, port)| points_at_self(base_url, &host, port))
+}
+
+/// Whether `url` reaches this server, listening on `listen_host:listen_port`:
+/// the same port on `localhost`, a loopback or unspecified address, the
+/// listen address itself, or (when listening on every interface) any address
+/// of this machine. A hostname other than `localhost` is not resolved here;
+/// the hop limit catches a loop through one.
+pub(crate) fn points_at_self(url: &str, listen_host: &str, listen_port: u16) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url.trim()) else {
+        return false;
+    };
+    if parsed.port_or_known_default() != Some(listen_port) {
+        return false;
+    }
+    let listen_ip: Option<std::net::IpAddr> =
+        listen_host.trim_matches(['[', ']']).parse().ok();
+    let host_ip = match parsed.host() {
+        Some(url::Host::Domain(d)) => {
+            return d.eq_ignore_ascii_case("localhost") || d.to_ascii_lowercase().ends_with(".localhost");
+        }
+        Some(url::Host::Ipv4(ip)) => std::net::IpAddr::V4(ip),
+        Some(url::Host::Ipv6(ip)) => std::net::IpAddr::V6(ip),
+        None => return false,
+    };
+    if host_ip.is_loopback() || host_ip.is_unspecified() || Some(host_ip) == listen_ip {
+        return true;
+    }
+    // Listening on every interface: any address this machine owns is us.
+    // Binding a throwaway socket to an address succeeds only for those.
+    listen_ip.is_some_and(|ip| ip.is_unspecified())
+        && std::net::UdpSocket::bind((host_ip, 0)).is_ok()
+}
+
 /// Which remote provider serves `model_id`, the same way every run.
 ///
 /// Providers that list the id are the candidates. One candidate wins outright.
@@ -1791,9 +1925,21 @@ async fn route_messages(cx: &RouteCtx<'_>, body: Incoming, plan: &mut ForwardPla
                 let pc = provider_configs.lock().await;
 
                 // Try to find a provider for this model
-                let provider_name: Option<String> = resolve_provider_name(&pc, model_id);
+                let resolved = resolve_provider(&pc, model_id);
 
                 drop(pc);
+
+                // Sent on under the upstream's own id, as /chat/completions is.
+                if let Some((_, upstream_model)) = &resolved {
+                    if upstream_model != model_id {
+                        let mut rewritten = json_body.clone();
+                        rewritten["model"] = serde_json::Value::String(upstream_model.clone());
+                        if let Ok(bytes) = serde_json::to_vec(&rewritten) {
+                            plan.buffered_body = Some(bytes.into());
+                        }
+                    }
+                }
+                let provider_name: Option<String> = resolved.map(|(name, _)| name);
 
                 if let Some(ref p) = provider_name {
                     log::info!("Using remote provider '{p}' for model '{model_id}'");
@@ -2331,9 +2477,22 @@ async fn route_model_in_body(cx: &RouteCtx<'_>, body: Incoming, plan: &mut Forwa
                 let pc = provider_configs.lock().await;
 
                 // Try to find a provider that has this model configured
-                let provider_name = resolve_provider_name(&pc, model_id);
+                let resolved = resolve_provider(&pc, model_id);
 
                 drop(pc);
+
+                // The upstream knows the model by its own id: a `provider/`
+                // prefix that only chose the provider is not sent on.
+                if let Some((_, upstream_model)) = &resolved {
+                    if upstream_model != model_id {
+                        let mut rewritten = json_body.clone();
+                        rewritten["model"] = serde_json::Value::String(upstream_model.clone());
+                        if let Ok(bytes) = serde_json::to_vec(&rewritten) {
+                            plan.buffered_body = Some(bytes.into());
+                        }
+                    }
+                }
+                let provider_name = resolved.map(|(name, _)| name);
 
                 if let Some(ref provider) = provider_name {
                     // Found a remote provider, stream the response directly
@@ -2606,9 +2765,8 @@ async fn route_models(cx: &RouteCtx<'_>) -> Result<Routed, hyper::Error> {
 
     // Get remote provider models
     let pc = provider_configs.lock().await;
-    let remote_models: Vec<_> = pc
-        .values()
-        .flat_map(|provider_cfg| provider_cfg.models.clone())
+    let remote_models: Vec<_> = remote_model_ids(&pc)
+        .into_iter()
         .map(|model_id| {
             serde_json::json!({
                 "id": model_id,
@@ -2618,6 +2776,7 @@ async fn route_models(cx: &RouteCtx<'_>) -> Result<Routed, hyper::Error> {
             })
         })
         .collect();
+    drop(pc);
 
     // Store counts before moving
     let local_count = local_models.len();
@@ -2785,6 +2944,33 @@ async fn forward(cx: &RouteCtx<'_>, mut plan: ForwardPlan) -> Result<Response<Re
             return Ok(error_response.body(full("Internal routing error")).unwrap());
         }
     };
+    // A provider whose base URL is this server would send the request back
+    // here, again and again. Refused before anything is sent, and the hop
+    // count stops a loop through another address or another Flint.
+    let hops = incoming_hops(headers);
+    let loops_back = points_at_self(&upstream_url, &config.host, config.port);
+    if loops_back || hops >= MAX_PROXY_HOPS {
+        let message = if loops_back {
+            format!(
+                "The provider for this model points at this Local API server itself ({upstream_url}); \
+                 change its base URL to the real upstream."
+            )
+        } else {
+            format!("The request already passed {hops} Flint proxies; refusing to forward it again (proxy loop).")
+        };
+        log::warn!("{message}");
+        let builder = Response::builder()
+            .status(StatusCode::LOOP_DETECTED)
+            .header("Content-Type", "application/json");
+        return Ok(add_cors_headers_with_host_and_origin(
+            builder,
+            &host_header,
+            &origin_header,
+            &config.trusted_hosts,
+        )
+        .body(full(error_json(&message, "invalid_request_error", "proxy_loop")))
+        .unwrap_or_else(|_| Response::new(full("proxy loop"))));
+    }
     log::info!(
         "Proxying request to model server at base URL {upstream_url}, path: {destination_path}"
     );
@@ -2852,10 +3038,11 @@ async fn forward(cx: &RouteCtx<'_>, mut plan: ForwardPlan) -> Result<Response<Re
         // Body is re-buffered/rewritten, so a stale inbound Content-Length would
         // mismatch the bytes we send and stall the upstream; reqwest re-derives it.
         for (name, value) in headers.iter() {
-            if forwards_to_upstream(name) {
+            if forwards_to_upstream(name) && name.as_str() != PROXY_HOPS_HEADER {
                 outbound_req = outbound_req.header(name, value);
             }
         }
+        outbound_req = outbound_req.header(PROXY_HOPS_HEADER, (hops + 1).to_string());
 
         if let Some(key) = key_opt {
             // The converter decides the auth scheme (Google uses x-goog-api-key).
@@ -3698,6 +3885,7 @@ async fn start_server_internal(
     });
 
     *handle_guard = Some(server_task);
+    set_listening_on(Some((host, bound_addr.port())));
     let actual_port = bound_addr.port();
     log::info!("Flint API server started successfully on port {actual_port}");
     Ok(actual_port)
@@ -3756,6 +3944,7 @@ pub async fn stop_server(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut handle_guard = server_handle.lock().await;
 
+    set_listening_on(None);
     if let Some(handle) = handle_guard.take() {
         handle.abort();
         *handle_guard = None;
@@ -4884,6 +5073,68 @@ mod provider_routing_tests {
         assert_eq!(resolve_provider_name(&pc, "zeta/shared").as_deref(), Some("zeta"));
         // Nobody lists it, but the prefix names a configured provider.
         assert_eq!(resolve_provider_name(&pc, "openai/gpt-x").as_deref(), Some("openai"));
+    }
+
+    /// `provider/model` reaches that provider under the upstream's own id;
+    /// an id a provider lists whole (slash and all) is sent unchanged.
+    #[test]
+    fn a_provider_prefix_is_stripped_before_forwarding() {
+        let pc: HashMap<_, _> = [
+            provider("v100a", &["swift"]),
+            provider("v100b", &["swift"]),
+            provider("router", &["meta/llama"]),
+            provider("openai", &[]),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(resolve_provider(&pc, "v100b/swift"), Some(("v100b".into(), "swift".into())));
+        assert_eq!(resolve_provider(&pc, "v100a/swift"), Some(("v100a".into(), "swift".into())));
+        // Ambiguous bare id: the first provider by name, sent as is.
+        assert_eq!(resolve_provider(&pc, "swift"), Some(("v100a".into(), "swift".into())));
+        assert_eq!(resolve_provider(&pc, "meta/llama"), Some(("router".into(), "meta/llama".into())));
+        // Only the prefix names a provider: still stripped.
+        assert_eq!(resolve_provider(&pc, "openai/gpt-x"), Some(("openai".into(), "gpt-x".into())));
+        assert_eq!(resolve_provider(&pc, "nobody"), None);
+    }
+
+    /// `/v1/models` lists a shared id once per provider, prefixed, so the two
+    /// can be told apart and each id routes back to its provider.
+    #[test]
+    fn a_shared_model_id_is_listed_per_provider() {
+        let pc: HashMap<_, _> = [
+            provider("v100b", &["swift", "solo"]),
+            provider("v100a", &["swift"]),
+        ]
+        .into_iter()
+        .collect();
+        let ids = remote_model_ids(&pc);
+        assert_eq!(ids, ["v100a/swift", "v100b/swift", "solo"]);
+        for id in &ids {
+            assert!(resolve_provider(&pc, id).is_some(), "{id} routes nowhere");
+        }
+    }
+
+    #[test]
+    fn a_url_back_at_this_server_is_recognised() {
+        for url in [
+            "http://127.0.0.1:1398/v1",
+            "http://localhost:1398/v1",
+            "http://[::1]:1398/v1",
+            "http://0.0.0.0:1398/v1",
+        ] {
+            assert!(points_at_self(url, "127.0.0.1", 1398), "{url}");
+        }
+        assert!(!points_at_self("http://127.0.0.1:1399/v1", "127.0.0.1", 1398));
+        assert!(!points_at_self("https://api.example.com/v1", "127.0.0.1", 443));
+        assert!(!points_at_self("http://192.0.2.10:1398/v1", "127.0.0.1", 1398));
+    }
+
+    #[test]
+    fn hops_are_read_from_the_header() {
+        let mut h = hyper::HeaderMap::new();
+        assert_eq!(incoming_hops(&h), 0);
+        h.insert(PROXY_HOPS_HEADER, "2".parse().unwrap());
+        assert_eq!(incoming_hops(&h), 2);
     }
 }
 

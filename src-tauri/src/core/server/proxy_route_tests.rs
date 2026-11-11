@@ -209,3 +209,75 @@ POST /v1/images/generations -> 400 cors=Some("http://localhost:1420") "{\"error\
 POST /v1/videos -> 400 cors=Some("http://localhost:1420") "{\"error\":{\"message\":\"prompt is required.\",\"type\":\"invalid_re"
 GET /v1/videos/abc -> 404 cors=Some("http://localhost:1420") "{\"error\":{\"message\":\"No such video.\",\"type\":\"invalid_request"
 "#;
+
+/// A provider whose base URL is this server made every request bounce back
+/// here until the client gave up. It is refused at once instead, and a
+/// request that has already passed too many Flint proxies is not forwarded.
+#[tokio::test]
+async fn a_provider_pointing_at_this_server_is_refused_not_looped() {
+    let data = tempfile::tempdir().unwrap();
+    let handle = Arc::new(Mutex::new(None));
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let providers = Arc::new(Mutex::new(HashMap::new()));
+    for (name, url) in [
+        ("selfloop", format!("http://localhost:{port}/v1")),
+        // Unreachable on purpose: only the hop limit may answer for it.
+        ("elsewhere", "http://192.0.2.1:9/v1".to_string()),
+    ] {
+        providers.lock().await.insert(
+            name.to_string(),
+            crate::core::state::ProviderConfig {
+                provider: name.to_string(),
+                base_url: Some(url),
+                models: vec![format!("{name}-model")],
+                ..Default::default()
+            },
+        );
+    }
+    let port = start_server(
+        handle.clone(),
+        Arc::new(tauri_plugin_llamacpp::state::LlamacppState::default()),
+        Arc::new(Mutex::new(HashMap::new())),
+        "127.0.0.1".into(),
+        port,
+        "/v1".into(),
+        String::new(),
+        vec![],
+        30,
+        providers,
+        Arc::new(Mutex::new(HashMap::new())),
+        Arc::new(Mutex::new(HashMap::new())),
+        Arc::new(Mutex::new(Default::default())),
+        data.path().to_string_lossy().into_owned(),
+        false,
+        true,
+    )
+    .await
+    .expect("server starts");
+
+    let post = |model: &'static str, hops: Option<&'static str>| async move {
+        let mut req = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+            .header("Content-Type", "application/json")
+            .body(format!("{{\"model\":\"{model}\",\"messages\":[]}}"));
+        if let Some(h) = hops {
+            req = req.header(PROXY_HOPS_HEADER, h);
+        }
+        let res = tokio::time::timeout(std::time::Duration::from_secs(10), req.send())
+            .await
+            .expect("answered, not looped")
+            .expect("request sent");
+        (res.status().as_u16(), res.text().await.unwrap_or_default())
+    };
+    let (status, body) = post("selfloop-model", None).await;
+    assert_eq!(status, 508, "{body}");
+    assert!(body.contains("proxy_loop"), "{body}");
+    let (status, body) = post("elsewhere-model", Some("3")).await;
+    assert_eq!(status, 508, "{body}");
+
+    stop_server(handle).await.ok();
+}
