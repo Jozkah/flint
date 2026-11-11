@@ -27,14 +27,15 @@ const REFUSAL_BODY = {
 const refusal = Object.assign(new Error(REFUSAL_BODY.message), { data: REFUSAL_BODY })
 
 const known = (tokens: number) => ({ known: 'estimated' as const, tokens })
-const msgs: UIMessage[] = Array.from({ length: 8 }, (_, i) => ({
+const msgs: UIMessage[] = Array.from({ length: 30 }, (_, i) => ({
   id: `m${i}`,
   role: i % 2 ? 'assistant' : 'user',
-  parts: [{ type: 'text', text: `turn ${i}` }],
+  parts: [{ type: 'text', text: `turn ${i} `.repeat(50) }],
 })) as UIMessage[]
 
-function setup(tools: number, conversation: number) {
+function setup(tools: number, conversation: number, afterCompaction = conversation) {
   let learned: number | null = null
+  let calls = 0
   const summarize = vi.fn(async () => 'summary')
   const run = createCompactRun({
     sid: 's',
@@ -52,7 +53,7 @@ function setup(tools: number, conversation: number) {
             instructions: known(4000),
             skills: known(0),
             repositoryMap: known(0),
-            conversation: known(conversation),
+            conversation: known(calls++ === 0 ? conversation : afterCompaction),
             tools: known(tools),
           },
           budget: known(200000),
@@ -101,5 +102,21 @@ describe('a context-length refusal in a Cowork run', () => {
     expect(error.message).toMatch(/Most of it is the tool definitions \(502 tools\)/)
     expect(error.message).toMatch(/turn off MCP servers or tools/)
     expect(summarize).not.toHaveBeenCalled()
+  })
+
+  it('lets the single resend go when a compacted request is only slightly over by estimate', async () => {
+    const { run, summarize } = setup(100000, 150000, 95000)
+    const out = await run(msgs, 'context-error', new AbortController().signal, refusal)
+    expect(summarize).toHaveBeenCalled()
+    expect(Array.isArray(out)).toBe(true)
+  })
+
+  it('refuses without resending when a compacted request is clearly over', async () => {
+    const { run } = setup(100000, 150000, 120000)
+    const error = await run(msgs, 'context-error', new AbortController().signal, refusal).then(
+      () => null,
+      (e) => e
+    )
+    expect(isUnfittableRequest(error)).toBe(true)
   })
 })

@@ -155,6 +155,8 @@ function effectiveWindow(
 
 /** Share of the window the fixed part may take before summarizing is pointless. */
 const FIXED_SHARE_LIMIT = 0.9
+/** How far over the window an estimate must be before it is trusted to refuse. */
+const CLEARLY_OVER = 1.1
 
 function partsOf(ctx: CompactRunContext, msgs: UIMessage[], window: number) {
   const { categories: c } = ctx.transport.measureContext(msgs, window)
@@ -205,7 +207,9 @@ function assertConversationCanHelp(
 function assertFits(ctx: CompactRunContext, msgs: UIMessage[], window: number): void {
   const b = partsOf(ctx, msgs, window)
   const reserve = replyReserveFor(window)
-  if (b.systemPrompt + b.tools + b.history + reserve > window) {
+  // The measure is an estimate: refuse only when it is clearly over, and
+  // otherwise let the runner's single resend find out.
+  if (b.systemPrompt + b.tools + b.history + reserve > window * CLEARLY_OVER) {
     refuse(b, window, reserve)
   }
 }
