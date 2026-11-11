@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Shared conversation</title>
+<style>
+:root { color-scheme: light dark; --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #dcdcd6; --card: #ffffff; --accent: #2f5fd0; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161614; --fg: #ecece8; --muted: #9a9a93; --line: #2f2f2b; --card: #1f1f1c; --accent: #7aa2ff; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 18px; margin: 8px 0 2px; }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.msg { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.who { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.msg.assistant { border-left: 3px solid var(--accent); }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; }
+details { color: var(--muted); margin-top: 6px; font-size: 13px; }
+textarea { width: 100%; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; resize: vertical; }
+button { font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 8px; }
+#status { min-height: 1.4em; color: var(--muted); font-size: 13px; }
+#gone { text-align: center; padding: 64px 16px; color: var(--muted); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="app" hidden>
+  <h1 id="title">Shared conversation</h1>
+  <p class="note">You are following this conversation live. What you write is held for the owner, who decides whether to send it.</p>
+  <section id="log" aria-live="polite"></section>
+  <form id="form">
+    <textarea id="text" rows="3" maxlength="4000" placeholder="Write a message to the owner" aria-label="Message"></textarea>
+    <div class="row">
+      <input id="files" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.txt,.md,.pdf,.json,.csv" aria-label="Attach files (up to 2, 1 MB each)">
+      <button id="send" type="submit">Send to the owner</button>
+    </div>
+    <p id="status" role="status"></p>
+  </form>
+</main>
+<div id="gone" hidden>
+  <h1>This link is no longer available</h1>
+  <p>It was stopped, it expired, or it is open in another browser. Ask the owner for a new one.</p>
+</div>
+<script>
+(function () {
+  'use strict';
+  var token = location.pathname.split('/')[2] || '';
+  var base = '/g/' + encodeURIComponent(token);
+  var MAX_FILES = 2, MAX_BYTES = 1024 * 1024;
+  var source = null, poller = null, ended = false;
+  function $(id) { return document.getElementById(id); }
+
+  function gone() {
+    ended = true;
+    if (source) source.close();
+    if (poller) clearInterval(poller);
+    $('app').hidden = true;
+    $('gone').hidden = false;
+  }
+
+  function label(role) {
+    return role === 'assistant' ? 'Assistant' : role === 'guest' ? 'You' : 'Owner';
+  }
+
+  function render(snap) {
+    var log = $('log');
+    var stick = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
+    $('title').textContent = snap.title || 'Shared conversation';
+    document.title = snap.title || 'Shared conversation';
+    while (log.firstChild) log.removeChild(log.firstChild);
+    snap.messages.forEach(function (m) {
+      var box = document.createElement('div');
+      box.className = 'msg ' + m.role;
+      var who = document.createElement('div');
+      who.className = 'who';
+      who.textContent = label(m.role);
+      var body = document.createElement('div');
+      body.className = 'body';
+      body.textContent = m.text;
+      box.appendChild(who);
+      box.appendChild(body);
+      if (m.reasoning) {
+        var d = document.createElement('details');
+        var s = document.createElement('summary');
+        s.textContent = 'Reasoning';
+        var r = document.createElement('div');
+        r.className = 'body';
+        r.textContent = m.reasoning;
+        d.appendChild(s);
+        d.appendChild(r);
+        box.appendChild(d);
+      }
+      log.appendChild(box);
+    });
+    if (stick) window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  function load() {
+    return fetch(base + '/snapshot', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) {
+      if (!r.ok) { if (r.status === 404) gone(); return null; }
+      return r.json();
+    }).then(function (snap) { if (snap && !ended) render(snap); }).catch(function () {});
+  }
+
+  function poll() {
+    if (poller || ended) return;
+    poller = setInterval(load, 5000);
+  }
+
+  function live() {
+    if (!window.EventSource) { poll(); return; }
+    source = new EventSource(base + '/events');
+    source.addEventListener('update', function (e) {
+      try { render(JSON.parse(e.data)); } catch (err) {}
+    });
+    source.addEventListener('ended', gone);
+    source.onerror = function () { if (source.readyState === 2) { poll(); load(); } };
+  }
+
+  function readFile(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var s = String(reader.result);
+        resolve({ name: file.name, data: s.slice(s.indexOf(',') + 1) });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = $('text').value.trim();
+    var files = Array.prototype.slice.call($('files').files);
+    var status = $('status');
+    if (!text) { status.textContent = 'Write a message first.'; return; }
+    if (files.length > MAX_FILES) { status.textContent = 'Attach at most ' + MAX_FILES + ' files.'; return; }
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_BYTES) { status.textContent = files[i].name + ' is over 1 MB.'; return; }
+    }
+    $('send').disabled = true;
+    status.textContent = 'Sending...';
+    Promise.all(files.map(readFile)).then(function (attachments) {
+      return fetch(base + '/message', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, attachments: attachments })
+      });
+    }).then(function (r) {
+      if (r.status === 404) { gone(); return; }
+      if (r.status === 202) {
+        $('text').value = '';
+        $('files').value = '';
+        status.textContent = 'Sent. It waits for the owner to approve it.';
+      } else if (r.status === 429) {
+        status.textContent = 'Slow down, or wait until the owner has answered what is already waiting.';
+      } else {
+        status.textContent = 'That could not be sent. Check the message and files and try again.';
+      }
+    }).catch(function () {
+      status.textContent = 'That could not be sent. Check your connection.';
+    }).then(function () { $('send').disabled = false; });
+  });
+
+  fetch(base + '/join', { method: 'POST', credentials: 'same-origin' }).then(function (r) {
+    if (!r.ok) { gone(); return; }
+    $('app').hidden = false;
+    return load().then(live);
+  }).catch(gone);
+})();
+</script>
+</body>
+</html>

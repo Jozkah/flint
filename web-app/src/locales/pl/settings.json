@@ -198,6 +198,14 @@
     "resetCodeBlockSuccessDesc": "Styl bloku kodu został przywrócony do ustawień domyślnych.",
     "transcriptView": "Widok transkrypcji",
     "transcriptViewDesc": "Ile z każdej tury pokazują Czat, Cowork i Pokoje. Zatwierdzenia, pytania i błędy są zawsze widoczne.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normalny",
     "transcriptViewNormalDesc": "Odpowiedź i to, co wymaga Twojej reakcji. Wywołania narzędzi zwijają się w jeden wiersz kroków.",
     "transcriptViewThinking": "Rozumowanie",

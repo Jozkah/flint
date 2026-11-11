@@ -22,6 +22,7 @@ export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: 
   const [showHistory, setShowHistory] = useState(false)
   const { task, nextFires, lastRun, running } = view
   const next = nextFires[0]
+  const isWebhook = task.schedule.kind === 'webhook'
 
   return (
     <div
@@ -37,13 +38,16 @@ export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: 
                 {t('schedules:list.running')}
               </Chip>
             )}
+            {isWebhook && <Chip>{t('schedules:summary.webhook')}</Chip>}
             {!task.enabled && <Chip>{t('schedules:list.disabled')}</Chip>}
           </div>
           <p className="text-xs text-muted-foreground">{describeSchedule(task.schedule, t, i18n?.language)}</p>
           <p className="text-xs text-muted-foreground">
-            {task.enabled && next
-              ? t('schedules:list.nextRun', { when: formatWhen(next, i18n?.language) })
-              : t('schedules:list.noNextRun')}
+            {isWebhook
+              ? t('schedules:list.onWebhook')
+              : task.enabled && next
+                ? t('schedules:list.nextRun', { when: formatWhen(next, i18n?.language) })
+                : t('schedules:list.noNextRun')}
             {' · '}
             {lastRun ? (
               <>
@@ -63,16 +67,18 @@ export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: 
             onCheckedChange={onToggle}
             aria-label={`${t('schedules:list.enabled')} ${task.name}`}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={running}
-            onClick={onRunNow}
-            aria-label={`${t('schedules:list.runNow')} ${task.name}`}
-          >
-            <Icon name="x-play" size={14} />
-            {t('schedules:list.runNow')}
-          </Button>
+          {!isWebhook && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={running}
+              onClick={onRunNow}
+              aria-label={`${t('schedules:list.runNow')} ${task.name}`}
+            >
+              <Icon name="x-play" size={14} />
+              {t('schedules:list.runNow')}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"

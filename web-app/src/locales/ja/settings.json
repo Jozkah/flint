@@ -196,6 +196,14 @@
     "resetCodeBlockSuccessDesc": "コードブロックスタイルがデフォルトに復元されました。",
     "transcriptView": "トランスクリプトの表示",
     "transcriptViewDesc": "チャット、Cowork、ルームで各ターンをどこまで表示するか。承認、質問、エラーは常に表示されます。",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "標準",
     "transcriptViewNormalDesc": "回答と対応が必要なものだけ。ツール呼び出しは 1 行のステップにまとめます。",
     "transcriptViewThinking": "思考",

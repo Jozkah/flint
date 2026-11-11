@@ -41,14 +41,16 @@
     "hideHistory": "Hide history",
     "noRuns": "No runs yet.",
     "started": "\"{{name}}\" started",
-    "ended": "\"{{name}}\" {{status}}"
+    "ended": "\"{{name}}\" {{status}}",
+    "onWebhook": "Runs when its webhook is called"
   },
   "summary": {
     "daily": "Every day at {{times}}",
     "weekdays": "Weekdays at {{times}}",
     "weekly": "{{days}} at {{times}}",
     "cron": "Cron {{expr}}",
-    "once": "Once, on {{at}}"
+    "once": "Once, on {{at}}",
+    "webhook": "On webhook"
   },
   "status": {
     "running": "Running",
@@ -62,7 +64,8 @@
   "trigger": {
     "manual": "Started by you",
     "on_time": "On schedule",
-    "catch_up": "Catch-up for a missed run"
+    "catch_up": "Catch-up for a missed run",
+    "webhook": "Webhook request"
   },
   "run": {
     "blockedOn": "Blocked on",
@@ -86,7 +89,8 @@
       "daily": "Every day",
       "weekdays": "Weekdays",
       "weekly": "Certain days",
-      "cron": "Cron"
+      "cron": "Cron",
+      "webhook": "On webhook"
     },
     "times": "Times",
     "addTime": "Add time",
@@ -155,6 +159,47 @@
     "turnsRange": "Turns must be 1 to 200.",
     "tokensRange": "Tokens must be 1 to 5,000,000.",
     "minutesRange": "Minutes must be 1 to 360.",
-    "costRange": "The cost limit must be more than $0 and at most $1000, or empty."
+    "costRange": "The cost limit must be more than $0 and at most $1000, or empty.",
+    "webhookHeader": "Use a header name like x-hub-signature-256.",
+    "webhookSecret": "Enter the secret the sender signs with, or turn the signature check off.",
+    "webhookFilters": "A filter name starts with body., headers. or query. (for example body.action)."
+  },
+  "webhook": {
+    "url": "Webhook URL path",
+    "urlHint": "Append this path to the address of a running Flint web server (flint serve). Anyone who has the whole path can start this task, so keep it private.",
+    "unsaved": "The URL is made when you save the task. Open it again to copy it.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy the path.",
+    "rotate": "Rotate",
+    "rotateHint": "Rotating replaces the URL; the old one stops working at once.",
+    "rotated": "The webhook URL was replaced.",
+    "rotateFailed": "Could not rotate the URL.",
+    "signature": "Require signature",
+    "signatureHint": "The sender signs each request body with a shared secret (HMAC-SHA256). Requests without a valid signature are refused.",
+    "unsignedWarning": "Without a signature, anyone who learns the URL can start a run with any content. A signature is recommended.",
+    "header": "Header",
+    "encoding": "Encoding",
+    "prefix": "Prefix",
+    "secret": "Secret",
+    "secretHint": "The same secret you give the sender. It is stored on this computer and never shown again.",
+    "secretStored": "A secret is stored. Leave this empty to keep it, or type a new one to replace it.",
+    "secretKeep": "Stored (hidden)",
+    "githubPreset": "Use the GitHub settings",
+    "filters": "Filters",
+    "filtersHint": "The task runs only when every filter matches. Other requests are answered normally and start nothing. Names look like body.action, headers.x-github-event or query.name.",
+    "filterPath": "Filter name",
+    "filterOp": "Condition",
+    "filterValue": "Value",
+    "addFilter": "Add a filter",
+    "removeFilter": "Remove",
+    "ops": {
+      "equals": "equals",
+      "not_equals": "does not equal",
+      "one_of": "is one of (comma separated)",
+      "contains": "contains"
+    },
+    "placeholders": "Use request values in the prompt: {{body}} for a JSON or form field, {{headers}} for a header, {{query}} for a query value, {{raw}} for the whole body and {{request}} for everything. A value that is missing is left empty.",
+    "untrusted": "Each value reaches the agent fenced off and marked as untrusted request data, and mentions such as $skill, @file and /command are defused. This helps but does not guarantee the agent ignores what the text says; a signature only proves who sent it, not that the text is safe."
   }
 }

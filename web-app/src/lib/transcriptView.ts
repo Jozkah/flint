@@ -4,6 +4,11 @@
  * Presentation only: nothing is removed from the conversation, its exports or
  * its search, and switching modes takes effect without a reload.
  *
+ * - `zen`: as `quiet`, and the agent's in-between messages are hidden too, so
+ *   a turn is the user's message and the agent's final reply, which appears
+ *   when the turn ends. A reply that finished before a steer stays visible.
+ * - `quiet`: as normal, but with no "N steps" disclosure: a single "Working..."
+ *   line while the agent works, and a failed call as one collapsed row.
  * - `normal`: the answer and what needs the user. Reasoning is hidden and a
  *   turn's tool calls fold into one "N steps" disclosure.
  * - `thinking`: as normal, plus the reasoning summaries.
@@ -14,13 +19,17 @@
  * is one of the steps in `normal`, a collapsed row of its own in `thinking`
  * and an open row in `verbose`.
  */
-export const TRANSCRIPT_VIEWS = ['normal', 'thinking', 'verbose'] as const
+export const TRANSCRIPT_VIEWS = ['zen', 'quiet', 'normal', 'thinking', 'verbose'] as const
 export type TranscriptView = (typeof TRANSCRIPT_VIEWS)[number]
 export const DEFAULT_TRANSCRIPT_VIEW: TranscriptView = 'normal'
 
 export const isTranscriptView = (value: unknown): value is TranscriptView =>
   typeof value === 'string' &&
   (TRANSCRIPT_VIEWS as readonly string[]).includes(value)
+
+/** The views with no steps disclosure: they show "Working..." instead. */
+export const isQuietView = (view: TranscriptView): view is 'zen' | 'quiet' =>
+  view === 'zen' || view === 'quiet'
 
 type TracePart = { type: string; state?: string; toolCallId?: string }
 type TraceEntry = { part: TracePart; index: number }
@@ -31,7 +40,8 @@ export type TracePartition<E> = {
   /** Tool calls that stay visible: awaiting approval, and in `thinking`
    * failed calls too. */
   pinned: E[]
-  /** Tool calls folded into the "N steps" disclosure. */
+  /** Tool calls folded into the "N steps" disclosure (not drawn at all in
+   * `quiet` and `zen`). */
   steps: E[]
 }
 
@@ -60,7 +70,8 @@ export function partitionTrace<E extends TraceEntry>(
       if (
         pending ||
         shown ||
-        (view === 'thinking' && part.state === 'output-error')
+        ((view === 'thinking' || isQuietView(view)) &&
+          part.state === 'output-error')
       )
         out.pinned.push(entry)
       else out.steps.push(entry)
@@ -69,4 +80,23 @@ export function partitionTrace<E extends TraceEntry>(
     }
   }
   return out
+}
+
+type TextPart = { type: string; text?: string }
+
+/**
+ * `zen`: which text parts of one assistant message are in-between messages.
+ * A message's final text part is its answer; every earlier one is hidden. A
+ * steer starts a new message, so the reply finished before it is that
+ * message's own last text and stays. While the turn runs, all of it is hidden:
+ * the answer appears when the turn ends.
+ */
+export function interimTextParts<P extends TextPart>(
+  parts: readonly P[],
+  running: boolean
+): Set<P> {
+  const texts = parts.filter(
+    (p) => p.type === 'text' && Boolean(p.text && p.text.trim())
+  )
+  return new Set(running ? texts : texts.slice(0, -1))
 }

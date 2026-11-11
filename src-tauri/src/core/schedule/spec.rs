@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 use super::cron::{CronError, CronExpr};
+use super::webhook::WebhookConfig;
 
 /// Version of the `tasks.json` layout and of a run record.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -65,6 +66,9 @@ pub enum Schedule {
     /// Once, at this local date and time (`YYYY-MM-DDTHH:MM`, on the task's own
     /// clock). The task disables itself after it has fired.
     Once { at: String },
+    /// Never on a timetable: an inbound HTTP request starts it (see
+    /// `webhook`). The task's `webhook` settings say which requests count.
+    Webhook,
 }
 
 impl Schedule {
@@ -82,6 +86,8 @@ impl Schedule {
     pub fn to_cron(&self) -> Result<Vec<String>, ScheduleError> {
         let (times, dow): (&[TimeOfDay], String) = match self {
             Schedule::Cron { expr } => return Ok(vec![expr.trim().to_string()]),
+            // No timetable: nothing for the engine or the OS scheduler to fire.
+            Schedule::Webhook => return Ok(Vec::new()),
             Schedule::Once { at } => {
                 let when = Self::parse_once(at)?;
                 return Ok(vec![format!(
@@ -136,6 +142,10 @@ impl Schedule {
         matches!(self, Schedule::Once { .. })
     }
 
+    pub fn is_webhook(&self) -> bool {
+        matches!(self, Schedule::Webhook)
+    }
+
     /// The schedule in words, for an approval prompt.
     pub fn describe(&self) -> String {
         let times = |ts: &[TimeOfDay]| {
@@ -149,6 +159,7 @@ impl Schedule {
             }
             Schedule::Cron { expr } => format!("cron `{}`", expr.trim()),
             Schedule::Once { at } => format!("once, at {at}"),
+            Schedule::Webhook => "when its webhook is called".to_string(),
         }
     }
 
@@ -274,6 +285,9 @@ pub struct Task {
     pub on_block: OnBlock,
     #[serde(default)]
     pub catch_up: CatchUp,
+    /// Settings of a `webhook` schedule; absent for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<WebhookConfig>,
     #[serde(default = "yes")]
     pub enabled: bool,
     #[serde(default)]
@@ -330,6 +344,18 @@ impl Task {
 
     /// Refuse a task that could not run safely and unattended.
     pub fn validate(&self) -> Result<(), ScheduleError> {
+        self.validate_inner(true)
+    }
+
+    /// The checks for the copy of a webhook task a run starts from: its prompt
+    /// is the rendered request (so it may be long and may quote anything the
+    /// sender wrote) and it carries no webhook settings, which hold a secret
+    /// that has no business in a run spec.
+    pub fn validate_for_run(&self) -> Result<(), ScheduleError> {
+        self.validate_inner(false)
+    }
+
+    fn validate_inner(&self, saving: bool) -> Result<(), ScheduleError> {
         if !id_is_safe(&self.id) {
             return Err(bad("the task id must be letters, digits, '-' or '_'"));
         }
@@ -342,10 +368,10 @@ impl Task {
         if self.prompt.trim().is_empty() {
             return Err(bad("write what the task should do"));
         }
-        if self.prompt.chars().count() > MAX_PROMPT_CHARS {
+        if saving && self.prompt.chars().count() > MAX_PROMPT_CHARS {
             return Err(bad(format!("the prompt is longer than {MAX_PROMPT_CHARS} characters")));
         }
-        if looks_like_secret(&self.prompt) {
+        if saving && looks_like_secret(&self.prompt) {
             return Err(bad(
                 "the prompt looks like it contains a key or password; remove it (provider keys are \
                  read from the provider settings, not from the prompt)",
@@ -364,10 +390,21 @@ impl Task {
         }
         self.tz()?;
         let exprs = self.schedule.compile()?;
+        match (&self.schedule, &self.webhook) {
+            (Schedule::Webhook, None) if saving => {
+                return Err(bad("an on-webhook task needs its webhook settings"));
+            }
+            (Schedule::Webhook, Some(w)) if saving => w.validate()?,
+            (Schedule::Webhook, Some(_)) => return Err(bad("a run spec carries no webhook settings")),
+            (_, Some(_)) => return Err(bad("webhook settings belong to an on-webhook task")),
+            _ => {}
+        }
         // A schedule that never fires (31 February) is a mistake, not a task.
         let tz = self.tz()?;
         let now = Utc::now();
-        if self.schedule.is_once() {
+        if self.schedule.is_webhook() {
+            // Fires only when called; there is no time to check.
+        } else if self.schedule.is_once() {
             if self.next_fires(now, 1)?.is_empty() {
                 return Err(bad("that time has already passed"));
             }
@@ -376,6 +413,14 @@ impl Task {
         }
         self.policy.validate()?;
         self.budgets.validate()
+    }
+
+    /// The copy that leaves the process (page, CLI listing): the signature
+    /// secret is replaced by `hasSecret`.
+    pub fn redacted(&self) -> Task {
+        let mut out = self.clone();
+        out.webhook = out.webhook.as_ref().map(|w| w.redacted());
+        out
     }
 
     /// The one instant a one-time task fires at, on its own clock. The cron it
@@ -467,6 +512,7 @@ pub(crate) mod fixtures {
             budgets: Budgets { max_turns: 12, max_tokens: 50_000, max_wall_clock_secs: 600, max_cost_usd: None },
             on_block: OnBlock::Continue,
             catch_up: CatchUp::Once,
+            webhook: None,
             enabled: true,
             created_at_ms: 0,
             updated_at_ms: 0,

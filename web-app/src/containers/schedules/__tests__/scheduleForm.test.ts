@@ -238,3 +238,73 @@ describe('warnings for a task that will never run', () => {
     ).toHaveLength(2)
   })
 })
+
+describe('webhook schedules', () => {
+  it('has no cron and maps to the webhook kind', () => {
+    const f = form({ preset: 'webhook' })
+    expect(formToCron(f)).toEqual([])
+    expect(formToSchedule(f)).toEqual({ kind: 'webhook' })
+    expect(scheduleToForm({ kind: 'webhook' }).preset).toBe('webhook')
+  })
+
+  it('saves the signature and filters, and a signature needs a secret', () => {
+    const base = valid({ schedule: form({ preset: 'webhook' }) })
+    expect('task' in formToTask(base)).toBe(true)
+    const on = {
+      ...base,
+      webhook: { ...base.webhook, signatureOn: true, header: ' X-Hub-Signature-256 ' },
+    }
+    expect(validateForm(on).webhookSecret).toBeDefined()
+    const signed = { ...on, webhook: { ...on.webhook, secret: 's3cret' } }
+    const out = formToTask({
+      ...signed,
+      webhook: {
+        ...signed.webhook,
+        filters: [{ path: ' body.action ', op: 'one_of', value: 'opened' }],
+      },
+    })
+    if (!('task' in out)) throw new Error('should save')
+    expect(out.task.schedule).toEqual({ kind: 'webhook' })
+    expect(out.task.webhook).toMatchObject({
+      signature: { header: 'x-hub-signature-256', secret: 's3cret', encoding: 'hex', prefix: 'sha256=' },
+      filters: [{ path: 'body.action', op: 'one_of', value: 'opened' }],
+    })
+  })
+
+  it('keeps a stored secret when the page sends none, and never receives one', () => {
+    const saved = formToTask(valid({ schedule: form({ preset: 'webhook' }) }))
+    if (!('task' in saved)) throw new Error('should save')
+    const f = taskToForm({
+      ...saved.task,
+      id: 'task-1',
+      webhook: {
+        token: 't'.repeat(40),
+        signature: { header: 'x-hub-signature-256', encoding: 'hex', prefix: 'sha256=', hasSecret: true },
+        filters: [],
+      },
+    })
+    expect(f.webhook.hasSecret).toBe(true)
+    expect(f.webhook.secret).toBe('')
+    expect(validateForm(f).webhookSecret).toBeUndefined()
+    const out = formToTask(f)
+    if (!('task' in out)) throw new Error('should save')
+    expect(out.task.webhook?.signature).toMatchObject({ secret: '', hasSecret: true })
+  })
+
+  it('refuses a filter name outside body, headers and query', () => {
+    const f = valid({ schedule: form({ preset: 'webhook' }) })
+    const bad = {
+      ...f,
+      webhook: { ...f.webhook, filters: [{ path: 'env.HOME', op: 'equals' as const, value: 'x' }] },
+    }
+    expect(validateForm(bad).webhookFilters).toBeDefined()
+    const ok = {
+      ...f,
+      webhook: {
+        ...f.webhook,
+        filters: [{ path: 'headers.x-github-event', op: 'equals' as const, value: 'push' }],
+      },
+    }
+    expect(validateForm(ok).webhookFilters).toBeUndefined()
+  })
+})

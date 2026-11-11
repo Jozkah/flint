@@ -196,6 +196,14 @@
     "resetCodeBlockSuccessDesc": "Kod bloğu stili varsayılanına geri yüklendi.",
     "transcriptView": "Döküm görünümü",
     "transcriptViewDesc": "Sohbet, Cowork ve Odalar her turun ne kadarını gösterir. Onaylar, sorular ve hatalar her zaman görünür.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Yanıt ve sizi bekleyen her şey. Araç çağrıları tek bir adım satırına katlanır.",
     "transcriptViewThinking": "Düşünme",

@@ -1053,3 +1053,75 @@ describe('MessageItem', () => {
     })
   })
 })
+
+describe('MessageItem quiet and zen views', () => {
+  const answer = (text: string) => ({ type: 'text', text })
+  const call = { type: 'tool-read', state: 'output-available', toolCallId: 't1', input: {}, output: 'ok' }
+  const view = (v: 'zen' | 'quiet' | 'normal') =>
+    useInterfaceSettings.setState({ transcriptView: v })
+  const renderTurn = (parts: any[], isLastMessage = false, status = 'ready') =>
+    render(
+      <MessageItem
+        message={makeMsg({ parts }) as any}
+        isFirstMessage
+        isLastMessage={isLastMessage}
+        status={status as any}
+      />
+    )
+
+  beforeEach(() => {
+    pendingApprovalsRef.current = {}
+  })
+
+  it('zen: a finished turn shows its last reply and not the in-between text', () => {
+    view('zen')
+    renderTurn([answer('Let me look.'), call, answer('Found it.')])
+    expect(screen.queryByText('Let me look.')).not.toBeInTheDocument()
+    expect(screen.getByText('Found it.')).toBeInTheDocument()
+    expect(screen.queryByTestId('transcript-working')).not.toBeInTheDocument()
+  })
+
+  it('zen: a running turn shows only a Working line, with a live-region label', () => {
+    view('zen')
+    renderTurn([answer('Let me look.'), call, answer('Almost')], true, 'streaming')
+    expect(screen.queryByText('Let me look.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Almost')).not.toBeInTheDocument()
+    const working = screen.getByTestId('transcript-working')
+    expect(working).toHaveAttribute('role', 'status')
+    expect(working).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('zen: a reply finished before a steer stays visible', () => {
+    view('zen')
+    renderTurn([answer('Checking.'), call, answer('The file is a.ts.')])
+    expect(screen.getByText('The file is a.ts.')).toBeInTheDocument()
+  })
+
+  it('quiet: every text part stays; Working shows while a trace is the latest part', () => {
+    view('quiet')
+    renderTurn([answer('Let me look.'), call], true, 'streaming')
+    expect(screen.getByText('Let me look.')).toBeInTheDocument()
+    expect(screen.getByTestId('transcript-working')).toBeInTheDocument()
+    expect(screen.queryByTestId('transcript-steps-toggle')).not.toBeInTheDocument()
+  })
+
+  it('quiet: no Working line while the answer is streaming in', () => {
+    view('quiet')
+    renderTurn([call, answer('Here it comes')], true, 'streaming')
+    expect(screen.queryByTestId('transcript-working')).not.toBeInTheDocument()
+  })
+
+  it('zen: no Working line over a call that waits for approval', () => {
+    view('zen')
+    pendingApprovalsRef.current = { t1: { toolName: 'read' } }
+    renderTurn([{ ...call, state: 'input-available' }], true, 'streaming')
+    expect(screen.queryByTestId('transcript-working')).not.toBeInTheDocument()
+  })
+
+  it('normal: nothing is hidden or announced', () => {
+    view('normal')
+    renderTurn([answer('Let me look.'), call, answer('Found it.')])
+    expect(screen.getByText('Let me look.')).toBeInTheDocument()
+    expect(screen.queryByTestId('transcript-working')).not.toBeInTheDocument()
+  })
+})

@@ -132,6 +132,48 @@ describe('ScheduleEditor', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('shows the webhook path, a copy button and a signature warning for an on-webhook task', async () => {
+    const user = userEvent.setup()
+    const task = {
+      id: 'task-1',
+      name: 'PR review',
+      prompt: 'Review {{body.pull_request.html_url}}',
+      schedule: { kind: 'webhook' },
+      timezone: 'UTC',
+      model: 'openai/gpt-x',
+      project: 'C:/work/repo',
+      policy: { allowTools: ['read'], write: 'read_only' },
+      budgets: { maxTurns: 5, maxTokens: 1000, maxWallClockSecs: 60 },
+      onBlock: 'continue',
+      catchUp: 'once',
+      webhook: { token: 'a'.repeat(40), signature: null, filters: [] },
+      enabled: true,
+    } as ScheduledTask
+    render(<ScheduleEditor open task={task} onClose={() => {}} onSave={vi.fn()} />)
+    expect(await screen.findByTestId('webhook-path')).toHaveTextContent(`/hooks/task-1/${'a'.repeat(40)}`)
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rotate' })).toBeInTheDocument()
+    expect(screen.getByTestId('webhook-unsigned')).toBeInTheDocument()
+    expect(screen.getByTestId('webhook-untrusted')).toHaveTextContent('untrusted')
+    expect(screen.getByTestId('webhook-placeholders')).toHaveTextContent('{{body.path}}')
+    // No timetable for it: no cron line, no next runs.
+    expect(screen.queryByTestId('compiled-cron')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('next-fires')).not.toBeInTheDocument()
+    // Turning the signature on asks for a secret, with the GitHub defaults.
+    await user.click(screen.getByLabelText('Require signature'))
+    expect(screen.getByLabelText('Header')).toHaveValue('x-hub-signature-256')
+    expect(screen.getByLabelText('Prefix')).toHaveValue('sha256=')
+    expect(screen.queryByTestId('webhook-unsigned')).not.toBeInTheDocument()
+  })
+
+  it('says the URL is made on save for a new webhook task', async () => {
+    const user = userEvent.setup()
+    render(<ScheduleEditor open task={null} onClose={() => {}} onSave={vi.fn()} />)
+    await user.click(screen.getByText('On webhook'))
+    expect(screen.getByTestId('webhook-unsaved')).toBeInTheDocument()
+    expect(screen.queryByTestId('webhook-path')).not.toBeInTheDocument()
+  })
+
   it('warns when the task is switched off', async () => {
     const user = userEvent.setup()
     render(<ScheduleEditor open task={null} onClose={() => {}} onSave={vi.fn()} />)
