@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { checkLimits } from '@/lib/rooms/limits'
 import { replaceMissingRoomModels, roomModelRefs } from '@/lib/rooms/ensureModels'
 import { unavailableModels } from '@/lib/modelReplace'
 import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
@@ -85,6 +86,27 @@ export function RoomControls({ room }: { room: Room }) {
     await go()
   }
 
+  // A room already at a limit would stop again at once, so starting it looks
+  // like nothing happened. Say which limit instead; the composer offers to
+  // raise it and continue.
+  const start = () => {
+    const blocking = checkLimits(room, Date.now(), {
+      activeSince: Date.now(),
+      callsMade: 0,
+      speaking: true,
+    })
+    if (blocking) {
+      setLocalError({
+        message:
+          blocking === 'ceiling'
+            ? t('rooms:stopReason.ceiling')
+            : t('rooms:composer.limitReached', { limit: t(`rooms:limits.${blocking}`) }),
+      })
+      return
+    }
+    void run(() => startAfterModelCheck(() => c.start(room.id)))
+  }
+
   const stage = stageFor(
     room,
     live,
@@ -128,7 +150,7 @@ export function RoomControls({ room }: { room: Room }) {
             speakers={availableParticipants(room)}
             onPause={() => run(() => c.pause(room.id))}
             onResume={() => run(() => startAfterModelCheck(() => c.resume(room.id)))}
-            onStart={() => run(() => startAfterModelCheck(() => c.start(room.id)))}
+            onStart={start}
             onSelectNext={selectNext}
             onStop={() => setStopOpen(true)}
           />
