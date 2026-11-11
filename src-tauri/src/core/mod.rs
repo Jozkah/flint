@@ -38,6 +38,9 @@ pub mod crash_trace;
 // Jev (TypeSafe) decision support: optional, off by default; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod jev;
+// Opt-in token counts from other coding agents' local session logs; read-only.
+#[cfg(not(feature = "cli"))]
+pub mod usage_import;
 #[cfg(feature = "cli")]
 pub mod cli;
 // The CLI's secret scrubber (`flint bug-report`, the persistent log), compiled
@@ -57,6 +60,7 @@ pub mod huggingface;
 // desktop-only; the CLI uses std::fs and its own tools.
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
+pub mod guest;
 pub mod mcp;
 // Read-only lookup of models other apps already keep on disk; desktop-only.
 #[cfg(not(feature = "cli"))]

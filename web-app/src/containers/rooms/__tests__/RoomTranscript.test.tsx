@@ -322,6 +322,32 @@ describe('RoomTranscript', () => {
     expect(screen.queryByTestId('tool-chip')).not.toBeInTheDocument()
     useInterfaceSettings.setState({ transcriptView: 'normal' })
   })
+
+  it.each(['quiet', 'zen'] as const)(
+    '%s: draws no steps row for good calls, but still shows a failed one',
+    (view) => {
+      useInterfaceSettings.setState({ transcriptView: view })
+      const good = makeMessage({
+        text: 'Done.',
+        toolCalls: [{ name: 'read', ok: true, args: { path: 'a' }, output: 'A' }],
+      })
+      const { unmount } = render(
+        <RoomTranscript room={makeRoom()} journal={asJournal([good])} liveTurn={null} />
+      )
+      expect(screen.queryByTestId('tool-trace-summary')).not.toBeInTheDocument()
+      unmount()
+      const bad = makeMessage({
+        text: 'Done.',
+        toolCalls: [
+          { name: 'read', ok: true, args: { path: 'a' }, output: 'A' },
+          { name: 'bash', ok: false, args: { command: 'x' }, output: 'boom' },
+        ],
+      })
+      render(<RoomTranscript room={makeRoom()} journal={asJournal([bad])} liveTurn={null} />)
+      expect(screen.getByTestId('tool-trace-summary')).toBeInTheDocument()
+      useInterfaceSettings.setState({ transcriptView: 'normal' })
+    }
+  )
 })
 
 describe('the header of a message', () => {

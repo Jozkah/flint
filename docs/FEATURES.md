@@ -13,6 +13,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 ## Local inference and providers (inherited from Jan, extended)
 
 - **Local inference:** run GGUF models on your own machine via the bundled llama.cpp engine (upgraded to b10809 in this release), or MLX models on Apple silicon. You bring your own model files; nothing is downloaded for you.
+- **Guest links:** share one thread with one person through a link, no account. They follow it live and can write messages that wait for you to Send or Dismiss; they never see tool activity, and a message from them is fenced as untrusted when you send it. Off by default (Settings > Chat). Works only while `flint serve` is running and reachable; see docs/SERVE.md.
 - **Providers:** add cloud providers (OpenAI-compatible and Anthropic-style endpoints) with your own key, or point Flint at a LAN / self-hosted OpenAI-compatible server. Keys live in the OS keyring.
 - **Token & prompt-cache accounting:** provider-reported usage and prompt-cache reuse are tracked per request, turn, and session.
 
@@ -35,6 +36,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Split conversations:** two independent chats side by side, each with its own model, draft, attachments, queue, approvals and Stop.
 - **Temporary chats** that you can keep or discard, with a warning before you leave.
 - Per-chat model and reasoning settings.
+- **Transcript view:** five levels, from Zen (your message and the final reply only, shown when the turn ends) and Hide tool calls (a Working line instead of the steps row) through Normal and Thinking to Verbose. Failed calls, approvals, questions and errors always show; nothing is deleted, so exports, search and copy are unchanged. Applies in Chat, Cowork and Rooms.
 - **Text and code attachments** also work with models that have no vision.
 - **What Flint is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
 - **Collection memory** follows a chat's collection; temporary chats use no memory.
@@ -150,6 +152,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 
 - **Token usage per message and per session:** input, cached input, cache writes, output and total, marked "Not reported" when a provider does not report a figure.
 - **Token and cost dashboard** per run and period, priced where you set prices.
+- **Other agents' usage (opt-in, off by default):** an "Other agents" panel in the Overview usage section reads, read-only, Claude Code's (`CLAUDE_CONFIG_DIR` or `~/.claude`, `projects/**/*.jsonl`) and Codex's (`CODEX_HOME` or `~/.codex`, `sessions/**/*.jsonl`) local session logs and totals input, cache read, cache write and output tokens by day, model and agent, with cache hit rate and cost per million tokens next to Flint's own totals. Only token counts, model, time and project name are kept and nothing leaves the computer. Repeated replies are counted once; unreadable lines are counted and reported; unchanged logs come from an on-disk cache. Cost is an estimate (API-equivalent, not a bill) at prices from `prices.toml` or set on the page; models without a price show tokens and "unpriced". Compressed Codex logs (`.jsonl.zst`) are not read.
 - **Usage quotas and spend budgets** across runs.
 - **Correct generation speed** for providers that stream without a start event.
 
@@ -219,6 +222,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Settings > Schedules:** run a saved prompt on a schedule: daily, weekdays, certain days or a cron expression, with several times a day and a preview of the next runs.
 - **Unattended safely:** every task has an explicit tool allow-list, mandatory limits on turns, tokens and time, and an optional cost limit. A permission prompt is never shown: it is denied and recorded as what the run was blocked on. Tasks default to read-only, and writing tasks work in their own worktree.
 - **Missed runs:** after the app was closed, a task runs once on the next start by default. Optionally, Flint can install an operating-system entry (Windows scheduled task, macOS LaunchAgent or Linux systemd timer) that runs `flint cli schedule tick`, so tasks run while the app is closed. It only installs after you confirm and shows exactly what it will write.
+- **On webhook:** choose "On webhook" as a task's schedule to run it when another service calls its URL, such as GitHub on a new pull request. The URL is `/hooks/<task>/<token>` on a running `flint serve` (see `docs/SERVE.md`); the token is random, can be rotated, and a wrong id or token answers the same 404. Turn on **Require signature** to check an HMAC-SHA256 of the exact body (GitHub preset: `x-hub-signature-256`, hex, `sha256=`); the secret is stored on this computer, never shown again and never written into a run. **Filters** (`body.action`, `headers.x-github-event`, `query.x`; equals, does not equal, is one of, contains) let a task run only for some requests, and delivery ids (`x-github-delivery`, `x-request-id`, `idempotency-key`) suppress repeats. The prompt can use `{{body.path}}`, `{{headers.name}}`, `{{query.name}}`, `{{body}}` and `{{request}}`; every value reaches the agent fenced in `<webhook-data-...>` tags as untrusted data, size-capped, with `$`, `@` and a leading `/` defused. A webhook task has no Run now button and no timetable, and a request while its previous run is still going is recorded as skipped (409). `flint cli schedule webhook <id>` shows the path (token hidden unless `--show-url`) and `--rotate` replaces it.
 
 - **Automations:** `flint cli automation add --file <json>` saves a typed definition (trigger: manual or a timetable, prompt, tool profile, mandatory budget, allowed folders). A bad definition is refused with every problem listed by field, `validate` checks one without saving, and `run <id> [--folder <dir>] [--wait]` runs it under the same unattended rules as a scheduled task. A timetable trigger is also registered as a scheduled task. Nothing is sent over the network.
 
@@ -235,6 +239,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - Custom CA certificates are verified on Windows only.
 - A full screen-reader pass has not been done.
 - PDF export through print and PNG export have not been verified on macOS and Linux. PNG refuses pages taller than about 16,000 pixels.
+- Webhook tasks are covered by unit tests and a local server test with signed requests built in the tests; they have not been called by a real GitHub or CI sender, and the desktop app's own remote-access listener does not serve `/hooks` (only `flint serve` does). Delivery ids are remembered in memory only, so a restart forgets them.
 - The scheduler's closed-app entry is built and unit-tested, but the real `schtasks`, `launchctl` and `systemctl` calls have not been exercised.
 - The agent browser's screenshot works on Windows only.
 - Archive does not cover Library files, which are files Cowork wrote into your own folders.

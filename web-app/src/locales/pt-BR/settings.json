@@ -197,6 +197,14 @@
     "resetCodeBlockSuccessDesc": "O estilo do bloco de código foi restaurado para o padrão.",
     "transcriptView": "Visualização da transcrição",
     "transcriptViewDesc": "Quanto de cada turno Chat, Cowork e Salas mostram. Aprovações, perguntas e erros sempre aparecem.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "A resposta e o que precisa de você. Chamadas de ferramentas ficam recolhidas em uma linha de etapas.",
     "transcriptViewThinking": "Raciocínio",

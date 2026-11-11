@@ -326,6 +326,7 @@ impl Automation {
             budgets: self.budget,
             on_block: self.on_block,
             catch_up: CatchUp::Once,
+            webhook: None,
             enabled: self.enabled,
             created_at_ms: 0,
             updated_at_ms: 0,

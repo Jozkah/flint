@@ -1,3 +1,4 @@
+import { OtherAgentsUsage } from '@/components/OtherAgentsUsage'
 import { runColumns } from '@/lib/runColumns'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useId, useMemo, useState } from 'react'
@@ -818,6 +819,7 @@ function Overview() {
           </div>
           <LatestActivity items={activity} />
         </div>
+        <OtherAgentsUsage />
             </div>
           )}
         </div>

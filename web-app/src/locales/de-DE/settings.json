@@ -196,6 +196,14 @@
     "resetCodeBlockSuccessDesc": "Der Codeblockstil wurde auf die Standardeinstellung zurückgesetzt.",
     "transcriptView": "Verlaufsansicht",
     "transcriptViewDesc": "Wie viel von jedem Zug Chat, Cowork und Räume zeigen. Freigaben, Fragen und Fehler werden immer angezeigt.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Die Antwort und alles, was dich braucht. Tool-Aufrufe werden in eine Schrittzeile eingeklappt.",
     "transcriptViewThinking": "Denken",

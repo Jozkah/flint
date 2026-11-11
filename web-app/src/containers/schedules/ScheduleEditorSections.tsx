@@ -17,6 +17,7 @@ import {
   type TaskForm,
 } from './scheduleForm'
 import { TimeChips } from './TimeChips'
+import { ScheduleWebhookSection } from './ScheduleWebhookSection'
 
 export function Field({
   label,
@@ -77,7 +78,9 @@ export function ScheduleWhenSection({
     { value: 'weekdays', label: t('schedules:editor.presets.weekdays') },
     { value: 'weekly', label: t('schedules:editor.presets.weekly') },
     { value: 'cron', label: t('schedules:editor.presets.cron') },
+    { value: 'webhook', label: t('schedules:editor.presets.webhook') },
   ]
+  const isWebhook = form.schedule.preset === 'webhook'
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border-[0.8px] border-border p-3">
@@ -97,7 +100,9 @@ export function ScheduleWhenSection({
         }}
       />
 
-      {form.schedule.preset === 'cron' ? (
+      {isWebhook ? (
+        <ScheduleWebhookSection uid={uid} form={form} err={err} patch={patch} />
+      ) : form.schedule.preset === 'cron' ? (
         <Field
           label={t('schedules:editor.cron')}
           htmlFor={`${uid}-cron`}
@@ -176,6 +181,8 @@ export function ScheduleWhenSection({
         </>
       )}
 
+      {!isWebhook && (
+      <>
       <Field label={t('schedules:editor.timeZone')} htmlFor={`${uid}-zone`} error={err('timezone')}>
         <Input
           id={`${uid}-zone`}
@@ -205,6 +212,8 @@ export function ScheduleWhenSection({
           </ol>
         )}
       </div>
+      </>
+      )}
     </section>
   )
 }
