@@ -528,14 +528,21 @@ impl AutomationStore {
         let mut all = self.load()?;
         let before = all.len();
         all.retain(|a| a.id != id);
-        if all.len() == before {
-            return Ok(false);
+        let had_automation = all.len() != before;
+        if had_automation {
+            self.write(all)?;
         }
-        self.write(all)?;
+        // The mirrored task goes too, and so does one left behind earlier (the
+        // automation edited out of the file by hand, or a delete that failed):
+        // otherwise it keeps firing with nothing that can remove it. A failure
+        // here is reported, not swallowed.
+        let mut removed_task = false;
         if id_ok(id) {
-            let _ = self.tasks.delete_task(&format!("auto-{id}"));
+            removed_task = self.tasks.delete_task(&format!("auto-{id}")).map_err(|e| {
+                format!("the automation's scheduled task auto-{id} could not be removed: {}", e.message)
+            })?;
         }
-        Ok(true)
+        Ok(had_automation || removed_task)
     }
 }
 
@@ -709,6 +716,27 @@ mod tests {
         assert!(store.remove("nightly").unwrap());
         assert!(!store.remove("nightly").unwrap());
         assert!(Store::new(data.path()).get_task("auto-nightly").unwrap().is_none());
+    }
+
+    #[test]
+    fn remove_cleans_up_an_orphaned_task_and_reports_a_failed_delete() {
+        let d = folder();
+        let data = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(data.path());
+        store.save(sample(d.path())).unwrap();
+        // The automation vanishes from its file (edited by hand); its task stays.
+        store.write(Vec::new()).unwrap();
+        assert!(Store::new(data.path()).get_task("auto-nightly").unwrap().is_some());
+        assert!(store.remove("nightly").unwrap(), "the orphan counts as removed");
+        assert!(Store::new(data.path()).get_task("auto-nightly").unwrap().is_none());
+        assert!(!store.remove("nightly").unwrap());
+
+        // A task list that cannot be read: the failure is reported.
+        let broken = tempfile::tempdir().unwrap();
+        let tasks = broken.path().join("schedules").join("tasks.json");
+        fs::create_dir_all(&tasks).unwrap();
+        let err = AutomationStore::new(broken.path()).remove("nightly").unwrap_err();
+        assert!(err.contains("auto-nightly could not be removed"), "{err}");
     }
 
     #[test]

@@ -214,9 +214,44 @@ pub(super) fn deny_suffix(request_id: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Prompts refused because nobody could be asked (no terminal, a scheduled
+/// run, a durable job), keyed by `request_id`. Such a refusal must not read as
+/// the user's decision: the model would tell the user they refused something
+/// they never saw.
+static UNATTENDED_DENIALS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// Record that `request_id` is being denied only because nobody is attached.
+/// Call it before sending the `Deny`.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn mark_unattended_denial(request_id: &str) {
+    UNATTENDED_DENIALS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get_or_insert_with(Default::default)
+        .insert(request_id.to_string());
+}
+
+fn take_unattended_denial(request_id: &str) -> bool {
+    UNATTENDED_DENIALS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_mut()
+        .is_some_and(|set| set.remove(request_id))
+}
+
 /// The tool result for a prompt the user refused, with their reason when they
-/// gave one. Consumes the recorded reason.
+/// gave one. Consumes the recorded reason. A prompt nobody could answer is
+/// worded as such, not as the user's refusal.
 pub(super) fn denied_by_user_message(name: &str, request_id: &str) -> String {
+    if take_unattended_denial(request_id) {
+        let _ = take_deny_reason(request_id);
+        return format!(
+            "ERROR: tool '{name}' was not approved: non-interactive mode, so nobody could be asked \
+             and the call was not run. The user did not refuse it. Do not call it again in this run; \
+             tell the user it needs approval (run interactively, or allow it beforehand)."
+        );
+    }
     match take_deny_reason(request_id) {
         Some(reason) => format!("ERROR: tool '{name}' denied by user. Their reason: {reason}"),
         None => format!("ERROR: tool '{name}' denied by user"),
@@ -244,10 +279,16 @@ mod deny_reason_tests {
     fn blank_reasons_are_ignored_and_long_ones_capped() {
         record_deny_reason("perm-test-2", "  \n\t ");
         assert_eq!(denied_by_user_message("write", "perm-test-2"), "ERROR: tool 'write' denied by user");
+        mark_unattended_denial("perm-test-unattended");
+        let msg = denied_by_user_message("qa_add", "perm-test-unattended");
+        assert!(msg.contains("not approved: non-interactive mode"), "{msg}");
+        assert!(!msg.contains("denied by user"), "{msg}");
+        // Spent by its own answer.
+        assert!(denied_by_user_message("qa_add", "perm-test-unattended").contains("denied by user"));
         record_deny_reason("perm-test-3", &format!("a\nb{}", "x".repeat(900)));
         let msg = denied_by_user_message("write", "perm-test-3");
         let reason = msg.split("Their reason: ").nth(1).unwrap();
         assert_eq!(reason.chars().count(), DENY_REASON_MAX_CHARS);
         assert!(reason.starts_with("a b"), "control characters become spaces: {reason}");
     }
-}
+}

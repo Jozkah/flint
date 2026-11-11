@@ -1511,6 +1511,15 @@ fn run_cancellable_within(
     }
 }
 
+/// `path` spelled the way git accepts it. The plugin root can come back from
+/// canonicalisation as a Windows verbatim path (`\\?\C:\...`), and git
+/// cannot create or enter a work tree spelled that way ("could not create work
+/// tree dir"), so the prefix is dropped for a drive path. Anything else passes
+/// through unchanged.
+fn path_for_git(path: &Path) -> PathBuf {
+    crate::core::app::commands::strip_verbatim_prefix(path.to_path_buf())
+}
+
 /// A fresh, unique staging directory under `plugins`. Unique per install (not
 /// just per process) so two installs in one app cannot share one.
 fn new_staging(plugins: &Path) -> PathBuf {
@@ -1687,7 +1696,7 @@ fn validate_pin(pin: &str) -> Result<(), PluginError> {
 fn git_output_in(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = git_command()
         .arg("-C")
-        .arg(dir)
+        .arg(path_for_git(dir))
         .args(args)
         .stdin(Stdio::null())
         .output()
@@ -1775,7 +1784,7 @@ fn clone_into_staging(
         cmd.args(["--branch", r#ref]);
     }
     // `--` ends option parsing: a positional can never be read as a git option.
-    cmd.arg("--").arg(repo_url).arg(tmp);
+    cmd.arg("--").arg(repo_url).arg(path_for_git(tmp));
     if !ctx.terminal_prompts {
         // No terminal to answer a credential prompt: fail instead of hanging.
         cmd.env("GIT_TERMINAL_PROMPT", "0");
@@ -3106,6 +3115,50 @@ mod tests {
         );
         assert_eq!(source.r#ref.as_deref(), Some("main"));
         assert_eq!(source.subdir.as_deref(), Some("plugins/code-simplifier"));
+    }
+
+    #[test]
+    fn path_for_git_drops_a_drive_verbatim_prefix_only() {
+        assert_eq!(
+            path_for_git(Path::new(r"\\?\C:\Users\me\plugins\.installing-1")),
+            PathBuf::from(r"C:\Users\me\plugins\.installing-1")
+        );
+        assert_eq!(path_for_git(Path::new("/home/me/plugins")), PathBuf::from("/home/me/plugins"));
+    }
+
+    /// A clone into a staging folder under a canonicalised (on Windows,
+    /// verbatim) plugin root must succeed: git cannot create a work tree
+    /// spelled `\\?\C:\...`.
+    #[test]
+    fn clone_into_a_canonical_staging_dir_succeeds() {
+        if git_command().arg("--version").output().is_err() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("plugin.toml"), "name = \"p\"\n").unwrap();
+        let git = |args: &[&str]| {
+            let ok = git_command()
+                .arg("-C")
+                .arg(&repo)
+                .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        git(&["init", "-q"]);
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "x"]);
+        let plugins = std::fs::canonicalize(dir.path()).unwrap().join("plugins");
+        std::fs::create_dir_all(&plugins).unwrap();
+        let tmp = new_staging(&plugins);
+        let url = format!("file:///{}", repo.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
+        clone_into_staging(&url, None, &tmp, &InstallCtx::interactive()).unwrap();
+        assert!(tmp.join("plugin.toml").is_file());
     }
 
     #[test]

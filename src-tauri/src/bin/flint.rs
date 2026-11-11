@@ -502,7 +502,7 @@ enum McpServeCommands {
         /// Transport: stdio for a spawned child process, http for loopback Streamable HTTP
         #[arg(long, value_enum, default_value_t = ServeTransport::Stdio)]
         transport: ServeTransport,
-        /// Also serve the mutating filesystem tools (write, edit), confined to the project root
+        /// Also serve the tools that change the project (write, edit, apply_patch, git), confined to the project root
         #[arg(long)]
         allow_write: bool,
         /// Also serve bash (runs under the same OS sandbox the agent's shell does)
@@ -2213,10 +2213,13 @@ enum McpCommands {
         #[arg(long)]
         show_secrets: bool,
     },
-    /// Print a single server's full config as JSON
+    /// Print a single server's config as JSON (env/header values redacted)
     Get {
         /// Server name
         name: String,
+        /// Show env/header values (they may contain secrets); redacted by default
+        #[arg(long, alias = "reveal")]
+        show_secrets: bool,
     },
     /// Add a server, or replace an existing one with the same name (edit)
     Add {
@@ -4242,6 +4245,9 @@ fn mcp_list_entry(entry: &McpServerEntry, show_secrets: bool) -> serde_json::Val
 async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
     match cmd {
         McpCommands::List { show_secrets } => {
+            if let Some(problem) = mcp::config_problem() {
+                return Err(problem);
+            }
             let servers = mcp::list_servers();
             let out: Vec<serde_json::Value> = servers
                 .iter()
@@ -4250,16 +4256,23 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             println!("{}", serde_json::to_string_pretty(&out).unwrap());
             Ok(())
         }
-        McpCommands::Get { name } => match mcp::get_server(&name) {
-            Some(entry) => {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&mcp_list_entry(&entry, true)).unwrap()
-                );
-                Ok(())
+        McpCommands::Get { name, show_secrets } => {
+            if let Some(problem) = mcp::config_problem() {
+                return Err(problem);
             }
-            None => Err(format!("server '{name}' not found")),
-        },
+            match mcp::get_server(&name) {
+                Some(entry) => {
+                    // Redacted like `list` unless asked: a value printed to a
+                    // terminal ends up in scrollback, logs and screenshots.
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&mcp_list_entry(&entry, show_secrets)).unwrap()
+                    );
+                    Ok(())
+                }
+                None => Err(format!("server '{name}' not found")),
+            }
+        }
         McpCommands::Add {
             name,
             command,

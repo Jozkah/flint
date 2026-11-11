@@ -34,6 +34,49 @@ pub(super) fn invalid(message: impl Into<String>) -> HarnessError {
     HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup)
 }
 
+/// Why a task set to edit in a worktree cannot have one, or `None` when it can
+/// (or does not need one). A worktree needs a git repository; without one the
+/// run would edit the project folder itself with its writes auto-approved.
+pub(super) fn worktree_unavailable(task: &crate::core::schedule::spec::Task) -> Option<String> {
+    (task.policy.write == WriteMode::Worktree
+        && crate::core::agent::git::repo_root(Path::new(&task.project)).is_none())
+    .then(|| {
+        format!(
+            "'{}' is not a git repository, and this task edits in a worktree; \
+             use --write read-only or point --project at a repository",
+            task.project
+        )
+    })
+}
+
+/// The automation that owns a scheduled task, if any. An automation keeps its
+/// task in the schedule store as `auto-<id>` and rewrites it from its own
+/// definition; changing the task directly would leave a policy that no longer
+/// matches `automation show`, so those tasks change only through the automation.
+pub(super) fn owning_automation(task_id: &str) -> Option<&str> {
+    task_id.strip_prefix("auto-").filter(|id| !id.is_empty())
+}
+
+/// Refuse `action` on a task an automation owns, naming the command to use.
+pub(super) fn refuse_automation_task(task_id: &str, action: &str) -> Result<(), HarnessError> {
+    match owning_automation(task_id) {
+        None => Ok(()),
+        // An orphan (its automation is gone) can still be stopped and removed
+        // here; nothing else would ever remove it.
+        Some(id)
+            if matches!(action, "delete" | "disable")
+                && matches!(crate::core::automation::AutomationStore::new(&data_folder()).get(id), Ok(None)) =>
+        {
+            Ok(())
+        }
+        Some(id) => Err(invalid(format!(
+            "'{task_id}' belongs to the automation '{id}', so `schedule {action}` cannot touch it; \
+             change it through the automation instead (`flint cli automation run {id}`, \
+             `automation add <file>` to update it, `automation remove {id}`)"
+        ))),
+    }
+}
+
 pub(super) fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessError {
     HarnessError::new(ErrorKind::Io, e.message).at(Stage::Startup)
 }
@@ -80,6 +123,22 @@ pub(super) fn stamp(ms: u64) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
+/// When `task` fires next, for a listing: `-` when it is disabled (it will
+/// not fire at all) or never fires again.
+pub(super) fn next_label(task: &crate::core::schedule::spec::Task, now: chrono::DateTime<chrono::Utc>) -> String {
+    if !task.enabled {
+        return "-".to_string();
+    }
+    if task.schedule.is_webhook() {
+        return "on webhook".to_string();
+    }
+    task.next_fires(now, 1)
+        .ok()
+        .and_then(|f| f.first().copied())
+        .map(|f| stamp(f.timestamp_millis() as u64))
+        .unwrap_or_else(|| "-".to_string())
+}
+
 /// `flint cli schedule list`
 pub fn list(json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
@@ -95,15 +154,7 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
     }
     let now = chrono::Utc::now();
     for t in tasks {
-        let next = if t.schedule.is_webhook() {
-            "on webhook".to_string()
-        } else {
-            t.next_fires(now, 1)
-                .ok()
-                .and_then(|f| f.first().copied())
-                .map(|f| stamp(f.timestamp_millis() as u64))
-                .unwrap_or_else(|| "-".to_string())
-        };
+        let next = next_label(&t, now);
         println!(
             "{}  {:<8}  next {}  {}",
             t.id,
@@ -179,6 +230,7 @@ pub fn runs(task_id: &str, limit: usize, json: bool) -> Result<(), HarnessError>
 /// `flint cli schedule run <id>`: start a run now, detached. With `wait`, stay
 /// until it ends and report how.
 pub async fn run_now(task_id: &str, wait: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(task_id, "run")?;
     let task = Store::new(&data_folder())
         .get_task(task_id)
         .map_err(store_err)?
@@ -274,6 +326,9 @@ async fn execute(
 ) -> Ending {
     let task = &spec.task;
     let worktree = task.policy.write == WriteMode::Worktree;
+    if let Some(why) = worktree_unavailable(task) {
+        return Ending::Failed(why);
+    }
     let flags = SessionFlags {
         // Writes are approved only inside a worktree of their own; a read-only
         // task approves nothing, so its write and shell prompts are denied.
@@ -299,6 +354,18 @@ async fn execute(
         Ok(p) => p,
         Err(e) => return Ending::Failed(runner::explain_setup_failure(&e, task.budgets.max_cost_usd)),
     };
+    // Writes are auto-approved only because they land in a worktree. If none
+    // was made (git failed, or the folder stopped being a repository), the run
+    // would write straight into the project folder: refuse instead.
+    if worktree && persist.workspace.is_none() {
+        if let Some(t) = mcp_task {
+            t.abort();
+        }
+        return Ending::Failed(format!(
+            "no worktree could be created in '{}', and this task edits in a worktree; nothing was run",
+            task.project
+        ));
+    }
     body["allowed_tools"] = serde_json::json!(task.policy.allow_tools);
     let session_id = persist.thread_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     record.session_id = Some(session_id.clone());
@@ -350,6 +417,7 @@ async fn execute(
                         stop_for_drain.notify_one();
                         held.extend(sender);
                     } else if let Some(sender) = sender {
+                        crate::core::agent::r#loop::mark_unattended_denial(request_id);
                         let _ = sender.send(PermissionDecision::Deny);
                     }
                     if let Some(n) = notify_cfg.as_ref() {

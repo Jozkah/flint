@@ -423,6 +423,7 @@ pub(super) async fn prompt_permission(
     let detail = display_safe::display_safe(&detail).into_owned();
     if !crate::core::agent::r#loop::stdin_is_terminal() {
         eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
+        crate::core::agent::r#loop::mark_unattended_denial(&request_id);
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {

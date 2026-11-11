@@ -125,6 +125,81 @@ async fn unserved_tool_is_refused_without_running() {
     assert!(!dir.path().join("out.txt").exists());
 }
 
+/// Every built-in the toolset knows, judged in read-only mode: only the fixed
+/// read-only list is served, and nothing that writes a project file, runs a
+/// command, changes the repository or acts on the host is among it.
+#[test]
+fn read_only_mode_serves_only_the_read_only_list() {
+    let server = JanToolServer::new(options(&PathBuf::from(".")));
+    let names = tool_names(&server);
+    for name in &names {
+        assert!(
+            super::READ_ONLY_SERVED.contains(&name.as_str()),
+            "{name} is served without an opt-in"
+        );
+    }
+    let all: Vec<String> = tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas()
+        .into_iter()
+        .chain(tauri_plugin_agent_tools::tools::schema::search_tool_schemas())
+        .filter_map(|s| s["function"]["name"].as_str().map(str::to_string))
+        .collect();
+    for name in &all {
+        let served = server.options().served.is_served(name);
+        assert_eq!(
+            served,
+            super::READ_ONLY_SERVED.contains(&name.as_str()),
+            "{name}: served={served} in read-only mode"
+        );
+    }
+    for mutating in [
+        "write", "edit", "apply_patch", "git", "git_clone", "bash", "docker", "host_powershell",
+        "host_action", "host_build", "clipboard", "computer", "open_path", "message_send",
+        "stop_session", "browser",
+    ] {
+        assert!(!server.options().served.is_served(mutating), "{mutating} served read-only");
+    }
+}
+
+#[test]
+fn write_opt_in_serves_patch_and_git_but_not_host_tools() {
+    let mut opts = options(&PathBuf::from("."));
+    opts.served.allow_write = true;
+    let served = opts.served.clone();
+    for name in ["write", "edit", "apply_patch", "git"] {
+        assert!(served.is_served(name), "{name}");
+    }
+    for name in ["bash", "docker", "host_powershell", "clipboard", "computer", "browser"] {
+        assert!(!served.is_served(name), "{name}");
+    }
+}
+
+#[tokio::test]
+async fn apply_patch_is_refused_in_read_only_mode() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("inside.txt"), "original\n").unwrap();
+    let server = JanToolServer::new(options(dir.path()));
+    let patch = "*** Begin Patch\n*** Add File: pwned.txt\n+pwned\n*** Update File: inside.txt\n@@\n-original\n+changed\n*** End Patch\n";
+    let (content, _) = server
+        .dispatch("apply_patch", &serde_json::json!({ "patch": patch, "input": patch }))
+        .await;
+    assert!(content.contains("not served"), "{content}");
+    assert!(!dir.path().join("pwned.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("inside.txt")).unwrap(),
+        "original\n"
+    );
+}
+
+#[tokio::test]
+async fn git_is_refused_in_read_only_mode() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let server = JanToolServer::new(options(dir.path()));
+    let (content, _) = server
+        .dispatch("git", &serde_json::json!({ "args": ["add", "."] }))
+        .await;
+    assert!(content.contains("not served"), "{content}");
+}
+
 #[tokio::test]
 async fn unknown_tool_is_refused() {
     let dir = tempfile::tempdir().expect("tempdir");

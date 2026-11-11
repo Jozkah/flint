@@ -78,6 +78,47 @@ pub fn authorized(headers: &hyper::HeaderMap, token: &str) -> bool {
     constant_time_eq(presented.as_bytes(), token.as_bytes())
 }
 
+/// Whether the request is addressed to this listener and, if it comes from a
+/// web page, from this listener's own origin.
+///
+/// `Host` must name the bound loopback address (`127.0.0.1:<port>` or
+/// `localhost:<port>`), which stops DNS-rebinding pages. An `Origin` header is
+/// sent by browsers, never required of native MCP clients: absent is fine,
+/// anything other than our own `http://` origin is refused. The bearer token is
+/// still required on top of this.
+pub fn host_and_origin_allowed(headers: &hyper::HeaderMap, addr: SocketAddr) -> bool {
+    let port = addr.port();
+    let own = |host: &str| {
+        let host = host.to_ascii_lowercase();
+        host == format!("{}:{port}", addr.ip()) || host == format!("localhost:{port}")
+    };
+    let host_ok = headers
+        .get(hyper::header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(own);
+    if !host_ok {
+        return false;
+    }
+    match headers.get(hyper::header::ORIGIN) {
+        None => true,
+        Some(origin) => origin
+            .to_str()
+            .ok()
+            .and_then(|o| o.strip_prefix("http://"))
+            .is_some_and(own),
+    }
+}
+
+fn forbidden() -> Response<http_body_util::combinators::BoxBody<Bytes, Infallible>> {
+    let mut response = Response::new(
+        Full::new(Bytes::from_static(b"forbidden origin or host"))
+            .map_err(|e: Infallible| match e {})
+            .boxed(),
+    );
+    *response.status_mut() = StatusCode::FORBIDDEN;
+    response
+}
+
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -176,6 +217,9 @@ async fn bind_with_limits(
                     let service = service.clone();
                     let token = token.clone();
                     async move {
+                        if !host_and_origin_allowed(req.headers(), addr) {
+                            return Ok::<_, Infallible>(forbidden());
+                        }
                         if !authorized(req.headers(), &token) {
                             return Ok::<_, Infallible>(unauthorized());
                         }
@@ -213,6 +257,35 @@ mod tests {
             .unwrap();
         tokio::spawn(serve);
         (bound, dir)
+    }
+
+    #[test]
+    fn host_and_origin_must_be_this_listener() {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 4567));
+        let h = |pairs: &[(&'static str, &str)]| {
+            let mut m = hyper::HeaderMap::new();
+            for (k, v) in pairs {
+                m.insert(*k, v.parse().unwrap());
+            }
+            m
+        };
+        assert!(host_and_origin_allowed(&h(&[("host", "127.0.0.1:4567")]), addr));
+        assert!(host_and_origin_allowed(&h(&[("host", "LOCALHOST:4567")]), addr));
+        assert!(host_and_origin_allowed(
+            &h(&[("host", "127.0.0.1:4567"), ("origin", "http://127.0.0.1:4567")]),
+            addr
+        ));
+        // No Host, a rebinding name, or another port.
+        assert!(!host_and_origin_allowed(&h(&[]), addr));
+        assert!(!host_and_origin_allowed(&h(&[("host", "evil.example:4567")]), addr));
+        assert!(!host_and_origin_allowed(&h(&[("host", "127.0.0.1:80")]), addr));
+        // A web page anywhere else, or an opaque origin.
+        for origin in ["https://evil.example", "null", "http://127.0.0.1:9999"] {
+            assert!(
+                !host_and_origin_allowed(&h(&[("host", "127.0.0.1:4567"), ("origin", origin)]), addr),
+                "{origin}"
+            );
+        }
     }
 
     #[tokio::test]

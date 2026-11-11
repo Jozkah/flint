@@ -1168,6 +1168,7 @@ pub async fn run_durable_subagent(
             {
                 eprintln!("(durable subagent: {tool_name} needs approval and nobody is attached to give it; denied)");
                 if let Some(sender) = registry.lock().await.remove(&request_id) {
+                    crate::core::agent::r#loop::mark_unattended_denial(&request_id);
                     let _ = sender.send(PermissionDecision::Deny);
                 }
             }

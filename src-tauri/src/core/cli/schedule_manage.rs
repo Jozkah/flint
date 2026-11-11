@@ -5,7 +5,7 @@
 
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
-use super::schedule::{data_folder, invalid, stamp, store_err};
+use super::schedule::{data_folder, invalid, refuse_automation_task, stamp, store_err};
 use crate::core::schedule::runner;
 use crate::core::schedule::spec::{
     new_task_id, parse_timezone, Budgets, CatchUp, OnBlock, Policy, Schedule, Task, TimeOfDay, WriteMode,
@@ -135,6 +135,16 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
         task.schedule = s;
     }
     if !input.allow_tools.is_empty() {
+        // The names given here must be real built-ins, as an automation's
+        // are; a typo would otherwise be saved and only show up as a run
+        // that could not do its work.
+        for t in &input.allow_tools {
+            if !tauri_plugin_agent_tools::tools::BUILTIN_TOOLS.iter().any(|b| b.name == t.as_str()) {
+                return Err(invalid(format!(
+                    "'{t}' is not a built-in tool (see `flint cli schedule tools`)"
+                )));
+            }
+        }
         task.policy.allow_tools = input.allow_tools.clone();
     }
     if let Some(w) = input.write {
@@ -161,6 +171,12 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
     if input.disabled {
         task.enabled = false;
     }
+    if let Some(why) = super::schedule::worktree_unavailable(task) {
+        return Err(invalid(why));
+    }
+    // Validated here so a bad value (a cron minute out of range, a zero
+    // limit) is reported as invalid input, not as a storage failure.
+    task.validate().map_err(|e| invalid(e.message))?;
     Ok(())
 }
 
@@ -188,15 +204,7 @@ fn print_task(task: &Task, json: bool) {
         println!("{}", serde_json::to_string_pretty(&listing_copy(task)).unwrap_or_default());
         return;
     }
-    let next = if task.schedule.is_webhook() {
-        "on webhook".to_string()
-    } else {
-        task.next_fires(chrono::Utc::now(), 1)
-            .ok()
-            .and_then(|f| f.first().copied())
-            .map(|f| stamp(f.timestamp_millis() as u64))
-            .unwrap_or_else(|| "-".to_string())
-    };
+    let next = super::schedule::next_label(task, chrono::Utc::now());
     println!(
         "{}  {}  next {}  {}",
         task.id,
@@ -216,15 +224,7 @@ pub fn summary_lines() -> Result<Vec<String>, String> {
     Ok(tasks
         .iter()
         .map(|t| {
-            let next = if t.schedule.is_webhook() {
-                "on webhook".to_string()
-            } else {
-                t.next_fires(now, 1)
-                    .ok()
-                    .and_then(|f| f.first().copied())
-                    .map(|f| stamp(f.timestamp_millis() as u64))
-                    .unwrap_or_else(|| "-".to_string())
-            };
+            let next = super::schedule::next_label(t, now);
             format!("{}  {}  next {}  {}", t.id, if t.enabled { "on " } else { "off" }, next, t.name)
         })
         .collect())
@@ -234,6 +234,7 @@ pub fn summary_lines() -> Result<Vec<String>, String> {
 pub fn start_now(id: &str) -> Result<String, String> {
     use crate::core::schedule::runner::{start_run, SupervisorLauncher};
     use crate::core::schedule::store::Trigger;
+    refuse_automation_task(id, "run").map_err(|e| e.message().to_string())?;
     let data = data_folder();
     let store = Store::new(&data);
     let task = store
@@ -293,6 +294,7 @@ pub fn add(input: TaskInput, json: bool) -> Result<(), HarnessError> {
 
 /// `flint cli schedule edit <id>`
 pub fn edit(id: &str, input: TaskInput, json: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(id, "edit")?;
     let store = Store::new(&data_folder());
     let mut task = store.get_task(id).map_err(store_err)?.ok_or_else(|| not_found(id))?;
     apply_input(&mut task, &input)?;
@@ -303,6 +305,7 @@ pub fn edit(id: &str, input: TaskInput, json: bool) -> Result<(), HarnessError> 
 
 /// `flint cli schedule enable|disable <id>`
 pub fn set_enabled(id: &str, enabled: bool, json: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(id, if enabled { "enable" } else { "disable" })?;
     let task = Store::new(&data_folder()).set_enabled(id, enabled).map_err(store_err)?;
     print_task(&task, json);
     Ok(())
@@ -310,6 +313,7 @@ pub fn set_enabled(id: &str, enabled: bool, json: bool) -> Result<(), HarnessErr
 
 /// `flint cli schedule delete <id>`: removes the task and its run history.
 pub fn delete(id: &str) -> Result<(), HarnessError> {
+    refuse_automation_task(id, "delete")?;
     let removed = Store::new(&data_folder()).delete_task(id).map_err(store_err)?;
     if !removed {
         return Err(not_found(id));
@@ -338,7 +342,11 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
     };
     let tz = parse_timezone(&tz_name).map_err(|e| invalid(e.message))?;
     let exprs = schedule.compile().map_err(|e| invalid(e.message))?;
-    let count = count.clamp(1, 20);
+    const MAX_PREVIEW: usize = 20;
+    if count > MAX_PREVIEW {
+        eprintln!("(showing the first {MAX_PREVIEW}; --count {count} is more than preview lists)");
+    }
+    let count = count.clamp(1, MAX_PREVIEW);
     let mut all: Vec<DateTime<Utc>> = Vec::new();
     for e in exprs {
         all.extend(e.next_fires(tz, Utc::now(), count));
@@ -367,6 +375,9 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
 pub fn webhook(id: &str, rotate: bool, show_url: bool, json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
     let task = if rotate {
+        // Rotating changes the task; one an automation owns changes only
+        // through it, like every other edit.
+        refuse_automation_task(id, "webhook --rotate")?;
         store.rotate_webhook_token(id).map_err(store_err)?
     } else {
         store.get_task(id).map_err(store_err)?.ok_or_else(|| not_found(id))?
@@ -547,6 +558,8 @@ mod tests {
     #[test]
     fn apply_input_changes_only_what_was_given() {
         let mut t = task("task-1");
+        // Worktree mode needs a repository; this source tree is one.
+        t.project = env!("CARGO_MANIFEST_DIR").to_string();
         let before = t.clone();
         let i = TaskInput {
             max_turns: Some(5),
@@ -591,6 +604,136 @@ mod tests {
             delete(&id).unwrap();
             assert!(store.load_tasks().unwrap().is_empty());
             assert!(delete(&id).is_err());
+        });
+    }
+
+    #[test]
+    fn a_disabled_task_shows_no_next_run() {
+        let mut t = task("task-n");
+        t.schedule = Schedule::Daily { times: vec![TimeOfDay { hour: 9, minute: 0 }] };
+        t.timezone = "UTC".into();
+        let now = chrono::Utc::now();
+        assert_ne!(super::super::schedule::next_label(&t, now), "-");
+        t.enabled = false;
+        assert_eq!(super::super::schedule::next_label(&t, now), "-");
+    }
+
+    #[test]
+    fn bad_values_are_invalid_input_and_unknown_tools_are_refused() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let project = data.join("p");
+            std::fs::create_dir_all(&project).unwrap();
+            let base = TaskInput {
+                name: Some("V".into()),
+                prompt: Some("p".into()),
+                model: Some("mock/m".into()),
+                project: Some(project.to_string_lossy().into()),
+                daily: Some("09:00".into()),
+                allow_tools: vec!["read".into()],
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            };
+            let err = add(TaskInput { allow_tools: vec!["reed".into()], ..base.clone() }, true).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+            assert!(err.message().contains("'reed' is not a built-in tool"), "{}", err.message());
+            let err = add(
+                TaskInput { daily: None, cron: Some("99 9 * * *".into()), ..base.clone() },
+                true,
+            )
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{}", err.message());
+            let err = add(TaskInput { max_turns: Some(0), ..base.clone() }, true).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{}", err.message());
+            assert!(Store::new(data).load_tasks().unwrap().is_empty());
+            add(base, true).unwrap();
+        });
+    }
+
+    #[test]
+    fn worktree_mode_is_refused_on_a_folder_that_is_not_a_repository() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let project = data.join("plain");
+            std::fs::create_dir_all(&project).unwrap();
+            let base = TaskInput {
+                name: Some("W".into()),
+                prompt: Some("p".into()),
+                model: Some("mock/m".into()),
+                project: Some(project.to_string_lossy().into()),
+                daily: Some("09:00".into()),
+                allow_tools: vec!["write".into()],
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            };
+            let err = add(TaskInput { write: Some(WriteMode::Worktree), ..base.clone() }, true).unwrap_err();
+            assert!(err.message().contains("not a git repository"), "{}", err.message());
+            add(base, true).unwrap();
+            let store = Store::new(data);
+            let id = store.load_tasks().unwrap()[0].id.clone();
+            let err = edit(&id, TaskInput { write: Some(WriteMode::Worktree), ..Default::default() }, true)
+                .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+            assert_eq!(store.get_task(&id).unwrap().unwrap().policy.write, WriteMode::ReadOnly);
+            // A task saved before this check is refused when it runs, too.
+            let mut t = store.get_task(&id).unwrap().unwrap();
+            t.policy.write = WriteMode::Worktree;
+            assert!(super::super::schedule::worktree_unavailable(&t).is_some());
+        });
+    }
+
+    #[test]
+    fn tasks_owned_by_an_automation_change_only_through_it() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            use crate::core::automation::{Automation, AutomationStore, ToolProfile, Trigger};
+            let repo = data.join("repo");
+            std::fs::create_dir_all(repo.join(".git")).unwrap();
+            AutomationStore::new(data)
+                .save(Automation {
+                    id: "nightly".into(),
+                    name: "Nightly".into(),
+                    trigger: Trigger::Schedule {
+                        schedule: Schedule::Daily { times: vec![TimeOfDay { hour: 9, minute: 0 }] },
+                        timezone: "UTC".into(),
+                    },
+                    prompt: "Summarise.".into(),
+                    model: "mock/m".into(),
+                    folders: vec![repo.to_string_lossy().into_owned()],
+                    tool_profile: ToolProfile::ReadOnly,
+                    budget: Budgets { max_turns: 10, max_tokens: 40_000, max_wall_clock_secs: 300, max_cost_usd: None },
+                    on_block: OnBlock::Continue,
+                    enabled: true,
+                })
+                .unwrap();
+            let store = Store::new(data);
+            let widen = TaskInput {
+                allow_tools: vec!["write".into()],
+                write: Some(WriteMode::Worktree),
+                ..Default::default()
+            };
+            let err = edit("auto-nightly", widen, true).unwrap_err();
+            assert!(err.message().contains("automation 'nightly'"), "{}", err.message());
+            assert!(set_enabled("auto-nightly", false, true).is_err());
+            assert!(delete("auto-nightly").is_err());
+            assert!(start_now("auto-nightly").is_err());
+            assert!(webhook("auto-nightly", true, false, true).is_err(), "rotating is an edit");
+            let kept = store.get_task("auto-nightly").unwrap().unwrap();
+            assert_eq!(kept.policy.write, WriteMode::ReadOnly);
+            assert!(kept.enabled);
+        });
+    }
+
+    #[test]
+    fn an_orphaned_automation_task_can_be_disabled_and_deleted() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            // No automation named "gone" exists: its task is an orphan.
+            let store = Store::new(data);
+            store.save_task(task("auto-gone")).unwrap();
+            assert!(edit("auto-gone", TaskInput { max_turns: Some(3), ..Default::default() }, true).is_err());
+            assert!(start_now("auto-gone").is_err());
+            set_enabled("auto-gone", false, true).unwrap();
+            assert!(!store.get_task("auto-gone").unwrap().unwrap().enabled);
+            assert!(set_enabled("auto-gone", true, true).is_err(), "re-enabling stays with the automation");
+            delete("auto-gone").unwrap();
+            assert!(store.get_task("auto-gone").unwrap().is_none());
         });
     }
 }

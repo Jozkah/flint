@@ -117,7 +117,7 @@ mod local_tools;
 mod body;
 use body::*;
 #[allow(unused_imports)]
-pub(crate) use approvals::{PermissionRegistry, approval_digest, record_deny_reason, secret_denied_message, secret_prompt_text, secret_unattended_msg};
+pub(crate) use approvals::{PermissionRegistry, approval_digest, mark_unattended_denial, record_deny_reason, secret_denied_message, secret_prompt_text, secret_unattended_msg};
 
 /// Outstanding unsandboxed-retry offers for `bash` calls the null device
 /// refused, keyed by run. The same one-shot registry the desktop redeems

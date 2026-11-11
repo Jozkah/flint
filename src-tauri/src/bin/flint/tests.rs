@@ -569,6 +569,21 @@ fn mcp_list_parses_and_redacts_by_default() {
 }
 
 #[test]
+fn mcp_get_redacts_by_default_like_list() {
+    let cmd = parsed_mcp(&["get", "srv"]);
+    assert!(matches!(cmd, McpCommands::Get { show_secrets: false, .. }));
+    let cmd = parsed_mcp(&["get", "srv", "--reveal"]);
+    assert!(matches!(cmd, McpCommands::Get { show_secrets: true, .. }));
+    let entry = app_lib::core::cli::mcp::McpServerEntry {
+        name: "srv".into(),
+        active: true,
+        config: serde_json::json!({ "command": "x", "env": { "TOKEN": "s3cret" } }),
+    };
+    let shown = mcp_list_entry(&entry, false).to_string();
+    assert!(!shown.contains("s3cret"), "{shown}");
+}
+
+#[test]
 fn mcp_add_parses_stdio_fields() {
     let cmd = parsed_mcp(&[
         "add",
