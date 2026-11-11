@@ -22,6 +22,11 @@ model limits; this module adds no second one. Overrides: an absolute
 `Window(n)` (clamped down to the effective window; `0` rejected) or a
 `Percentage(p)` in `(0.0, 1.0]`. A window swallowed by the output reserve, or an
 out-of-range percentage, is a configuration **error**, not a silent compact-at-0.
+In particular a reserve the project sets (`.jan/agent/compaction.json` or
+`[agent].compaction_reserve_tokens`) that is not smaller than its configured
+`[agent].context_window` refuses the headless run and `flint cli agent
+compaction`. A user-wide reserve meeting one project's smaller window is still
+clamped, and the built-in default reserve scales to the window; neither is refused.
 `disabled` turns the layer off (`Ok(None)`). Token counts use the module's one
 estimator, `estimate_tokens` (chars/4).
 

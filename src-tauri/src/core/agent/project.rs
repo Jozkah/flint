@@ -937,6 +937,31 @@ pub(crate) fn agent_toml_path(project_root: &Path) -> PathBuf {
     project_root.join(".jan").join("agent").join("agent.toml")
 }
 
+/// The compaction policy a run in `project_root` uses, as `agent compaction`
+/// reports it: `compaction.json` layers plus the project's legacy
+/// `[agent].compaction_reserve_tokens`, checked against `[agent].context_window`.
+#[cfg(feature = "cli")]
+pub fn project_compaction_policy(
+    data_folder: &Path,
+    project_root: &Path,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+    // A folder without agent.toml has the defaults, as a run there does; a
+    // file that exists but cannot be read or parsed is still an error.
+    let cfg = if agent_toml_path(project_root).exists() {
+        load_agent_config(project_root).map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e))?
+    } else {
+        AgentToml::default()
+    };
+    let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(data_folder),
+        Some(project_root),
+        cfg.agent.compaction_reserve_tokens,
+    )?;
+    policy.check_window(cfg.agent.context_window)?;
+    Ok(policy)
+}
+
 /// Load + parse agent.toml. Err if missing or malformed (path included in message).
 pub(crate) fn load_agent_config(project_root: &Path) -> Result<AgentToml, String> {
     let path = agent_toml_path(project_root);
@@ -2142,6 +2167,15 @@ skills = ["two", "three"]
 
     #[cfg(feature = "cli")]
     #[test]
+    fn compaction_policy_without_agent_toml_is_the_default() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let p = project_compaction_policy(data.path(), project.path()).unwrap();
+        assert_eq!(p, tauri_plugin_agent_tools::compaction_policy::Policy::default());
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
     fn compaction_reserve_tokens_defaults_to_none_when_unset() {
         let root = unique_root("reserve_unset");
         ensure_project(&root).expect("scaffold");

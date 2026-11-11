@@ -214,12 +214,21 @@ impl RunReport {
     /// Render the envelope. `final_text` is the completion the run returned;
     /// on failure there is none and the partial prose stands in for it.
     pub(crate) fn finish(
-        self,
+        mut self,
         session_id: Option<&str>,
         model: &str,
         duration_ms: u128,
         final_text: Option<&str>,
     ) -> RunResult {
+        // A budget stop comes back as a completion (its partial answer is
+        // kept), but the task did not finish: it is reported as the error it
+        // is for a caller, as the turn limit is.
+        if self.error.is_none() && self.ended.as_ref().is_some_and(|(reason, _)| reason == "budget") {
+            self.error = Some((
+                "budget_exhausted".to_string(),
+                BUDGET_STOP_MESSAGE.to_string(),
+            ));
+        }
         let is_error = self.error.is_some();
         let cancelled = matches!(&self.error, Some((code, _)) if code == "cancelled");
         // A run that failed before the loop could say how it ended (setup)
@@ -271,6 +280,10 @@ impl RunReport {
         }
     }
 }
+
+/// What a run stopped by its token or cost budget reports as its error.
+pub(crate) const BUDGET_STOP_MESSAGE: &str =
+    "the run's budget ran out before the task finished; raise the budget or resume the session to continue";
 
 /// The first record of a `--output-format stream-json` channel, and the only
 /// one a client may require before any other.
@@ -922,6 +935,40 @@ mod tests {
         let out = value(failed.finish(None, "m", 1, None));
         assert_eq!(out["tool_failures"], serde_json::json!({ "edit": 1 }));
         assert!(out.get("completed_with_failures").is_none(), "{out}");
+    }
+
+    /// A run stopped by its budget kept its partial answer but did not finish:
+    /// it is an error with its own reason and exit code, like the turn limit.
+    #[test]
+    fn a_budget_stop_is_an_error_with_the_partial_answer() {
+        let mut report = RunReport::default();
+        report.observe(&token("starting"));
+        report.observe(&StreamEvent::Done { stop_reason: "budget_exceeded".to_string(), usage: None });
+        report.observe(&StreamEvent::RunEnded {
+            reason: "budget".to_string(),
+            label: "Stopped: the budget ran out.".to_string(),
+            exit_code: 75,
+        });
+        let out = value(report.finish(None, "m", 1, Some("starting")));
+        assert_eq!(out["is_error"], true);
+        assert_eq!(out["end_reason"], "budget");
+        assert_eq!(out["exit_code"], 75);
+        assert_eq!(out["error"]["code"], "budget_exhausted");
+        assert_eq!(out["result"], "starting");
+    }
+
+    /// A stream-json `abort` ends the way `agent serve`'s cancel does.
+    #[test]
+    fn an_aborted_stream_run_is_a_user_stop() {
+        let mut report = RunReport::default();
+        report.observe(&token("partial"));
+        report.observe(&StreamEvent::Done { stop_reason: "aborted".to_string(), usage: None });
+        report.cancel("the run was aborted by the client");
+        let out = value(report.finish(None, "m", 1, None));
+        assert_eq!(out["is_error"], true);
+        assert_eq!(out["end_reason"], "user_stop");
+        assert_eq!(out["exit_code"], 130);
+        assert_eq!(out["result"], "partial");
     }
 
     #[test]
