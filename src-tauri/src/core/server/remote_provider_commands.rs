@@ -93,8 +93,18 @@ pub async fn register_provider_config(
     // access is blocking, so run it off-thread and before taking the config
     // lock. Keyring failure (e.g. headless Linux without an unlocked Secret
     // Service) must not block registration; the in-memory config still works.
+    //
+    // A keyless provider (a LAN or loopback server) registers with no key at
+    // all; it leaves the keyring alone, so a registration that arrives before
+    // the saved keys were read back can never erase them.
     let provider_name = request.provider.clone();
     let keys = config.api_keys.clone();
+    if keys.is_empty() {
+        let provider_configs = state.provider_configs.clone();
+        provider_configs.lock().await.insert(provider_name.clone(), config);
+        log::debug!("Registered keyless provider config: {provider_name}");
+        return Ok(());
+    }
     if let Err(err) = tauri::async_runtime::spawn_blocking(move || {
         crate::core::server::provider_secrets::store_provider_keys(&provider_name, &keys)
     })
