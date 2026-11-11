@@ -823,12 +823,15 @@ pub(crate) fn transform_openai_response_to_anthropic(
 /// Which remote provider serves `model_id`, and the model id to send it.
 ///
 /// In this order, the same way every run:
-/// 1. `provider/model` where `provider` is a registered provider that lists
+/// 1. Providers that list the whole id, slash and all (`openai/gpt-4o` listed
+///    by a router): one wins outright; with several, a `provider/` prefix
+///    naming one of them picks it, otherwise the first by provider name,
+///    logged. The id is sent unchanged. An exact listing comes first so a
+///    router's own id is never taken over by a provider that happens to share
+///    the prefix's name.
+/// 2. `provider/model` where `provider` is a registered provider that lists
 ///    `model`: that provider, sent `model` without the prefix (the upstream
 ///    does not know Flint's provider names).
-/// 2. Providers that list the whole id: one wins outright; with several, a
-///    `provider/` prefix naming one of them picks it, otherwise the first by
-///    provider name, logged. The id is sent unchanged.
 /// 3. A `provider/` prefix naming a registered provider: that provider, sent
 ///    the id without the prefix.
 /// 4. The id itself naming a provider.
@@ -836,6 +839,10 @@ fn resolve_provider(
     pc: &HashMap<String, ProviderConfig>,
     model_id: &str,
 ) -> Option<(String, String)> {
+    let listed_whole = pc.values().any(|c| c.models.iter().any(|m| m == model_id));
+    if listed_whole {
+        return resolve_provider_name(pc, model_id).map(|name| (name, model_id.to_string()));
+    }
     if let Some((prefix, rest)) = model_id.split_once('/') {
         if let Some(cfg) = pc.get(prefix) {
             if cfg.models.iter().any(|m| m == rest) {
@@ -862,6 +869,12 @@ fn resolve_provider(
 /// only one provider lists is shown as is; an id several list is shown once
 /// per provider as `provider/id`, which is what picks that provider in a
 /// request ([`resolve_provider`]), so a client can tell them apart.
+///
+/// Every listed id routes back to the provider it is listed for. A
+/// `provider/id` that another provider lists whole would route there instead
+/// (an exact listing wins), so it is not used: the first provider by name for
+/// the shared id is listed with the bare id (which routes to it), and any
+/// other provider in that position is left out of the listing and logged.
 fn remote_model_ids(pc: &HashMap<String, ProviderConfig>) -> Vec<String> {
     let mut providers: Vec<(&String, &ProviderConfig)> = pc.iter().collect();
     providers.sort_by(|a, b| a.0.cmp(b.0));
@@ -882,13 +895,37 @@ fn remote_model_ids(pc: &HashMap<String, ProviderConfig>) -> Vec<String> {
                 continue;
             }
             if listed_by.get(m.as_str()).copied().unwrap_or(0) > 1 {
-                out.push(format!("{name}/{m}"));
+                let prefixed = format!("{name}/{m}");
+                if !listed_by.contains_key(prefixed.as_str()) {
+                    out.push(prefixed);
+                } else if resolve_provider_name(pc, m).as_deref() == Some(cfg.provider.as_str()) {
+                    out.push(m.clone());
+                } else {
+                    log::warn!(
+                        "Model '{m}' of provider '{name}' is not listed: '{prefixed}' names another provider's model."
+                    );
+                }
             } else {
                 out.push(m.clone());
             }
         }
     }
     out
+}
+
+/// Whether `model_id` is a local model the engine is configured to serve (a
+/// section of `router.preset.ini`): a downloaded model, which may be loading
+/// right now even though the engine is not answering yet.
+fn is_configured_local_model(jan_data_folder: &str, model_id: &str) -> bool {
+    let ini = std::fs::read_to_string(
+        std::path::Path::new(jan_data_folder)
+            .join("llamacpp")
+            .join("router.preset.ini"),
+    )
+    .unwrap_or_default();
+    tauri_plugin_llamacpp::engine::preset::sections(&ini)
+        .iter()
+        .any(|s| s != "*" && model_ids_match(model_id, s))
 }
 
 /// `404 model_not_found` for a model nothing here can serve.
@@ -916,6 +953,40 @@ pub(crate) const PROXY_HOPS_HEADER: &str = "x-flint-proxy-hops";
 /// provider pointed (directly or through another Flint) back at this server
 /// cannot bounce a request around forever.
 pub(crate) const MAX_PROXY_HOPS: u32 = 3;
+
+/// Whether the hop header may be sent to `url`: only a host that can be this
+/// server or another Flint on the user's network (loopback, private and
+/// link-local ranges, CGNAT/tailnet, IPv6 unique-local, `localhost` names and
+/// single-label names). A public host never gets it: it tells nothing a cloud
+/// provider needs to know, and a strict gateway may reject an unknown header.
+pub(crate) fn hop_header_allowed(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url.trim()) else {
+        return false;
+    };
+    match parsed.host() {
+        Some(url::Host::Domain(d)) => {
+            let d = d.trim_end_matches('.').to_ascii_lowercase();
+            d == "localhost" || d.ends_with(".localhost") || !d.contains('.')
+        }
+        Some(url::Host::Ipv4(ip)) => {
+            let [a, b, ..] = ip.octets();
+            ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || (a == 100 && (64..128).contains(&b))
+        }
+        Some(url::Host::Ipv6(ip)) => {
+            let first = ip.segments()[0];
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80
+                || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback() || v4.is_private())
+        }
+        None => false,
+    }
+}
 
 /// Hops a request carries in [`PROXY_HOPS_HEADER`]; 0 when absent.
 pub(crate) fn incoming_hops(headers: &hyper::HeaderMap) -> u32 {
@@ -958,13 +1029,21 @@ pub(crate) fn points_at_self(url: &str, listen_host: &str, listen_port: u16) -> 
         listen_host.trim_matches(['[', ']']).parse().ok();
     let host_ip = match parsed.host() {
         Some(url::Host::Domain(d)) => {
-            return d.eq_ignore_ascii_case("localhost") || d.to_ascii_lowercase().ends_with(".localhost");
+            let local_name = d.eq_ignore_ascii_case("localhost") || d.to_ascii_lowercase().ends_with(".localhost");
+            return local_name && listen_ip.is_none_or(|ip| ip.is_loopback() || ip.is_unspecified());
         }
         Some(url::Host::Ipv4(ip)) => std::net::IpAddr::V4(ip),
         Some(url::Host::Ipv6(ip)) => std::net::IpAddr::V6(ip),
         None => return false,
     };
-    if host_ip.is_loopback() || host_ip.is_unspecified() || Some(host_ip) == listen_ip {
+    if Some(host_ip) == listen_ip {
+        return true;
+    }
+    // Loopback is this server only when it listens there (on loopback, on
+    // every interface, or under a name such as `localhost`); bound to one
+    // LAN address, another program may own the same port on 127.0.0.1.
+    let listens_on_loopback = listen_ip.is_none_or(|ip| ip.is_loopback() || ip.is_unspecified());
+    if (host_ip.is_loopback() || host_ip.is_unspecified()) && listens_on_loopback {
         return true;
     }
     // Listening on every interface: any address this machine owns is us.
@@ -2566,10 +2645,33 @@ async fn route_model_in_body(cx: &RouteCtx<'_>, body: Incoming, plan: &mut Forwa
                     let router_up = engine_upstream(&llama_state, &destination_path).await;
 
                     if mlx_session_info.is_none() && router_up.is_none() {
-                        // No provider lists it and no local engine is up to
-                        // serve it: the model does not exist here. A 404, as
-                        // /v1/messages answers, and no Retry-After -- waiting
-                        // will not make it appear.
+                        // No provider lists it and no local engine is up. A
+                        // local model the engine knows may be loading: that
+                        // keeps the old 503 with Retry-After, since waiting
+                        // does make it appear. An id nothing here knows gets
+                        // a 404, as /v1/messages answers, with no retry hint.
+                        if is_configured_local_model(&jan_data_folder, model_id) {
+                            log::warn!(
+                                "Request for model '{model_id}' but no models are running."
+                            );
+                            let mut error_response = Response::builder()
+                                .status(StatusCode::SERVICE_UNAVAILABLE)
+                                .header("Content-Type", "application/json")
+                                .header("Retry-After", "1");
+                            error_response = add_cors_headers_with_host_and_origin(
+                                error_response,
+                                &host_header,
+                                &origin_header,
+                                &config.trusted_hosts,
+                            );
+                            return Ok(Routed::Done(error_response
+                                .body(full(error_json(
+                                    "No models are available",
+                                    "server_error",
+                                    "no_model_loaded",
+                                )))
+                                .unwrap()));
+                        }
                         log::warn!(
                             "Request for unknown model '{model_id}': no provider lists it and no local engine is running."
                         );
@@ -3054,7 +3156,9 @@ async fn forward(cx: &RouteCtx<'_>, mut plan: ForwardPlan) -> Result<Response<Re
                 outbound_req = outbound_req.header(name, value);
             }
         }
-        outbound_req = outbound_req.header(PROXY_HOPS_HEADER, (hops + 1).to_string());
+        if hop_header_allowed(&upstream_url) {
+            outbound_req = outbound_req.header(PROXY_HOPS_HEADER, (hops + 1).to_string());
+        }
 
         if let Some(key) = key_opt {
             // The converter decides the auth scheme (Google uses x-goog-api-key).
@@ -5139,6 +5243,69 @@ mod provider_routing_tests {
         assert!(!points_at_self("http://127.0.0.1:1399/v1", "127.0.0.1", 1398));
         assert!(!points_at_self("https://api.example.com/v1", "127.0.0.1", 443));
         assert!(!points_at_self("http://192.0.2.10:1398/v1", "127.0.0.1", 1398));
+    }
+
+    #[test]
+    fn the_hop_header_goes_only_to_hosts_on_this_network() {
+        for url in [
+            "http://127.0.0.1:8080/v1",
+            "http://localhost:1/v1",
+            "http://192.168.1.5:8000/v1",
+            "http://10.0.0.2/v1",
+            "http://169.254.1.1/v1",
+            "http://100.101.1.2:9/v1",
+            "http://[fd00::1]:9/v1",
+            "http://[::1]:9/v1",
+            "http://llm-box:8555/v1",
+        ] {
+            assert!(hop_header_allowed(url), "{url}");
+        }
+        for url in ["https://api.openai.com/v1", "https://8.8.8.8/v1", "https://openrouter.ai/api/v1", "http://[2001:db8::1]/v1"] {
+            assert!(!hop_header_allowed(url), "{url}");
+        }
+    }
+
+    /// Bound to one LAN address, the server is not whatever listens on the
+    /// same port on loopback.
+    #[test]
+    fn loopback_is_self_only_when_the_server_listens_there() {
+        assert!(!points_at_self("http://127.0.0.1:1398/v1", "192.168.1.5", 1398));
+        assert!(!points_at_self("http://localhost:1398/v1", "192.168.1.5", 1398));
+        assert!(points_at_self("http://192.168.1.5:1398/v1", "192.168.1.5", 1398));
+        assert!(points_at_self("http://127.0.0.1:1398/v1", "0.0.0.0", 1398));
+        assert!(points_at_self("http://localhost:1398/v1", "localhost", 1398));
+    }
+
+    /// A provider that lists the whole id wins over one whose name matches
+    /// its prefix; the prefix only picks a provider when nobody lists the id.
+    #[test]
+    fn an_exact_listing_beats_a_matching_provider_prefix() {
+        let pc: HashMap<_, _> = [provider("openai", &["gpt-4o"]), provider("openrouter", &["openai/gpt-4o"])]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            resolve_provider(&pc, "openai/gpt-4o"),
+            Some(("openrouter".into(), "openai/gpt-4o".into()))
+        );
+        let pc: HashMap<_, _> = [provider("openai", &["gpt-4o"]), provider("other", &["x"])].into_iter().collect();
+        assert_eq!(resolve_provider(&pc, "openai/gpt-4o"), Some(("openai".into(), "gpt-4o".into())));
+    }
+
+    /// Every id /v1/models lists routes back to the provider it was listed
+    /// for, even when a prefixed form collides with another provider's id.
+    #[test]
+    fn every_listed_id_routes_to_its_own_provider() {
+        let pc: HashMap<_, _> = [
+            provider("openai", &["gpt-4o"]),
+            provider("azure", &["gpt-4o"]),
+            provider("openrouter", &["openai/gpt-4o"]),
+        ]
+        .into_iter()
+        .collect();
+        let ids = remote_model_ids(&pc);
+        assert_eq!(ids, ["azure/gpt-4o", "openai/gpt-4o"], "{ids:?}");
+        assert_eq!(resolve_provider(&pc, "azure/gpt-4o").map(|r| r.0).as_deref(), Some("azure"));
+        assert_eq!(resolve_provider(&pc, "openai/gpt-4o").map(|r| r.0).as_deref(), Some("openrouter"));
     }
 
     #[test]

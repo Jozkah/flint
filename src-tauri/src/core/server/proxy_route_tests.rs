@@ -213,6 +213,36 @@ GET /v1/videos/abc -> 404 cors=Some("http://localhost:1420") "{\"error\":{\"mess
 /// A provider whose base URL is this server made every request bounce back
 /// here until the client gave up. It is refused at once instead, and a
 /// request that has already passed too many Flint proxies is not forwarded.
+/// A local model the engine is configured to serve may still be loading:
+/// it keeps the retryable 503. An id nothing here knows is a final 404.
+#[tokio::test]
+async fn a_loading_local_model_is_retryable_and_an_unknown_one_is_not() {
+    let s = start("").await;
+    let engine = s._data.path().join("llamacpp");
+    std::fs::create_dir_all(&engine).unwrap();
+    std::fs::write(engine.join("router.preset.ini"), "[*]\nctx-size = 4096\n\n[loading-model]\nmodel = m.gguf\n").unwrap();
+    let post = |model: &'static str| {
+        let port = s.port;
+        async move {
+            reqwest::Client::new()
+                .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .body(format!("{{\"model\":\"{model}\",\"messages\":[]}}"))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+    let loading = post("loading-model").await;
+    assert_eq!(loading.status().as_u16(), 503);
+    assert_eq!(loading.headers().get("retry-after").map(|v| v.to_str().unwrap()), Some("1"));
+    let unknown = post("ghost").await;
+    assert_eq!(unknown.status().as_u16(), 404);
+    assert!(unknown.headers().get("retry-after").is_none());
+    assert!(unknown.text().await.unwrap().contains("model_not_found"));
+    stop_server(s.handle.clone()).await.ok();
+}
+
 #[tokio::test]
 async fn a_provider_pointing_at_this_server_is_refused_not_looped() {
     let data = tempfile::tempdir().unwrap();
