@@ -120,6 +120,24 @@ describe('a chat only ever sends to the provider it is bound to', () => {
     expect(t.sent).toEqual(['qa401'])
   })
 
+  it('a model picked mid tool loop lets the loop finish, then takes the next message', async () => {
+    h.providers[0].active = true
+    h.selectedProvider = 'v100b'
+    const t = new Harness('sys', 't1')
+    await send(t)
+    // The user picks the same model id on qa401 while tools run.
+    h.threads.t1.model = { id: 'swift15', provider: 'qa401' }
+    h.selectedProvider = 'qa401'
+    await send(t, 'submit-message', 'assistant')
+    expect(t.sent).toEqual(['v100b', 'v100b'])
+    await send(t)
+    expect(t.sent).toEqual(['v100b', 'v100b', 'qa401'])
+    // A fresh send to a chat whose provider is off is still refused.
+    h.providers[1].active = false
+    await expect(send(t)).rejects.toBeInstanceOf(ProviderBindingError)
+    expect(t.sent).toHaveLength(3)
+  })
+
   it('leaves a chat with no model yet, and Cowork runs, alone', async () => {
     h.threads = { t1: { id: 't1' } }
     const fresh = new Harness('sys', 't1')

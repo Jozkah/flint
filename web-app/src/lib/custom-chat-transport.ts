@@ -584,11 +584,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     'selectedProvider' | 'selectedModel'
   >
 
-  /** Capture the run's model at a send, or keep it for a tool-loop step. */
-  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): void {
+  /**
+   * Capture the run's model at a send, or keep it for a tool-loop step.
+   * True when this started a new run.
+   */
+  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): boolean {
     const last = messages[messages.length - 1]
-    if (this.runModel && last && last.role !== 'user') return
+    if (this.runModel && last && last.role !== 'user') return false
     this.runModel = this.liveModelSelection()
+    return true
   }
 
   /**
@@ -1320,13 +1324,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
-    this.pinRunModel(options.messages)
+    const newRun = this.pinRunModel(options.messages)
     // The thread's assistant parameters are read below: a listed summary has
     // none, so load the full assistant first.
     if (this.threadId) await useThreads.getState().ensureThreadHydrated?.(this.threadId)
     // Every send of a chat (new message, edit, regenerate, retry, a queued
-    // message) passes here: none goes to a provider the chat is not on.
-    this.assertBoundProvider()
+    // message) passes here: none goes to a provider the chat is not on. A
+    // tool-loop step continues the run on the model it started with, even if
+    // the user picked another model meanwhile (janhq/jan#8083); the next
+    // message goes to the new one.
+    if (newRun) this.assertBoundProvider()
     // A server that refuses images ("At most 0 image(s) may be provided")
     // although the model can see: learned from the refusal, then the same
     // request goes again without them. Once per newly learned limit.
