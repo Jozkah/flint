@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { builtinToolCount } from '@/lib/cowork/builtinToolCount'
 import { closeBrowserSession } from '@/lib/browserTool'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
@@ -930,7 +931,9 @@ export async function runCoworkRequest(
   // Describes the session in view only: a background run must not rewrite
   // the readiness card of the session the user is looking at.
   if (sid === sessionIdRef.current) {
-    setAdvertisedToolCount(advertised.length)
+    setAdvertisedToolCount(
+      builtinToolCount(advertised, (name) => transport.mcpServerFor(name))
+    )
     setAdvertisedToolNames(advertised)
   }
 

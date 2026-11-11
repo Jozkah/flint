@@ -3,6 +3,7 @@
  * between steps (and once more when the provider refuses a step for length)
  * instead of stopping at the window.
  */
+import { UnfittableRequestError } from '@/lib/cowork/run/unfittable'
 import { describe, it, expect, vi } from 'vitest'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { runTurn, type ToolOutcome } from '../coworkRunner'
@@ -203,6 +204,31 @@ describe('Cowork run crossing the compaction threshold', () => {
     })
     expect(outcome.stoppedBy).toBe('error')
     expect(compact.mock.calls.filter((c) => c[1] === 'context-error')).toHaveLength(1)
+  })
+
+  it('ends on the compaction’s explanation, without resending, when nothing can fit', async () => {
+    const sendStep = vi.fn(async () => {
+      throw new Error("This model's maximum context length is 8192 tokens")
+    })
+    const compact = vi.fn(async (_m: UIMessage[], why: string) => {
+      if (why !== 'context-error') return null
+      throw new UnfittableRequestError('Most of it is the tool definitions (502 tools)')
+    })
+    const outcome = await runTurn({
+      messages: [user('hi')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+        compact,
+      },
+    })
+    expect(outcome.stoppedBy).toBe('error')
+    expect(outcome.errorText).toMatch(/tool definitions \(502 tools\)/)
+    expect(sendStep).toHaveBeenCalledTimes(1)
   })
 
   it('tells the transport whether a length refusal would be recovered', async () => {

@@ -228,6 +228,11 @@ export const bindingKey = (b: EndpointBinding): string =>
 export type LearnedLimit = ServerContextLimit & {
   binding: EndpointBinding
   learnedAtMs: number
+  /**
+   * The window the provider or runtime itself reported when this limit was
+   * first seen. Stamped by `reconcileServerLimit`.
+   */
+  reportedWindow?: number | null
 }
 
 /**
@@ -257,6 +262,38 @@ export function serverReportedLimit(
   binding: EndpointBinding
 ): LearnedLimit | null {
   return learned.get(bindingKey(binding)) ?? null
+}
+
+/**
+ * What was learned for this endpoint, while the server is still the one that
+ * refused.
+ *
+ * `reported` is the window the provider or local runtime reports now, without
+ * the learned limit. The first call after a refusal records it. When it later
+ * changes (llama-server reloaded with a larger `-c`, a model unloaded and
+ * loaded with another context), the server is not the one that refused, so
+ * the learned limit is forgotten instead of outranking the new answer. A
+ * reported window that stays the same keeps the learned one: a provider can
+ * list 262,144 for a model its server runs at 200,000.
+ */
+export function reconcileServerLimit(
+  binding: EndpointBinding,
+  reported: number | null
+): LearnedLimit | null {
+  const entry = learned.get(bindingKey(binding))
+  if (!entry) return null
+  // Nothing reported (yet: a local runtime answers asynchronously) is not a
+  // change, and is not recorded as the baseline either.
+  if (reported == null) return entry
+  if (entry.reportedWindow == null) {
+    entry.reportedWindow = reported
+    return entry
+  }
+  if (entry.reportedWindow !== reported) {
+    learned.delete(bindingKey(binding))
+    return null
+  }
+  return entry
 }
 
 /**

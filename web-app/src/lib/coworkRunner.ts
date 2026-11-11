@@ -28,6 +28,7 @@ import { withToolInputs } from '@/lib/coworkTurns'
 import type { ToolImage } from '@/lib/toolOutputImages'
 import { refusalKindOf } from '@/lib/cowork/run/runnerToolArgs'
 import { handles, isAbortLike } from '@/lib/cowork/run/runHandles'
+import { isUnfittableRequest } from '@/lib/cowork/run/unfittable'
 import {
   StreamSink,
   untilStopped,
@@ -101,7 +102,7 @@ async function compactOrNull(
     else if (failure !== undefined) args.push(failure)
     return (await deps.compact?.(...args)) ?? null
   } catch (error) {
-    if (signal.aborted) throw error
+    if (signal.aborted || isUnfittableRequest(error)) throw error
     console.warn('[cowork] compaction failed; continuing without it', error)
     return null
   }

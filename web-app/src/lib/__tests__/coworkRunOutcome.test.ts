@@ -183,6 +183,24 @@ describe('deriving a run outcome', () => {
     })
   })
 
+  it('a command the user denied leaves the run partly done', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          bash('rm -rf build', {
+            result:
+              'The user did not allow `bash`. Do not retry it. Say what you would have changed, and wait for instructions.',
+            isError: true,
+            toolState: 'done-error',
+          }),
+          assistant('I did not run the command.'),
+        ],
+      })
+    )
+    expect(outcome.status).toBe('partial')
+  })
+
   it('reports a failed test as observed and unresolved', () => {
     const outcome = deriveRunOutcome(
       input({

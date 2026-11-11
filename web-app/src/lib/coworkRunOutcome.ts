@@ -440,6 +440,8 @@ function commandOf(turn: CoworkTurn): string | null {
 
 /** A tool refusing its arguments, as the agent-tools call_shape repair words it. */
 const ARGUMENT_REFUSAL = /Expected call shape:|missing required argument/
+/** The start of what `deniedByUser` (cowork/approvalGate) tells the model. */
+const USER_DENIED = /^The user did not allow `/
 
 const HOST_BUILD_EXIT =/\(exit code (-?\d+)\)/
 
@@ -727,6 +729,13 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
         turn.name === 'bash' &&
         turn.isError === true &&
         /\[sandbox: /.test(String(turn.result ?? turn.content ?? ''))
+    ) ||
+    // A call the user denied at its approval card (`deniedByUser`): the work
+    // it would have done is not done, for a command as much as for a write.
+    toolTurns.some(
+      (turn) =>
+        turn.isError === true &&
+        USER_DENIED.test(String(turn.result ?? turn.content ?? ''))
     ) ||
     (input.openTodos ?? 0) > 0
 
