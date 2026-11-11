@@ -16,6 +16,7 @@
 //! neutralised (`$`, `@`, a leading `/` or `!` made inert) on the way to the
 //! model.
 
+#[cfg(feature = "cli")]
 use std::path::Path;
 
 use serde::Serialize;
@@ -128,7 +129,8 @@ pub fn project_message(message: &Value, include_reasoning: bool) -> Option<Guest
     })
 }
 
-/// The recent history of a thread, projected.
+/// The recent history of a thread, projected. Served by the web server only.
+#[cfg(feature = "cli")]
 pub fn snapshot(root: &Path, thread_id: &str, include_reasoning: bool) -> Result<Snapshot, String> {
     crate::core::threads::utils::validate_thread_id(thread_id)?;
     let thread = crate::core::cli::cli_get_thread_in(root, thread_id)?;
@@ -286,6 +288,7 @@ mod tests {
         assert!(!is_thread_change(r#"{"payload":{"threadId":"t1"}}"#, mine));
     }
 
+    #[cfg(feature = "cli")]
     #[test]
     fn the_snapshot_reads_the_thread_and_keeps_the_newest() {
         let dir = tempfile::tempdir().unwrap();
