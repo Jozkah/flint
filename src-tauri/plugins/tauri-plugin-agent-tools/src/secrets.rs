@@ -105,13 +105,20 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     // the warning that matters.
     named_pairs(trimmed).into_iter().find_map(|(name, v, w)| {
         let value = &trimmed[v..w];
+        // An AWS secret access key has a shape of its own, and the shape is
+        // the evidence, as the `AKIA` prefix is for the key id beside it: the
+        // word "example" in one does not make it a stand-in. AWS's own sample
+        // pair used to be flagged on its key-id line and waved through on the
+        // secret line.
+        let aws = is_aws_secret_pair(&name, value);
         // An already-redacted value is not a secret to find again; flagging it
         // made a second redaction pass wipe the whole line.
         if value.len() < 8
             || value.contains(REDACTED)
-            || is_placeholder(value)
-            || is_code_reference(trimmed, v, value)
-            || is_benign_value(trimmed, v, value)
+            || (!aws
+                && (is_placeholder(value)
+                    || is_code_reference(trimmed, v, value)
+                    || is_benign_value(trimmed, v, value)))
         {
             return None;
         }
@@ -419,6 +426,25 @@ fn is_env_assignment(line: &str, v: usize) -> bool {
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
         .collect();
     !name.is_empty() && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// An AWS secret access key under a name that says so: exactly 40 characters
+/// of base64 (`A-Z a-z 0-9 / +`) after `aws_secret_access_key`,
+/// `SecretAccessKey`, `secret_access_key` and the like. Only the unmistakable
+/// stand-in markers excuse one (the list `token_like` uses for issued
+/// credentials), since a real key can hold "test" or "example" by chance.
+fn is_aws_secret_pair(name: &str, value: &str) -> bool {
+    let squashed: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+    let named = squashed.contains("secretaccesskey") || (squashed.contains("aws") && squashed.contains("secret"));
+    let shaped = value.len() == 40
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '+'))
+        && value.chars().any(|c| c.is_ascii_digit() || matches!(c, '/' | '+'));
+    let low = value.to_ascii_lowercase();
+    named && shaped && !["xxxx", "fake", "dummy", "placeholder"].iter().any(|w| low.contains(w))
 }
 
 /// Whether a value is a stand-in rather than a credential.
@@ -1606,6 +1632,37 @@ export async function createSession(userId: string) {
         assert!(all.len() >= 15);
         for (what, line) in &all {
             assert!(!scan_text(line).is_empty(), "missed {what}: {line}");
+        }
+    }
+
+    #[test]
+    fn an_aws_secret_access_key_is_flagged_even_when_it_says_example() {
+        // AWS's documented sample pair, as a person pastes it into a file.
+        let text = format!(
+            "aws_access_key_id = {}{}\naws_secret_access_key = {}\n",
+            "AKIA", "IOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        );
+        let found = scan_text(&text);
+        let lines: Vec<usize> = found.iter().map(|f| f.line).collect();
+        assert_eq!(lines, vec![1, 2], "{found:?}");
+        assert!(found.iter().all(|f| !f.hint.contains("wJalrXUtn")), "{found:?}");
+        for shape in [
+            "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "\"SecretAccessKey\": \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"",
+            "secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        ] {
+            assert!(!scan_text(shape).is_empty(), "missed: {shape}");
+            let shown = crate::secrets::redact_secrets(shape);
+            assert!(!shown.contains("bPxRfiCY"), "kept: {shown}");
+        }
+        // Still not a secret: a reference, a stand-in, the wrong length.
+        for benign in [
+            "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}",
+            "aws_secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "aws_secret_access_key = your-secret-access-key-here",
+            "AWS_SECRET_ACCESS_KEY=fakeFAKEfakeFAKEfakeFAKEfakeFAKEfake1234",
+        ] {
+            assert!(scan_text(benign).is_empty(), "refused: {benign} -> {:?}", scan_text(benign));
         }
     }
 

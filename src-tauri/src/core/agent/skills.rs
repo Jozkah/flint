@@ -16,8 +16,6 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-
 use tauri_plugin_agent_tools::skills as tool_skills;
 use tauri_plugin_agent_tools::skills::{
     DEFAULT_JAN_SKILL, DEFAULT_JAN_SKILL_NAME, LEGACY_DEFAULT_SKILL_NAME,
@@ -175,23 +173,10 @@ pub struct SkillMeta {
     /// nothing", which no constraint can be satisfied by.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-}
-
-/// Frontmatter fields we recognize; everything else is ignored.
-#[derive(Debug, Default, Deserialize)]
-struct Frontmatter {
-    #[allow(dead_code)]
-    name: Option<String>,
-    description: Option<String>,
-    /// Claude Code convention: `user-invocable: false` keeps the skill
-    /// model-invocable while hiding it from the human's invoke list.
-    #[serde(rename = "user-invocable")]
-    user_invocable: Option<bool>,
-    /// Matt Pocock's SKILL-MECHANICS convention: `disable-model-invocation:
-    /// true` keeps the skill user-invocable while removing its description
-    /// from the model's reach (no context load).
-    #[serde(rename = "disable-model-invocation")]
-    disable_model_invocation: Option<bool>,
+    /// What was wrong with the skill's front matter. Absent when it read
+    /// cleanly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 /// A skill's parsed content: optional frontmatter description + markdown body
@@ -206,6 +191,8 @@ pub(crate) struct ParsedSkill {
     pub version: Option<String>,
     /// AH-124, read by the same parser, for the same reason.
     pub requires: Vec<tauri_plugin_agent_tools::skills::SkillRequirement>,
+    /// What was wrong with the front matter, for the skills list.
+    pub warning: Option<String>,
 }
 
 // Split leading `---\n...\n---` YAML frontmatter from a markdown body. The
@@ -217,26 +204,20 @@ pub(crate) fn parse(content: &str) -> ParsedSkill {
     // Version and dependencies come from the plugin's parser rather than being
     // read twice here: two readers of one frontmatter is two answers waiting to
     // differ, and the answer decides whether a skill loads at all.
+    //
+    // The description and the invocation flags come from there too. Reading
+    // them again here with a strict YAML parse lost the description of any
+    // skill whose front matter had an unquoted `: ` in a value, and disagreed
+    // with the desktop about whether such a skill reaches the model.
     let declared = tauri_plugin_agent_tools::skills::parse(content);
-    let (yaml, body) = split_frontmatter(content);
-    let Some(yaml) = yaml else {
-        return ParsedSkill {
-            description: None,
-            body,
-            user_invocable: true,
-            model_invocable: true,
-            version: declared.version,
-            requires: declared.requires,
-        };
-    };
-    let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
     ParsedSkill {
-        description: fm.description.map(|d| d.trim().to_string()),
-        body,
-        user_invocable: fm.user_invocable.unwrap_or(true),
-        model_invocable: !fm.disable_model_invocation.unwrap_or(false),
+        description: declared.description,
+        body: declared.body,
+        user_invocable: declared.user_invocable,
+        model_invocable: declared.model_invocable,
         version: declared.version,
         requires: declared.requires,
+        warning: declared.warning,
     }
 }
 
@@ -262,6 +243,7 @@ pub(crate) fn unmet_requirements(
         triggers: Vec::new(),
         paths: Vec::new(),
         fork: false,
+        warning: None,
     };
     let lookup = |wanted: &str| {
         resolve_readable(root, wanted)
@@ -441,6 +423,7 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
         version: parsed.version.clone(),
+        warning: parsed.warning.clone(),
     }
 }
 /// Whether a name refers to the built-in Flint skill (aliased `jan`), which is
@@ -466,6 +449,7 @@ fn default_jan_skill_meta() -> SkillMeta {
         user_invocable: true,
         model_invocable: true,
         version: parsed.version.clone(),
+        warning: None,
     }
 }
 
@@ -783,6 +767,25 @@ mod tests {
         let p = parse("---\nname: deploy\ndescription: Ship it\n---\n\nRun the script.");
         assert_eq!(p.description.as_deref(), Some("Ship it"));
         assert_eq!(p.body, "Run the script.");
+    }
+
+    #[test]
+    fn a_colon_in_a_description_keeps_the_skill_and_says_why() {
+        let p = parse("---\nname: pdf\ndescription: Use when working with pdf: forms\n---\nFill it.");
+        assert_eq!(p.description.as_deref(), Some("Use when working with pdf: forms"));
+        assert!(p.model_invocable && p.user_invocable);
+        assert!(p.warning.is_some());
+        assert_eq!(p.body, "Fill it.");
+        let entry = SkillEntry {
+            name: "pdf".into(),
+            file: PathBuf::from("pdf/SKILL.md"),
+            is_folder: true,
+            plugin: None,
+        };
+        let meta = meta_for(&entry, &p);
+        assert_eq!(meta.description, "Use when working with pdf: forms");
+        assert!(serde_json::to_value(&meta).unwrap()["warning"].is_string());
+        assert!(parse("---\ndescription: Ship it\n---\nb").warning.is_none());
     }
 
     #[test]

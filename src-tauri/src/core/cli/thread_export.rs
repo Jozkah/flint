@@ -279,9 +279,31 @@ fn tag_segment(s: &str) -> String {
     mapped.trim_matches('-').to_string()
 }
 
-/// A conversation as text, from a thread record and its messages.
+/// A conversation as text, from a thread record and its messages, with
+/// credentials redacted.
+///
+/// An export is made to be shared, so it gets the same redaction as the
+/// thread log and the bug-report bundle (`secrets::scrub_text` /
+/// `scrub_json`): an API key pasted into a chat must not travel with it.
 pub fn render(thread: &Value, messages: &[Value], format: Format, verbose: bool, exported_at: &str) -> String {
-    let title = thread.get("title").and_then(Value::as_str).map(one_line).unwrap_or_default();
+    let text = render_unredacted(thread, messages, format, verbose, exported_at);
+    if format == Format::Json {
+        if let Ok(mut doc) = serde_json::from_str::<Value>(&text) {
+            super::secrets::scrub_json(&mut doc);
+            if let Ok(pretty) = serde_json::to_string_pretty(&doc) {
+                return format!("{pretty}\n");
+            }
+        }
+    }
+    super::secrets::scrub_text(&text)
+}
+
+fn render_unredacted(thread: &Value, messages: &[Value], format: Format, verbose: bool, exported_at: &str) -> String {
+    let title = thread
+        .get("title")
+        .and_then(Value::as_str)
+        .map(|t| one_line(&clean_title(t)))
+        .unwrap_or_default();
     let title = if title.is_empty() { "Untitled".to_string() } else { title };
     let model = thread
         .pointer("/assistants/0/model/id")
@@ -331,10 +353,31 @@ pub fn render(thread: &Value, messages: &[Value], format: Format, verbose: bool,
     format!("# {title}\n\n> {}\n\n{body}\n", line.join(" · "))
 }
 
+/// The exported title without direction overrides and isolates, zero-width
+/// space or BOM. Joiners, marks and variation selectors stay: scripts and
+/// emoji need them, and they cannot reorder text.
+fn clean_title(title: &str) -> String {
+    title
+        .chars()
+        .filter(|c| !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200B}' | '\u{FEFF}'))
+        .collect()
+}
+
+/// Bidirectional controls, zero-width characters and the byte-order mark:
+/// characters that change how a name looks without being seen.
+fn is_invisible_format(c: char) -> bool {
+    matches!(c,
+        '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+}
+
 /// A file name that is legal on Windows, macOS and Linux.
 pub fn file_name(title: &str, ext: &str) -> String {
+    // Direction overrides and other invisible format characters are dropped:
+    // a U+202E in a title reverses what follows it on screen, so a name can
+    // show a different extension from the one it really has.
     let mut stem: String = title
         .chars()
+        .filter(|c| !is_invisible_format(*c))
         .map(|c| if "<>:\"/\\|?*".contains(c) { '-' } else if c.is_control() { ' ' } else { c })
         .collect();
     stem = one_line(&stem);
@@ -500,6 +543,49 @@ mod tests {
         assert_eq!(file_name("con.notes", "md"), "_con.notes.md");
         assert_eq!(file_name("console", "md"), "console.md");
         assert_eq!(file_name("  ..x.. ", "json"), "x.json");
+        // A direction override cannot disguise the extension.
+        assert_eq!(file_name("notes\u{202E}dm.exe", "md"), "notesdm.exe.md");
+        assert_eq!(file_name("\u{200B}a\u{2066}b\u{FEFF}", "md"), "ab.md");
+    }
+
+    #[test]
+    fn the_exported_title_loses_direction_overrides_but_keeps_joiners() {
+        let thread = json!({ "title": "a\u{202E}b\u{2066}c\u{200B}d\u{FEFF}e \u{200D}\u{200C}\u{200E}\u{200F}\u{FE0F}" });
+        for format in [Format::Markdown, Format::Obsidian, Format::Json] {
+            let out = render(&thread, &[], format, false, "2026-10-09T00:00:00Z");
+            for bad in ['\u{202E}', '\u{2066}', '\u{200B}', '\u{FEFF}'] {
+                assert!(!out.contains(bad), "{format:?} kept {bad:?}");
+            }
+            assert!(out.contains("abcde \u{200D}\u{200C}\u{200E}\u{200F}\u{FE0F}"), "{format:?}: {out}");
+        }
+    }
+
+    #[test]
+    fn every_format_redacts_credentials() {
+        let key = format!("{}{}", "sk-FAKEqa", "0123456789abcdefghij");
+        let aws = format!("{}{}", "AKIA", "FAKEQA0123456789");
+        let thread = json!({ "title": format!("keys {key}") });
+        let msgs = vec![
+            message("user", &format!("my key is {key} and id {aws}")),
+            json!({
+                "role": "assistant", "created_at": 1_700_000_001,
+                "content": [
+                    { "type": "text", "text": { "value": "noted" } },
+                    { "type": "tool_call", "tool_name": "bash", "input": { "command": format!("export OPENAI_API_KEY={key}") }, "output": aws }
+                ]
+            }),
+        ];
+        for format in [Format::Markdown, Format::Obsidian, Format::Json] {
+            for verbose in [false, true] {
+                let out = render(&thread, &msgs, format, verbose, "2026-10-09T00:00:00Z");
+                assert!(!out.contains("0123456789abcdefghij"), "{format:?} {verbose}: {out}");
+                assert!(!out.contains("FAKEQA0123456789"), "{format:?} {verbose}: {out}");
+                assert!(out.contains("noted"), "{out}");
+                if format == Format::Json {
+                    serde_json::from_str::<Value>(&out).expect("still JSON");
+                }
+            }
+        }
     }
 
     #[test]
