@@ -1,6 +1,6 @@
 // The threads store's updates to one thread or several.
 
-import { cleanTitle } from '@/lib/invisibleText'
+import { cleanTitle, isBlankTitle } from '@/lib/invisibleText'
 import type { StoreApi } from 'zustand'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -86,7 +86,8 @@ export const threadUpdatesSlice = (
   renameThread: (threadId, newTitle) => {
     set((state) => {
       const thread = state.threads[threadId]
-      if (!thread) return state
+      // A name with nothing visible in it keeps the current title.
+      if (!thread || isBlankTitle(newTitle)) return state
       const updatedThread = {
         ...thread,
         title: cleanTitle(newTitle),

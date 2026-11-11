@@ -48,13 +48,23 @@ export function stripInvisible(text: string): { text: string; removed: number } 
 }
 
 /**
- * A title safe to show in a list: bidi overrides and isolates (which would show
- * it reversed), zero-width characters and control characters removed. Ordinary
- * right-to-left text has no such characters and is left exactly as it is.
+ * A title safe to show in a list. Removed: bidi overrides and isolates (which
+ * would show it reversed), tag characters, the zero-width space, BOM and
+ * control characters. Kept: everything real text needs, including the
+ * left-to-right, right-to-left and Arabic letter marks, zero-width joiners and
+ * non-joiners, and variation selectors (text or emoji presentation).
  */
+// eslint-disable-next-line no-control-regex, no-misleading-character-class
+const TITLE_STRIP = /[\u202A-\u202E\u2066-\u2069\u200B\uFEFF\u{E0000}-\u{E007F}]/gu
+// eslint-disable-next-line no-control-regex
+const TITLE_CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g
+
 export function cleanTitle(title: string): string {
   if (typeof title !== 'string') return title
-  const { text } = stripInvisible(title)
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+  return title.replace(TITLE_STRIP, '').replace(TITLE_CONTROL, ' ')
+}
+
+/** Whether a title has nothing left to show once cleaned. */
+export function isBlankTitle(title: string): boolean {
+  return cleanTitle(title).replace(/[\s\u200C-\u200F\u061C\uFE0E\uFE0F]/g, '') === ''
 }

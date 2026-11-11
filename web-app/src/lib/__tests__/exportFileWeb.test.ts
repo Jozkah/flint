@@ -15,7 +15,7 @@ import { exportDocument } from '../exportFile'
 import { exportFileName, type ExportDoc } from '../exportMarkdown'
 
 const doc: ExportDoc = {
-  title: 'Plan‮txt.exe',
+  title: 'Plan\u202Etxt.exe',
   scope: 'thread',
   exportedAt: '2026-10-01T10:00:00.000Z',
   messages: [{ role: 'user', text: 'hello' }],
@@ -69,7 +69,7 @@ describe('exportDocument in the browser build', () => {
 
 describe('exportFileName', () => {
   it('drops bidi and zero-width characters and keeps RTL text', () => {
-    expect(exportFileName('a‮b⁦c​d', 'md')).toBe('abcd.md')
+    expect(exportFileName('a\u202Eb\u2066c\u200Bd', 'md')).toBe('abcd.md')
     expect(exportFileName('שלום עולם', 'md')).toBe('שלום עולם.md')
   })
 

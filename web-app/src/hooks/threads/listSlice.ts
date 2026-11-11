@@ -1,6 +1,6 @@
 // The threads store's list: loading, searching, starring and selecting.
 
-import { cleanTitle } from '@/lib/invisibleText'
+import { cleanTitle, isBlankTitle } from '@/lib/invisibleText'
 import type { StoreApi } from 'zustand'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { Fzf } from 'fzf'
@@ -42,7 +42,10 @@ export const threadListSlice = (
             : thread.assistants
         acc[thread.id] = {
           ...thread,
-          ...(typeof thread.title === 'string' && { title: cleanTitle(thread.title) }),
+          // A title with nothing visible left reads as a new thread, as an empty one does.
+          ...(typeof thread.title === 'string' && {
+            title: isBlankTitle(thread.title) ? '' : cleanTitle(thread.title),
+          }),
           assistants,
           model: thread.model
             ? {
