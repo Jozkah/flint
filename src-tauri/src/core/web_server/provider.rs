@@ -130,9 +130,8 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
     let mut response = Response::new(body.boxed_unsync());
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, "application/x-ndjson".parse().unwrap());
-    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    super::server::add_security_headers(headers);
     headers.insert("x-accel-buffering", "no".parse().unwrap());
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
     response
 }
 
@@ -199,6 +198,17 @@ mod tests {
         drop(tx);
         drop(CancelOnDrop { stream_id: "relay-drop-test-ended".into(), running: weak });
         assert!(!transport::take_early_cancel_for_test("relay-drop-test-ended"));
+    }
+
+    /// The stream carries the same security headers as every other API reply.
+    #[test]
+    fn the_stream_response_has_the_api_security_headers() {
+        let mut headers = hyper::HeaderMap::new();
+        super::super::server::add_security_headers(&mut headers);
+        for name in ["content-security-policy", "x-frame-options", "x-content-type-options", "referrer-policy", "cache-control"] {
+            assert!(headers.contains_key(name), "{name}");
+        }
+        assert_eq!(headers["x-frame-options"], "DENY");
     }
 
     #[test]

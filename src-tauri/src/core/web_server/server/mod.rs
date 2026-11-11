@@ -123,23 +123,31 @@ fn valid_dns_name(host: &str) -> bool {
         })
 }
 
+/// The headers every API response carries, streamed ones included.
+pub(crate) fn add_security_headers(headers: &mut hyper::HeaderMap) {
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    // `same-origin`, not `no-referrer`: under no-referrer a browser sends
+    // `Origin: null` on a form post, and the sign-in form could never pass the
+    // origin check. Nothing is sent to other origins either way.
+    headers.insert("referrer-policy", HeaderValue::from_static("same-origin"));
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        ),
+    );
+}
+
 pub(super) fn reply(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Resp {
-    Response::builder()
+    let mut response = Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "no-store")
-        .header("x-content-type-options", "nosniff")
-        .header("x-frame-options", "DENY")
-        // `same-origin`, not `no-referrer`: under no-referrer a browser sends
-        // `Origin: null` on a form post, and the sign-in form could never pass the
-        // origin check. Nothing is sent to other origins either way.
-        .header("referrer-policy", "same-origin")
-        .header(
-            "content-security-policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-        )
         .body(Full::new(body.into()).boxed_unsync())
-        .expect("static response parts are valid")
+        .expect("static response parts are valid");
+    add_security_headers(response.headers_mut());
+    response
 }
 
 pub(super) fn text(status: StatusCode, body: &'static str) -> Resp {
