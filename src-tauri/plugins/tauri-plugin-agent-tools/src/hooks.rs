@@ -522,7 +522,12 @@ pub fn load(project_root: &Path) -> Result<Vec<Hook>, HookError> {
 /// The note a run shows when a project's hooks are off because its folder is
 /// not trusted. `None` when they are not off (or there are none).
 pub fn untrusted_note(project_root: &Path) -> Option<String> {
-    (config_path(project_root).is_file() && !crate::folder_trust::is_trusted(project_root)).then(|| {
+    (config_path(project_root).is_file() && !crate::folder_trust::is_trusted(project_root))
+        .then(|| untrusted_note_text(project_root))
+}
+
+fn untrusted_note_text(project_root: &Path) -> String {
+    {
         // A canonical Windows path is verbatim (`\\?\C:\...`); show the plain
         // spelling a person would type in the suggested command.
         let shown = project_root.display().to_string();
@@ -534,7 +539,7 @@ pub fn untrusted_note(project_root: &Path) -> Option<String> {
             "[hooks off] this project's .jan/agent/hooks.toml did not run because the folder is not trusted. \
              Trust it with `flint trust {shown}` (or the banner in the desktop app) to turn its hooks on."
         )
-    })
+    }
 }
 
 /// [`load`] with the trust decision made by the caller, so the gate can be
@@ -1500,12 +1505,8 @@ tools = [1]
 
     #[test]
     fn the_hooks_off_note_suggests_a_plain_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(dir.path()).unwrap();
-        let cfg = config_path(&root);
-        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
-        std::fs::write(&cfg, "").unwrap();
-        let note = untrusted_note(&root).expect("an untrusted folder with hooks");
+        let note = untrusted_note_text(Path::new(r"\\?\C:\work\proj"));
+        assert!(note.contains(r"flint trust C:\work\proj"), "{note}");
         assert!(!note.contains(r"\\?\"), "{note}");
         assert!(note.contains("flint trust "), "{note}");
     }
