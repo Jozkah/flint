@@ -34,6 +34,21 @@ pub(super) fn invalid(message: impl Into<String>) -> HarnessError {
     HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup)
 }
 
+/// Why a task set to edit in a worktree cannot have one, or `None` when it can
+/// (or does not need one). A worktree needs a git repository; without one the
+/// run would edit the project folder itself with its writes auto-approved.
+pub(super) fn worktree_unavailable(task: &crate::core::schedule::spec::Task) -> Option<String> {
+    (task.policy.write == WriteMode::Worktree
+        && crate::core::agent::git::repo_root(Path::new(&task.project)).is_none())
+    .then(|| {
+        format!(
+            "'{}' is not a git repository, and this task edits in a worktree; \
+             use --write read-only or point --project at a repository",
+            task.project
+        )
+    })
+}
+
 pub(super) fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessError {
     HarnessError::new(ErrorKind::Io, e.message).at(Stage::Startup)
 }
@@ -267,6 +282,9 @@ async fn execute(
 ) -> Ending {
     let task = &spec.task;
     let worktree = task.policy.write == WriteMode::Worktree;
+    if let Some(why) = worktree_unavailable(task) {
+        return Ending::Failed(why);
+    }
     let flags = SessionFlags {
         // Writes are approved only inside a worktree of their own; a read-only
         // task approves nothing, so its write and shell prompts are denied.
@@ -292,6 +310,18 @@ async fn execute(
         Ok(p) => p,
         Err(e) => return Ending::Failed(runner::explain_setup_failure(&e, task.budgets.max_cost_usd)),
     };
+    // Writes are auto-approved only because they land in a worktree. If none
+    // was made (git failed, or the folder stopped being a repository), the run
+    // would write straight into the project folder: refuse instead.
+    if worktree && persist.workspace.is_none() {
+        if let Some(t) = mcp_task {
+            t.abort();
+        }
+        return Ending::Failed(format!(
+            "no worktree could be created in '{}', and this task edits in a worktree; nothing was run",
+            task.project
+        ));
+    }
     body["allowed_tools"] = serde_json::json!(task.policy.allow_tools);
     let session_id = persist.thread_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     record.session_id = Some(session_id.clone());

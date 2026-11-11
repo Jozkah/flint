@@ -161,6 +161,9 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
     if input.disabled {
         task.enabled = false;
     }
+    if let Some(why) = super::schedule::worktree_unavailable(task) {
+        return Err(invalid(why));
+    }
     Ok(())
 }
 
@@ -490,6 +493,8 @@ mod tests {
     #[test]
     fn apply_input_changes_only_what_was_given() {
         let mut t = task("task-1");
+        // Worktree mode needs a repository; this source tree is one.
+        t.project = env!("CARGO_MANIFEST_DIR").to_string();
         let before = t.clone();
         let i = TaskInput {
             max_turns: Some(5),
@@ -534,6 +539,37 @@ mod tests {
             delete(&id).unwrap();
             assert!(store.load_tasks().unwrap().is_empty());
             assert!(delete(&id).is_err());
+        });
+    }
+
+    #[test]
+    fn worktree_mode_is_refused_on_a_folder_that_is_not_a_repository() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let project = data.join("plain");
+            std::fs::create_dir_all(&project).unwrap();
+            let base = TaskInput {
+                name: Some("W".into()),
+                prompt: Some("p".into()),
+                model: Some("mock/m".into()),
+                project: Some(project.to_string_lossy().into()),
+                daily: Some("09:00".into()),
+                allow_tools: vec!["write".into()],
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            };
+            let err = add(TaskInput { write: Some(WriteMode::Worktree), ..base.clone() }, true).unwrap_err();
+            assert!(err.message().contains("not a git repository"), "{}", err.message());
+            add(base, true).unwrap();
+            let store = Store::new(data);
+            let id = store.load_tasks().unwrap()[0].id.clone();
+            let err = edit(&id, TaskInput { write: Some(WriteMode::Worktree), ..Default::default() }, true)
+                .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+            assert_eq!(store.get_task(&id).unwrap().unwrap().policy.write, WriteMode::ReadOnly);
+            // A task saved before this check is refused when it runs, too.
+            let mut t = store.get_task(&id).unwrap().unwrap();
+            t.policy.write = WriteMode::Worktree;
+            assert!(super::super::schedule::worktree_unavailable(&t).is_some());
         });
     }
 }
