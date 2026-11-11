@@ -49,6 +49,26 @@ pub(super) fn worktree_unavailable(task: &crate::core::schedule::spec::Task) -> 
     })
 }
 
+/// The automation that owns a scheduled task, if any. An automation keeps its
+/// task in the schedule store as `auto-<id>` and rewrites it from its own
+/// definition; changing the task directly would leave a policy that no longer
+/// matches `automation show`, so those tasks change only through the automation.
+pub(super) fn owning_automation(task_id: &str) -> Option<&str> {
+    task_id.strip_prefix("auto-").filter(|id| !id.is_empty())
+}
+
+/// Refuse `action` on a task an automation owns, naming the command to use.
+pub(super) fn refuse_automation_task(task_id: &str, action: &str) -> Result<(), HarnessError> {
+    match owning_automation(task_id) {
+        None => Ok(()),
+        Some(id) => Err(invalid(format!(
+            "'{task_id}' belongs to the automation '{id}', so `schedule {action}` cannot touch it; \
+             change it through the automation instead (`flint cli automation run {id}`, \
+             `automation add <file>` to update it, `automation remove {id}`)"
+        ))),
+    }
+}
+
 pub(super) fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessError {
     HarnessError::new(ErrorKind::Io, e.message).at(Stage::Startup)
 }
@@ -190,6 +210,7 @@ pub fn runs(task_id: &str, limit: usize, json: bool) -> Result<(), HarnessError>
 /// `flint cli schedule run <id>`: start a run now, detached. With `wait`, stay
 /// until it ends and report how.
 pub async fn run_now(task_id: &str, wait: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(task_id, "run")?;
     let task = Store::new(&data_folder())
         .get_task(task_id)
         .map_err(store_err)?

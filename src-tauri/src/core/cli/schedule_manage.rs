@@ -5,7 +5,7 @@
 
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
-use super::schedule::{data_folder, invalid, stamp, store_err};
+use super::schedule::{data_folder, invalid, refuse_automation_task, stamp, store_err};
 use crate::core::schedule::runner;
 use crate::core::schedule::spec::{
     new_task_id, parse_timezone, Budgets, CatchUp, OnBlock, Policy, Schedule, Task, TimeOfDay, WriteMode,
@@ -216,6 +216,7 @@ pub fn summary_lines() -> Result<Vec<String>, String> {
 pub fn start_now(id: &str) -> Result<String, String> {
     use crate::core::schedule::runner::{start_run, SupervisorLauncher};
     use crate::core::schedule::store::Trigger;
+    refuse_automation_task(id, "run").map_err(|e| e.message().to_string())?;
     let data = data_folder();
     let store = Store::new(&data);
     let task = store
@@ -271,6 +272,7 @@ pub fn add(input: TaskInput, json: bool) -> Result<(), HarnessError> {
 
 /// `flint cli schedule edit <id>`
 pub fn edit(id: &str, input: TaskInput, json: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(id, "edit")?;
     let store = Store::new(&data_folder());
     let mut task = store.get_task(id).map_err(store_err)?.ok_or_else(|| not_found(id))?;
     apply_input(&mut task, &input)?;
@@ -281,6 +283,7 @@ pub fn edit(id: &str, input: TaskInput, json: bool) -> Result<(), HarnessError> 
 
 /// `flint cli schedule enable|disable <id>`
 pub fn set_enabled(id: &str, enabled: bool, json: bool) -> Result<(), HarnessError> {
+    refuse_automation_task(id, if enabled { "enable" } else { "disable" })?;
     let task = Store::new(&data_folder()).set_enabled(id, enabled).map_err(store_err)?;
     print_task(&task, json);
     Ok(())
@@ -288,6 +291,7 @@ pub fn set_enabled(id: &str, enabled: bool, json: bool) -> Result<(), HarnessErr
 
 /// `flint cli schedule delete <id>`: removes the task and its run history.
 pub fn delete(id: &str) -> Result<(), HarnessError> {
+    refuse_automation_task(id, "delete")?;
     let removed = Store::new(&data_folder()).delete_task(id).map_err(store_err)?;
     if !removed {
         return Err(not_found(id));
@@ -570,6 +574,29 @@ mod tests {
             let mut t = store.get_task(&id).unwrap().unwrap();
             t.policy.write = WriteMode::Worktree;
             assert!(super::super::schedule::worktree_unavailable(&t).is_some());
+        });
+    }
+
+    #[test]
+    fn tasks_owned_by_an_automation_change_only_through_it() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let mut t = task("auto-nightly");
+            t.policy.write = WriteMode::ReadOnly;
+            let store = Store::new(data);
+            store.save_task(t).unwrap();
+            let widen = TaskInput {
+                allow_tools: vec!["write".into()],
+                write: Some(WriteMode::Worktree),
+                ..Default::default()
+            };
+            let err = edit("auto-nightly", widen, true).unwrap_err();
+            assert!(err.message().contains("automation 'nightly'"), "{}", err.message());
+            assert!(set_enabled("auto-nightly", false, true).is_err());
+            assert!(delete("auto-nightly").is_err());
+            assert!(start_now("auto-nightly").is_err());
+            let kept = store.get_task("auto-nightly").unwrap().unwrap();
+            assert_eq!(kept.policy.write, WriteMode::ReadOnly);
+            assert!(kept.enabled);
         });
     }
 }
