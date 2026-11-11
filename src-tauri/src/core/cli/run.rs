@@ -739,6 +739,9 @@ pub(super) async fn run_agent_loop(
             format,
         )
     });
+    // A host reading permission requests can answer them, so a standing
+    // `mcp trust` grant applies here as it does at a terminal.
+    crate::core::agent::r#loop::set_host_answers_prompts(input.is_some());
     let client = input.clone();
     let host_tool_requests = Arc::clone(&args.host_tool_requests);
 

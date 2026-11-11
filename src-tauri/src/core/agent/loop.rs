@@ -712,6 +712,20 @@ pub(crate) fn stdin_is_terminal() -> bool {
     })
 }
 
+static HOST_ANSWERS_PROMPTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Record whether a duplex host (`--input-format stream-json`) is attached and
+/// reading permission requests. Such a host answers prompts the way a person
+/// at a terminal does, so it counts as interactive for a standing `mcp trust`
+/// grant. Cleared when the host stops reading.
+pub fn set_host_answers_prompts(on: bool) {
+    HOST_ANSWERS_PROMPTS.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn host_answers_prompts() -> bool {
+    HOST_ANSWERS_PROMPTS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Answer [`stdin_is_terminal`] now, before a stdin reader is started.
 pub fn warm_stdin_is_terminal() {
     let _ = stdin_is_terminal();

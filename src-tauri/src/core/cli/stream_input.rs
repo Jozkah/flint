@@ -437,6 +437,7 @@ impl StreamInput {
     /// once per request, at whatever point in the run it arrives.
     pub(crate) fn mark_client_gone(&self) {
         self.gone.store(true, Ordering::SeqCst);
+        crate::core::agent::r#loop::set_host_answers_prompts(false);
     }
 
     pub(crate) fn client_gone(&self) -> bool {
