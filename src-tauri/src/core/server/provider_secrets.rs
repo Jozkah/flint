@@ -251,7 +251,20 @@ fn unique_tmp(path: &std::path::Path, ext: &str) -> PathBuf {
 static KEYRING_DOWN: AtomicBool = AtomicBool::new(false);
 
 fn keyring_down() -> bool {
-    KEYRING_DOWN.load(Ordering::Relaxed) || !keyring_trusts_this_binary()
+    KEYRING_DOWN.load(Ordering::Relaxed) || file_store_chosen() || !keyring_trusts_this_binary()
+}
+
+/// `FLINT_SECRET_STORE=file` (or `JAN_SECRET_STORE`): keep provider keys only
+/// in the encrypted file inside the data folder and never touch the OS
+/// keyring. For isolated runs (tests, a throwaway data folder), whose keys
+/// would otherwise outlive the folder in the user's keyring. Unset, or any
+/// other value, keeps the keyring as before.
+fn file_store_chosen() -> bool {
+    secret_store_is_file(crate::core::compat_env::var("SECRET_STORE").ok().as_deref())
+}
+
+fn secret_store_is_file(value: Option<&str>) -> bool {
+    value.is_some_and(|v| v.trim().eq_ignore_ascii_case("file"))
 }
 
 /// Whether the OS keyring can remember an access grant for this executable.
@@ -1235,6 +1248,15 @@ mod tests {
         assert!(scoped.starts_with("flint-providers:"), "{scoped}");
         assert_ne!(scoped, KEYRING_SERVICE, "a fresh start must not read JAN's keys");
         assert_eq!(scoped, flint_scoped_service(dir.path()));
+    }
+
+    #[test]
+    fn only_secret_store_file_skips_the_keyring() {
+        assert!(secret_store_is_file(Some("file")));
+        assert!(secret_store_is_file(Some(" FILE ")));
+        assert!(!secret_store_is_file(None));
+        assert!(!secret_store_is_file(Some("")));
+        assert!(!secret_store_is_file(Some("keyring")));
     }
 
     #[test]
