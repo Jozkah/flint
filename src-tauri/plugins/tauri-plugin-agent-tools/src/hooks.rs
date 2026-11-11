@@ -523,10 +523,16 @@ pub fn load(project_root: &Path) -> Result<Vec<Hook>, HookError> {
 /// not trusted. `None` when they are not off (or there are none).
 pub fn untrusted_note(project_root: &Path) -> Option<String> {
     (config_path(project_root).is_file() && !crate::folder_trust::is_trusted(project_root)).then(|| {
+        // A canonical Windows path is verbatim (`\\?\C:\...`); show the plain
+        // spelling a person would type in the suggested command.
+        let shown = project_root.display().to_string();
+        let shown = match shown.strip_prefix(r"\\?\") {
+            Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_string(),
+            _ => shown,
+        };
         format!(
             "[hooks off] this project's .jan/agent/hooks.toml did not run because the folder is not trusted. \
-             Trust it with `flint trust {}` (or the banner in the desktop app) to turn its hooks on.",
-            project_root.display()
+             Trust it with `flint trust {shown}` (or the banner in the desktop app) to turn its hooks on."
         )
     })
 }
@@ -1491,6 +1497,18 @@ tools = [1]
     }
 
     use super::*;
+
+    #[test]
+    fn the_hooks_off_note_suggests_a_plain_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let cfg = config_path(&root);
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(&cfg, "").unwrap();
+        let note = untrusted_note(&root).expect("an untrusted folder with hooks");
+        assert!(!note.contains(r"\\?\"), "{note}");
+        assert!(note.contains("flint trust "), "{note}");
+    }
 
     fn dir(tag: &str) -> PathBuf {
         let d = crate::test_temp_root().join(format!(

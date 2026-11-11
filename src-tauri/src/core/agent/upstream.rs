@@ -858,12 +858,51 @@ pub(crate) fn extract_choice_message(response: &serde_json::Value) -> Option<&se
         .and_then(|c| c.get("message"))
 }
 
+/// `[image: 1x1 png, not shown]` for an image block: its size when the header
+/// says it (PNG), its type, and that its content did not reach the model.
+fn image_placeholder(mime: &str, data_b64: &str) -> String {
+    use base64::Engine as _;
+    let kind = mime.strip_prefix("image/").unwrap_or(mime);
+    // The first 32 base64 characters decode to the 24 bytes a PNG header
+    // needs; nothing more is decoded.
+    let head: String = data_b64.chars().take(32).collect();
+    let dims = base64::engine::general_purpose::STANDARD
+        .decode(head.as_bytes())
+        .ok()
+        .filter(|b| b.len() >= 24 && b.starts_with(b"\x89PNG\r\n\x1a\n"))
+        .map(|b| {
+            let w = u32::from_be_bytes([b[16], b[17], b[18], b[19]]);
+            let h = u32::from_be_bytes([b[20], b[21], b[22], b[23]]);
+            format!("{w}x{h} ")
+        })
+        .unwrap_or_default();
+    format!("[image: {dims}{kind}, not shown: this result is text only, so its content is unknown]")
+}
+
+#[cfg(test)]
+#[test]
+fn an_image_result_reads_as_a_placeholder_not_as_nothing() {
+    // A 1x1 PNG.
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let result = CallToolResult::success(vec![rmcp::model::ContentBlock::image(png.to_string(), "image/png".to_string())]);
+    let text = mcp_call_result_to_string(&result);
+    assert!(text.starts_with("[image: 1x1 png"), "{text}");
+    let jpeg = CallToolResult::success(vec![rmcp::model::ContentBlock::image("/9j/4AAQ".to_string(), "image/jpeg".to_string())]);
+    assert!(mcp_call_result_to_string(&jpeg).starts_with("[image: jpeg"));
+}
+
 fn mcp_call_result_to_string(result: &CallToolResult) -> String {
+    // An image cannot travel in a text tool result. Dropped silently, an
+    // image-only result reads as empty and the model makes up what it showed;
+    // a placeholder says there was one and that it was not seen.
     let parts: Vec<String> = result
         .content
         .iter()
-        .filter_map(|c| c.as_text())
-        .map(|t| t.text.clone())
+        .filter_map(|c| match (c.as_text(), c.as_image()) {
+            (Some(t), _) => Some(t.text.clone()),
+            (None, Some(i)) => Some(image_placeholder(&i.mime_type, &i.data)),
+            _ => None,
+        })
         .collect();
 
     if result.is_error == Some(true) {
