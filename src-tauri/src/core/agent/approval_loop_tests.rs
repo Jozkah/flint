@@ -810,6 +810,36 @@ async fn denying_a_flagged_write_tells_the_model_the_user_was_asked() {
     assert!(!root.join("src/env.ts").exists());
 }
 
+/// Every answer to a prompt, and every refusal made because nobody could be
+/// asked, lands in the permission audit, not only cancelled calls.
+#[tokio::test]
+async fn prompt_answers_and_unattended_refusals_reach_the_permission_audit() {
+    use tauri_plugin_agent_tools::audit::{read_all, Outcome};
+    let outcome_of = |call: &str| {
+        read_all(&crate::core::app::commands::resolve_jan_data_folder())
+            .into_iter()
+            .filter(|r| r.call == call)
+            .map(|r| r.decision)
+            .collect::<Vec<_>>()
+    };
+
+    let (_root, _data, mut invoker, mut rx, registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    let denier = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            answer_and_capture(&mut rx, &registry, PermissionDecision::Deny).await;
+        }
+    });
+    invoke_within(&invoker, &[write_to("audit-deny-1", "src/env.ts", &flagged_content())]).await;
+    let _ = denier.await;
+    assert_eq!(outcome_of("audit-deny-1"), [Outcome::Refused]);
+
+    let (_root, _data, invoker, _rx, _registry) = setup();
+    invoke_within(&invoker, &[write_to("audit-unattended-1", "src/env.ts", &flagged_content())]).await;
+    assert_eq!(outcome_of("audit-unattended-1"), [Outcome::Deny]);
+}
+
 #[tokio::test]
 async fn a_saved_rule_and_a_session_grant_never_answer_a_flagged_write() {
     let (root, data, mut invoker, mut rx, registry) = setup();

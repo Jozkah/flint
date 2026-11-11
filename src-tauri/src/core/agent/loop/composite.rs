@@ -3263,10 +3263,25 @@ impl CompositeToolInvoker {
             pre_warnings,
         } = call;
         let secret_findings = secret_findings.to_vec();
+        use tauri_plugin_agent_tools::audit::Outcome as AuditOutcome;
+        let prompt_label = format!("prompt:{kind:?}");
+        let audit = |outcome: AuditOutcome, why: &str| {
+            super::record_permission_decision(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+                &self.cancel_scope,
+                &self.project_root,
+                tool,
+                args,
+                id,
+                outcome,
+                &format!("{prompt_label}: {why}"),
+            )
+        };
         // Only a person can say "write anyway", and only now: it is
         // never put off to be answered later, and never refused as
         // if they had said no when nobody was asked.
         if kind == PromptKind::Secret && !self.can_prompt() {
+            audit(AuditOutcome::Deny, "nobody to ask");
             out.push(ToolOutcome::plain(id.to_string(), secret_unattended_msg(name, &secret_findings)));
             return None;
         }
@@ -3279,6 +3294,7 @@ impl CompositeToolInvoker {
             self.settle_deferred(name, &early_digest)
         };
         if let crate::core::agent::approval_flow::Settled::Refuse(message) = early {
+            audit(AuditOutcome::Deny, "refused while the run was paused");
             out.push(ToolOutcome::plain(id.to_string(), message));
             return None;
         }
@@ -3288,6 +3304,7 @@ impl CompositeToolInvoker {
             if let Some(ttl) = self.approvals.defer_unattended.filter(|_| !self.can_prompt()) {
                 let content = self.defer_content(tool, args).await;
                 if let Some(message) = self.defer_call(name, kind, &summary, &early_digest, ttl, &content) {
+                    audit(AuditOutcome::Deny, "nobody to ask; put off to be answered later");
                     out.push(ToolOutcome::plain(id.to_string(), message));
                     return None;
                 }
@@ -3399,6 +3416,12 @@ impl CompositeToolInvoker {
         } else {
             decision
         };
+        match decision {
+            PermissionDecision::AllowOnce => audit(AuditOutcome::Granted, "allow_once"),
+            PermissionDecision::AllowAlways => audit(AuditOutcome::Granted, "allow_always"),
+            PermissionDecision::Deny if put_off => audit(AuditOutcome::Refused, "deny; put off to be answered later"),
+            PermissionDecision::Deny => audit(AuditOutcome::Refused, "deny"),
+        }
 
         // AH-148. A prompt can stay open for minutes, and in that
         // time an editor, a formatter or another agent can write

@@ -1487,6 +1487,65 @@ fn record_cancelled_call(
     );
 }
 
+/// Record how a gated call was settled in the permission audit log: the
+/// person's answer (`granted` / `refused`), or a refusal made because nobody
+/// could be asked (`deny`). One record per resource the call names, as the
+/// desktop gate writes, so `agent audit` shows CLI and desktop decisions alike.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_permission_decision(
+    data_folder: &std::path::Path,
+    scope: &tauri_plugin_agent_tools::lifecycle::Scope,
+    project_root: &std::path::Path,
+    tool: &tauri_plugin_agent_tools::tools::BuiltinTool,
+    args: &serde_json::Value,
+    id: &str,
+    outcome: tauri_plugin_agent_tools::audit::Outcome,
+    reason: &str,
+) {
+    use tauri_plugin_agent_tools::audit::{self, PermissionRecord};
+    use tauri_plugin_agent_tools::resource::Resource;
+    use tauri_plugin_agent_tools::tools::Capability;
+
+    let capability = match tool.capability {
+        Capability::Read => "read",
+        Capability::Write => "write",
+        Capability::Exec => "exec",
+        Capability::Net => "net",
+    };
+    let mut resources = Resource::for_builtin(
+        tool.name,
+        tool.path_args,
+        tool.capability == Capability::Net,
+        args,
+        Some(project_root),
+    );
+    if resources.is_empty() {
+        resources.push(Resource::Unknown {
+            tool: tool.name.to_string(),
+            why: "call names no resource".into(),
+        });
+    }
+    let at = audit::now();
+    for resource in &resources {
+        audit::append(
+            data_folder,
+            &PermissionRecord::new(
+                at.clone(),
+                scope.session.clone(),
+                tool.name,
+                capability,
+                resource,
+                outcome,
+                reason,
+            )
+            .with_run(scope.run.clone())
+            .with_call(id)
+            .with_agent("main")
+            .with_project(project_root.to_string_lossy()),
+        );
+    }
+}
+
 /// Whether a run takes part in cross-session messaging: only a top-level run
 /// of the CLI or headless server (the desktop's Cowork runs in the renderer),
 /// with a session identity and a data folder to keep a mailbox in. A subagent
@@ -5947,7 +6006,7 @@ Address it and continue."
                     // the ledger says they were attempted and did not report.
                     if let Some(record) = record {
                         for pending in ledger_pending {
-                            record.ledger(&crate::core::agent::ledger::finish(pending, true));
+                            record.ledger(&crate::core::agent::ledger::finish(pending, true, false));
                         }
                     }
                     return Err(e);
@@ -5996,6 +6055,7 @@ Address it and continue."
         }
         let mut todo_touched_this_batch = false;
         let mut ledger_failed: HashMap<String, bool> = HashMap::new();
+        let mut ledger_denied: std::collections::HashSet<String> = std::collections::HashSet::new();
         for outcome in tool_results {
             // Emitted here only when the invoker did not announce it already
             // (the default invoker never does; a call refused before execution
@@ -6006,6 +6066,12 @@ Address it and continue."
                 None => emit_tool_result(events, &tool_names, &outcome),
             };
             ledger_failed.insert(outcome.id.clone(), is_error);
+            if crate::core::agent::ledger::is_refused_unrun(
+                tool_names.get(outcome.id.as_str()).copied().unwrap_or(""),
+                &outcome.content,
+            ) {
+                ledger_denied.insert(outcome.id.clone());
+            }
             let ToolOutcome {
                 id,
                 content,
@@ -6051,7 +6117,8 @@ Address it and continue."
         if let Some(record) = record {
             for pending in ledger_pending {
                 let failed = ledger_failed.get(pending.call_id()).copied().unwrap_or(true);
-                record.ledger(&crate::core::agent::ledger::finish(pending, failed));
+                let denied = ledger_denied.contains(pending.call_id());
+                record.ledger(&crate::core::agent::ledger::finish(pending, failed, denied));
             }
         }
         if let Some(reason) = stuck_reason {
