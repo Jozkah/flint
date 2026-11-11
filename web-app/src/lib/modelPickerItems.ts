@@ -6,7 +6,7 @@
 import { getProviderTitle, getModelDisplayName, isLocalProvider } from '@/lib/utils'
 import { disambiguateModels, type Disambiguation } from '@/lib/modelDisplayName'
 import { contextLengthOf } from '@/lib/engineModels'
-import { classifyModelLocation } from '@/lib/modelLocation'
+import { networkSide } from '@/lib/modelLocation'
 import { isFavoriteEntry, type FavoriteModel } from '@/lib/favoriteModel'
 import { providerIsUnreachable } from '@/lib/modelAvailability'
 import { offersModels } from '@/lib/providerOffers'
@@ -32,7 +32,7 @@ export function hostOf(baseUrl?: string): string {
 
 /** Whether a provider's requests stay on this device or network. */
 export const locationKind = (provider: ModelProvider): 'local' | 'remote' =>
-  classifyModelLocation({
+  networkSide({
     baseUrl: provider.base_url,
     builtInEngine: Boolean(isLocalProvider(provider.provider)),
   }) === 'remote'

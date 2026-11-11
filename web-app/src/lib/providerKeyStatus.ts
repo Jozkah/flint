@@ -1,5 +1,5 @@
 import { isEngineProviderName } from '@/lib/engineModels'
-import { classifyModelLocation } from '@/lib/modelLocation'
+import { networkSide } from '@/lib/modelLocation'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 
 type KeyStatusProvider = {
@@ -41,7 +41,9 @@ export function providerKeyStatus(
   const declaresKey =
     !provider.settings?.length || provider.settings.some((s) => s.key === 'api-key')
   if (!declaresKey) return 'keyless'
-  if (classifyModelLocation({ baseUrl: provider.base_url }) === 'local') return 'keyless'
+  // The model picker's rule: a tailnet or LAN host, or a bare name like
+  // `v100`, is on the user's network and needs no key.
+  if (networkSide({ baseUrl: provider.base_url }) === 'local') return 'keyless'
   return 'missing'
 }
 

@@ -1091,7 +1091,10 @@
     "thisRoom": "此房间",
     "thisSession": "此会话",
     "keyMissingTitle": "缺少 API 密钥",
-    "keyMissingDescription": "{{subject}} 使用的提供商尚未设置 API 密钥。请在设置中添加密钥，或选择其他模型以继续。"
+    "keyMissingDescription": "{{subject}} 使用的提供商尚未设置 API 密钥。请在设置中添加密钥，或选择其他模型以继续。",
+    "providerOffTitle": "{{provider}} 已关闭",
+    "providerOffDescription": "{{subject}}使用的 {{provider}} 已关闭，因此没有发送任何内容。重新开启即可继续在此使用，或选择其他模型。",
+    "turnOn": "开启 {{provider}}"
   },
   "skillsUsedCount_one": "使用了 {{count}} 个技能",
   "skillsUsedCount_other": "使用了 {{count}} 个技能",

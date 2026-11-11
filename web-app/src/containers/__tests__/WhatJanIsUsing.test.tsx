@@ -402,6 +402,25 @@ describe('WhatJanIsUsing', () => {
     ).toBeInTheDocument()
   })
 
+  it('names the provider by its new name after a rename', async () => {
+    useModelProvider.setState({
+      selectedProvider: 'v100b',
+      selectedModel: { id: 'swift', capabilities: [] } as never,
+      providers: [
+        { provider: 'v100b', active: true, models: [{ id: 'swift' }], settings: [], base_url: 'http://v100:8556/v1' },
+      ] as never,
+    })
+    render(<WhatJanIsUsing threadId="t1" messages={[]} />)
+    await openPanel()
+    const model = screen.getByTestId('context-section-model')
+    expect(within(model).getByText(/v100b/i)).toBeInTheDocument()
+    act(() => {
+      useModelProvider.getState().updateProvider('v100b', { displayName: 'Tower GPU' } as never)
+    })
+    await waitFor(() => expect(within(model).getByText(/Tower GPU/)).toBeInTheDocument())
+    expect(within(model).queryByText(/v100b/i)).toBeNull()
+  })
+
   it('says when no request has been sent yet', async () => {
     render(<WhatJanIsUsing threadId="t1" messages={[]} />)
     await openPanel()

@@ -71,6 +71,25 @@ export function classifyModelLocation(input: LocationInput): ModelLocation {
 }
 
 /**
+ * Which side of the user's network an endpoint is on, for everything that
+ * labels a provider: the model picker's groups, the "No API key" badge and the
+ * provider page. One rule so they cannot disagree.
+ *
+ * Only an endpoint known to be on the internet is `remote`. This machine, a
+ * private or link-local address, the tailnet (100.64.0.0/10, `*.ts.net`), a
+ * `.local` name and a single-label host (`v100`) the resolver has not settled
+ * are `local`: a bare name is a machine on the user's own network far more
+ * often than not, and the picker always listed it there. When the resolver
+ * does answer, its answer wins. `unknown` only when there is no address.
+ */
+export function networkSide(input: LocationInput): 'local' | 'remote' | 'unknown' {
+  const location = classifyModelLocation(input)
+  if (location === 'remote') return 'remote'
+  if (location === 'unknown') return 'unknown'
+  return 'local'
+}
+
+/**
  * The group a model belongs in.
  *
  * Anything not yet settled stays out of REMOTE: filing an unresolved local

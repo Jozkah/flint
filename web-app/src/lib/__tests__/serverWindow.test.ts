@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ fetch: vi.fn() }))
+const h = vi.hoisted(() => ({ fetch: vi.fn(), invoke: vi.fn() }))
 vi.mock('@/lib/providerFetch', () => ({ providerFetch: h.fetch }))
+vi.mock('@/lib/backend', () => ({ invokeCommand: h.invoke }))
 
 import {
   fetchServerWindow,
@@ -10,6 +11,7 @@ import {
   parseServerWindow,
   propsUrl,
   resetServerWindowCache,
+  resolveServerWindowHeaders,
   serverWindowHeaders,
 } from '@/lib/serverWindow'
 
@@ -218,5 +220,41 @@ describe('reading a server window', () => {
       const b = await fetchServerWindow('http://192.168.1.9:8559/v1', 'qwen3.8-flash-next')
       expect([a, b]).toEqual([262144, 245000])
     })
+  })
+})
+
+describe('the probe carries a secret header kept in the credential store', () => {
+  beforeEach(() => h.invoke.mockReset())
+
+  it('reads a blank secret value from the store, as the chat request has it', async () => {
+    h.invoke.mockImplementation(async (cmd: string, args: { key?: string }) =>
+      cmd === 'get_secret' && args.key === 'provider-headers:qa'
+        ? JSON.stringify({ 'x-qa-key': 's3cret' })
+        : null
+    )
+    const headers = await resolveServerWindowHeaders({
+      provider: 'qa',
+      custom_header: [{ header: 'X-QA-Key', value: '', secret: true }],
+    } as never)
+    expect(headers).toEqual({ 'X-QA-Key': 's3cret' })
+  })
+
+  it('keeps a value already in memory and does not touch the store', async () => {
+    const headers = await resolveServerWindowHeaders({
+      provider: 'qa',
+      custom_header: [{ header: 'X-QA-Key', value: 'typed', secret: true }],
+    } as never)
+    expect(headers).toEqual({ 'X-QA-Key': 'typed' })
+    expect(h.invoke).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing extra when the store has no value', async () => {
+    h.invoke.mockResolvedValue(null)
+    expect(
+      await resolveServerWindowHeaders({
+        provider: 'qa',
+        custom_header: [{ header: 'X-QA-Key', value: '', secret: true }],
+      } as never)
+    ).toBeUndefined()
   })
 })

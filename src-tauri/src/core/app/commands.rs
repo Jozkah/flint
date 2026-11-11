@@ -79,14 +79,35 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
+/// The data folder named by `FLINT_DATA_FOLDER` / `JAN_DATA_FOLDER` (which
+/// `--data-dir` sets), if any.
+pub fn data_folder_override() -> Option<PathBuf> {
+    crate::core::compat_env::var("DATA_FOLDER")
+        .ok()
+        .filter(|f| !f.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The per-user app-data base the CLI resolves its settings file, default data
+/// folder and migration targets against: `dirs::data_dir()` (`%APPDATA%` on
+/// Windows), or, when the data folder is redirected, the folder holding the
+/// redirected one. A redirected run must never write the real settings file
+/// or migrate into the real Flint folder.
+pub fn app_data_base() -> Option<PathBuf> {
+    match data_folder_override() {
+        Some(folder) => Some(folder.parent().map(Path::to_path_buf).unwrap_or(folder)),
+        None => dirs::data_dir(),
+    }
+}
+
 /// Canonical Flint app support directory (`%APPDATA%/Jan` on Windows).
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
+    app_data_base().map(|d| d.join(env!("CARGO_PKG_NAME")))
 }
 
 /// Tauri bundle-id app support directory (e.g. `%APPDATA%/jan.ai.app` on Windows).
 fn resolve_bundle_app_data_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join(TAURI_BUNDLE_IDENTIFIER))
+    app_data_base().map(|d| d.join(TAURI_BUNDLE_IDENTIFIER))
 }
 
 /// Keep `%APPDATA%/Jan/settings.json` as canonical, but recover from legacy or
@@ -270,7 +291,7 @@ pub fn resolve_jan_data_folder() -> PathBuf {
 /// Default: data_dir/Jan/data  (mirrors default_data_folder_path)
 pub(crate) fn default_cli_data_folder() -> PathBuf {
     let app_name = std::env::var("APP_NAME").unwrap_or_else(|_| "Jan".to_string());
-    if let Some(data_dir) = dirs::data_dir() {
+    if let Some(data_dir) = app_data_base() {
         return data_dir.join(&app_name).join("data");
     }
     let home = std::env::var("HOME")

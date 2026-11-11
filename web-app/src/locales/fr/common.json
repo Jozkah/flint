@@ -1099,7 +1099,10 @@
     "thisRoom": "Ce salon",
     "thisSession": "Cette session",
     "keyMissingTitle": "Une clé d’API est manquante",
-    "keyMissingDescription": "{{subject}} utilise un fournisseur qui n’a pas encore de clé d’API. Ajoutez la clé dans les paramètres ou choisissez un autre modèle pour continuer."
+    "keyMissingDescription": "{{subject}} utilise un fournisseur qui n’a pas encore de clé d’API. Ajoutez la clé dans les paramètres ou choisissez un autre modèle pour continuer.",
+    "providerOffTitle": "{{provider}} est désactivé",
+    "providerOffDescription": "{{subject}} utilise {{provider}}, qui est désactivé, donc rien n'a été envoyé. Réactivez-le pour continuer à l'utiliser ici, ou choisissez un autre modèle.",
+    "turnOn": "Activer {{provider}}"
   },
   "skillsUsedCount_one": "{{count}} compétence utilisée",
   "skillsUsedCount_other": "{{count}} compétences utilisées",

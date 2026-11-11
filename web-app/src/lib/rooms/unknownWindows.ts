@@ -9,7 +9,7 @@ import { DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { modelKey, type ModelRef } from '@/lib/modelReplace'
 import { rememberListedWindow } from '@/lib/listedWindows'
-import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchServerWindow, resolveServerWindowHeaders } from '@/lib/serverWindow'
 import {
   defaultProviderLookup,
   knownWindowFor,
@@ -140,7 +140,9 @@ async function learnServerWindows(
       const tokens = await fetchServerWindow(
         baseUrl,
         ref.id,
-        serverWindowHeaders(provider as Parameters<typeof serverWindowHeaders>[0])
+        await resolveServerWindowHeaders(
+          provider as Parameters<typeof resolveServerWindowHeaders>[0]
+        )
       ).catch(() => null)
       if (tokens == null) return false
       rememberListedWindow(baseUrl, ref.id, tokens)

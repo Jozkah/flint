@@ -101,9 +101,11 @@
       "disabled": "Ảnh chụp nhanh yêu cầu đang tắt.",
       "too-large": "Yêu cầu quá lớn để lưu toàn bộ.",
       "missing": "Bản sao đã làm sạch không còn trên đĩa (có thể đã hết hạn hoặc bị xóa).",
-      "error": "Không đọc được bản sao đã làm sạch."
+      "error": "Không đọc được bản sao đã làm sạch.",
+      "web": "Phiên bản web không lưu bản sao yêu cầu, nên không mục nào ở trên được đánh dấu là đã xác minh."
     },
-    "usageRecorded": "Nhà cung cấp đã báo cáo mức dùng token, được ghi cho yêu cầu này."
+    "usageRecorded": "Nhà cung cấp đã báo cáo mức dùng token, được ghi cho yêu cầu này.",
+    "memoryNotOnWeb": "Bộ nhớ đã lưu không khả dụng trong phiên bản web, nên không có gì được gửi."
   },
   "label": {
     "temporary": "Bộ nhớ tắt trong cuộc trò chuyện tạm thời",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Bộ nhớ đã tắt",
     "memoryUnavailable": "Không đọc được bộ nhớ",
     "lastRequest": "Yêu cầu gần nhất",
-    "usage": "Mức dùng token"
+    "usage": "Mức dùng token",
+    "memoryNotOnWeb": "Bộ nhớ không khả dụng trên web"
   },
   "empty": {
     "noModel": "Chưa chọn mô hình nào.",

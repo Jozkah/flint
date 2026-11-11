@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { fallbackRef, moveFallback, parseFallbackRef } from '@/lib/fallbackChain'
+import { getProviderTitle } from '@/lib/utils'
 
 /** The ordered models a chat falls back to when the chosen one fails to answer. */
 export default function FallbackModelsPicker() {
@@ -20,7 +21,12 @@ export default function FallbackModelsPicker() {
   const options = providers
     .filter((p) => p.active)
     .flatMap((p) =>
-      p.models.map((m) => ({ ref: fallbackRef(p.provider, m.id), label: `${p.provider} / ${m.id}` }))
+      // The provider's name as the user sees it, renamed or not; the
+      // stored reference keeps the provider's id.
+      p.models.map((m) => ({
+        ref: fallbackRef(p.provider, m.id),
+        label: `${getProviderTitle(p.provider)} / ${m.id}`,
+      }))
     )
     .filter((o) => !refs.includes(o.ref))
 

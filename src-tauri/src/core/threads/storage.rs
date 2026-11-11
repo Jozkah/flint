@@ -212,8 +212,9 @@ pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(format!("could not delete thread {id}: {e}")),
         }
+        let threads_base = super::utils::get_data_dir(root);
         let dir_result = if thread_dir.exists() {
-            tokio::task::spawn_blocking(move || remove_dir_all_retry(&thread_dir))
+            tokio::task::spawn_blocking(move || remove_dir_all_retry(&threads_base, &thread_dir))
                 .await
                 .map_err(|e| format!("delete task failed: {e}"))?
         } else {
@@ -237,11 +238,12 @@ pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<
 }
 
 /// `remove_dir_all` retried a few times: on Windows a file another process is
-/// still closing (an indexer, antivirus) fails the first attempt.
-fn remove_dir_all_retry(dir: &Path) -> std::io::Result<()> {
+/// still closing (an indexer, antivirus) fails the first attempt. Only ever
+/// removes a folder strictly inside `base`.
+fn remove_dir_all_retry(base: &Path, dir: &Path) -> std::io::Result<()> {
     let mut last = None;
     for attempt in 0..5 {
-        match fs::remove_dir_all(dir) {
+        match crate::core::path_ids::remove_dir_within(base, dir) {
             Ok(()) => return Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => last = Some(e),

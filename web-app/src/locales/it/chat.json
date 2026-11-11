@@ -345,5 +345,9 @@
     "recovered": "Ripristinato: il motore del modello si era fermato, è stato riavviato e il messaggio ha ricevuto risposta.",
     "retryFailed": "Il motore del modello si è fermato di nuovo. Flint ha riprovato una volta; usa Rigenera per riprovare.",
     "restartFailed": "Impossibile ricaricare automaticamente il modello. Usa Rigenera o seleziona di nuovo il modello."
+  },
+  "providerBinding": {
+    "off": "Questa chat usa {{provider}}, che è disattivato. Non è stato inviato nulla. Riattivalo o scegli un altro modello per questa chat.",
+    "other": "Questa chat usa {{provider}}, ma stava per rispondere {{selected}}. Non è stato inviato nulla. Scegli un modello in questa chat per spostarla su un altro fornitore."
   }
 }

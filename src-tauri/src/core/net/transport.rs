@@ -406,6 +406,12 @@ pub fn cancel_stream(stream_id: &str) {
     }
 }
 
+/// [`take_early_cancel`] for tests in other modules.
+#[cfg(all(test, feature = "cli"))]
+pub(crate) fn take_early_cancel_for_test(stream_id: &str) -> bool {
+    take_early_cancel(stream_id)
+}
+
 /// Whether `stream_id` was cancelled before it registered (claimed once).
 fn take_early_cancel(stream_id: &str) -> bool {
     let Ok(mut early) = early_cancels().lock() else {

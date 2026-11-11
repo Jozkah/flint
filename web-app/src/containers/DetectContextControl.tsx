@@ -7,7 +7,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getLocalPropsExtension } from '@/lib/llamacppRouterProps'
-import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchServerWindow, resolveServerWindowHeaders } from '@/lib/serverWindow'
 import { detectContextWindow } from '@/lib/detectContextWindow'
 
 interface DetectContextControlProps {
@@ -60,7 +60,9 @@ export function DetectContextControl({
             ? serviceHub.providers().fetchModelEntry!(provider, mid)
             : Promise.resolve(null),
         fetchLocalServerWindow: (url, mid) =>
-          fetchServerWindow(url, mid, serverWindowHeaders(provider)),
+          resolveServerWindowHeaders(provider).then((headers) =>
+            fetchServerWindow(url, mid, headers)
+          ),
       })
       if ('tokens' in result) {
         onDetected(result.tokens)
