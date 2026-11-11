@@ -15,6 +15,7 @@ import { AlertTriangle, Check, GitBranch, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { stableKeys } from '@/lib/stableKeys'
+import { withoutVerbatimPrefix } from '@/lib/errorText'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 import {
   applyProposal,
@@ -184,7 +185,7 @@ function FileReview({
           }
           data-testid="proposal-file-toggle"
         />
-        <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+        <span className="min-w-0 flex-1 truncate font-mono">{withoutVerbatimPrefix(file.path)}</span>
         <span className="shrink-0 text-muted-foreground">{file.change}</span>
         <span className="shrink-0 font-mono text-diff-add">
           +{file.additions}

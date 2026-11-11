@@ -1,6 +1,7 @@
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { withoutVerbatimPrefix } from '@/lib/errorText'
 
 /** A single expandable row shared by the project and sandbox lists. */
 export function FileRow({
@@ -43,6 +44,8 @@ export function FileRow({
 }) {
   const { t } = useTranslation()
   const openLabel = t('common:changes.openFile')
+  // A Windows verbatim prefix is for the file system, not for reading.
+  const shown = withoutVerbatimPrefix(path)
 
   return (
     <div
@@ -95,10 +98,10 @@ export function FileRow({
                 onOpen()
               }}
             >
-              {path}
+              {shown}
             </span>
           ) : (
-            <span className="truncate font-mono text-xs text-fg-2">{path}</span>
+            <span className="truncate font-mono text-xs text-fg-2">{shown}</span>
           )}
           {subtitle ? (
             <span className="truncate text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
