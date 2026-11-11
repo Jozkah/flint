@@ -102,6 +102,10 @@ pub struct SkillMeta {
     /// Phrases that mean this skill applies (`triggers:` in the frontmatter).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub triggers: Vec<String>,
+    /// What was wrong with the skill's front matter, shown in the skills list
+    /// so a skill that reads oddly says why. Absent when it read cleanly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 /// The two `agent.toml` keys skill discovery depends on.
@@ -450,6 +454,9 @@ pub struct ParsedSkill {
     pub paths: Vec<String>,
     /// `context: fork`: the skill runs in a subagent of its own.
     pub fork: bool,
+    /// What was wrong with the front matter, for the skills list. `None` when
+    /// it read cleanly.
+    pub warning: Option<String>,
 }
 
 /// True when the project holds a file matching one of `patterns` (always true
@@ -549,17 +556,40 @@ pub fn parse(content: &str) -> ParsedSkill {
             triggers: Vec::new(),
             paths: Vec::new(),
             fork: false,
+            warning: None,
         };
     };
     // Fail closed (W30): a restriction that cannot be read must not vanish.
     // Invalid YAML, or a security-relevant key of the wrong shape, keeps the
     // skill away from the model rather than silently dropping the restriction.
+    //
+    // One exception: front matter that is a flat list of `key: value` lines
+    // and only fails as YAML because a value holds `: ` (an unquoted
+    // `description: Use when working with pdf: forms`). That is how authors
+    // write it and how other tools read it, so it is read the same way --
+    // everything after the first colon is the value -- and every key,
+    // restrictions included, keeps its meaning. The skill stays visible and
+    // says what was wrong with it, instead of vanishing without a word.
+    let mut warning = None;
     let (fm, mut restricted) = match serde_yaml::from_str::<Frontmatter>(&yaml) {
         Ok(fm) => (fm, false),
-        Err(e) => {
-            eprintln!("skills: frontmatter is not valid YAML, skill hidden from the model: {e}");
-            (Frontmatter::default(), true)
-        }
+        Err(e) => match flat_frontmatter(&yaml) {
+            Some(fm) => {
+                warning = Some(format!(
+                    "front matter is not valid YAML ({}); read it as plain `key: value` lines. Quote values that contain \": \".",
+                    first_line_of(&e.to_string())
+                ));
+                (fm, false)
+            }
+            None => {
+                eprintln!("skills: frontmatter is not valid YAML, skill hidden from the model: {e}");
+                warning = Some(format!(
+                    "front matter is not valid YAML ({}); the skill is hidden from the model until it is fixed.",
+                    first_line_of(&e.to_string())
+                ));
+                (Frontmatter::default(), true)
+            }
+        },
     };
     let mut flag = |v: &Option<serde_yaml::Value>, key: &str, default: bool, restrictive: bool| -> bool {
         match v {
@@ -628,7 +658,56 @@ pub fn parse(content: &str) -> ParsedSkill {
             .as_ref()
             .and_then(lenient_string)
             .is_some_and(|c| c.trim().eq_ignore_ascii_case("fork")),
+        warning,
     }
+}
+
+fn first_line_of(text: &str) -> &str {
+    text.lines().next().unwrap_or("").trim()
+}
+
+/// Front matter read as flat `key: value` lines, the value being everything
+/// after the first colon (surrounding quotes dropped). `None` unless every
+/// non-blank, non-comment line has that shape: an indented line, a list item
+/// or a block scalar is real YAML structure this reader would misread, and
+/// misreading a restriction is worse than failing closed.
+fn flat_frontmatter(yaml: &str) -> Option<Frontmatter> {
+    let mut map = serde_yaml::Mapping::new();
+    for line in yaml.lines() {
+        let line = line.trim_end();
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if line.starts_with(char::is_whitespace) || line.starts_with('-') {
+            return None;
+        }
+        let (key, value) = line.split_once(':')?;
+        let key = key.trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+            return None;
+        }
+        let value = value.trim();
+        // Flow collections, block scalars, anchors and tags are YAML syntax,
+        // not text: a broken one stays broken.
+        if value.starts_with(['[', '{', '|', '>', '&', '*', '!']) {
+            return None;
+        }
+        let unquoted = value
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+            .unwrap_or(value);
+        let entry = if unquoted.is_empty() {
+            serde_yaml::Value::Null
+        } else {
+            serde_yaml::Value::String(unquoted.to_string())
+        };
+        if map.insert(serde_yaml::Value::String(key.to_string()), entry).is_some() {
+            // A key given twice: which one wins is not this reader's call.
+            return None;
+        }
+    }
+    serde_yaml::from_value(serde_yaml::Value::Mapping(map)).ok()
 }
 
 /// What a skill declares that this run cannot supply (AH-123, AH-124).
@@ -1076,6 +1155,7 @@ fn default_jan_skill_meta() -> SkillMeta {
         version: parsed.version.clone(),
         always: parsed.always,
         triggers: parsed.triggers.clone(),
+        warning: None,
     }
 }
 
@@ -1090,6 +1170,7 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         version: parsed.version.clone(),
         always: parsed.always,
         triggers: parsed.triggers.clone(),
+        warning: parsed.warning.clone(),
     }
 }
 
@@ -1772,6 +1853,37 @@ name: [unclosed
 b");
         assert!(!p.model_invocable);
         assert!(p.user_invocable);
+        assert!(p.warning.as_deref().is_some_and(|w| w.contains("hidden from the model")), "{:?}", p.warning);
+    }
+
+    #[test]
+    fn a_colon_in_an_unquoted_description_keeps_the_skill() {
+        let p = parse("---
+name: pdf-forms
+description: Use when working with pdf: forms
+---
+b");
+        assert_eq!(p.description.as_deref(), Some("Use when working with pdf: forms"));
+        assert!(p.model_invocable && p.user_invocable);
+        assert!(p.warning.as_deref().is_some_and(|w| w.contains("Quote values")), "{:?}", p.warning);
+        // Restrictions keep their meaning when read this way.
+        let p = parse("---
+description: Use when: deploying
+disable-model-invocation: true
+---
+b");
+        assert!(!p.model_invocable && p.user_invocable);
+        assert_eq!(p.description.as_deref(), Some("Use when: deploying"));
+        // Clean front matter carries no warning.
+        assert!(parse("---\ndescription: \"a: b\"\n---\nb").warning.is_none());
+        // Real structure the flat reader cannot read still fails closed.
+        let p = parse("---
+description: a: b
+allowed-tools:
+  - bash
+---
+b");
+        assert!(!p.model_invocable);
     }
 
     /// A store of skills, each installed by name with whatever frontmatter it

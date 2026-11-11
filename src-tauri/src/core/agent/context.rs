@@ -1695,6 +1695,7 @@ We build with make.")
             user_invocable: true,
             model_invocable: true,
             version: None,
+            warning: None,
         };
         // 400 plugin skills with long descriptions, then one project skill.
         let mut entries: Vec<_> = (0..400).map(|i| skill(format!("pack:skill-{i}"), Some("pack"))).collect();
@@ -1745,6 +1746,7 @@ We build with make.")
             user_invocable: true,
             model_invocable: true,
             version: None,
+            warning: None,
         };
         let home = render_skills_block(&[meta], false).unwrap();
         assert!(!home.contains("skill_read"), "{home}");

@@ -36,6 +36,7 @@ pub fn list(project: &str, json: bool) -> Result<(), String> {
                     "modelInvocable": m.model_invocable,
                     "version": m.version,
                     "enabled": enabled.is_empty() || enabled.contains(&m.name),
+                    "warning": m.warning,
                 })
             })
             .collect();
@@ -49,6 +50,9 @@ pub fn list(project: &str, json: bool) -> Result<(), String> {
     for m in metas {
         let on = enabled.is_empty() || enabled.contains(&m.name);
         println!("{:<28} {}  {}", m.name, if on { "on " } else { "off" }, m.description);
+        if let Some(warning) = &m.warning {
+            println!("{:<28}      warning: {warning}", "");
+        }
     }
     Ok(())
 }
