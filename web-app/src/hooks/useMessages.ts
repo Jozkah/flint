@@ -12,7 +12,12 @@ type MessageState = {
   messages: Record<string, ThreadMessage[]>
   getMessages: (threadId: string) => ThreadMessage[]
   setMessages: (threadId: string, messages: ThreadMessage[]) => void
-  addMessage: (message: ThreadMessage) => void
+  /**
+   * Shows the message at once; the returned promise settles when it has been
+   * written (it never rejects: a failed write is reported here). Await it when
+   * several messages must be stored in order.
+   */
+  addMessage: (message: ThreadMessage) => Promise<void>
   updateMessage: (message: ThreadMessage) => void
   deleteMessage: (threadId: string, messageId: string) => void
   clearAllMessages: () => void
@@ -52,7 +57,7 @@ export const useMessages = create<MessageState>()((set, get) => ({
     // it is still the object added above: an updateMessage (error metadata,
     // branch relinking) made while the write was in flight is newer than the
     // echo and must not be reverted by it.
-    getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
+    return getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
       set((state) => ({
         messages: {
           ...state.messages,

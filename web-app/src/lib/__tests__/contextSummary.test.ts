@@ -227,6 +227,17 @@ describe('summarizeChatContext', () => {
       expect(item).toMatchObject({ scope: 'project', detail: 'Alpha' })
     })
 
+    it('says memory is not available on web rather than that it could not be read', () => {
+      const unread = attribution({
+        memory: { ...attribution().memory, unavailable: true },
+      })
+      const web = section(base({ attribution: unread, web: true }), 'memory').items[0]
+      expect(web).toMatchObject({ key: 'memory:web', reason: 'memoryNotOnWeb' })
+      // The desktop still reports a memory it failed to read.
+      const desktop = section(base({ attribution: unread }), 'memory').items[0]
+      expect(desktop.reason).toBe('memoryUnavailable')
+    })
+
     it('says memory is off in a temporary chat', () => {
       expect(section(base({ temporary: true }), 'memory').items[0].reason).toBe('temporaryChat')
     })
@@ -368,6 +379,14 @@ describe('summarizeChatContext', () => {
         'payload'
       )
       expect(s.items[0].reason).toBe('snapshotUnavailable.too-large')
+    })
+
+    it('says the web version keeps no request copy, not that reading it failed', () => {
+      const s = section(
+        base({ attribution: attribution(), evidence: { status: 'unavailable', reason: 'web' } }),
+        'payload'
+      )
+      expect(s.items[0].reason).toBe('snapshotUnavailable.web')
     })
   })
 })

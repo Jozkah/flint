@@ -101,9 +101,11 @@
       "disabled": "Las instantáneas de solicitudes están desactivadas.",
       "too-large": "La solicitud era demasiado grande para guardarla completa.",
       "missing": "La copia depurada ya no está en el disco (puede haber caducado o haberse eliminado).",
-      "error": "No se pudo leer la copia depurada."
+      "error": "No se pudo leer la copia depurada.",
+      "web": "La versión web no guarda copias de las solicitudes, así que nada de lo anterior se marca como verificado."
     },
-    "usageRecorded": "El proveedor informó del uso de tokens, registrado para esta solicitud."
+    "usageRecorded": "El proveedor informó del uso de tokens, registrado para esta solicitud.",
+    "memoryNotOnWeb": "La memoria guardada no está disponible en la versión web, así que no se envió ninguna."
   },
   "label": {
     "temporary": "La memoria está desactivada en los chats temporales",
@@ -116,7 +118,8 @@
     "memoryDisabled": "La memoria está desactivada",
     "memoryUnavailable": "No se pudo leer la memoria",
     "lastRequest": "Última solicitud",
-    "usage": "Uso de tokens"
+    "usage": "Uso de tokens",
+    "memoryNotOnWeb": "La memoria no está disponible en la web"
   },
   "empty": {
     "noModel": "No hay ningún modelo seleccionado.",

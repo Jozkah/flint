@@ -1110,7 +1110,10 @@
     "thisRoom": "Tato místnost",
     "thisSession": "Tato relace",
     "keyMissingTitle": "Chybí klíč API",
-    "keyMissingDescription": "{{subject}} používá poskytovatele, který zatím nemá klíč API. Přidejte klíč v Nastavení nebo pro pokračování vyberte jiný model."
+    "keyMissingDescription": "{{subject}} používá poskytovatele, který zatím nemá klíč API. Přidejte klíč v Nastavení nebo pro pokračování vyberte jiný model.",
+    "providerOffTitle": "{{provider}} je vypnutý",
+    "providerOffDescription": "{{subject}} používá {{provider}}, který je vypnutý, takže nic nebylo odesláno. Zapněte ho znovu, nebo vyberte jiný model.",
+    "turnOn": "Zapnout {{provider}}"
   },
   "skillsUsedCount_one": "Použita {{count}} dovednost",
   "skillsUsedCount_few": "Použity {{count}} dovednosti",

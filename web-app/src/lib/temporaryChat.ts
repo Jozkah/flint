@@ -16,6 +16,7 @@
  */
 
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
+import { AUTO_TITLE_SOURCE_KEY } from '@/lib/threadAutoTitle'
 import type { ModelOverrides } from '@/lib/modelOverrides'
 
 /** What the user chose when told a temporary chat would be lost. */
@@ -68,16 +69,33 @@ export function readdressMessages<T extends { thread_id: string }>(
 /**
  * A title for the kept chat.
  *
- * Taken from what the user actually said first, because "Temporary Chat" is a
+ * A title the chat already has that was generated for it (or typed by the
+ * user) is kept: it was made for this conversation. Otherwise it is taken
+ * from what the user actually said first, because "Temporary Chat" is a
  * description of the container and tells them nothing later. Trimmed to a
  * sensible length, and falling back to a neutral name when the first message
  * carries no text (an image, say).
  */
 export function titleForKeptChat(
   firstUserText: string | undefined,
-  fallback: string
+  fallback: string,
+  current?: {
+    title?: string
+    metadata?: Record<string, unknown> | null
+  },
+  /** The temporary chat's own placeholder title, never worth keeping. */
+  placeholder?: string
 ): string {
   const text = firstUserText?.trim().replace(/\s+/g, ' ')
+  const existing = current?.title?.trim()
+  // A titling attempt that returned nothing still records its source, so the
+  // title must also differ from the placeholder and the prompt it started as.
+  const madeForIt =
+    !!current?.metadata?.[AUTO_TITLE_SOURCE_KEY] ||
+    current?.metadata?.titleSetManually === true
+  if (existing && madeForIt && existing !== placeholder && existing !== text) {
+    return existing
+  }
   if (!text) return fallback
   return text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text
 }

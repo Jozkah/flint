@@ -1089,7 +1089,10 @@
     "thisRoom": "このルーム",
     "thisSession": "このセッション",
     "keyMissingTitle": "API キーがありません",
-    "keyMissingDescription": "{{subject}} は API キーが未設定のプロバイダーを使用しています。設定でキーを追加するか、別のモデルを選んで続行してください。"
+    "keyMissingDescription": "{{subject}} は API キーが未設定のプロバイダーを使用しています。設定でキーを追加するか、別のモデルを選んで続行してください。",
+    "providerOffTitle": "{{provider}} はオフになっています",
+    "providerOffDescription": "{{subject}} は {{provider}} を使用していますが、オフになっているため何も送信されませんでした。ここで使い続けるにはオンに戻すか、別のモデルを選んでください。",
+    "turnOn": "{{provider}} をオンにする"
   },
   "skillsUsedCount_one": "{{count}} 個のスキルを使用",
   "skillsUsedCount_other": "{{count}} 個のスキルを使用",

@@ -101,9 +101,11 @@
       "disabled": "İstek anlık görüntüleri kapalı.",
       "too-large": "İstek bütün olarak saklanamayacak kadar büyüktü.",
       "missing": "Temizlenmiş kopya artık diskte yok (süresi dolmuş veya silinmiş olabilir).",
-      "error": "Temizlenmiş kopya okunamadı."
+      "error": "Temizlenmiş kopya okunamadı.",
+      "web": "Web sürümü isteklerin kopyasını tutmaz, bu yüzden yukarıdakilerin hiçbiri doğrulanmış olarak işaretlenmez."
     },
-    "usageRecorded": "Sağlayıcı token kullanımını bildirdi; bu isteğe karşı kaydedildi."
+    "usageRecorded": "Sağlayıcı token kullanımını bildirdi; bu isteğe karşı kaydedildi.",
+    "memoryNotOnWeb": "Kayıtlı bellek web sürümünde kullanılamadığı için hiçbiri gönderilmedi."
   },
   "label": {
     "temporary": "Geçici sohbetlerde bellek kapalı",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Bellek kapalı",
     "memoryUnavailable": "Bellek okunamadı",
     "lastRequest": "Son istek",
-    "usage": "Token kullanımı"
+    "usage": "Token kullanımı",
+    "memoryNotOnWeb": "Bellek web sürümünde kullanılamaz"
   },
   "empty": {
     "noModel": "Hiçbir model seçilmedi.",

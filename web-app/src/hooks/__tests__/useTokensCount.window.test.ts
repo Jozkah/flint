@@ -12,6 +12,8 @@ vi.mock('@/lib/serverWindow', () => ({
   // The real one builds the provider's request headers; a key is enough here.
   serverWindowHeaders: (p?: { api_key?: string }) =>
     p?.api_key ? { Authorization: `Bearer ${p.api_key}` } : undefined,
+  resolveServerWindowHeaders: async (p?: { api_key?: string }) =>
+    p?.api_key ? { Authorization: `Bearer ${p.api_key}` } : undefined,
 }))
 // No local engine answers: a model unloaded after sitting idle.
 vi.mock('@/lib/llamacppRouterProps', () => ({ getLocalPropsExtension: () => undefined }))

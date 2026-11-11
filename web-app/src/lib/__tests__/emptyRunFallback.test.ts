@@ -14,6 +14,13 @@ const tool = (extra: Partial<MessagePartLike>): MessagePartLike => ({
 })
 
 describe('emptyRunFallback', () => {
+  it('says nothing about an empty reply when the request failed (401, refused connection)', () => {
+    expect(emptyRunFallback([], { failed: true })).toBeNull()
+    expect(emptyRunFallback([{ type: 'reasoning', text: 'hmm' }], { failed: true })).toBeNull()
+    // The same turn without an error still gets its line.
+    expect(emptyRunFallback([])).toBe(EMPTY_REPLY_FALLBACK)
+  })
+
   it('says the model finished thinking when only reasoning came back (#199)', () => {
     expect(
       emptyRunFallback([{ type: 'reasoning', text: 'hmm' }])

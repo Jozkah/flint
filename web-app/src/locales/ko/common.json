@@ -1089,7 +1089,10 @@
     "thisRoom": "이 룸",
     "thisSession": "이 세션",
     "keyMissingTitle": "API 키가 없습니다",
-    "keyMissingDescription": "{{subject}}은(는) 아직 API 키가 없는 공급자를 사용합니다. 설정에서 키를 추가하거나 다른 모델을 선택해 계속하세요."
+    "keyMissingDescription": "{{subject}}은(는) 아직 API 키가 없는 공급자를 사용합니다. 설정에서 키를 추가하거나 다른 모델을 선택해 계속하세요.",
+    "providerOffTitle": "{{provider}}이(가) 꺼져 있습니다",
+    "providerOffDescription": "{{subject}}은(는) 꺼져 있는 {{provider}}을(를) 사용하므로 아무것도 보내지 않았습니다. 여기서 계속 사용하려면 다시 켜거나 다른 모델을 선택하세요.",
+    "turnOn": "{{provider}} 켜기"
   },
   "skillsUsedCount_one": "스킬 {{count}}개 사용",
   "skillsUsedCount_other": "스킬 {{count}}개 사용",

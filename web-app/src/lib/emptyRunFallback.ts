@@ -84,8 +84,16 @@ function clip(s: string): string {
  * tool calls not followed by any text, or no text and no tool calls at all.
  * Null when it has an answer, or a tool is still running. The caller only
  * asks once the message has stopped streaming.
+ *
+ * Null too when the request itself failed (`failed`: a 401, a refused
+ * connection): the error is shown, and "the model returned an empty reply"
+ * above it would point at the wrong cause.
  */
-export function emptyRunFallback(parts: readonly MessagePartLike[]): string | null {
+export function emptyRunFallback(
+  parts: readonly MessagePartLike[],
+  { failed = false }: { failed?: boolean } = {}
+): string | null {
+  if (failed) return null
   let lastTool = -1
   for (let i = parts.length - 1; i >= 0; i--) {
     if (parts[i].type.startsWith('tool-')) {

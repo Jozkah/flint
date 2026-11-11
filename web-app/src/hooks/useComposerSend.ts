@@ -14,6 +14,8 @@ import { currentDescriber } from '@/lib/imageDescription'
 import { needsWeb } from '@/lib/needsWeb'
 import { withdrawApprovalsForSteering } from '@/lib/chatSteering'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
+import { boundProvider, boundProviderOff } from '@/lib/threadModelBinding'
+import { getProviderTitle } from '@/lib/utils'
 import { resolveThreadModelId } from '@/lib/models'
 import { resolvePromptMentions, withMentionBlocks } from '@/lib/chatMentionSend'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
@@ -175,10 +177,19 @@ export function useComposerSend(deps: ComposerSendDeps) {
   const confirmThreadModel = (): ModelCheck | Promise<ModelCheck> => {
     // A composer whose host owns the model has its own check (`confirmModel`).
     const saved = modelSelection ? undefined : currentThread?.model
-    const gone = unavailableModels([saved])
+    // The chat's provider only switched off: its model is still there, but
+    // nothing may go to it, nor to another provider serving the same id,
+    // until the user turns it back on or picks another model.
+    const offProvider = boundProviderOff(saved, getProviderByName)
+    const gone =
+      offProvider && saved ? [saved] : unavailableModels([saved])
     // Nothing to ask: stay synchronous, so an ordinary send is no slower.
     if (!currentThread || gone.length === 0) return { status: 'ok' }
-    return promptReplaceModels(t('common:modelReplace.thisChat'), gone).then(
+    return promptReplaceModels(
+      t('common:modelReplace.thisChat'),
+      gone,
+      offProvider ? { offProvider } : {}
+    ).then(
       (choices): ModelCheck => {
         const pick = choices?.[modelKey(gone[0])]
         if (!pick) return { status: 'stop' }
@@ -256,6 +267,18 @@ export function useComposerSend(deps: ComposerSendDeps) {
       }
     }
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
+      // A chat that already has a model is bound to its provider: never pick
+      // another one for it (the same model id can be served elsewhere). The
+      // user picks a model in the chat, or turns its provider back on.
+      const bound = modelSelection ? undefined : currentThread?.model
+      if (boundProvider(bound)) {
+        setMessage(
+          t('chat:composer.modelUnavailable', {
+            model: `${getProviderTitle(bound!.provider)} / ${bound!.id}`,
+          })
+        )
+        return
+      }
       // Nothing is selected yet: pick the model that should answer and send
       // once it shows, rather than stopping at a message. A model that went
       // away is the user's to replace, so that case keeps its own message.
