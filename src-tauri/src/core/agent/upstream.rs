@@ -1567,6 +1567,53 @@ fn tool_call_runs_in_parallel(
     })
 }
 
+/// Whether the user has a standing trust grant (`mcp trust`) for `server` as
+/// it is configured right now. A grant is bound to the server's definition:
+/// once its command, endpoint or environment changes, the fingerprint differs
+/// and the grant no longer counts, exactly as on the desktop.
+pub(crate) fn mcp_server_trusted_in(data_folder: &std::path::Path, server: &str) -> bool {
+    if server.is_empty() {
+        return false;
+    }
+    let configs = crate::core::mcp::stall::read_server_configs(data_folder);
+    configs.get(server).is_some_and(|cfg| {
+        tauri_plugin_agent_tools::mcp_trust::is_trusted(
+            data_folder,
+            server,
+            &tauri_plugin_agent_tools::mcp_identity::fingerprint(cfg),
+        )
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn a_trust_grant_counts_only_for_the_definition_it_was_given_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let write = |cmd: &str| {
+        std::fs::write(
+            dir.path().join("mcp_config.json"),
+            serde_json::json!({ "mcpServers": { "qa": { "command": cmd, "args": [] } } }).to_string(),
+        )
+        .unwrap();
+    };
+    write("node");
+    assert!(!mcp_server_trusted_in(dir.path(), "qa"), "no grant yet");
+    let cfg = crate::core::mcp::stall::read_server_configs(dir.path());
+    let fp = tauri_plugin_agent_tools::mcp_identity::fingerprint(&cfg["qa"]);
+    tauri_plugin_agent_tools::mcp_trust::trust(dir.path(), "qa", &fp).unwrap();
+    assert!(mcp_server_trusted_in(dir.path(), "qa"));
+    assert!(!mcp_server_trusted_in(dir.path(), "other"));
+    assert!(!mcp_server_trusted_in(dir.path(), ""));
+    // The command changed: the grant was for a different program.
+    write("evil");
+    assert!(!mcp_server_trusted_in(dir.path(), "qa"));
+}
+
+/// [`mcp_server_trusted_in`] against the app's data folder.
+pub(crate) fn mcp_server_trusted(server: &str) -> bool {
+    mcp_server_trusted_in(&crate::core::app::commands::resolve_jan_data_folder(), server)
+}
+
 /// Run `jobs` in order, except that a run of consecutive parallel-eligible jobs
 /// goes `limit` at a time. Results come back in job order, and a job that is
 /// not eligible starts only after everything before it has finished.

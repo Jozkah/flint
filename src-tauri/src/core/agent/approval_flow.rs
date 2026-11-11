@@ -320,7 +320,9 @@ pub(crate) fn restore_note(messages: &[Value]) -> Option<String> {
         let line = brief(name, args);
         if result.contains(DEFERRED_MARK) {
             deferred.push(line);
-        } else if result.starts_with("ERROR: tool ") && result.contains("denied by user") {
+        } else if result.starts_with("ERROR: tool ")
+            && (result.contains("denied by user") || result.contains("was not approved: non-interactive"))
+        {
             refused.push(line);
         } else if !result.starts_with("ERROR") {
             went_ahead.push(line);

@@ -2468,9 +2468,12 @@ impl CompositeToolInvoker {
         // it, or the model could approve past Flint's own prompt.
         let self_approval =
             tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
+        // A standing `mcp trust` grant for the server as configured now
+        // counts like a session grant, as it does on the desktop.
         if (!self_approval || self.bypass)
             && (self.auto_approve || self.bypass
-                || self.grants.lock().unwrap().covers_mcp(&server, name))
+                || self.grants.lock().unwrap().covers_mcp(&server, name)
+                || crate::core::agent::upstream::mcp_server_trusted(&server))
         {
             mcp_calls.push(tc.clone());
             return;

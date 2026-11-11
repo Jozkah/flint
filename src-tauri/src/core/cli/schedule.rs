@@ -394,6 +394,7 @@ async fn execute(
                         stop_for_drain.notify_one();
                         held.extend(sender);
                     } else if let Some(sender) = sender {
+                        crate::core::agent::r#loop::mark_unattended_denial(request_id);
                         let _ = sender.send(PermissionDecision::Deny);
                     }
                     if let Some(n) = notify_cfg.as_ref() {
