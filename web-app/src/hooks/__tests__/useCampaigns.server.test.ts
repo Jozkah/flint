@@ -38,4 +38,35 @@ describe('campaigns on a Flint server', () => {
     expect(campaignApi.list).toHaveBeenCalled()
     expect(useCampaignStore.getState()).toMatchObject({ unavailable: null, loaded: true })
   })
+
+  it('asks again after a failed probe, but remembers an old server without one', async () => {
+    vi.mocked(campaignApi.list).mockResolvedValue([])
+    vi.mocked(campaignApi.skipped).mockResolvedValue([])
+    probe.mockRejectedValueOnce(new Error('Sign in required')).mockResolvedValueOnce({ agent: false })
+    await useCampaignStore.getState().refresh()
+    await useCampaignStore.getState().refresh()
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(useCampaignStore.getState().unavailable).toBe('desktop')
+
+    resetListMode()
+    probe.mockReset().mockRejectedValue(new Error('Unknown command'))
+    await useCampaignStore.getState().refresh()
+    await useCampaignStore.getState().refresh()
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not hang when the probe never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      probe.mockReturnValue(new Promise(() => undefined))
+      vi.mocked(campaignApi.list).mockResolvedValue([])
+      vi.mocked(campaignApi.skipped).mockResolvedValue([])
+      const done = useCampaignStore.getState().refresh()
+      await vi.advanceTimersByTimeAsync(120_000)
+      await done
+      expect(useCampaignStore.getState().loaded).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

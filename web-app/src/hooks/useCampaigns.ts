@@ -127,10 +127,22 @@ let combinedListing = true
  */
 let serverAgent: Promise<boolean> | null = null
 function serverHasAgent(): Promise<boolean> {
-  serverAgent ??= probeRunner()
-    .then((info) => info.agent)
-    // An older server without the probe: ask for the list as before.
-    .catch(() => true)
+  if (!serverAgent) {
+    const asked: Promise<boolean> = withTimeout(probeRunner()).then(
+      (info) => info.agent,
+      (e) => {
+        // An older server without the probe: ask for the list as before, and
+        // remember that. Any other failure (a network blip, a sign-in) is
+        // not an answer: ask again next time.
+        const text = errorText(e)
+        if (!/^Unknown command$/i.test(text.trim()) && !isUnknownCommand(text)) {
+          if (serverAgent === asked) serverAgent = null
+        }
+        return true
+      }
+    )
+    serverAgent = asked
+  }
   return serverAgent
 }
 
