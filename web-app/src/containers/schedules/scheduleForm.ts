@@ -13,10 +13,70 @@ import type {
   ScheduleSpec,
   ScheduledTask,
   TimeOfDay,
+  WebhookConfig,
+  WebhookEncoding,
+  WebhookFilter,
   WriteMode,
 } from '@/lib/schedules'
 
-export type Preset = 'daily' | 'weekdays' | 'weekly' | 'cron'
+export type Preset = 'daily' | 'weekdays' | 'weekly' | 'cron' | 'webhook'
+
+/** What GitHub sends: the header, the encoding and the prefix of its digest. */
+export const GITHUB_SIGNATURE = {
+  header: 'x-hub-signature-256',
+  encoding: 'hex' as WebhookEncoding,
+  prefix: 'sha256=',
+}
+
+export type WebhookForm = {
+  /** Empty until the task is saved; the backend makes it. */
+  token: string
+  signatureOn: boolean
+  header: string
+  /** Write-only: empty keeps the stored secret when `hasSecret`. */
+  secret: string
+  hasSecret: boolean
+  encoding: WebhookEncoding
+  prefix: string
+  filters: WebhookFilter[]
+}
+
+export const newWebhookForm = (): WebhookForm => ({
+  token: '',
+  signatureOn: false,
+  ...GITHUB_SIGNATURE,
+  secret: '',
+  hasSecret: false,
+  filters: [],
+})
+
+function webhookToForm(hook: WebhookConfig | null | undefined): WebhookForm {
+  if (!hook) return newWebhookForm()
+  const sig = hook.signature
+  return {
+    ...newWebhookForm(),
+    token: hook.token,
+    signatureOn: Boolean(sig),
+    ...(sig ? { header: sig.header, encoding: sig.encoding, prefix: sig.prefix, hasSecret: Boolean(sig.hasSecret) } : {}),
+    filters: hook.filters.map((f) => ({ ...f })),
+  }
+}
+
+function formToWebhook(form: WebhookForm): WebhookConfig {
+  return {
+    token: form.token,
+    signature: form.signatureOn
+      ? {
+          header: form.header.trim().toLowerCase(),
+          secret: form.secret,
+          encoding: form.encoding,
+          prefix: form.prefix,
+          hasSecret: form.hasSecret,
+        }
+      : null,
+    filters: form.filters.map((f) => ({ ...f, path: f.path.trim() })),
+  }
+}
 
 export type ScheduleForm = {
   preset: Preset
@@ -51,6 +111,7 @@ export type TaskForm = {
   maxCostUsd: string
   onBlock: OnBlock
   catchUp: CatchUp
+  webhook: WebhookForm
   enabled: boolean
 }
 
@@ -91,6 +152,7 @@ const sortedTimes = (times: string[]): TimeOfDay[] =>
 
 /** The cron expressions a form compiles to; one per distinct minute. */
 export function formToCron(form: ScheduleForm): string[] {
+  if (form.preset === 'webhook') return []
   if (form.preset === 'cron') {
     const expr = form.cron.trim()
     return expr ? [expr] : []
@@ -123,6 +185,7 @@ function scheduleKey(form: ScheduleForm): string {
 
 /** The stored schedule for a form, or `null` while the form cannot make one. */
 export function formToSchedule(form: ScheduleForm): ScheduleSpec | null {
+  if (form.preset === 'webhook') return { kind: 'webhook' }
   if (form.once && form.once.snapshot === scheduleKey(form)) return form.once.spec
   if (form.preset === 'cron') {
     const expr = form.cron.trim()
@@ -146,6 +209,9 @@ export function scheduleToForm(spec: ScheduleSpec): ScheduleForm {
   }
   if (spec.kind === 'cron') {
     return { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: spec.expr }
+  }
+  if (spec.kind === 'webhook') {
+    return { preset: 'webhook', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: '' }
   }
   return {
     preset: spec.kind,
@@ -182,6 +248,7 @@ export function newTaskForm(defaults: { timezone: string }): TaskForm {
     ...DEFAULT_BUDGETS,
     onBlock: 'continue',
     catchUp: 'once',
+    webhook: newWebhookForm(),
     enabled: true,
   }
 }
@@ -204,6 +271,7 @@ export function taskToForm(task: ScheduledTask): TaskForm {
     maxCostUsd: task.budgets.maxCostUsd ? String(task.budgets.maxCostUsd) : '',
     onBlock: task.onBlock,
     catchUp: task.catchUp,
+    webhook: webhookToForm(task.webhook),
     enabled: task.enabled,
   }
 }
@@ -219,6 +287,9 @@ export type FormErrors = Partial<Record<
   | 'cron'
   | 'timezone'
   | 'tools'
+  | 'webhookHeader'
+  | 'webhookSecret'
+  | 'webhookFilters'
   | 'maxTurns'
   | 'maxTokens'
   | 'maxMinutes'
@@ -239,7 +310,16 @@ export function validateForm(form: TaskForm): FormErrors {
   if (!form.project.trim()) errors.project = 'schedules:errors.folderRequired'
   if (!form.timezone.trim()) errors.timezone = 'schedules:errors.zoneRequired'
   const s = form.schedule
-  if (s.preset === 'cron') {
+  if (s.preset === 'webhook') {
+    const w = form.webhook
+    if (w.signatureOn) {
+      if (!/^[A-Za-z0-9_-]+$/.test(w.header.trim()))
+        errors.webhookHeader = 'schedules:errors.webhookHeader'
+      if (!w.secret && !w.hasSecret) errors.webhookSecret = 'schedules:errors.webhookSecret'
+    }
+    if (w.filters.some((f) => !/^(body(\.|$)|headers\.|query\.)\S+$/.test(f.path.trim()) && f.path.trim() !== 'body'))
+      errors.webhookFilters = 'schedules:errors.webhookFilters'
+  } else if (s.preset === 'cron') {
     if (!s.cron.trim()) errors.cron = 'schedules:errors.cronRequired'
   } else {
     if (s.times.length === 0) errors.times = 'schedules:errors.timesRequired'
@@ -312,6 +392,7 @@ export function formToTask(
       },
       onBlock: form.onBlock,
       catchUp: form.catchUp,
+      ...(schedule.kind === 'webhook' ? { webhook: formToWebhook(form.webhook) } : {}),
       enabled: form.enabled,
     },
   }

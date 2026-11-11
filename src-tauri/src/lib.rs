@@ -441,6 +441,7 @@ macro_rules! invoke_commands_with_extras {
         core::schedule::commands::schedule_delete,
         core::schedule::commands::schedule_set_enabled,
         core::schedule::commands::schedule_run_now,
+        core::schedule::commands::schedule_rotate_webhook,
         core::schedule::commands::schedule_runs,
         core::schedule::commands::schedule_cancel_run,
         core::schedule::commands::schedule_preview,

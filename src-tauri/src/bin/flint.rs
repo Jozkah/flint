@@ -837,6 +837,18 @@ enum ScheduleCommands {
         #[arg(long)]
         json: bool,
     },
+    /// A webhook task's URL path (token hidden unless asked for)
+    Webhook {
+        id: String,
+        /// Replace the URL token; the old URL stops working
+        #[arg(long)]
+        rotate: bool,
+        /// Print the full path, token included
+        #[arg(long)]
+        show_url: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Stop a run that is in flight
     Cancel { id: String, run: String },
     /// The built-in tools a task can be allowed
@@ -3163,6 +3175,9 @@ async fn handle_cli(cmd: CliCommands) {
                 ScheduleCommands::Preview { id, task, count, json } => task
                     .into_input()
                     .and_then(|i| schedule_manage::preview(id.as_deref(), i, count, json)),
+                ScheduleCommands::Webhook { id, rotate, show_url, json } => {
+                    schedule_manage::webhook(&id, rotate, show_url, json)
+                }
                 ScheduleCommands::Cancel { id, run } => schedule_manage::cancel_run(&id, &run),
                 ScheduleCommands::Tools { json } => schedule_manage::tools(json),
                 ScheduleCommands::TimeZones => {
