@@ -1006,6 +1006,13 @@ fn render_edit_diff(edits: &[serde_json::Value], prior: &str) -> String {
         }
         let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         match working.find(old) {
+            // A replace_all edit changes every occurrence, so the approval
+            // diff must show every one of them, not only the first match.
+            Some(_) if replace_all && !old.is_empty() => {
+                let after = working.replace(old, new);
+                out.push_str(&render_hunk_diff(&working, &after, 1));
+                working = after;
+            }
             Some(pos) => {
                 let (old_block, new_block, start) = expand_hunk(&working, pos, old, new);
                 out.push_str(&render_hunk_diff(&old_block, &new_block, start));

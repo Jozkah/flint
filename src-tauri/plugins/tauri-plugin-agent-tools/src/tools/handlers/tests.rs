@@ -1248,6 +1248,28 @@ async fn edit_replace_all_swaps_every_occurrence() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The approval diff of a replace_all edit shows every line it changes, not
+/// only the first match with the rest as context.
+#[tokio::test]
+async fn replace_all_preview_shows_every_changed_line() {
+    let root = unique_root();
+    let body: String = (b'a'..=b'h').map(|c| format!("{} X\n", c as char)).collect();
+    std::fs::write(root.join("r.txt"), &body).unwrap();
+    let diff = preview_diff(
+        lookup("edit").unwrap(),
+        &json!({"path": "r.txt", "edits": [
+            {"old_string": "X", "new_string": "Y", "replace_all": true}
+        ]}),
+        &root,
+    )
+    .await
+    .expect("a diff");
+    let removed = diff.lines().filter(|l| l.starts_with('-')).count();
+    let added = diff.lines().filter(|l| l.starts_with('+')).count();
+    assert_eq!((removed, added), (8, 8), "{diff}");
+    assert!(diff.contains("+    8 | h Y"), "{diff}");
+}
+
 #[tokio::test]
 async fn edit_without_replace_all_still_rejects_non_unique() {
     let root = unique_root();
