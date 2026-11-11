@@ -124,6 +124,14 @@ describe('relativeToRoot', () => {
       'src/a.ts'
     )
   })
+  it('treats a Windows verbatim path as inside its plain root', () => {
+    const worktree = 'C:\\Users\\u\\.flint\\worktrees\\s1'
+    expect(relativeToRoot(worktree, `\\\\?\\${worktree}\\notes.md`)).toBe('notes.md')
+    expect(relativeToRoot(`\\\\?\\${worktree}`, `${worktree}\\notes.md`)).toBe('notes.md')
+    expect(relativeToRoot(worktree, '\\\\?\\C:\\elsewhere\\a.md')).toBe(
+      '\\\\?\\C:\\elsewhere\\a.md'
+    )
+  })
   it('is case-insensitive like the containment check', () => {
     expect(relativeToRoot('/Home/U/Proj', '/home/u/proj/src/a.ts')).toBe(
       'src/a.ts'

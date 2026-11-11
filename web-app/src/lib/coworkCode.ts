@@ -5,6 +5,7 @@
 import { extensionOf, basenameOf, previewKindFor } from '@/lib/coworkPreview'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { fenceFor } from '@/lib/coworkAttachments'
+import { withoutVerbatimPrefix } from '@/lib/errorText'
 
 /** Matches the Rust backend's `MAX_READ_BYTES`: files above this are shown as
  * an oversized notice, never loaded into the renderer. */
@@ -200,7 +201,9 @@ export function shouldOpenInCode(path: string): boolean {
  * same way `resolveInRoot` treats containment. */
 export function relativeToRoot(root: string | null, path: string): string {
   if (!root) return path
-  const slash = (p: string) => p.replace(/\\/g, '/')
+  // A canonicalized Windows path (`\\?\C:\…`) names the same file as the
+  // plain one; without this a worktree file read as outside the worktree.
+  const slash = (p: string) => withoutVerbatimPrefix(p).replace(/\\/g, '/')
   const r = slash(root).replace(/\/+$/, '')
   const p = slash(path)
   if (p.toLowerCase() === r.toLowerCase()) return ''
