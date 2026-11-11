@@ -696,6 +696,27 @@ fn announce_screened(
 /// cannot disagree. A `bash` call that exits non-zero isn't prefixed "ERROR"
 /// (that convention is reserved for hard tool failures the model must treat as
 /// errors), but its failed exit marker still flags the call as failed.
+/// Whether this process's stdin is a terminal, asked once and remembered.
+///
+/// On Windows, asking a pipe handle while another thread has a read pending
+/// on it (a stream-json client's reader) blocks until that read completes,
+/// so a run that asked mid-turn waited for the client's next line or for
+/// stdin to close. Whether stdin is a terminal never changes while the
+/// process runs, so the answer is taken before any reader starts
+/// ([`warm_stdin_is_terminal`]) and reused.
+pub(crate) fn stdin_is_terminal() -> bool {
+    static IS_TERMINAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IS_TERMINAL.get_or_init(|| {
+        use std::io::IsTerminal;
+        std::io::stdin().is_terminal()
+    })
+}
+
+/// Answer [`stdin_is_terminal`] now, before a stdin reader is started.
+pub fn warm_stdin_is_terminal() {
+    let _ = stdin_is_terminal();
+}
+
 pub(crate) fn tool_outcome_failed(name: &str, content: &str) -> bool {
     tauri_plugin_agent_tools::harness_error::classify_tool(name, content).is_some()
         || (name == "bash"

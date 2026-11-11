@@ -329,8 +329,7 @@ impl CompositeToolInvoker {
     /// CLI prompts on. Elsewhere a prompt is auto-denied, which would read as
     /// the user saying no when nobody was asked.
     pub(super) fn can_prompt(&self) -> bool {
-        use std::io::IsTerminal;
-        self.ask_requests.is_some() || std::io::stdin().is_terminal()
+        self.ask_requests.is_some() || super::stdin_is_terminal()
     }
 
     /// A sandboxed `bash` call failed only because Windows' null device

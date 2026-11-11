@@ -603,6 +603,9 @@ pub(super) async fn run_agent_loop(
     // upgraded: a caller parsing plain text should not have the format changed
     // under it.
     let started = std::time::Instant::now();
+    // Asked before a stream-json reader holds stdin: on Windows the question
+    // would otherwise wait behind the reader's pending read.
+    crate::core::agent::r#loop::warm_stdin_is_terminal();
     // Read before the flags are handed on: this is the run's own answer about
     // how much to say, and it is wanted after the run as well as during it.
     let asked_density = flags.density;

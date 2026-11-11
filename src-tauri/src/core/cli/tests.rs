@@ -116,6 +116,26 @@ fn cli_sources_hold_no_raw_escape_sequences() {
     }
 }
 
+/// A stream-json run whose write tripped the secret scan sat silent until the
+/// client closed stdin: on Windows, asking whether stdin is a terminal waits
+/// behind the client reader's pending read. The run's code asks the
+/// remembered answer instead, taken before the reader starts.
+#[test]
+fn run_paths_never_ask_stdin_directly() {
+    let direct = concat!("stdin()", ".is_terminal()");
+    for (name, src) in [
+        ("agent/loop/composite.rs", include_str!("../agent/loop/composite.rs")),
+        ("cli/output.rs", include_str!("output.rs")),
+        ("cli/run.rs", include_str!("run.rs")),
+    ] {
+        assert!(!src.contains(direct), "{name} asks stdin directly mid-run");
+    }
+    assert_eq!(
+        crate::core::agent::r#loop::stdin_is_terminal(),
+        crate::core::agent::r#loop::stdin_is_terminal()
+    );
+}
+
 /// #143: deleting a thread drops its snapshot ref in the repository the
 /// thread recorded, not only the scratch index.
 #[test]
