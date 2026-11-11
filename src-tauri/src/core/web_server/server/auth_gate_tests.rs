@@ -14,6 +14,12 @@ fn only_the_listed_routes_are_public() {
         (Method::POST, "/hooks/task-1/tok"),
         (Method::PUT, "/hooks/task-1/tok"),
         (Method::PATCH, "/hooks/task-1/tok"),
+        // Guest links: their own share token, cookie and origin checks.
+        (Method::GET, "/g/tok"),
+        (Method::POST, "/g/tok/join"),
+        (Method::GET, "/g/tok/snapshot"),
+        (Method::GET, "/g/tok/events"),
+        (Method::POST, "/g/tok/message"),
     ];
     for (method, path) in &public {
         assert_eq!(route_auth(method, path), Auth::Public, "{method} {path}");
@@ -32,6 +38,9 @@ fn only_the_listed_routes_are_public() {
         (Method::GET, "/hooks/task-1/tok"),
         (Method::DELETE, "/hooks/task-1/tok"),
         (Method::POST, "/hook/task-1/tok"),
+        (Method::POST, "/g/tok"),
+        (Method::GET, "/g/tok/other"),
+        (Method::DELETE, "/g/tok/message"),
     ] {
         assert_eq!(route_auth(&method, path), Auth::Session, "{method} {path}");
     }
@@ -114,6 +123,7 @@ async fn all_non_public_routes_require_auth() {
         ("GET", "/api/v1/hardware"),
         ("GET", "/api/v1/mcp/servers"),
         ("GET", "/api/v1/agent/sessions/s1/events"),
+        ("GET", "/g/tok/other"),
         ("POST", "/api/v1/threads"),
         ("POST", "/api/v1/uploads"),
         ("POST", "/api/v1/uploads/parse"),

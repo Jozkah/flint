@@ -13,6 +13,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 ## Local inference and providers (inherited from Jan, extended)
 
 - **Local inference:** run GGUF models on your own machine via the bundled llama.cpp engine (upgraded to b10809 in this release), or MLX models on Apple silicon. You bring your own model files; nothing is downloaded for you.
+- **Guest links:** share one thread with one person through a link, no account. They follow it live and can write messages that wait for you to Send or Dismiss; they never see tool activity, and a message from them is fenced as untrusted when you send it. Off by default (Settings > Chat). Works only while `flint serve` is running and reachable; see docs/SERVE.md.
 - **Providers:** add cloud providers (OpenAI-compatible and Anthropic-style endpoints) with your own key, or point Flint at a LAN / self-hosted OpenAI-compatible server. Keys live in the OS keyring.
 - **Token & prompt-cache accounting:** provider-reported usage and prompt-cache reuse are tracked per request, turn, and session.
 

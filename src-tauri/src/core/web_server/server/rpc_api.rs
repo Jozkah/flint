@@ -80,6 +80,23 @@ pub(super) async fn rpc_route(
             Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
         };
     }
+    if super::super::guest_rpc::GUEST_COMMANDS.contains(&command) {
+        let (root, command) = (state.data_folder.clone(), command.to_owned());
+        let public_host = state.public_host.clone();
+        return match tokio::task::spawn_blocking(move || crate::core::guest::call(&root, &command, &args)).await {
+            Ok(Ok(mut value)) => {
+                // The link's full address when the server knows the name it is
+                // reached by; otherwise the caller gets the path alone.
+                if let (Some(host), Some(path)) = (public_host, value.get("path").and_then(serde_json::Value::as_str)) {
+                    let url = format!("https://{host}{path}");
+                    value["url"] = serde_json::Value::String(url);
+                }
+                json(&value)
+            }
+            Ok(Err(message)) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+    }
     if rooms::handles(command) {
         let (root, command) = (state.data_folder.clone(), command.to_owned());
         return match tokio::task::spawn_blocking(move || rooms::call(&root, &command, &args)).await {

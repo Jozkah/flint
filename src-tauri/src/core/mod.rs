@@ -60,6 +60,7 @@ pub mod huggingface;
 // desktop-only; the CLI uses std::fs and its own tools.
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
+pub mod guest;
 pub mod mcp;
 // Read-only lookup of models other apps already keep on disk; desktop-only.
 #[cfg(not(feature = "cli"))]

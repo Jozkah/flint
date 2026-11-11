@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { ChatRulesCard } from '@/containers/ChatRulesCard'
+import { GuestLinksCard } from '@/containers/GuestLinksCard'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
@@ -98,6 +99,7 @@ function ChatSettings() {
         {tab === 'input' && <ComposerCard />}
         {tab === 'input' && <RepliesCard />}
         {tab === 'input' && <LinksCard />}
+        {tab === 'input' && <GuestLinksCard />}
         {tab === 'input' && <ChatRulesCard />}
         {tab === 'display' && <TranscriptCard />}
         {tab === 'display' && <ArtifactsCard />}

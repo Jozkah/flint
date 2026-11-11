@@ -79,7 +79,7 @@ impl Bus {
         let _ = self.sender.send(line);
     }
 
-    fn subscribe(&self) -> broadcast::Receiver<String> {
+    pub(super) fn subscribe(&self) -> broadcast::Receiver<String> {
         self.sender.subscribe()
     }
 }
