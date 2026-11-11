@@ -957,6 +957,20 @@ mod tests {
         assert_eq!(out["result"], "starting");
     }
 
+    /// A stream-json `abort` ends the way `agent serve`'s cancel does.
+    #[test]
+    fn an_aborted_stream_run_is_a_user_stop() {
+        let mut report = RunReport::default();
+        report.observe(&token("partial"));
+        report.observe(&StreamEvent::Done { stop_reason: "aborted".to_string(), usage: None });
+        report.cancel("the run was aborted by the client");
+        let out = value(report.finish(None, "m", 1, None));
+        assert_eq!(out["is_error"], true);
+        assert_eq!(out["end_reason"], "user_stop");
+        assert_eq!(out["exit_code"], 130);
+        assert_eq!(out["result"], "partial");
+    }
+
     #[test]
     fn a_cancelled_run_says_so() {
         let mut report = RunReport::default();
