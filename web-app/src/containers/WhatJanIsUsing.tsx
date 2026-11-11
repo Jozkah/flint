@@ -53,7 +53,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
 import { contextUsage } from '@/lib/contextUsage'
 import { useProviderLocations } from '@/hooks/useEndpointLocations'
-import { cn, isLocalProvider } from '@/lib/utils'
+import { cn, getProviderTitle, isLocalProvider } from '@/lib/utils'
 import { endpointHost } from '@/lib/modelLocation'
 import { endpointScope } from '@/lib/endpointDiagnostics'
 import {
@@ -857,7 +857,9 @@ export function WhatJanIsUsingPanel({
       summarizeChatContext({
         model: {
           id: selectedModel?.id,
-          provider: selectedProvider,
+          // The name the user gave the provider: after a rename the id stays
+          // the old one. `provider` below makes this follow a rename.
+          provider: selectedProvider ? getProviderTitle(selectedProvider) : undefined,
           location: provider ? providerReach(provider) : 'unknown',
           host: provider && !isLocalProvider(provider.provider) ? endpointHost(provider.base_url) : null,
         },
