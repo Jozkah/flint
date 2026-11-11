@@ -196,6 +196,14 @@
     "resetCodeBlockSuccessDesc": "代码块样式已恢复为默认值。",
     "transcriptView": "对话记录视图",
     "transcriptViewDesc": "聊天、Cowork 和房间中每轮显示多少内容。审批、提问和错误始终显示。",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "标准",
     "transcriptViewNormalDesc": "只显示回答和需要你处理的内容。工具调用折叠为一行步骤。",
     "transcriptViewThinking": "思考",

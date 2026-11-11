@@ -10,6 +10,7 @@ pub mod data;
 pub mod engine;
 pub mod events;
 pub mod files;
+pub mod guest_rpc;
 pub mod limiter;
 pub mod mcp;
 pub mod provider;

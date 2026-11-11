@@ -267,6 +267,7 @@ fn create(args: &Value, creator: &Creator) -> Result<Task, String> {
         // An agent-made task does not run for time that passed while the app
         // was closed: nobody scheduled that run knowing it would be late.
         catch_up: CatchUp::Skip,
+        webhook: None,
         enabled: true,
         created_at_ms: 0,
         updated_at_ms: 0,

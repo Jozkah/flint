@@ -24,6 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { liveStatus } from '@/lib/rooms/liveStatus'
 import { useMessageWindow } from '@/hooks/useMessageWindow'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { isQuietView } from '@/lib/transcriptView'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
   addressLabel,
@@ -551,11 +553,16 @@ function MessageBody({
   t: T
 }) {
   const api = useRoomsApi()
+  const quiet = isQuietView(useInterfaceSettings((s) => s.transcriptView))
+  // Quiet and Zen: only the calls that failed, the rest stay in the journal.
+  const traced = (message.toolCalls ?? []).filter(
+    (c) => !isWidgetCall(c) && (!quiet || !c.ok)
+  )
   return (
     <>
-      {message.toolCalls && message.toolCalls.some((c) => !isWidgetCall(c)) && (
+      {traced.length > 0 && (
         <ToolTrace
-          calls={message.toolCalls.filter((c) => !isWidgetCall(c))}
+          calls={traced}
           changes={message.changes?.files}
           t={t}
         />
@@ -860,6 +867,8 @@ function LiveCard({
   className?: string
   t: T
 }) {
+  // Quiet and Zen: the card's status line says it is working; no call list.
+  const quiet = isQuietView(useInterfaceSettings((s) => s.transcriptView))
   return (
     <article
       data-testid="room-live-turn"
@@ -876,7 +885,7 @@ function LiveCard({
         </span>
       </header>
       <CappedAnswer name={authorLabel(live.author, room, t)} streamedLength={live.text.length} t={t}>
-      {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
+      {live.tools && live.tools.length > 0 && !quiet && <ToolTrace calls={live.tools} t={t} />}
       {live.compacting ? (
         <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
       ) : live.text ? (

@@ -99,6 +99,8 @@ pub enum Trigger {
     Manual,
     OnTime,
     CatchUp,
+    /// An inbound request to the task's webhook URL.
+    Webhook,
 }
 
 impl From<FireKind> for Trigger {
@@ -273,7 +275,10 @@ impl Store {
     }
 
     /// Validate and save a task, adding or replacing by id.
-    pub fn save_task(&self, task: Task) -> Result<Task, StoreError> {
+    pub fn save_task(&self, mut task: Task) -> Result<Task, StoreError> {
+        if !task.schedule.is_webhook() {
+            task.webhook = None;
+        }
         task.validate()?;
         self.with_tasks_lock(|| self.save_task_locked(task))
     }
@@ -282,6 +287,11 @@ impl Store {
         let mut tasks = self.load_tasks()?;
         let now = now_ms();
         task.name = task.name.trim().to_string();
+        let existing_hook = tasks.iter().find(|t| t.id == task.id).and_then(|t| t.webhook.clone());
+        if let Some(hook) = task.webhook.as_mut() {
+            hook.prepare_for_save(existing_hook.as_ref())?;
+            hook.validate()?;
+        }
         match tasks.iter_mut().find(|t| t.id == task.id) {
             Some(existing) => {
                 task.created_at_ms = existing.created_at_ms;
@@ -296,6 +306,26 @@ impl Store {
         }
         self.write_tasks(tasks)?;
         Ok(task)
+    }
+
+    /// Replace a webhook task's URL token. The old URL stops working at once.
+    pub fn rotate_webhook_token(&self, id: &str) -> Result<Task, StoreError> {
+        self.with_tasks_lock(|| {
+            let mut tasks = self.load_tasks()?;
+            let task = tasks
+                .iter_mut()
+                .find(|t| t.id == id)
+                .ok_or_else(|| StoreError::new(format!("no task '{id}'")))?;
+            let hook = task
+                .webhook
+                .as_mut()
+                .ok_or_else(|| StoreError::new("that task does not run on a webhook"))?;
+            hook.token = super::webhook::generate_token();
+            task.updated_at_ms = now_ms();
+            let out = task.clone();
+            self.write_tasks(tasks)?;
+            Ok(out)
+        })
     }
 
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<Task, StoreError> {
