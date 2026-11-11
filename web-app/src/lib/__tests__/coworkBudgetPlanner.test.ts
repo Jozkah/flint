@@ -77,10 +77,18 @@ describe('coworkWindow', () => {
         acceptedPrompt: 78814,
       })
     ).toBe(32768)
+    expect(coworkWindow({ capabilities: null })).toBeNull()
+  })
+
+  it('never lets a reported window lift the user’s Max Context Tokens', () => {
+    // Cap 200,000 against a provider reporting 262,144: a 204K prompt was
+    // sent and the meter measured against 262,144.
     expect(coworkWindow({
       userSet: 200000,
-      capabilities: { contextTokens: 262144, source: 'server' },
+      capabilities: { contextTokens: 262144, source: 'provider-metadata' },
+    })).toBe(200000)
+    expect(coworkWindow({
+      capabilities: { contextTokens: 262144, source: 'provider-metadata' },
     })).toBe(262144)
-    expect(coworkWindow({ capabilities: null })).toBeNull()
   })
 })
