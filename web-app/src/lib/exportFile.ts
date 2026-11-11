@@ -22,6 +22,7 @@ import {
 // server), so they load when a PDF or image export is asked for, not at start-up.
 import type { PdfStrategy } from '@/lib/exportRender'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { isServedByFlint } from '@/lib/platform/utils'
 
 /** The backend refuses more than this; refuse here first, with a reason. */
 export const MAX_EXPORT_BYTES = 50 * 1024 * 1024
@@ -82,6 +83,51 @@ export function redactDoc(doc: ExportDoc): { doc: ExportDoc; redactions: number 
 
 type SaveReport = { path: string; redactions: number } | null
 
+type SaveRequest = {
+  ext: 'md' | 'png' | 'html'
+  suggestedName: string
+  text?: string
+  base64?: string
+}
+
+const MIME: Record<SaveRequest['ext'], string> = {
+  md: 'text/markdown;charset=utf-8',
+  html: 'text/html;charset=utf-8',
+  png: 'image/png',
+}
+
+/**
+ * The browser build has no save dialog command on the server, so the file is
+ * handed to the browser as a download under the suggested (sanitized) name.
+ * Content was already redacted by the caller.
+ */
+export function downloadInBrowser(request: SaveRequest): SaveReport {
+  const body: BlobPart =
+    request.base64 !== undefined
+      ? Uint8Array.from(atob(request.base64), (c) => c.charCodeAt(0))
+      : (request.text ?? '')
+  const url = URL.createObjectURL(new Blob([body], { type: MIME[request.ext] }))
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = request.suggestedName
+    link.rel = 'noopener'
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  } finally {
+    // Revoke after the click has been handled, or some browsers lose the file.
+    setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  }
+  return { path: request.suggestedName, redactions: 0 }
+}
+
+function saveFile(request: SaveRequest): Promise<SaveReport> {
+  if (isServedByFlint()) return Promise.resolve(downloadInBrowser(request))
+  return invoke<SaveReport>('export_save_file', request)
+}
+
 export async function exportDocument(
   source: ExportDoc,
   format: ExportFormat,
@@ -113,7 +159,7 @@ export async function exportDocument(
       const html = renderHtmlPage(doc, render)
       const tooBig = sizeProblem(textBytes(html))
       if (tooBig) return { ok: false, cancelled: false, message: tooBig }
-      report = await invoke<SaveReport>('export_save_file', {
+      report = await saveFile({
         ext: 'html',
         suggestedName: exportFileName(doc.title, 'html'),
         text: html,
@@ -123,7 +169,7 @@ export async function exportDocument(
       if (!image.ok) return { ok: false, cancelled: false, message: image.message }
       const tooBig = sizeProblem(base64Bytes(image.base64))
       if (tooBig) return { ok: false, cancelled: false, message: tooBig }
-      report = await invoke<SaveReport>('export_save_file', {
+      report = await saveFile({
         ext: 'png',
         suggestedName: exportFileName(doc.title, 'png'),
         base64: image.base64,
@@ -133,7 +179,7 @@ export async function exportDocument(
         format === 'obsidian' ? renderObsidian(doc, render) : renderMarkdown(doc, render)
       const tooBig = sizeProblem(textBytes(text))
       if (tooBig) return { ok: false, cancelled: false, message: tooBig }
-      report = await invoke<SaveReport>('export_save_file', {
+      report = await saveFile({
         ext: 'md',
         suggestedName: exportFileName(doc.title, 'md'),
         text,
