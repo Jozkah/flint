@@ -3451,6 +3451,16 @@ fn run_exit_code(e: &HarnessError) -> i32 {
     app_lib::core::agent::end_reason::EndReason::from_error(e).exit_code(Some(e))
 }
 
+/// A session id as given on the command line, expanded when it is a unique
+/// prefix (the 8-character id the CLI prints) of a recorded session.
+fn full_session(session: &str) -> Result<String, HarnessError> {
+    tauri_plugin_agent_tools::snapshot::resolve_session(
+        &app_lib::core::app::commands::resolve_jan_data_folder(),
+        session,
+    )
+    .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput, e))
+}
+
 /// `flint cli agent prompts`: what a session sent to the model (AH-087).
 ///
 /// Without `show`, one line per recorded request. With `show`, that request as
@@ -3469,6 +3479,8 @@ fn agent_prompts_text(
         Some("last") | None => None,
         Some(id) => Some(id),
     };
+    // The short id the CLI prints names the session too.
+    let session = &tauri_plugin_agent_tools::snapshot::resolve_session(data_folder, session)?;
     let found = scoped_lookup(data_folder, one, None, Some(session))?;
     if found.is_empty() {
         return Err(match one {

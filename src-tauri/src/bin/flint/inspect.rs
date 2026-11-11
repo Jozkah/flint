@@ -6,6 +6,7 @@ use super::*;
 
 /// `flint agent tree`.
 pub(crate) fn tree(session: String, json: bool) -> Result<(), HarnessError> {
+    let session = full_session(&session)?;
     let data = app_lib::core::app::commands::resolve_jan_data_folder();
     tauri_plugin_agent_tools::run_tree::of_session(&data, &session).map(|tree| {
         if json {
@@ -320,6 +321,7 @@ pub(crate) fn index(project: Option<String>, symbol: Option<String>, limit: usiz
 
 /// `flint agent spend`.
 pub(crate) fn spend(since: Option<String>, session: Option<String>, json: bool, by_item: bool) -> Result<(), HarnessError> {
+    let session = session.as_deref().map(full_session).transpose()?;
     let data = app_lib::core::app::commands::resolve_jan_data_folder();
     if by_item && session.is_some() {
         // The per-item report covers every conversation; accepting --session

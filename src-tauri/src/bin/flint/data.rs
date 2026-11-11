@@ -5,6 +5,7 @@ use super::*;
 
 /// `flint agent events-export`.
 pub(crate) fn events_export(session: String, run: Option<String>, include_content: bool) -> Result<(), HarnessError> {
+    let session = full_session(&session)?;
     app_lib::core::cli::run_data_cmd::events_export(
         &app_lib::core::app::commands::resolve_jan_data_folder(),
         &session,
@@ -21,6 +22,7 @@ pub(crate) fn events_inspect(file: std::path::PathBuf) -> Result<(), HarnessErro
 
 /// `flint agent replays`.
 pub(crate) fn replays(session: String) -> Result<(), HarnessError> {
+    let session = full_session(&session)?;
     app_lib::core::cli::run_data_cmd::replays(
     &app_lib::core::app::commands::resolve_jan_data_folder(),
     &session,
@@ -30,6 +32,7 @@ pub(crate) fn replays(session: String) -> Result<(), HarnessError> {
 
 /// `flint agent replay`.
 pub(crate) fn replay(session: String, run: String) -> Result<(), HarnessError> {
+    let session = full_session(&session)?;
     app_lib::core::cli::run_data_cmd::replay(
     &app_lib::core::app::commands::resolve_jan_data_folder(),
     &session,
@@ -40,6 +43,7 @@ pub(crate) fn replay(session: String, run: String) -> Result<(), HarnessError> {
 
 /// `flint agent audit`.
 pub(crate) fn audit(session: Option<String>, run: Option<String>, agent: Option<String>, tool: Option<String>, decision: Option<String>, limit: usize) -> Result<(), HarnessError> {
+    let session = session.as_deref().map(full_session).transpose()?;
     app_lib::core::cli::run_data_cmd::audit_cmd(
         &app_lib::core::app::commands::resolve_jan_data_folder(),
         session,
