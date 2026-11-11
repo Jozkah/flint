@@ -390,7 +390,10 @@ pub fn sweep_recorded_roots() {
     // (after those were swept, so none is overwritten) and withdrawn the same
     // way. Their leftovers are then removed with the old folder.
     let legacy = win::legacy_roots_record_dir();
-    if legacy != win::roots_record_dir() {
+    // An overridden record folder belongs to an isolated run: the user's own
+    // legacy records are not its to move.
+    let overridden = std::env::var_os(ROOTS_RECORD_DIR_ENV).is_some_and(|v| !v.is_empty());
+    if legacy != win::roots_record_dir() && !overridden {
         if let Ok(entries) = std::fs::read_dir(&legacy) {
             let _ = std::fs::create_dir_all(win::roots_record_dir());
             for entry in entries.flatten() {
@@ -528,6 +531,41 @@ const ROOTS_RECORD_DIR_NAME: &str = "jan-appcontainer-write-roots";
 #[cfg_attr(not(windows), allow(dead_code))]
 const ROOTS_RECORD_HOME_DIR: &str = "Flint";
 
+/// Overrides where the granted-roots record lives, for a run that must not
+/// touch the user's real record (an isolated test or QA data folder).
+///
+/// The record is per user on purpose, not per data folder: the ACEs it lists
+/// sit on real folders, and every Flint process (the desktop, each CLI run,
+/// each sandbox helper) must find the same record and lock so a later startup
+/// sweep can revoke what a crashed run left. Pointing `FLINT_DATA_FOLDER`
+/// elsewhere therefore does not move it; this variable does, and a process
+/// that sets it owns sweeping that record itself. Inherited by the helpers.
+pub const ROOTS_RECORD_DIR_ENV: &str = "FLINT_APPCONTAINER_RECORD_DIR";
+
+/// The record folder for this process: [`ROOTS_RECORD_DIR_ENV`] when set,
+/// else under `%LOCALAPPDATA%`.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn roots_record_dir_for_env() -> PathBuf {
+    roots_record_dir_from(
+        std::env::var_os(ROOTS_RECORD_DIR_ENV),
+        std::env::var_os("LOCALAPPDATA"),
+        &std::env::temp_dir(),
+    )
+}
+
+/// [`roots_record_dir_for_env`] against explicit values, so it is testable.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn roots_record_dir_from(
+    over: Option<std::ffi::OsString>,
+    local_app_data: Option<std::ffi::OsString>,
+    temp: &Path,
+) -> PathBuf {
+    match over.filter(|v| !v.is_empty()) {
+        Some(dir) => PathBuf::from(dir),
+        None => roots_record_dir_in(local_app_data, temp),
+    }
+}
+
 /// Where the granted-roots record lives: under `%LOCALAPPDATA%` (not writable
 /// by the container, not cleaned automatically), or the temp folder when that
 /// variable is missing.
@@ -559,6 +597,8 @@ pub fn grant_refusal(path: &Path) -> Option<String> {
         std::env::var_os("LOCALAPPDATA"),
         &std::env::temp_dir(),
     )))
+    // And the overridden one, when this process uses another.
+    .chain(std::iter::once(roots_record_dir_for_env()))
     .collect();
     // Flint's data folder is checked where the grant is issued, which knows
     // it: its managed worktrees live inside it and must stay grantable.
@@ -1491,7 +1531,7 @@ mod win {
     }
 
     pub(super) fn roots_record_dir() -> PathBuf {
-        super::roots_record_dir_in(std::env::var_os("LOCALAPPDATA"), &std::env::temp_dir())
+        super::roots_record_dir_for_env()
     }
 
     /// Where records lived before they moved out of `%TEMP%`.
@@ -3016,6 +3056,20 @@ mod tests {
         // No app-data variable: the old location is the fallback.
         assert_eq!(roots_record_dir_in(None, temp), temp.join(ROOTS_RECORD_DIR_NAME));
         assert_eq!(roots_record_dir_in(Some("".into()), temp), temp.join(ROOTS_RECORD_DIR_NAME));
+    }
+
+    /// An isolated run can keep its grant records out of the user's real
+    /// record folder; unset or empty, the per-user location is unchanged.
+    #[test]
+    fn the_roots_record_folder_can_be_overridden_for_isolated_runs() {
+        let temp = Path::new(r"T:\temp");
+        let local = || Some(std::ffi::OsString::from(r"C:\Users\me\AppData\Local"));
+        assert_eq!(
+            roots_record_dir_from(Some(r"Q:\qa\records".into()), local(), temp),
+            PathBuf::from(r"Q:\qa\records")
+        );
+        assert_eq!(roots_record_dir_from(None, local(), temp), roots_record_dir_in(local(), temp));
+        assert_eq!(roots_record_dir_from(Some("".into()), local(), temp), roots_record_dir_in(local(), temp));
     }
 
     #[test]
