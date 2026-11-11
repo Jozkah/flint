@@ -316,12 +316,27 @@ async fn dot_and_device_ids_are_refused_and_delete_nothing() {
         ("DELETE", "/api/v1/assistants/...."),
         ("DELETE", "/api/v1/assistants/jan."),
         ("DELETE", "/api/v1/assistants/CON"),
+        ("DELETE", "/api/v1/threads/%2E%2E%2E"),
+        ("DELETE", "/api/v1/threads/%2E%2E%2E?permanent=true"),
+        ("DELETE", "/api/v1/threads/%20"),
+        ("DELETE", "/api/v1/threads/%2E%2E"),
+        ("DELETE", "/api/v1/threads/%2E%2E%2F%2E%2E"),
+        ("DELETE", "/api/v1/threads/%ZZ"),
+        ("DELETE", "/api/v1/assistants/%2E%2E%2E"),
+        ("GET", "/api/v1/threads/%2E%2E%2E/messages"),
+        ("GET", "/api/v1/threads/keep%2E"),
     ] {
         let (code, body) = send(&addr, method, path, &auth, "").await;
         assert_eq!(code, 400, "{method} {path} answered {code}: {body}");
     }
     assert!(thread.join("thread.json").exists(), "the thread folder was touched");
     assert!(assistant.join("assistant.json").exists(), "the assistants folder was touched");
+    // Decoded once only: `%252E` is the literal name `%2E`, a plain id.
+    let (code, body) = send(&addr, "GET", "/api/v1/threads/%252E%252E", &auth, "").await;
+    assert_eq!(code, 404, "{body}");
+    // An encoded plain id still reaches its thread.
+    let (code, body) = send(&addr, "GET", "/api/v1/threads/k%65ep", &auth, "").await;
+    assert_eq!(code, 200, "{body}");
     let (code, _) = send(&addr, "DELETE", "/api/v1/assistants/jan", &auth, "").await;
     assert_eq!(code, 204);
     assert!(!assistant.exists() && data.join("assistants").exists());

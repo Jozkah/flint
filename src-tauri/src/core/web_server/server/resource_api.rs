@@ -70,7 +70,9 @@ pub(super) async fn resource_route(
             }
         }
         (Method::DELETE, p) if p.starts_with("/api/v1/assistants/") => {
-            let id = p["/api/v1/assistants/".len()..].to_owned();
+            let Some(id) = path_id(&p["/api/v1/assistants/".len()..]) else {
+                return text(StatusCode::BAD_REQUEST, "Invalid assistant id");
+            };
             match tokio::task::spawn_blocking(move || resources::delete_assistant(&root, &id))
                 .await
             {
