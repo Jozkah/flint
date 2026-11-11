@@ -7,6 +7,8 @@
 //! newline-delimited `StreamChunk` JSON, the shape the desktop channel carries.
 
 use std::convert::Infallible;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use http_body_util::{BodyExt, StreamBody};
 use hyper::body::{Bytes, Frame, Incoming};
@@ -30,10 +32,16 @@ const QUEUE_LINES: usize = 256;
 struct LineSink {
     tx: mpsc::Sender<Bytes>,
     stream_id: String,
+    /// Set once the transport reported the end (or an error): from then on
+    /// the request is over, whatever still holds the sender.
+    finished: Arc<AtomicBool>,
 }
 
 impl ChunkSink for LineSink {
     fn send(&self, chunk: StreamChunk) {
+        if matches!(chunk, StreamChunk::End | StreamChunk::Error { .. }) {
+            self.finished.store(true, Ordering::SeqCst);
+        }
         let Ok(mut line) = serde_json::to_vec(&chunk) else {
             return;
         };
@@ -47,14 +55,20 @@ impl ChunkSink for LineSink {
 /// Cancels the upstream request when the response body is dropped (the
 /// browser disconnected) while the transport still holds the sender, i.e.
 /// the request is still running. A stream that already ended is left alone.
+///
+/// The sender can still be alive for a moment after the last chunk was sent,
+/// so a drop racing normal completion would record a cancel nobody takes,
+/// and a client that reuses its stream id would start cancelled. The
+/// `finished` flag the sink sets on its last chunk settles that race.
 struct CancelOnDrop {
     stream_id: String,
     running: mpsc::WeakSender<Bytes>,
+    finished: Arc<AtomicBool>,
 }
 
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
-        if self.running.upgrade().is_some() {
+        if !self.finished.load(Ordering::SeqCst) && self.running.upgrade().is_some() {
             transport::cancel_stream(&self.stream_id);
         }
     }
@@ -89,11 +103,13 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
     let keepalive = tx.downgrade();
     let stream_id = relay_stream_id(&mut request.stream_id);
     let keepalive_stream = stream_id.clone();
+    let finished = Arc::new(AtomicBool::new(false));
     let guard = CancelOnDrop {
         stream_id: stream_id.clone(),
         running: tx.downgrade(),
+        finished: finished.clone(),
     };
-    let sink = LineSink { tx, stream_id };
+    let sink = LineSink { tx, stream_id, finished };
     // A line every few seconds keeps proxies and phone radios from dropping a
     // stream that is only waiting on the model. The ticker holds a weak sender,
     // so it ends with the stream instead of keeping it open.
@@ -153,7 +169,7 @@ mod tests {
     #[test]
     fn sink_writes_one_json_line_per_chunk() {
         let (tx, mut rx) = mpsc::channel(8);
-        let sink = LineSink { tx, stream_id: "lines".into() };
+        let sink = LineSink { tx, stream_id: "lines".into(), finished: Default::default() };
         sink.send(StreamChunk::Data { b64: "aGk=".into() });
         sink.send(StreamChunk::End);
         let first = rx.try_recv().unwrap();
@@ -167,6 +183,7 @@ mod tests {
         let sink = LineSink {
             tx,
             stream_id: "slow-reader".into(),
+            finished: Default::default(),
         };
         for _ in 0..5 {
             sink.send(StreamChunk::Data { b64: "aGk=".into() });
@@ -192,12 +209,25 @@ mod tests {
     #[test]
     fn dropping_the_body_cancels_only_a_running_request() {
         let (tx, _rx) = mpsc::channel::<Bytes>(1);
-        drop(CancelOnDrop { stream_id: "relay-drop-test-running".into(), running: tx.downgrade() });
+        drop(CancelOnDrop { stream_id: "relay-drop-test-running".into(), running: tx.downgrade(), finished: Default::default() });
         assert!(transport::take_early_cancel_for_test("relay-drop-test-running"));
         let weak = tx.downgrade();
         drop(tx);
-        drop(CancelOnDrop { stream_id: "relay-drop-test-ended".into(), running: weak });
+        drop(CancelOnDrop { stream_id: "relay-drop-test-ended".into(), running: weak, finished: Default::default() });
         assert!(!transport::take_early_cancel_for_test("relay-drop-test-ended"));
+    }
+
+    /// A body dropped after the last chunk, while the transport still holds
+    /// the sender, is a finished request: no cancel is left behind for a
+    /// reused stream id to start with.
+    #[test]
+    fn a_drop_after_the_end_chunk_cancels_nothing() {
+        let (tx, _rx) = mpsc::channel::<Bytes>(4);
+        let finished: Arc<AtomicBool> = Default::default();
+        let sink = LineSink { tx: tx.clone(), stream_id: "relay-drop-test-finished".into(), finished: finished.clone() };
+        sink.send(StreamChunk::End);
+        drop(CancelOnDrop { stream_id: "relay-drop-test-finished".into(), running: tx.downgrade(), finished });
+        assert!(!transport::take_early_cancel_for_test("relay-drop-test-finished"));
     }
 
     /// The stream carries the same security headers as every other API reply.
