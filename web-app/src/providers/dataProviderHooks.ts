@@ -187,17 +187,24 @@ async function applySecretHeaderValues(): Promise<void> {
 // Track which providers have been registered so we can unregister stale ones
 let registeredProviderNames = new Set<string>()
 
+// Whether a provider belongs on the Local API server: switched on, and either
+// holding a key or needing none (a LAN/loopback host, or one whose settings
+// declare no key). A cloud endpoint without its key stays off.
+function shouldRegister(provider: ModelProvider): boolean {
+  return (
+    !!provider.active &&
+    provider.provider !== 'llamacpp' &&
+    (providerHasRemoteApiKeys(provider) || registersWithoutKey(provider))
+  )
+}
+
 // Effect to sync remote providers when providers change
 const syncRemoteProviders = () => {
   const providers = useModelProvider.getState().providers
   const currentActive = new Set<string>()
 
   providers.forEach((provider) => {
-    if (
-      provider.active &&
-      provider.provider !== 'llamacpp' &&
-      providerHasRemoteApiKeys(provider)
-    ) {
+    if (shouldRegister(provider)) {
       registerRemoteProvider(provider, { skipUnchanged: true })
       currentActive.add(provider.provider)
     }
@@ -351,7 +358,7 @@ export function useBootHydration(
       }
       // Register active remote providers with the backend, keys now in place.
       useModelProvider.getState().providers.forEach((provider) => {
-        if (provider.active && !solo) {
+        if (!solo && shouldRegister(provider)) {
           registerRemoteProvider(provider)
           registeredProviderNames.add(provider.provider)
         }
