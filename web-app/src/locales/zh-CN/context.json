@@ -101,9 +101,11 @@
       "disabled": "请求快照已关闭。",
       "too-large": "该请求太大，无法完整存储。",
       "missing": "脱敏副本已不在磁盘上（可能已过期或被删除）。",
-      "error": "无法读取脱敏副本。"
+      "error": "无法读取脱敏副本。",
+      "web": "网页版不保存请求副本，因此上面的内容都未标记为已验证。"
     },
-    "usageRecorded": "提供商报告了 token 用量，已记录到此请求。"
+    "usageRecorded": "提供商报告了 token 用量，已记录到此请求。",
+    "memoryNotOnWeb": "网页版无法使用已保存的记忆，因此没有发送任何记忆。"
   },
   "label": {
     "temporary": "临时聊天中记忆已关闭",
@@ -116,7 +118,8 @@
     "memoryDisabled": "记忆已关闭",
     "memoryUnavailable": "无法读取记忆",
     "lastRequest": "上一次请求",
-    "usage": "Token 用量"
+    "usage": "Token 用量",
+    "memoryNotOnWeb": "网页版不提供记忆功能"
   },
   "empty": {
     "noModel": "未选择模型。",

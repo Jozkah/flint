@@ -81,6 +81,7 @@ import {
   getCompactionPolicy,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
+import { isServedByFlint } from '@/lib/platform/utils'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { StatusChip, WorkStatus } from '@/containers/StatusChip'
 
@@ -775,7 +776,13 @@ export function WhatJanIsUsingPanel({
         })
         if (!cancelled) setEvidence(evidenceFromSnapshot(found?.[0] ?? null))
       } catch {
-        if (!cancelled) setEvidence({ status: 'unavailable', reason: 'error' })
+        // The web build has no request copies to read: say so, not "error".
+        if (!cancelled) {
+          setEvidence({
+            status: 'unavailable',
+            reason: isServedByFlint() ? 'web' : 'error',
+          })
+        }
       }
     })()
     return () => {
@@ -871,6 +878,7 @@ export function WhatJanIsUsingPanel({
         pendingFiles,
         indexedFiles,
         temporary,
+        web: isServedByFlint(),
         memory,
         memoryViews,
         tools: {

@@ -101,9 +101,11 @@
       "disabled": "請求快照已關閉。",
       "too-large": "該請求太大，無法完整儲存。",
       "missing": "淨化副本已不在磁碟上（可能已過期或被刪除）。",
-      "error": "無法讀取淨化副本。"
+      "error": "無法讀取淨化副本。",
+      "web": "網頁版不保存請求副本，因此上面的內容都未標記為已驗證。"
     },
-    "usageRecorded": "供應商回報了 token 用量，已記錄到此請求。"
+    "usageRecorded": "供應商回報了 token 用量，已記錄到此請求。",
+    "memoryNotOnWeb": "網頁版無法使用已儲存的記憶，因此沒有傳送任何記憶。"
   },
   "label": {
     "temporary": "臨時聊天中記憶已關閉",
@@ -116,7 +118,8 @@
     "memoryDisabled": "記憶已關閉",
     "memoryUnavailable": "無法讀取記憶",
     "lastRequest": "上一次請求",
-    "usage": "Token 用量"
+    "usage": "Token 用量",
+    "memoryNotOnWeb": "網頁版不提供記憶功能"
   },
   "empty": {
     "noModel": "未選擇模型。",

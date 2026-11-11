@@ -101,9 +101,11 @@
       "disabled": "Snímky požadavků jsou vypnuty.",
       "too-large": "Požadavek byl příliš velký na uložení vcelku.",
       "missing": "Očištěná kopie již není na disku (mohla vypršet nebo být smazána).",
-      "error": "Očištěnou kopii se nepodařilo načíst."
+      "error": "Očištěnou kopii se nepodařilo načíst.",
+      "web": "Webová verze neukládá kopie požadavků, takže nic výše není označeno jako ověřené."
     },
-    "usageRecorded": "Poskytovatel nahlásil využití tokenů, zaznamenáno k tomuto požadavku."
+    "usageRecorded": "Poskytovatel nahlásil využití tokenů, zaznamenáno k tomuto požadavku.",
+    "memoryNotOnWeb": "Uložená paměť není ve webové verzi k dispozici, takže nebylo nic odesláno."
   },
   "label": {
     "temporary": "V dočasných chatech je paměť vypnutá",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Paměť je vypnutá",
     "memoryUnavailable": "Paměť se nepodařilo načíst",
     "lastRequest": "Poslední požadavek",
-    "usage": "Využití tokenů"
+    "usage": "Využití tokenů",
+    "memoryNotOnWeb": "Paměť není na webu k dispozici"
   },
   "empty": {
     "noModel": "Není vybrán žádný model.",
