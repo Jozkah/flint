@@ -64,6 +64,8 @@ pub mod model_scan;
 pub mod migration;
 pub mod net;
 pub mod openai_schema;
+// Checks for client-sent ids that become paths, shared by every surface.
+pub mod path_ids;
 // Sandboxed HTML preview scheme (#135); desktop-only like filesystem.
 #[cfg(not(feature = "cli"))]
 pub mod preview;

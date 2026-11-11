@@ -701,6 +701,8 @@ pub fn workspace_filename(name: &str) -> Result<String, String> {
         || stem.contains(':')
         || stem.contains("..")
         || stem.chars().all(|c| c == '.')
+        // Windows drops a trailing dot, so `name.` would alias `name`.
+        || stem.ends_with('.')
         || !matches!(
             std::path::Path::new(stem)
                 .components()
@@ -978,7 +980,7 @@ mod tests {
         // Windows, so `store.join("C:x.md")` lands outside the store.
         for bad in [
             "", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b", "C:x", "c:FLINT", "D:x.md",
-            "x:y", "C:", "a:b.md",
+            "x:y", "C:", "a:b.md", "notes.", "notes..md",
         ] {
             assert!(
                 workspace_filename(bad).is_err(),

@@ -123,3 +123,116 @@ async fn all_non_public_routes_require_auth() {
 
     server.abort();
 }
+
+/// A test server on a fresh port; returns its address and task.
+pub(super) async fn start_test_server(
+    dir: &std::path::Path,
+) -> (String, tokio::task::JoinHandle<impl Sized>) {
+    std::fs::write(dir.join("index.html"), "ok").unwrap();
+    let data = dir.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+    let addr = format!("127.0.0.1:{port}");
+    let options = Options {
+        bind: addr.parse().unwrap(),
+        assets: dir.to_path_buf(),
+        data_folder: data,
+        auth_file: dir.join("auth.json"),
+        public_host: None,
+        allow_mcp_stdio: false,
+        trust_proxy: false,
+        agent_roots: Vec::new(),
+        agent_run: false,
+        agent_runner: Default::default(),
+        allowed_hosts: Vec::new(),
+        allowed_origins: Vec::new(),
+        llama_worker: None,
+        credential_file: Some(dir.join("credential.txt")),
+    };
+    let server = tokio::spawn(serve(options));
+    for _ in 0..100 {
+        if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+            return (addr, server);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("the test server never came up");
+}
+
+/// One raw HTTP/1.1 request; `headers` are extra header lines, each ending in
+/// CRLF. Returns the status code and the raw response body.
+pub(super) async fn send(addr: &str, method: &str, path: &str, headers: &str, body: &str) -> (u16, String) {
+    let mut sock = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    sock.write_all(request.as_bytes()).await.unwrap();
+    let mut raw = Vec::new();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), sock.read_to_end(&mut raw)).await;
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let code = text.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let body = text.split_once("\r\n\r\n").map(|(_, b)| b.to_owned()).unwrap_or_default();
+    (code, body)
+}
+
+/// Header lines (Host + bearer token) for a signed-in client of the server.
+pub(super) async fn sign_in(addr: &str, dir: &std::path::Path) -> String {
+    let mut credential = String::new();
+    for _ in 0..50 {
+        if let Ok(c) = std::fs::read_to_string(dir.join("credential.txt")) {
+            if !c.trim().is_empty() {
+                credential = c.trim().to_owned();
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let host = format!("Host: {addr}\r\nOrigin: http://{addr}\r\n");
+    let body = format!("{{\"credential\":\"{credential}\"}}");
+    let (code, reply) = send(addr, "POST", "/api/v1/token", &host, &body).await;
+    assert_eq!(code, 200, "sign-in failed: {reply}");
+    let token = reply
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l.trim()).ok())
+        .find_map(|v| v["token"].as_str().map(str::to_owned))
+        .expect("token in the sign-in reply");
+    format!("Host: {addr}\r\nAuthorization: Bearer {token}\r\n")
+}
+
+/// Ids Windows rewrites (`...` is the parent folder there, `abc.` is `abc`)
+/// and device names are refused on every route, so nothing is deleted or
+/// aliased; a real id still works.
+#[tokio::test]
+async fn dot_and_device_ids_are_refused_and_delete_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (addr, server) = start_test_server(dir.path()).await;
+    let auth = sign_in(&addr, dir.path()).await;
+    let data = dir.path().join("data");
+    let thread = data.join("threads").join("keep");
+    std::fs::create_dir_all(&thread).unwrap();
+    std::fs::write(thread.join("thread.json"), r#"{"id":"keep","title":"t"}"#).unwrap();
+    let assistant = data.join("assistants").join("jan");
+    std::fs::create_dir_all(&assistant).unwrap();
+    std::fs::write(assistant.join("assistant.json"), r#"{"id":"jan"}"#).unwrap();
+
+    for (method, path) in [
+        ("DELETE", "/api/v1/threads/...?permanent=true"),
+        ("DELETE", "/api/v1/threads/keep.?permanent=true"),
+        ("DELETE", "/api/v1/threads/NUL?permanent=true"),
+        ("GET", "/api/v1/threads/.../messages"),
+        ("GET", "/api/v1/threads/keep."),
+        ("DELETE", "/api/v1/assistants/...."),
+        ("DELETE", "/api/v1/assistants/jan."),
+        ("DELETE", "/api/v1/assistants/CON"),
+    ] {
+        let (code, body) = send(&addr, method, path, &auth, "").await;
+        assert_eq!(code, 400, "{method} {path} answered {code}: {body}");
+    }
+    assert!(thread.join("thread.json").exists(), "the thread folder was touched");
+    assert!(assistant.join("assistant.json").exists(), "the assistants folder was touched");
+    let (code, _) = send(&addr, "DELETE", "/api/v1/assistants/jan", &auth, "").await;
+    assert_eq!(code, 204);
+    assert!(!assistant.exists() && data.join("assistants").exists());
+    server.abort();
+}

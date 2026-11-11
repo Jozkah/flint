@@ -196,6 +196,24 @@ mod list_threads_cache_tests {
         assert!(!thread_file_cache().lock().unwrap().contains_key(&file));
         let _ = fs::remove_dir_all(&root);
     }
+
+    /// The desktop delete commands run the same validator and removal: ids
+    /// Windows rewrites onto the threads folder itself never delete it.
+    #[tokio::test]
+    async fn dot_only_and_trailing_dot_ids_delete_nothing() {
+        let root = std::env::temp_dir().join(format!("jan_dot_ids_{}", uuid::Uuid::new_v4()));
+        let dir = get_data_dir(&root).join("keep");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(THREADS_FILE), r#"{"id":"keep"}"#).unwrap();
+        for id in ["...", ".", "..", "keep.", "keep ", "CON", "nul.txt", "a:b"] {
+            assert!(validate_thread_id(id).is_err(), "{id:?} passed");
+            assert!(super::super::storage::delete_thread_in(&root, id, true).await.is_err(), "{id:?}");
+        }
+        assert!(dir.join(THREADS_FILE).exists());
+        super::super::storage::delete_thread_in(&root, "keep", true).await.unwrap();
+        assert!(!dir.exists() && get_data_dir(&root).exists());
+        let _ = fs::remove_dir_all(&root);
+    }
 }
 
 /// Parses a thread.json, tolerating a UTF-8 BOM and rejecting anything that is

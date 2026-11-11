@@ -260,11 +260,8 @@ pub fn create_assistant(root: &Path, assistant: Value) -> Result<(), String> {
 
 pub fn delete_assistant(root: &Path, id: &str) -> Result<(), String> {
     validate_thread_id(id)?;
-    match fs::remove_dir_all(root.join("assistants").join(id)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+    let base = root.join("assistants");
+    crate::core::path_ids::remove_dir_within(&base, &base.join(id)).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
