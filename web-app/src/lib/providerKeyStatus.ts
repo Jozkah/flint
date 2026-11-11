@@ -49,17 +49,13 @@ export function providerKeyStatus(
 
 /**
  * Whether a provider with no saved key is still registered with the Local API
- * server. A provider that needs no key (its settings declare none, or it is a
- * loopback or LAN endpoint) is; so is one on a single-label host such as
- * `http://llm-box:8080/v1`, which only resolves inside a private network. A
- * public endpoint that declares a key stays unregistered until one is saved.
+ * server: exactly when it needs none ('keyless': its settings declare no key,
+ * or it is a loopback, LAN, tailnet or single-label host). A public endpoint
+ * that declares a key stays unregistered until one is saved.
  */
 export function registersWithoutKey(provider: KeyStatusProvider): boolean {
   if (!provider.base_url?.trim()) return false
-  const status = providerKeyStatus(provider)
-  if (status === 'keyless') return true
-  if (status !== 'missing') return false
-  return classifyModelLocation({ baseUrl: provider.base_url }) === 'checking'
+  return providerKeyStatus(provider) === 'keyless'
 }
 
 /**
