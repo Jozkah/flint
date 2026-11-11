@@ -937,6 +937,25 @@ pub(crate) fn agent_toml_path(project_root: &Path) -> PathBuf {
     project_root.join(".jan").join("agent").join("agent.toml")
 }
 
+/// The compaction policy a run in `project_root` uses, as `agent compaction`
+/// reports it: `compaction.json` layers plus the project's legacy
+/// `[agent].compaction_reserve_tokens`, checked against `[agent].context_window`.
+#[cfg(feature = "cli")]
+pub fn project_compaction_policy(
+    data_folder: &Path,
+    project_root: &Path,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+    let cfg = load_agent_config(project_root).map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e))?;
+    let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(data_folder),
+        Some(project_root),
+        cfg.agent.compaction_reserve_tokens,
+    )?;
+    policy.check_window(cfg.agent.context_window)?;
+    Ok(policy)
+}
+
 /// Load + parse agent.toml. Err if missing or malformed (path included in message).
 pub(crate) fn load_agent_config(project_root: &Path) -> Result<AgentToml, String> {
     let path = agent_toml_path(project_root);

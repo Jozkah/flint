@@ -225,10 +225,9 @@ pub(crate) fn quota(json: bool) -> Result<(), HarnessError> {
 
 /// `flint agent compaction`.
 pub(crate) fn compaction(project: String) -> Result<(), HarnessError> {
-    tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
-        Some(&app_lib::core::app::commands::resolve_jan_data_folder()),
-        Some(std::path::Path::new(&project)),
-        None,
+    app_lib::core::agent::project::project_compaction_policy(
+        &app_lib::core::app::commands::resolve_jan_data_folder(),
+        std::path::Path::new(&project),
     )
     .map(|p| println!("{}", serde_json::to_string_pretty(&p).unwrap_or_default()))
 }

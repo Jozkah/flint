@@ -736,6 +736,9 @@ fn resolve_limits(
         cfg.agent.compaction_reserve_tokens,
     )
     .map_err(|e| e.message().to_string())?;
+    compaction
+        .check_window(cfg.agent.context_window)
+        .map_err(|e| e.message().to_string())?;
 
     // Resolved before the session is built: a run that asked for a ceiling it
     // cannot be priced against is refused here, before any paid request.

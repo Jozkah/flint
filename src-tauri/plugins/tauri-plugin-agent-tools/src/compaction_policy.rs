@@ -241,6 +241,27 @@ impl Policy {
         Ok(policy)
     }
 
+    /// A reserve someone set (user or project) that does not fit inside the
+    /// context window the project configured is a configuration error: it
+    /// would leave no room for the conversation, and clamping it quietly
+    /// compacts at a point nobody chose. The built-in default always scales
+    /// to the window, and a window nobody configured is not judged.
+    pub fn check_window(&self, configured_window: Option<u64>) -> Result<(), HarnessError> {
+        let Some(window) = configured_window else { return Ok(()) };
+        if self.origins.reserve_tokens == Origin::Default || self.reserve_tokens < window {
+            return Ok(());
+        }
+        Err(HarnessError::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "compaction reserve of {} tokens is not smaller than the configured context window of {window} tokens; \
+                 lower the reserve (compaction.json reserveTokens or [agent] compaction_reserve_tokens) or raise [agent] context_window",
+                self.reserve_tokens
+            ),
+        )
+        .at(Stage::Startup))
+    }
+
     /// The reserve actually kept free in a window of this size, see
     /// [`scaled_reserve`]. The same policy has to mean the same proportion on
     /// every surface, so every one of them calls this (or the function).
@@ -313,6 +334,20 @@ mod tests {
         ));
         std::fs::create_dir_all(d.join(".jan").join("agent")).unwrap();
         d
+    }
+
+    /// A set reserve at or past the configured window is refused; the
+    /// default, a fitting reserve, or no configured window is fine.
+    #[test]
+    fn a_set_reserve_that_swallows_the_window_is_an_error() {
+        let set = Policy::resolve(None, None, Some(16_000)).unwrap();
+        let err = set.check_window(Some(10_000)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert!(err.message().contains("16000") && err.message().contains("10000"), "{}", err.message());
+        assert!(set.check_window(Some(16_000)).is_err());
+        assert!(set.check_window(Some(32_000)).is_ok());
+        assert!(set.check_window(None).is_ok());
+        assert!(Policy::default().check_window(Some(4_000)).is_ok());
     }
 
     #[test]
