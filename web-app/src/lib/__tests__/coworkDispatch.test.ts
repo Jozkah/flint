@@ -1341,7 +1341,7 @@ describe('dispatchCoworkTool: destructive commands and auto-approve limit', () =
   it('does not ask for an ordinary command in autonomous mode', async () => {
     const onApprove = vi.fn(async () => true)
     await dispatchCoworkTool(
-      call('bash', { command: 'rm -rf node_modules' }),
+      call('bash', { command: 'rm -r node_modules' }),
       ctx({ sessionId: 'ordinary', mode: 'auto', onApprove })
     )
     expect(onApprove).not.toHaveBeenCalled()
