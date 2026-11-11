@@ -930,6 +930,23 @@ pub(super) fn load_resume_history(
     Ok(ResumedSession { thread_id, history })
 }
 
+/// What a resume that found nothing does: an explicit `--resume=<id>` fails,
+/// a request for the latest session starts a new one.
+pub(super) fn return_or_start_fresh(
+    request: &ResumeRequest,
+    error: String,
+) -> Result<Option<ResumedSession>, String> {
+    match request.target {
+        ResumeTarget::Id(_) => Err(format!(
+            "cannot resume: {error} (check the id, or leave it out to continue the latest session)"
+        )),
+        ResumeTarget::Latest => {
+            eprintln!("{error}; starting a new session");
+            Ok(None)
+        }
+    }
+}
+
 /// Decide what a resumed session continues from when its last run did not end
 /// (AH-026).
 ///
@@ -1047,15 +1064,14 @@ pub(super) fn prepare_agent_run(
         format!("{clean_task}\n\n---\nReferenced file contents:\n\n{injected}")
     };
 
-    // A failed resume is not fatal: report it and run the prompt in a new session.
+    // `--continue` (or a bare `--resume`) with nothing saved starts a new
+    // session. An explicit id that matches nothing, or more than one session,
+    // is refused: a typo must not quietly become a fresh conversation.
     let resumed = match resume {
         None => None,
         Some(target) => match load_resume_history(&agent_dir_for(&project_root), &target) {
             Ok(r) => Some(recover_interrupted(&agent_dir_for(&project_root), r, interrupted_choice)?),
-            Err(e) => {
-                eprintln!("{e}; starting a new session");
-                None
-            }
+            Err(e) => return_or_start_fresh(&target, e)?,
         },
     };
     if let Some(r) = resumed.as_ref() {

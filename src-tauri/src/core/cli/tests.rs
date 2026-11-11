@@ -1053,6 +1053,22 @@ fn resume_cycle_preserves_thread_id_and_history() {
     );
 }
 
+/// `--resume=<id>` naming no session is refused; `--continue` with nothing
+/// saved still starts a new session.
+#[test]
+fn an_explicit_resume_id_that_matches_nothing_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = dir.path();
+    let by_id = ResumeRequest::resume(ResumeTarget::Id("deadbeef".to_string()));
+    let err = load_resume_history(base, &by_id).err().unwrap();
+    let refused = super::session::return_or_start_fresh(&by_id, err).err().unwrap();
+    assert!(refused.contains("deadbeef") && refused.contains("cannot resume"), "{refused}");
+
+    let latest = ResumeRequest::resume(ResumeTarget::Latest);
+    let err = load_resume_history(base, &latest).err().unwrap();
+    assert!(super::session::return_or_start_fresh(&latest, err).unwrap().is_none());
+}
+
 fn call(id: &str, name: &str) -> serde_json::Value {
     serde_json::json!({
         "id": id,
