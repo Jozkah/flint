@@ -177,8 +177,11 @@ fn read_thread(data: &Path, id: &str) -> Result<Value, String> {
 pub fn create_thread(title: Option<&str>) -> Result<Value, String> {
     let data = data_folder();
     let now = chrono::Utc::now().timestamp() as f64;
+    let title = title
+        .and_then(crate::core::threads::utils::clean_title)
+        .unwrap_or_else(|| crate::core::threads::utils::DEFAULT_THREAD_TITLE.to_string());
     let thread = json!({
-        "title": title.unwrap_or("New Thread"),
+        "title": title,
         "assistants": [],
         "created": now,
         "updated": now,
@@ -198,9 +201,10 @@ fn modify(id: &str, change: impl FnOnce(&mut Value)) -> Result<Value, String> {
 
 /// `threads rename <id> <title>`
 pub fn rename_thread(id: &str, title: &str) -> Result<Value, String> {
-    if title.trim().is_empty() {
+    // A title of only invisible characters is as blank as an empty one.
+    let Some(title) = crate::core::threads::utils::clean_title(title) else {
         return Err("give the thread a title".to_string());
-    }
+    };
     modify(id, |t| t["title"] = json!(title.trim()))
 }
 

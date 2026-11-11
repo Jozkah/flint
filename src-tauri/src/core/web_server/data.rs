@@ -25,12 +25,14 @@ pub fn messages(root: &Path, id: &str) -> Result<Vec<Value>, String> {
     cli_list_messages_in(root, id)
 }
 
-pub fn create_thread(root: &Path, thread: Value) -> Result<Value, String> {
+pub fn create_thread(root: &Path, mut thread: Value) -> Result<Value, String> {
+    crate::core::threads::utils::clean_thread_title(&mut thread);
     storage::create_thread_in(root, thread)
 }
 
-pub async fn update_thread(root: &Path, id: &str, thread: Value) -> Result<(), String> {
+pub async fn update_thread(root: &Path, id: &str, mut thread: Value) -> Result<(), String> {
     validate_thread_id(id)?;
+    crate::core::threads::utils::clean_thread_title(&mut thread);
     if thread.get("id").and_then(Value::as_str) != Some(id) {
         return Err("Thread id does not match URL".into());
     }
