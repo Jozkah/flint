@@ -179,6 +179,8 @@ pub fn modify_thread_unlocked(root: &Path, mut thread: Value) -> Result<(), Stri
 
 pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<(), String> {
     validate_thread_id(id)?;
+    // A guest link to a thread that is deleted or archived ends with it.
+    crate::core::guest::end_thread(root, id);
     if !permanent && crate::core::archive::store::read_settings(root).enabled {
         let lock = get_lock_for_thread(id).await;
         let _guard = lock.lock().await;

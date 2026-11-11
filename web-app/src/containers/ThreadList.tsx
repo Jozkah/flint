@@ -12,6 +12,7 @@ import {
   PinOff,
   Sparkles,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
 import { useIsThreadActive } from '@/hooks/useAppState'
@@ -62,6 +63,7 @@ import { route } from '@/constants/routes'
 import { forkParentOf, forkThread } from '@/lib/forkThread'
 import { continueFromSummaryWithToast } from '@/lib/continueFromSummaryToast'
 import { ConvertToCoworkDialog } from '@/containers/dialogs/ConvertToCoworkDialog'
+import { ShareGuestDialog } from '@/containers/dialogs/ShareGuestDialog'
 import { convertChatToCowork } from '@/lib/convertChatToCowork'
 import { prefetchThreadMessages } from '@/lib/threadPrefetch'
 import { ExportSubmenu } from '@/components/ExportMenu'
@@ -128,6 +130,8 @@ const ThreadItem = memo(
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
     const renameMounted = useEverOpen(renameOpen)
     const convertMounted = useEverOpen(convertOpen)
+    const [guestOpen, setGuestOpen] = useState(false)
+    const guestMounted = useEverOpen(guestOpen)
     const deleteMounted = useEverOpen(deleteConfirmOpen)
 
     const serviceHub = useServiceHub()
@@ -157,7 +161,12 @@ const ThreadItem = memo(
     const [groupMenuOpen, setGroupMenuOpen] = useState(false)
     // The peek must not show while the row's menu or one of its dialogs is up.
     const previewBlocked =
-      menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen || convertOpen
+      menuOpen ||
+      renameOpen ||
+      deleteConfirmOpen ||
+      newGroupOpen ||
+      convertOpen ||
+      guestOpen
 
     /**
      * Numbered like the design's group picker: while "Move to group" is open,
@@ -496,6 +505,13 @@ const ThreadItem = memo(
               testIdPrefix="thread"
             />
             <DropdownMenuItem
+              data-testid="share-guest"
+              onSelect={() => setGuestOpen(true)}
+            >
+              <UserPlus className="size-4" />
+              <span>{t('chat:guest.share')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onSelect={() => {
                 void navigator.clipboard?.writeText(thread.id)
                 toast.success(t('common:copiedConversationId'))
@@ -554,6 +570,14 @@ const ThreadItem = memo(
             navigate({ to: route.cowork })
           }}
         />
+        )}
+
+        {guestMounted && (
+          <ShareGuestDialog
+            threadId={thread.id}
+            open={guestOpen}
+            onOpenChange={setGuestOpen}
+          />
         )}
 
         {deleteMounted && (

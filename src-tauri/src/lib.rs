@@ -408,6 +408,15 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::get_thread_assistant,
         core::threads::commands::create_thread_assistant,
         core::threads::commands::modify_thread_assistant,
+        // Guest links (owner side)
+        core::guest::commands::guest_share_settings_get,
+        core::guest::commands::guest_share_settings_set,
+        core::guest::commands::guest_share_create,
+        core::guest::commands::guest_share_list,
+        core::guest::commands::guest_share_stop,
+        core::guest::commands::guest_share_extend,
+        core::guest::commands::guest_share_pending,
+        core::guest::commands::guest_share_resolve,
         // Discussion rooms
         core::rooms::commands::rooms_list,
         core::rooms::commands::room_get,
