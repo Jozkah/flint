@@ -2459,6 +2459,10 @@ fn isolate_env(cmd: &mut tokio::process::Command, cwd: &Path) {
         .env("GH_NO_UPDATE_NOTIFIER", "1")
         .env("NO_COLOR", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
+        // Pathspecs are literal paths, as the tool's description promises (no
+        // globbing): `.ja?`, `.j*` or `:(glob).jan/**` would otherwise reach
+        // the agent's own `.jan` folder past `check_jan_pathspecs`.
+        .env("GIT_LITERAL_PATHSPECS", "1")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
@@ -3215,6 +3219,38 @@ mod tests {
         let err = p("gh", &["repo", "view", "o/r", "--json", "defaultBranchRef,permission"]).unwrap_err();
         assert!(err.contains("`viewerPermission`"), "{err}");
         assert!(p("gh", &["repo", "view", "o/r", "--json", "defaultBranchRef,viewerPermission"]).is_ok());
+    }
+
+    #[tokio::test]
+    async fn glob_pathspecs_cannot_stage_the_jan_folder() {
+        if crate::tools::git_native::discover_git().is_none() {
+            return;
+        }
+        let ws = temp("glob");
+        std::fs::create_dir_all(ws.join(".jan").join("agent").join("memory")).unwrap();
+        std::fs::write(ws.join(".jan").join("agent").join("memory").join("m.md"), "secret").unwrap();
+        std::fs::write(ws.join("a.txt"), "hello").unwrap();
+        let run = |args: &[&str]| {
+            let plan = p("git", args).unwrap();
+            let ws = ws.clone();
+            async move { execute(&plan, &ws).await }
+        };
+        assert!(!run(&["init", "-q", "-b", "main"]).await.starts_with("ERROR"));
+        for spec in [".ja?", ".j*", ":(glob).jan/**", "*"] {
+            let plan = p("git", &["add", "--", spec]).unwrap();
+            // Inert even when it passes the up-front check: git takes it literally.
+            if check_jan_pathspecs(&plan, &ws).is_ok() {
+                let _ = execute(&plan, &ws).await;
+            }
+        }
+        let staged = run(&["diff", "--cached", "--name-only"]).await;
+        assert!(!staged.contains(".jan"), "{staged}");
+        // A plain path still works.
+        let out = run(&["add", "--", "a.txt"]).await;
+        assert!(!out.starts_with("ERROR"), "{out}");
+        let staged = run(&["diff", "--cached", "--name-only"]).await;
+        assert!(staged.contains("a.txt") && !staged.contains(".jan"), "{staged}");
+        let _ = std::fs::remove_dir_all(&ws);
     }
 
     #[tokio::test]
