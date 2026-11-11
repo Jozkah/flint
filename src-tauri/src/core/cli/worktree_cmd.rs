@@ -93,6 +93,37 @@ fn pending(c: &Checkout) -> Result<Vec<String>, String> {
         .map(|s| s.lines().map(|l| l.trim().to_string()).collect())
 }
 
+/// What `status --porcelain` in `dir` says blocks a merge, split in two:
+/// changes to tracked files, which a merge would leave behind or clobber, and
+/// untracked files, which it neither takes nor touches. Flint's own session
+/// records under `.jan/` are neither: they are bookkeeping, not work. Files
+/// the repository ignores never appear here at all.
+fn merge_blockers(dir: &Path) -> Result<(Vec<String>, Vec<String>), String> {
+    let status = run_git(dir, &["status", "--porcelain", "--untracked-files=all"])?;
+    Ok(split_status(&status))
+}
+
+fn split_status(status: &str) -> (Vec<String>, Vec<String>) {
+    let mut changed = Vec::new();
+    let mut untracked = Vec::new();
+    for line in status.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let path = line.get(3..).unwrap_or("").trim().trim_matches('"');
+        if let Some(rest) = line.strip_prefix("?? ") {
+            let rest = rest.trim().trim_matches('"');
+            if rest == ".jan" || rest.starts_with(".jan/") {
+                continue;
+            }
+            untracked.push(rest.to_string());
+        } else {
+            changed.push(path.to_string());
+        }
+    }
+    (changed, untracked)
+}
+
 /// Counts for a listing, where an unreadable one shows as "?" rather than 0.
 fn count<T>(r: &Result<Vec<T>, String>) -> String {
     r.as_ref().map(|v| v.len().to_string()).unwrap_or_else(|_| "?".to_string())
@@ -180,13 +211,23 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
     if target.starts_with('-') || target == c.branch {
         return Err(format!("cannot merge {} into {target}", c.branch));
     }
-    let dirty = pending(&c)?;
+    // Uncommitted changes to tracked files block: the merge takes commits
+    // only, so they would be left behind. Untracked files do not block (a
+    // merge neither takes nor touches them) but are named, so nothing the
+    // agent wrote and never committed goes unnoticed.
+    let (dirty, untracked) = merge_blockers(&c.path)?;
     if !dirty.is_empty() {
         return Err(format!(
             "worktree {id} has uncommitted changes ({}): commit them in {} first",
             dirty.join(", "),
             c.path.display()
         ));
+    }
+    if !untracked.is_empty() {
+        eprintln!(
+            "note: worktree {id} has untracked files that are not committed and will not be merged: {}",
+            untracked.iter().take(20).cloned().collect::<Vec<_>>().join(", ")
+        );
     }
     // The merge happens in the repository's own checkout, so that checkout has
     // to be on the target and clean; anything else would move work around.
@@ -196,9 +237,14 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
             "the repository is on '{on}', not '{target}': check out '{target}' first, or pass --into {on}"
         ));
     }
-    let repo_dirty = run_git(&repo, &["status", "--porcelain"])?;
+    // Untracked files and Flint's own `.jan/` records do not block: git
+    // refuses by itself if the merge would overwrite an untracked file.
+    let (repo_dirty, _) = merge_blockers(&repo)?;
     if !repo_dirty.is_empty() {
-        return Err("the repository has uncommitted changes; commit or stash them before merging".to_string());
+        return Err(format!(
+            "the repository has uncommitted changes ({}); commit or stash them before merging",
+            repo_dirty.join(", ")
+        ));
     }
     let ahead = unmerged(&repo, &target, &c.branch)?;
     if ahead.is_empty() {
@@ -208,7 +254,11 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
     let msg = message.map(str::to_string).unwrap_or_else(|| format!("Merge {} (Flint worktree {})", c.branch, c.id));
     match run_git(&repo, &["merge", "--no-ff", "-m", &msg, &c.branch]) {
         Ok(_) => {
-            println!("{}", json!({ "merged": true, "commits": ahead.len(), "into": target }));
+            let mut out = json!({ "merged": true, "commits": ahead.len(), "into": target });
+            if !untracked.is_empty() {
+                out["untracked_left_behind"] = json!(untracked);
+            }
+            println!("{out}");
             Ok(())
         }
         Err(e) => {
@@ -244,6 +294,17 @@ mod tests {
         assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
     }
 
+    /// Flint's own session records and untracked build output do not block a
+    /// merge; a changed tracked file does.
+    #[test]
+    fn merge_blockers_skip_flint_records_and_split_untracked() {
+        let status = "?? .jan/\n?? .jan/agent/session.json\n?? __pycache__/m.cpython-311.pyc\n M src/a.py\nA  src/b.py\n";
+        let (changed, untracked) = split_status(status);
+        assert_eq!(changed, ["src/a.py", "src/b.py"]);
+        assert_eq!(untracked, ["__pycache__/m.cpython-311.pyc"]);
+        assert_eq!(split_status("?? .jan/x\n"), (vec![], vec![]));
+    }
+
     #[test]
     fn list_merge_and_guarded_discard() {
         let _g = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
@@ -272,15 +333,25 @@ mod tests {
         // Uncommitted work blocks discard and merge.
         std::fs::write(path.join("b.txt"), "two").unwrap();
         assert!(discard(&project, "abcd1234", false).unwrap_err().contains("would be lost"));
+        std::fs::write(path.join("a.txt"), "changed").unwrap();
         assert!(merge(&project, "abcd1234", None, None).unwrap_err().contains("uncommitted"));
 
         git_ok(&path, &["add", "."]);
         git_ok(&path, &["commit", "-q", "-m", "second"]);
+        // Neither Flint's session record in the repository nor untracked
+        // build output in the checkout blocks the merge.
+        std::fs::create_dir_all(repo.join(".jan").join("agent")).unwrap();
+        std::fs::write(repo.join(".jan").join("agent").join("session.json"), "{}").unwrap();
+        std::fs::create_dir_all(path.join("__pycache__")).unwrap();
+        std::fs::write(path.join("__pycache__").join("b.pyc"), "x").unwrap();
         // Committed but unmerged still blocks discard.
         assert!(discard(&project, "abcd1234", false).unwrap_err().contains("not in main"));
 
         merge(&project, "abcd1234", None, None).unwrap();
         assert!(repo.join("b.txt").exists());
+        // The untracked file left behind still guards a discard.
+        assert!(discard(&project, "abcd1234", false).unwrap_err().contains("would be lost"));
+        std::fs::remove_dir_all(path.join("__pycache__")).unwrap();
         discard(&project, "abcd1234", false).unwrap();
         assert!(!path.exists());
         assert!(find(&git::repo_root(repo).unwrap(), "../x").is_err());
