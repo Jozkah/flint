@@ -1735,6 +1735,11 @@ enum ImportClaudeCommands {
 }
 
 /// `scope` is project, user or chat (chat needs `--session`).
+///
+/// These are the scoped memory records the desktop's Memory page manages. The
+/// whole-file notes the agent saves with its `memory_write` tool
+/// (`.jan/agent/memory/*.md`) are a separate store: `notes`, `note-show` and
+/// `note-forget` manage those.
 #[derive(Subcommand)]
 enum MemoryCommands {
     /// List the memories in a scope
@@ -1802,6 +1807,49 @@ enum MemoryCommands {
     Export {
         scope: String,
         path: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// List the notes the agent saved with memory_write (a separate store)
+    Notes {
+        /// The user's notes in the data folder instead of the project's
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Print one memory_write note
+    NoteShow {
+        name: String,
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Delete one memory_write note so later runs no longer recall it
+    NoteForget {
+        name: String,
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// List memories the agent proposed (memory_propose) that await an answer
+    Proposals {
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Save a proposed memory (its content is checked again first)
+    Accept {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Discard a proposed memory
+    Reject {
+        scope: String,
+        id: String,
         #[command(flatten)]
         place: MemoryPlace,
     },
@@ -3672,6 +3720,16 @@ fn handle_memory(cmd: MemoryCommands) {
         MemoryCommands::Unpin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, false),
         MemoryCommands::Audit { json, stale_days, project } => m::audit(&project, json, stale_days),
         MemoryCommands::Export { scope, path, place } => m::export(&place.project, place.session.as_deref(), &scope, &path),
+        MemoryCommands::Notes { user, project } => m::notes(&project, user),
+        MemoryCommands::NoteShow { name, user, project } => m::note_show(&project, &name, user),
+        MemoryCommands::NoteForget { name, user, project } => m::note_forget(&project, &name, user),
+        MemoryCommands::Proposals { place } => m::proposals(&place.project, place.session.as_deref()),
+        MemoryCommands::Accept { scope, id, place } => {
+            m::resolve_proposal(&place.project, place.session.as_deref(), &scope, &id, true)
+        }
+        MemoryCommands::Reject { scope, id, place } => {
+            m::resolve_proposal(&place.project, place.session.as_deref(), &scope, &id, false)
+        }
     });
 }
 
