@@ -1679,6 +1679,12 @@ async fn an_exhausted_budget_stops_the_run_before_the_next_tool_call() {
     );
     // The partial output of the turn that crossed the line is preserved.
     assert_eq!(result["choices"][0]["message"]["content"], "starting");
+    // And the run reads as stopped by its budget, not as finished.
+    assert_eq!(result["choices"][0]["finish_reason"], "budget_exceeded");
+    assert_eq!(
+        crate::core::agent::end_reason::EndReason::from_finish("budget_exceeded"),
+        crate::core::agent::end_reason::EndReason::Budget
+    );
 }
 
 /// The same run, under a ceiling it never reaches, is unaffected.

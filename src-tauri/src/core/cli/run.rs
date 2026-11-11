@@ -39,7 +39,7 @@ pub async fn cli_agent_step(
     overrides: ProviderOverrides,
     flags: SessionFlags,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
-    run_agent_loop(
+    let result = run_agent_loop(
         project,
         task,
         model,
@@ -54,7 +54,19 @@ pub async fn cli_agent_step(
         None,
         false,
     )
-    .await
+    .await;
+    step_outcome(result)
+}
+
+/// A step is one turn by design: ending at that one-turn limit with the
+/// model's tool calls run is the step finishing, not failing.
+pub(super) fn step_outcome(
+    result: Result<(), tauri_plugin_agent_tools::harness_error::HarnessError>,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    match result {
+        Err(e) if crate::core::agent::end_reason::is_turn_limit(&e) => Ok(()),
+        other => other,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -508,6 +520,11 @@ async fn finish_run(
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
+    // A completion the loop cut off at its token or cost budget: saved and
+    // reported with its partial answer, but the command fails like a turn limit.
+    let budget_stop = result.as_ref().is_ok_and(|c| {
+        c.pointer("/choices/0/finish_reason").and_then(|v| v.as_str()) == Some("budget_exceeded")
+    });
     let structured = result.as_ref().ok().and_then(|c| c.get("structured_output").cloned());
     let structured_error = result
         .as_ref()
@@ -571,6 +588,12 @@ async fn finish_run(
     }
     if aborted {
         return Ok(());
+    }
+    if budget_stop {
+        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::BudgetExhausted,
+            super::run_report::BUDGET_STOP_MESSAGE,
+        ));
     }
     if let Some(reason) = structured_error {
         return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
@@ -1163,5 +1186,25 @@ pub(super) fn request_cancelled(request_id: &str, reason: &str) -> StreamEvent {
     StreamEvent::ToolRequestCancelled {
         request_id: request_id.to_string(),
         reason: reason.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod step_tests {
+    use super::step_outcome;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+
+    /// `agent step` runs one turn on purpose: reaching that limit is success,
+    /// while any other failure (a real budget stop included) still fails.
+    #[test]
+    fn a_step_that_used_its_one_turn_succeeds() {
+        let limit = HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 1-turn limit while the model was still calling tools",
+        );
+        assert!(step_outcome(Err(limit)).is_ok());
+        let tokens = HarnessError::new(ErrorKind::BudgetExhausted, "session token budget spent");
+        assert_eq!(step_outcome(Err(tokens)).unwrap_err().kind(), ErrorKind::BudgetExhausted);
+        assert!(step_outcome(Ok(())).is_ok());
     }
 }
