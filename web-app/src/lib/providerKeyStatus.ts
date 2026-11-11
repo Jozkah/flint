@@ -48,6 +48,17 @@ export function providerKeyStatus(
 }
 
 /**
+ * Whether a provider with no saved key is still registered with the Local API
+ * server: exactly when it needs none ('keyless': its settings declare no key,
+ * or it is a loopback, LAN, tailnet or single-label host). A public endpoint
+ * that declares a key stays unregistered until one is saved.
+ */
+export function registersWithoutKey(provider: KeyStatusProvider): boolean {
+  if (!provider.base_url?.trim()) return false
+  return providerKeyStatus(provider) === 'keyless'
+}
+
+/**
  * The one phrase for "this provider cannot be called yet", used by the
  * provider header, the providers table and every model row alike: "No AWS
  * credentials" for Bedrock, "No API key" for the rest.

@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ClearRoomDialog } from './ClearRoomDialog'
 import type { ClearScope } from '@/lib/rooms/clearRoom'
 import { ArrowUp, AtSign } from 'lucide-react'
@@ -52,6 +52,16 @@ export function RoomComposer({ room }: { room: Room }) {
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [extendBy, setExtendBy] = useState(3)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  // Caret to place after a mention pick. Set in the same commit as the new
+  // text, so a key typed right after the pick cannot land before it.
+  const pendingCaret = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const caret = pendingCaret.current
+    if (caret === null) return
+    pendingCaret.current = null
+    textRef.current?.focus()
+    textRef.current?.setSelectionRange(caret, caret)
+  })
   const [dragOver, setDragOver] = useState(false)
   // The same `/` commands as the other composers, filtered for Rooms; a
   // command expands into the message the room receives.
@@ -197,10 +207,7 @@ export function RoomComposer({ room }: { room: Room }) {
     changeText(next.text)
     setTo(target.value)
     setMention(null)
-    requestAnimationFrame(() => {
-      textRef.current?.focus()
-      textRef.current?.setSelectionRange(next.caret, next.caret)
-    })
+    pendingCaret.current = next.caret
   }
   const placeholder = limitStop
     ? t('rooms:composer.placeholderExtend')

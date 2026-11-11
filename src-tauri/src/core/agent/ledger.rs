@@ -71,6 +71,11 @@ pub struct Entry {
     pub target: String,
     /// Whether the call succeeded (not whether it changed anything).
     pub ok: bool,
+    /// The call was refused before it ran (denied by the person, by policy,
+    /// or because nobody could be asked): nothing happened. Absent in
+    /// records written before this was kept.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub denied: bool,
     /// File writes: the file's sha256 before the call; `None` when it did not
     /// exist (or could not be hashed, see `note`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -240,9 +245,20 @@ pub(crate) fn before_batch(root: Option<&Path>, calls: &[Value]) -> Vec<Pending>
         .collect()
 }
 
+/// Whether a tool result is the harness refusing the call before it ran: a
+/// denial by the person or by policy, or nobody there to ask. Those results
+/// all name the tool and then say it was denied, refused or not run.
+pub(crate) fn is_refused_unrun(tool: &str, content: &str) -> bool {
+    let Some(rest) = content.strip_prefix(&format!("ERROR: tool '{tool}' ")) else {
+        return false;
+    };
+    rest.starts_with("denied") || rest.starts_with("refused") || rest.starts_with("was not run")
+}
+
 /// Turn a finished call into its entry. `failed` is the loop's one failure
-/// classification for the call.
-pub(crate) fn finish(pending: Pending, failed: bool) -> Entry {
+/// classification for the call; `denied` says the call never ran because it
+/// was refused.
+pub(crate) fn finish(pending: Pending, failed: bool, denied: bool) -> Entry {
     let after = match (&pending.path, pending.kind) {
         (Some(path), EffectKind::FileWrite) => hash_file(path),
         (_, EffectKind::FileWrite) => pending.before.clone(),
@@ -266,7 +282,8 @@ pub(crate) fn finish(pending: Pending, failed: bool) -> Entry {
         tool: pending.tool,
         call_id: pending.call_id,
         target: pending.target,
-        ok: !failed,
+        ok: !failed && !denied,
+        denied,
         before: before_hash,
         after: after_hash,
         changed,
@@ -325,7 +342,7 @@ pub fn render_text(entries: &[Entry]) -> String {
     }
     let mut out = format!("{} recorded effect(s)\n", entries.len());
     for e in entries {
-        let _ = write!(out, "{:>4}  {:<10} {:<14} {:<6}", e.seq, e.kind.tag(), e.tool, if e.ok { "ok" } else { "failed" });
+        let _ = write!(out, "{:>4}  {:<10} {:<14} {:<6}", e.seq, e.kind.tag(), e.tool, if e.ok { "ok" } else if e.denied { "denied" } else { "failed" });
         let _ = write!(out, " {}", e.target.replace('\n', " "));
         match (&e.before, &e.after, e.changed) {
             (_, _, Some(false)) => out.push_str("  (unchanged)"),
@@ -395,6 +412,19 @@ mod tests {
         );
     }
 
+    /// A call refused before it ran is recorded as denied, not as failed.
+    #[test]
+    fn a_refused_call_is_recorded_as_denied() {
+        assert!(is_refused_unrun("bash", "ERROR: tool 'bash' denied by user"));
+        assert!(is_refused_unrun("write", "ERROR: tool 'write' was not run: it adds what looks like a secret"));
+        assert!(is_refused_unrun("web_fetch", "ERROR: tool 'web_fetch' refused: no network"));
+        assert!(!is_refused_unrun("bash", "ERROR: exit status 1"));
+        let calls = [call("1", "bash", json!({"command": "ls"}))];
+        let entry = finish(before_batch(None, &calls).into_iter().next().unwrap(), true, true);
+        assert!(!entry.ok && entry.denied);
+        assert!(render_text(&[entry]).contains("denied"));
+    }
+
     #[test]
     fn a_write_records_the_hash_before_and_after() {
         let dir = tempfile::tempdir().unwrap();
@@ -403,7 +433,7 @@ mod tests {
         let calls = [call("1", "edit", json!({"path": "a.txt"}))];
         let pending = before_batch(Some(dir.path()), &calls);
         std::fs::write(&file, "two").unwrap();
-        let entry = finish(pending.into_iter().next().unwrap(), false);
+        let entry = finish(pending.into_iter().next().unwrap(), false, false);
         assert_eq!(entry.before.as_deref(), Some(format!("{:x}", Sha256::digest(b"one")).as_str()));
         assert_eq!(entry.after.as_deref(), Some(format!("{:x}", Sha256::digest(b"two")).as_str()));
         assert_eq!(entry.changed, Some(true));
@@ -417,10 +447,10 @@ mod tests {
         std::fs::write(dir.path().join("kept.txt"), "k").unwrap();
         let mut pending = before_batch(Some(dir.path()), &calls).into_iter();
         std::fs::write(dir.path().join("new.txt"), "n").unwrap();
-        let created = finish(pending.next().unwrap(), false);
+        let created = finish(pending.next().unwrap(), false, false);
         assert_eq!((created.before.clone(), created.changed), (None, Some(true)));
         assert!(created.after.is_some());
-        let refused = finish(pending.next().unwrap(), true);
+        let refused = finish(pending.next().unwrap(), true, false);
         assert_eq!(refused.changed, Some(false));
         assert!(!refused.ok);
     }
@@ -432,7 +462,7 @@ mod tests {
         let abs = outside.path().to_string_lossy().to_string();
         let calls = [call("1", "write", json!({"path": abs})), call("2", "write", json!({"path": "../up.txt"}))];
         for p in before_batch(Some(dir.path()), &calls) {
-            let entry = finish(p, false);
+            let entry = finish(p, false, false);
             assert_eq!(entry.before, None);
             assert_eq!(entry.note.as_deref(), Some("outside the project"));
         }
@@ -452,7 +482,7 @@ mod tests {
             if tool == "write" {
                 std::fs::write(dir.path().join("a.txt"), "hi").unwrap();
             }
-            append(data.path(), session, run, "inv", &finish(pending.into_iter().next().unwrap(), false));
+            append(data.path(), session, run, "inv", &finish(pending.into_iter().next().unwrap(), false, false));
         }
         let one = read(data.path(), "ledger-s1#run-1").unwrap();
         assert_eq!(one.iter().map(|e| e.call_id.as_str()).collect::<Vec<_>>(), ["c1", "c2"]);
@@ -470,7 +500,7 @@ mod tests {
     fn writing_the_same_call_twice_is_one_entry() {
         let data = tempfile::tempdir().unwrap();
         let pending = before_batch(None, &[call("c1", "bash", json!({"command": "ls"}))]);
-        let entry = finish(pending.into_iter().next().unwrap(), false);
+        let entry = finish(pending.into_iter().next().unwrap(), false, false);
         append(data.path(), "s2", "s2#run-1", "i", &entry);
         append(data.path(), "s2", "s2#run-1", "i", &entry);
         assert_eq!(read(data.path(), "s2").unwrap().len(), 1);
@@ -480,7 +510,7 @@ mod tests {
     fn a_call_id_reused_in_a_later_turn_is_a_new_entry() {
         let data = tempfile::tempdir().unwrap();
         let pending = before_batch(None, &[call("call_0", "bash", json!({"command": "ls"}))]);
-        let entry = finish(pending.into_iter().next().unwrap(), false);
+        let entry = finish(pending.into_iter().next().unwrap(), false, false);
         append(data.path(), "s3", "s3#run-1", "turn-1", &entry);
         append(data.path(), "s3", "s3#run-1", "turn-2", &entry);
         assert_eq!(read(data.path(), "s3").unwrap().len(), 2);

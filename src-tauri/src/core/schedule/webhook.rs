@@ -451,8 +451,8 @@ fn cap_chars(text: &str, max: usize) -> String {
     format!("{cut} [truncated]")
 }
 
-static PLACEHOLDER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{\{\s*([A-Za-z0-9_.\-]+)\s*\}\}").expect("placeholder pattern"));
+static PLACEHOLDER: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*([A-Za-z0-9_.\-]+)\s*\}\}").ok());
 
 /// A random tag id; unguessable, so a value cannot close its own tag.
 pub fn new_tag_id() -> String {
@@ -466,7 +466,10 @@ pub fn new_tag_id() -> String {
 pub fn render_prompt(template: &str, view: &RequestView, tag_id: &str) -> String {
     let mut budget = MAX_TOTAL_VALUE_CHARS;
     let mut any = false;
-    let body = PLACEHOLDER.replace_all(template, |caps: &regex::Captures| {
+    let Some(placeholder) = PLACEHOLDER.as_ref() else {
+        return template.to_string();
+    };
+    let body = placeholder.replace_all(template, |caps: &regex::Captures| {
         let name = &caps[1];
         let value = if name == "request" { Some(view.as_json()) } else { view.lookup(name) };
         let Some(value) = value.filter(|v| !v.is_empty()) else {
