@@ -28,6 +28,7 @@ import {
 import { baseName, readDroppedPaths } from '@/lib/droppedPaths'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { insertMention, mentionAt, mentionOptions, mentionedTarget } from '@/lib/rooms/mentions'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -79,6 +80,13 @@ export function RoomComposer({ room }: { room: Room }) {
     setText(value)
     slash.onTextChange(value)
   }
+  // The `@name` being typed, which opens the participant list.
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const trackMention = (value: string, caret: number) => {
+    setMention(mentionAt(value, caret))
+    setMentionIndex(0)
+  }
 
   /** The message the room gets for a draft, or null when nothing is sent. */
   const expand = async (body: string): Promise<string | null> => {
@@ -116,8 +124,14 @@ export function RoomComposer({ room }: { room: Room }) {
       const body = await expand(typed)
       if (body === null) return
       // The address shown, not a removed participant still held in `to` (F8-004).
-      await api.controller.sendUserMessage(room.id, body, fromValue(current.value))
+      // A message to everyone that starts with `@Name` goes to that participant.
+      const address =
+        current.value === 'room'
+          ? (mentionedTarget(typed, mentionTargets)?.value ?? current.value)
+          : current.value
+      await api.controller.sendUserMessage(room.id, body, fromValue(address))
       setText('')
+      setMention(null)
     } catch (err) {
       setError(normalizeError(err))
     } finally {
@@ -166,6 +180,20 @@ export function RoomComposer({ room }: { room: Room }) {
   // A narrow window gets the short hint, so it stays on one line.
   const narrow = useMediaQuery('(max-width: 640px)')
   const current = targets.find((x) => x.value === to) ?? targets[0]
+  const mentionTargets = targets.filter((x) => x.value !== 'room')
+  const mentionList = mention ? mentionOptions(mentionTargets, mention.query) : []
+  const mentionOpen = mentionList.length > 0
+  const pickMention = (target: (typeof targets)[number]) => {
+    if (!mention) return
+    const next = insertMention(text, mention.start, mention.query, target.label)
+    changeText(next.text)
+    setTo(target.value)
+    setMention(null)
+    requestAnimationFrame(() => {
+      textRef.current?.focus()
+      textRef.current?.setSelectionRange(next.caret, next.caret)
+    })
+  }
   const placeholder = limitStop
     ? t('rooms:composer.placeholderExtend')
     : current.value === 'room'
@@ -216,8 +244,10 @@ export function RoomComposer({ room }: { room: Room }) {
     )
   }
 
-  const mention = () => {
-    setText((v) => v + (v && !v.endsWith(' ') ? ' @' : '@'))
+  const mentionButton = () => {
+    const value = text + (text && !text.endsWith(' ') ? ' @' : '@')
+    changeText(value)
+    trackMention(value, value.length)
     textRef.current?.focus()
   }
 
@@ -333,6 +363,35 @@ export function RoomComposer({ room }: { room: Room }) {
             onSelect={(item) => changeText(slash.pick(item))}
           />
         )}
+        {mentionOpen && (
+          <ul
+            id={`${id}-mention`}
+            role="listbox"
+            aria-label={t('rooms:composer.mention')}
+            data-testid="room-mention-list"
+            className="mx-2.5 mt-2 max-h-48 overflow-y-auto rounded-lg border-[0.8px] border-border bg-popover p-1 text-sm shadow-pop"
+          >
+            {mentionList.map((x, i) => (
+              <li
+                key={x.value}
+                id={`${id}-mention-${i}`}
+                role="option"
+                aria-selected={i === mentionIndex}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  pickMention(x)
+                }}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1',
+                  i === mentionIndex ? 'bg-accent text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {x.avatar ?? <AtSign aria-hidden className="size-[13px]" />}
+                <span className="truncate">{x.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         <label htmlFor={`${id}-text`} className="sr-only">
           {t('rooms:composer.label')}
         </label>
@@ -342,17 +401,24 @@ export function RoomComposer({ room }: { room: Room }) {
           ref={textRef}
           value={text}
           aria-autocomplete="list"
-          aria-controls={slash.open ? `${id}-slash` : undefined}
+          aria-controls={
+            mentionOpen ? `${id}-mention` : slash.open ? `${id}-slash` : undefined
+          }
           aria-activedescendant={
-            slash.open && slash.visible.length > 0
-              ? slashOptionId(`${id}-slash`, slash.activeIndex)
-              : undefined
+            mentionOpen
+              ? `${id}-mention-${mentionIndex}`
+              : slash.open && slash.visible.length > 0
+                ? slashOptionId(`${id}-slash`, slash.activeIndex)
+                : undefined
           }
           rows={2}
           maxLength={ROOM_LIMIT_CEILINGS.maxTextLength}
           placeholder={placeholder}
           aria-describedby={`${id}-hint`}
-          onChange={(e) => changeText(e.target.value)}
+          onChange={(e) => {
+            changeText(e.target.value)
+            trackMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
+          }}
           onPaste={(e) => {
             // Files copied in GNOME Files paste as URIs, not files. Only its
             // own clipboard type is trusted; forgeable text stays text here.
@@ -362,6 +428,24 @@ export function RoomComposer({ room }: { room: Room }) {
             void dropPaths(named.paths)
           }}
           onKeyDown={(e) => {
+            if (mentionOpen) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                const step = e.key === 'ArrowDown' ? 1 : -1
+                setMentionIndex((i) => (i + step + mentionList.length) % mentionList.length)
+                return
+              }
+              if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
+                e.preventDefault()
+                pickMention(mentionList[Math.min(mentionIndex, mentionList.length - 1)])
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setMention(null)
+                return
+              }
+            }
             const slashKey = slash.onKeyDown(e)
             if (typeof slashKey === 'string') {
               changeText(slashKey)
@@ -381,7 +465,7 @@ export function RoomComposer({ room }: { room: Room }) {
             type="button"
             aria-label={t('rooms:composer.mention')}
             title={t('rooms:composer.mention')}
-            onClick={mention}
+            onClick={mentionButton}
             className="grid size-7 cursor-pointer place-items-center rounded-[7px] text-secondary-foreground outline-hidden transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] [&_svg]:size-[15px]"
           >
             <AtSign aria-hidden />
