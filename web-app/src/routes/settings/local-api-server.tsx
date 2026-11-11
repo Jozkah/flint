@@ -164,9 +164,9 @@ function LocalAPIServerContent() {
         'Timed out waiting for the model to finish loading.'
       )
         .then(async (result) => {
-          if (result.status === 'no_model_available') {
-            throw new Error('No model available to load')
-          }
+          // No local model to load is not a failure: the server also serves
+          // every registered remote provider, so it starts without one.
+          if (result.status === 'no_model_available') return
 
           // Remember loaded models for next startup
           const activeModels = await serviceHub.models().getActiveModels()
@@ -216,6 +216,14 @@ function LocalAPIServerContent() {
         .catch((error: unknown) => {
           console.error('Error starting server or model:', error)
           setServerStatus('stopped')
+          // Show what is really running, not what this attempt assumed.
+          serviceHub
+            .app()
+            .getServerStatus()
+            .then((running) => {
+              if (running) setServerStatus('running')
+            })
+            .catch(() => {})
           setIsModelLoading(false) // Reset loading state on error
           toast.dismiss()
 
