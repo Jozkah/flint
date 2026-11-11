@@ -358,8 +358,17 @@ impl PermissionMode {
     pub fn resolve(mode: Option<&str>, safe: bool, plan: bool) -> Result<(bool, bool), String> {
         match mode {
             Some(m) => {
-                if safe || plan {
-                    return Err("--mode replaces --safe and --plan; give one or the other".to_string());
+                // Name only the switches that were given: a headless command
+                // has no `--plan`, so naming it there points at a flag that
+                // does not exist.
+                let given = match (safe, plan) {
+                    (true, true) => Some("--safe and --plan"),
+                    (true, false) => Some("--safe"),
+                    (false, true) => Some("--plan"),
+                    (false, false) => None,
+                };
+                if let Some(given) = given {
+                    return Err(format!("--mode replaces {given}; give one or the other"));
                 }
                 let m = PermissionMode::parse(m)?;
                 // Review reads only, so what it would approve never comes up.

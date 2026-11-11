@@ -47,6 +47,15 @@ fn permission_modes_map_to_the_two_switches() {
     assert_eq!(PermissionMode::resolve(Some("bypass"), false, false), Ok((true, false)));
     assert_eq!(PermissionMode::resolve(Some("review"), false, false), Ok((false, true)));
     assert!(PermissionMode::resolve(Some("ask"), true, false).is_err());
+    assert_eq!(
+        PermissionMode::resolve(Some("auto"), true, false),
+        Err("--mode replaces --safe; give one or the other".to_string()),
+        "a headless --safe --mode does not mention --plan, which it has no flag for"
+    );
+    assert_eq!(
+        PermissionMode::resolve(Some("auto"), false, true),
+        Err("--mode replaces --plan; give one or the other".to_string())
+    );
     assert!(PermissionMode::resolve(Some("nope"), false, false).is_err());
     assert_eq!(PermissionMode::parse("review").unwrap().as_str(), "review");
 }
