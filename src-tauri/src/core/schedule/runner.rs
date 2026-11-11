@@ -433,6 +433,10 @@ pub fn cost_stop(completion: &serde_json::Value, limit: Option<f64>) -> Option<S
     if reason != "budget_exceeded" {
         return None;
     }
+    // The session token budget stops with the same finish reason.
+    if completion.pointer("/choices/0/budget_kind").and_then(|v| v.as_str()) == Some("tokens") {
+        return Some("stopped: the session token budget was reached".to_string());
+    }
     Some(match limit {
         Some(usd) => format!("stopped: the ${usd:.2} cost limit was reached"),
         None => "stopped: the cost limit was reached".to_string(),
@@ -729,6 +733,8 @@ mod tests {
         assert_eq!(cost_stop(&stopped, Some(0.5)).unwrap(), "stopped: the $0.50 cost limit was reached");
         assert!(cost_stop(&done, Some(0.5)).is_none());
         assert!(cost_stop(&serde_json::json!({}), None).is_none());
+        let tokens = serde_json::json!({"choices":[{"finish_reason":"budget_exceeded","budget_kind":"tokens","message":{"content":"partial"}}]});
+        assert_eq!(cost_stop(&tokens, Some(0.5)).unwrap(), "stopped: the session token budget was reached");
     }
 
     #[test]

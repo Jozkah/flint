@@ -5708,6 +5708,8 @@ Address it and continue."
             let mut completion = completion;
             if let Some(choice) = completion.pointer_mut("/choices/0").and_then(|c| c.as_object_mut()) {
                 choice.insert("finish_reason".to_string(), serde_json::json!("budget_exceeded"));
+                // Which budget: the cost ceiling's stop carries none.
+                choice.insert("budget_kind".to_string(), serde_json::json!("tokens"));
             }
             return Ok(completion);
         }

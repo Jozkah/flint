@@ -946,7 +946,13 @@ pub fn project_compaction_policy(
     project_root: &Path,
 ) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, tauri_plugin_agent_tools::harness_error::HarnessError> {
     use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
-    let cfg = load_agent_config(project_root).map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e))?;
+    // A folder without agent.toml has the defaults, as a run there does; a
+    // file that exists but cannot be read or parsed is still an error.
+    let cfg = if agent_toml_path(project_root).exists() {
+        load_agent_config(project_root).map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e))?
+    } else {
+        AgentToml::default()
+    };
     let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
         Some(data_folder),
         Some(project_root),
@@ -2161,6 +2167,15 @@ skills = ["two", "three"]
 
     #[cfg(feature = "cli")]
     #[test]
+    fn compaction_policy_without_agent_toml_is_the_default() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let p = project_compaction_policy(data.path(), project.path()).unwrap();
+        assert_eq!(p, tauri_plugin_agent_tools::compaction_policy::Policy::default());
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
     fn compaction_reserve_tokens_defaults_to_none_when_unset() {
         let root = unique_root("reserve_unset");
         ensure_project(&root).expect("scaffold");

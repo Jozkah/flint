@@ -561,7 +561,15 @@ fn roots_record_dir_from(
     temp: &Path,
 ) -> PathBuf {
     match over.filter(|v| !v.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
+        // Made absolute here: a relative folder would name a different place
+        // for each helper's working directory, and the grant check compares
+        // absolute paths, so it would not protect the record.
+        Some(dir) => {
+            let dir = PathBuf::from(dir);
+            std::path::absolute(&dir).unwrap_or_else(|_| {
+                std::env::current_dir().map(|cwd| cwd.join(&dir)).unwrap_or(dir)
+            })
+        }
         None => roots_record_dir_in(local_app_data, temp),
     }
 }
@@ -3069,6 +3077,9 @@ mod tests {
             PathBuf::from(r"Q:\qa\records")
         );
         assert_eq!(roots_record_dir_from(None, local(), temp), roots_record_dir_in(local(), temp));
+        let relative = roots_record_dir_from(Some("rec".into()), local(), temp);
+        assert!(relative.is_absolute(), "{}", relative.display());
+        assert_eq!(relative, std::env::current_dir().unwrap().join("rec"));
         assert_eq!(roots_record_dir_from(Some("".into()), local(), temp), roots_record_dir_in(local(), temp));
     }
 

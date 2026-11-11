@@ -241,14 +241,15 @@ impl Policy {
         Ok(policy)
     }
 
-    /// A reserve someone set (user or project) that does not fit inside the
-    /// context window the project configured is a configuration error: it
-    /// would leave no room for the conversation, and clamping it quietly
-    /// compacts at a point nobody chose. The built-in default always scales
-    /// to the window, and a window nobody configured is not judged.
+    /// A reserve the project set that does not fit inside the context window
+    /// the project configured is a configuration error: both values were
+    /// written together, and the pair leaves no room for the conversation.
+    /// A user-wide reserve meeting one project's small window is still
+    /// clamped to the window (it was not chosen for that project), and the
+    /// built-in default always scales; a window nobody configured is not judged.
     pub fn check_window(&self, configured_window: Option<u64>) -> Result<(), HarnessError> {
         let Some(window) = configured_window else { return Ok(()) };
-        if self.origins.reserve_tokens == Origin::Default || self.reserve_tokens < window {
+        if self.origins.reserve_tokens != Origin::Project || self.reserve_tokens < window {
             return Ok(());
         }
         Err(HarnessError::new(
@@ -348,6 +349,11 @@ mod tests {
         assert!(set.check_window(Some(32_000)).is_ok());
         assert!(set.check_window(None).is_ok());
         assert!(Policy::default().check_window(Some(4_000)).is_ok());
+        // A user-wide reserve and one project's small window: clamped, not refused.
+        let mut user = Policy::default();
+        user.apply(&Layer { reserve_tokens: Some(16_000), ..Default::default() }, Origin::User);
+        assert_eq!(user.origins.reserve_tokens, Origin::User);
+        assert!(user.check_window(Some(8_000)).is_ok());
     }
 
     #[test]
