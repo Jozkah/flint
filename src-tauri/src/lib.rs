@@ -131,6 +131,10 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::uninstall_jan_cli,
         core::system::commands::clear_claude_code_env,
         core::system::commands::detect_claude_code_overrides,
+        core::usage_import::commands::usage_import_roots,
+        core::usage_import::commands::usage_import_scan,
+        core::usage_import::commands::usage_import_report,
+        core::usage_import::commands::usage_import_forget,
         // Server commands
         core::server::commands::start_server,
         core::server::commands::stop_server,

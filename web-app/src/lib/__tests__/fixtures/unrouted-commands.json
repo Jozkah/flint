@@ -2164,6 +2164,7 @@
     "web-app/src/lib/providerFetch.ts"
   ],
   "provider_http_cancel": [
+    "web-app/src/components/OtherAgentsUsage.tsx (via hasTauriRuntime)",
     "web-app/src/lib/backend.ts (via hasTauriRuntime)",
     "web-app/src/lib/providerFetch.ts",
     "web-app/src/services/threads/default.ts (via hasTauriRuntime)"
@@ -2172,6 +2173,7 @@
     "web-app/src/lib/huggingface.ts"
   ],
   "provider_http_stream": [
+    "web-app/src/components/OtherAgentsUsage.tsx (via hasTauriRuntime)",
     "web-app/src/lib/backend.ts (via hasTauriRuntime)",
     "web-app/src/lib/providerFetch.ts",
     "web-app/src/services/threads/default.ts (via hasTauriRuntime)"
@@ -2573,6 +2575,22 @@
   ],
   "unregister_provider_config": [
     "web-app/src/providers/dataProviderHooks.ts"
+  ],
+  "usage_import_forget": [
+    "web-app/src/components/OtherAgentsUsage.tsx",
+    "web-app/src/routes/overview.tsx (via OtherAgentsUsage)"
+  ],
+  "usage_import_report": [
+    "web-app/src/components/OtherAgentsUsage.tsx",
+    "web-app/src/routes/overview.tsx (via OtherAgentsUsage)"
+  ],
+  "usage_import_roots": [
+    "web-app/src/components/OtherAgentsUsage.tsx",
+    "web-app/src/routes/overview.tsx (via OtherAgentsUsage)"
+  ],
+  "usage_import_scan": [
+    "web-app/src/components/OtherAgentsUsage.tsx",
+    "web-app/src/routes/overview.tsx (via OtherAgentsUsage)"
   ],
   "utility_agent_record": [
     "web-app/src/lib/utilityAgents.ts"
