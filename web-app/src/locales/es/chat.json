@@ -112,6 +112,8 @@
     "steps_many": "{{count}} pasos",
     "steps_other": "{{count}} pasos",
     "working": "Trabajando",
+
+    "workingEllipsis": "Working…",
     "failed": "Error:",
     "failedToRun": "No se pudo ejecutar",
     "summary": {
@@ -381,5 +383,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "Este chat usa {{provider}}, que está desactivado. No se envió nada. Vuelve a activarlo o elige otro modelo para este chat.",
+    "other": "Este chat usa {{provider}}, pero iba a responder {{selected}}. No se envió nada. Elige un modelo en este chat para pasarlo a otro proveedor."
   }
 }

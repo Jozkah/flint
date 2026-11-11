@@ -197,6 +197,14 @@
     "resetCodeBlockSuccessDesc": "L’estil del bloc de codi s’ha restaurat al valor per defecte.",
     "transcriptView": "Vista de la transcripció",
     "transcriptViewDesc": "Quant de cada torn mostren Xat, Cowork i Sales. Les aprovacions, preguntes i errors sempre es mostren.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La resposta i el que necessita la teva acció. Les crides d'eines es plegan en una fila de passos.",
     "transcriptViewThinking": "Raonament",

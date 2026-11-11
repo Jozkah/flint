@@ -112,6 +112,8 @@
     "steps_other": "{{count}} bước",
     "steps_many": "{{count}} bước",
     "working": "Đang làm",
+
+    "workingEllipsis": "Working…",
     "failed": "Thất bại:",
     "failedToRun": "Chạy thất bại",
     "summary": {
@@ -381,5 +383,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "Cuộc trò chuyện này dùng {{provider}}, hiện đang tắt. Chưa có gì được gửi. Hãy bật lại, hoặc chọn mô hình khác cho cuộc trò chuyện này.",
+    "other": "Cuộc trò chuyện này dùng {{provider}}, nhưng {{selected}} sắp trả lời. Chưa có gì được gửi. Hãy chọn một mô hình trong cuộc trò chuyện này để chuyển sang nhà cung cấp khác."
   }
 }

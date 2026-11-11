@@ -125,6 +125,8 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "working": "Working",
+
+    "workingEllipsis": "Working…",
     "failed": "Failed:",
     "failedToRun": "Failed to run",
     "summary": {
@@ -366,5 +368,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "This chat uses {{provider}}, which is turned off. Nothing was sent. Turn it back on, or pick another model for this chat.",
+    "other": "This chat uses {{provider}}, but {{selected}} was about to answer. Nothing was sent. Pick a model in this chat to move it to another provider."
   }
 }

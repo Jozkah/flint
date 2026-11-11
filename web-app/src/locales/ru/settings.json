@@ -198,6 +198,14 @@
     "resetCodeBlockSuccessDesc": "Стиль блока кода восстановлен по умолчанию.",
     "transcriptView": "Вид расшифровки",
     "transcriptViewDesc": "Сколько из каждого хода показывают Чат, Cowork и Комнаты. Подтверждения, вопросы и ошибки видны всегда.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Обычный",
     "transcriptViewNormalDesc": "Ответ и то, что требует вашего участия. Вызовы инструментов свёрнуты в одну строку шагов.",
     "transcriptViewThinking": "Рассуждения",

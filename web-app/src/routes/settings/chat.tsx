@@ -549,11 +549,15 @@ function TranscriptViewPicker() {
   const value = useInterfaceSettings((s) => s.transcriptView)
   const setValue = useInterfaceSettings((s) => s.setTranscriptView)
   const label = {
+    zen: t('settings:interface.transcriptViewZen'),
+    quiet: t('settings:interface.transcriptViewQuiet'),
     normal: t('settings:interface.transcriptViewNormal'),
     thinking: t('settings:interface.transcriptViewThinking'),
     verbose: t('settings:interface.transcriptViewVerbose'),
   }
   const desc = {
+    zen: t('settings:interface.transcriptViewZenDesc'),
+    quiet: t('settings:interface.transcriptViewQuietDesc'),
     normal: t('settings:interface.transcriptViewNormalDesc'),
     thinking: t('settings:interface.transcriptViewThinkingDesc'),
     verbose: t('settings:interface.transcriptViewVerboseDesc'),

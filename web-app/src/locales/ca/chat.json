@@ -112,6 +112,8 @@
     "steps_many": "{{count}} de passos",
     "steps_other": "{{count}} passos",
     "working": "Treballant",
+
+    "workingEllipsis": "Working…",
     "failed": "Ha fallat:",
     "failedToRun": "No s'ha pogut executar",
     "summary": {
@@ -381,5 +383,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "Aquest xat fa servir {{provider}}, que està desactivat. No s'ha enviat res. Torna'l a activar o tria un altre model per a aquest xat.",
+    "other": "Aquest xat fa servir {{provider}}, però estava a punt de respondre {{selected}}. No s'ha enviat res. Tria un model en aquest xat per passar-lo a un altre proveïdor."
   }
 }

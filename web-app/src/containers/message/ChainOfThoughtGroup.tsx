@@ -20,7 +20,7 @@ import {
 import { timingFor } from '@/lib/toolTimingLog'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
-import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
+import { isQuietView, partitionTrace, type TranscriptView } from '@/lib/transcriptView'
 import {
   summarizeTrace,
   summaryDetails,
@@ -77,16 +77,17 @@ export type ChainOfThoughtGroupProps = {
 }
 
 /**
- * Normal and Thinking views: reasoning only in Thinking, calls awaiting
- * approval (and in Thinking failed calls, closed) in place, every other call behind one "N steps"
- * disclosure.
+ * The compact views: reasoning only in Thinking, calls awaiting approval (and,
+ * outside Normal, failed calls, closed) in place, every other call behind one
+ * "N steps" disclosure. Quiet and Zen draw no disclosure: the live "Working"
+ * line is the message's (see MessageItem), and only what needs the user shows.
  */
 const CompactTrace = ({
   mode,
   groupIsStreaming,
   props,
 }: {
-  mode: 'normal' | 'thinking'
+  mode: Exclude<TranscriptView, 'verbose'>
   groupIsStreaming: boolean
   props: ChainOfThoughtGroupProps
 }) => {
@@ -121,6 +122,8 @@ const CompactTrace = ({
     t as never
   )
   const summaryText = working ? undefined : summary?.text
+  const quiet = isQuietView(mode)
+  if (quiet && pinned.length === 0) return null
   return (
     <div data-transcript-view={mode} className="mb-2.5 w-full text-muted-foreground">
       {reasoning.length > 0 && (
@@ -131,7 +134,7 @@ const CompactTrace = ({
           transcriptView="trace"
         />
       )}
-      {steps.length > 0 ? (
+      {quiet ? null : steps.length > 0 ? (
         <>
           <button
             type="button"
@@ -248,7 +251,7 @@ export const ChainOfThoughtGroup = memo(
     const lastEntryIndex = entries[entries.length - 1].index
     const groupIsStreaming = isStreaming && lastEntryIndex === totalParts - 1
 
-    if (mode === 'normal' || mode === 'thinking') {
+    if (mode !== 'verbose' && mode !== 'trace') {
       return (
         <CompactTrace mode={mode} groupIsStreaming={groupIsStreaming} props={props} />
       )

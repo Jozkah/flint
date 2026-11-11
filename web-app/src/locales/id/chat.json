@@ -110,6 +110,8 @@
   "transcriptView": {
     "steps_other": "{{count}} langkah",
     "working": "Bekerja",
+
+    "workingEllipsis": "Working…",
     "failed": "Gagal:",
     "failedToRun": "Gagal dijalankan",
     "summary": {
@@ -352,5 +354,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "Obrolan ini memakai {{provider}}, yang dimatikan. Tidak ada yang dikirim. Nyalakan lagi, atau pilih model lain untuk obrolan ini.",
+    "other": "Obrolan ini memakai {{provider}}, tetapi {{selected}} hendak menjawab. Tidak ada yang dikirim. Pilih model di obrolan ini untuk memindahkannya ke penyedia lain."
   }
 }

@@ -27,6 +27,19 @@ describe('useMessages', () => {
     useMessages.setState({ messages: {} })
   })
 
+  it('addMessage settles only once the message is stored, so writes can be ordered', async () => {
+    let finish: (m: unknown) => void = () => {}
+    mockCreateMessage.mockReturnValue(new Promise((r) => (finish = r)))
+    const msg = { id: 'o1', thread_id: 'to', role: 'user', content: 'x', created_at: 1 } as unknown as ThreadMessage
+    let settled = false
+    const done = useMessages.getState().addMessage(msg).then(() => (settled = true))
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    finish(msg)
+    await done
+    expect(settled).toBe(true)
+  })
+
   it('should initialize with empty messages', () => {
     const { result } = renderHook(() => useMessages())
 

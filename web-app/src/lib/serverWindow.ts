@@ -22,6 +22,10 @@ import { listedEntryWindow } from '@/lib/listedWindows'
 import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import {
+  fillSecretHeaderValues,
+  loadSecretHeaderValues,
+} from '@/lib/providerHeaderSecrets'
 
 type ProbeProvider = Parameters<typeof applyProviderAuthHeader>[0] &
   Parameters<typeof providerRemoteApiKeyChain>[0] &
@@ -42,6 +46,34 @@ export function serverWindowHeaders(
   applyProviderAuthHeader(provider, headers, providerRemoteApiKeyChain(provider)[0])
   applyCustomHeaders(headers, provider)
   return Object.keys(headers).length > 0 ? headers : undefined
+}
+
+/**
+ * {@link serverWindowHeaders}, with any secret header whose value is not in
+ * memory read from the credential store first. Settings keep a secret header's
+ * name with a blank value; a provider copy that has not been filled in (or was
+ * replaced by the settings copy) would otherwise send the probe without it and
+ * get a 401, while the chat request, which the backend sends with the stored
+ * value, works.
+ */
+export async function resolveServerWindowHeaders(
+  provider: (ProbeProvider & { provider?: string }) | null | undefined
+): Promise<Record<string, string> | undefined> {
+  if (!provider) return undefined
+  const rows = provider.custom_header ?? []
+  const blank = rows.some((h) => h.secret && !(h.value ?? '').trim())
+  if (!blank || !provider.provider) return serverWindowHeaders(provider)
+  const stored = fillSecretHeaderValues(
+    rows,
+    await loadSecretHeaderValues(provider.provider)
+  )
+  return serverWindowHeaders({
+    ...provider,
+    // Only blanks are filled: a value already in memory is the newer one.
+    custom_header: rows.map((h, i) =>
+      h.secret && !(h.value ?? '').trim() ? stored[i] : h
+    ),
+  })
 }
 
 /** `http://host:port/props`, from a base URL that may end in `/v1`. */

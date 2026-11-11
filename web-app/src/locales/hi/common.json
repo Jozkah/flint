@@ -1089,7 +1089,10 @@
     "thisRoom": "यह रूम",
     "thisSession": "यह सत्र",
     "keyMissingTitle": "API कुंजी गायब है",
-    "keyMissingDescription": "{{subject}} ऐसे प्रदाता का उपयोग करता है जिसकी API कुंजी अभी नहीं है। सेटिंग्स में कुंजी जोड़ें, या जारी रखने के लिए कोई अन्य मॉडल चुनें।"
+    "keyMissingDescription": "{{subject}} ऐसे प्रदाता का उपयोग करता है जिसकी API कुंजी अभी नहीं है। सेटिंग्स में कुंजी जोड़ें, या जारी रखने के लिए कोई अन्य मॉडल चुनें।",
+    "providerOffTitle": "{{provider}} बंद है",
+    "providerOffDescription": "{{subject}} {{provider}} का उपयोग करता है, जो बंद है, इसलिए कुछ नहीं भेजा गया। इसे यहाँ उपयोग करते रहने के लिए फिर से चालू करें, या कोई दूसरा मॉडल चुनें।",
+    "turnOn": "{{provider}} चालू करें"
   },
   "skillsUsedCount_one": "{{count}} स्किल का उपयोग किया",
   "skillsUsedCount_other": "{{count}} स्किल का उपयोग किया",

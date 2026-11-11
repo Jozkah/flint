@@ -111,6 +111,8 @@
     "steps_one": "{{count}} 步",
     "steps_other": "{{count}} 个步骤",
     "working": "处理中",
+
+    "workingEllipsis": "Working…",
     "failed": "失败：",
     "failedToRun": "运行失败",
     "summary": {
@@ -361,5 +363,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "此聊天使用的 {{provider}} 已关闭，没有发送任何内容。请重新开启，或为此聊天选择其他模型。",
+    "other": "此聊天使用 {{provider}}，但即将由 {{selected}} 回答。没有发送任何内容。在此聊天中选择模型即可将其移到其他提供方。"
   }
 }

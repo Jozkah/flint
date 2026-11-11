@@ -30,7 +30,7 @@ import {
   userMessageText,
   withPromptContext,
 } from '@/lib/ccContextHooks'
-import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchServerWindow, resolveServerWindowHeaders } from '@/lib/serverWindow'
 import {
   fetchOllamaWindow,
   isOllamaProvider,
@@ -41,6 +41,8 @@ import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { fallbackRef, resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { bindingProblem, ProviderBindingError } from '@/lib/threadModelBinding'
+import { getProviderTitle } from '@/lib/utils'
 import { toast } from 'sonner'
 import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import type { UIMessage } from '@ai-sdk/react'
@@ -524,6 +526,42 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return this.liveModelSelection()
   }
 
+  /**
+   * Whether a send must stay on the provider its chat is bound to. Cowork
+   * runs carry their own model choice and turn it off.
+   */
+  protected checksProviderBinding = true
+
+  /**
+   * Refuse, before anything is sent, a request for a chat whose provider is
+   * turned off or is not the one about to answer. Two providers can serve the
+   * same model id; answering from the other would move the conversation to a
+   * provider the user never picked for it. A model Jev routed this turn to
+   * (the user's routing pool) and the fallback chain are the user's own
+   * settings and are not checked here.
+   */
+  protected assertBoundProvider(): void {
+    if (!this.checksProviderBinding || !this.threadId) return
+    const thread = useThreads.getState().threads[this.threadId]
+    const selection = this.runModel ?? this.liveModelSelection()
+    const problem = bindingProblem(
+      thread?.model,
+      selection.selectedModel ? selection.selectedProvider : null,
+      (name) => useModelProvider.getState().getProviderByName(name)
+    )
+    if (!problem) return
+    const provider = getProviderTitle(problem.provider)
+    throw new ProviderBindingError(
+      problem,
+      problem.reason === 'provider-off'
+        ? i18n.t('chat:providerBinding.off', { provider })
+        : i18n.t('chat:providerBinding.other', {
+            provider,
+            selected: getProviderTitle(problem.selected),
+          })
+    )
+  }
+
   /** The model chosen for this conversation right now, not the run's. */
   private liveModelSelection(): Pick<
     ReturnType<typeof useModelProvider.getState>,
@@ -546,11 +584,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     'selectedProvider' | 'selectedModel'
   >
 
-  /** Capture the run's model at a send, or keep it for a tool-loop step. */
-  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): void {
+  /**
+   * Capture the run's model at a send, or keep it for a tool-loop step.
+   * True when this started a new run.
+   */
+  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): boolean {
     const last = messages[messages.length - 1]
-    if (this.runModel && last && last.role !== 'user') return
+    if (this.runModel && last && last.role !== 'user') return false
     this.runModel = this.liveModelSelection()
+    return true
   }
 
   /**
@@ -1282,10 +1324,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
-    this.pinRunModel(options.messages)
+    const newRun = this.pinRunModel(options.messages)
     // The thread's assistant parameters are read below: a listed summary has
     // none, so load the full assistant first.
     if (this.threadId) await useThreads.getState().ensureThreadHydrated?.(this.threadId)
+    // Every send of a chat (new message, edit, regenerate, retry, a queued
+    // message) passes here: none goes to a provider the chat is not on. A
+    // tool-loop step continues the run on the model it started with, even if
+    // the user picked another model meanwhile (janhq/jan#8083); the next
+    // message goes to the new one.
+    if (newRun) this.assertBoundProvider()
     // A server that refuses images ("At most 0 image(s) may be provided")
     // although the model can see: learned from the refusal, then the same
     // request goes again without them. Once per newly learned limit.
@@ -1736,7 +1784,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             (ollamaWindow = await fetchOllamaWindow(
               provider?.base_url,
               modelId,
-              serverWindowHeaders(provider)
+              await resolveServerWindowHeaders(provider)
             ))
         : undefined,
       provider: providerWindow.bundled ? null : providerWindow.tokens,
@@ -1747,11 +1795,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         threadId,
         modelId
       ),
-      fetchServer: () =>
+      fetchServer: async () =>
         fetchServerWindow(
           provider?.base_url,
           modelId,
-          serverWindowHeaders(provider)
+          await resolveServerWindowHeaders(provider)
         ),
     })
     const knownContextTokens = resolvedWindow.tokens

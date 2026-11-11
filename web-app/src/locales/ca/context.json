@@ -101,9 +101,11 @@
       "disabled": "Les instantànies de sol·licituds estan desactivades.",
       "too-large": "La sol·licitud era massa gran per desar-la sencera.",
       "missing": "La còpia sanejada ja no és al disc (potser ha caducat o s'ha eliminat).",
-      "error": "No s'ha pogut llegir la còpia sanejada."
+      "error": "No s'ha pogut llegir la còpia sanejada.",
+      "web": "La versió web no desa cap còpia de les sol·licituds, així que res de l'anterior es marca com a verificat."
     },
-    "usageRecorded": "El proveïdor ha informat de l'ús de tokens, registrat per a aquesta sol·licitud."
+    "usageRecorded": "El proveïdor ha informat de l'ús de tokens, registrat per a aquesta sol·licitud.",
+    "memoryNotOnWeb": "La memòria desada no està disponible a la versió web, així que no se n'ha enviat cap."
   },
   "label": {
     "temporary": "La memòria està desactivada als xats temporals",
@@ -116,7 +118,8 @@
     "memoryDisabled": "La memòria està desactivada",
     "memoryUnavailable": "No s'ha pogut llegir la memòria",
     "lastRequest": "Última sol·licitud",
-    "usage": "Ús de tokens"
+    "usage": "Ús de tokens",
+    "memoryNotOnWeb": "La memòria no està disponible a la web"
   },
   "empty": {
     "noModel": "No hi ha cap model seleccionat.",

@@ -140,3 +140,38 @@ describe('Transcript view', () => {
     }
   )
 })
+
+describe('Transcript view: quiet and zen', () => {
+  it.each(['quiet', 'zen'] as const)(
+    '%s: no steps disclosure, only the failed call and the approval',
+    (view) => {
+      renderAs(view)
+      expect(screen.queryByTestId('transcript-steps-toggle')).not.toBeInTheDocument()
+      expect(screen.queryByText('Plan the change carefully.')).not.toBeInTheDocument()
+      // The failed call is one row of its own; the settled ones are not drawn.
+      expect(headers()).toEqual(['bash'])
+      expect(screen.getAllByTestId('approval-actions').length).toBeGreaterThan(0)
+    }
+  )
+
+  it.each(['quiet', 'zen'] as const)(
+    '%s: nothing at all when every call went fine',
+    (view) => {
+      pending.current = {}
+      useInterfaceSettings.setState({ transcriptView: view })
+      const ok = [PARTS[1], PARTS[2]]
+      const { container } = render(
+        <ChainOfThoughtGroup
+          entries={ok.map((part, index) => ({ part, index }))}
+          messageId="m2"
+          totalParts={ok.length + 1}
+          isStreaming={false}
+          hasFollowingContent
+          awaitingApproval={false}
+          citationOffsets={new Map()}
+        />
+      )
+      expect(container).toBeEmptyDOMElement()
+    }
+  )
+})

@@ -101,9 +101,11 @@
       "disabled": "Anfrage-Snapshots sind ausgeschaltet.",
       "too-large": "Die Anfrage war zu groß, um sie vollständig zu speichern.",
       "missing": "Die bereinigte Kopie ist nicht mehr auf dem Datenträger (sie ist möglicherweise abgelaufen oder gelöscht worden).",
-      "error": "Die bereinigte Kopie konnte nicht gelesen werden."
+      "error": "Die bereinigte Kopie konnte nicht gelesen werden.",
+      "web": "Die Webversion speichert keine Kopie der Anfragen, daher ist oben nichts als überprüft markiert."
     },
-    "usageRecorded": "Der Anbieter hat die Token-Nutzung gemeldet, sie wurde dieser Anfrage zugeordnet."
+    "usageRecorded": "Der Anbieter hat die Token-Nutzung gemeldet, sie wurde dieser Anfrage zugeordnet.",
+    "memoryNotOnWeb": "Gespeichertes Gedächtnis ist in der Webversion nicht verfügbar, daher wurde nichts gesendet."
   },
   "label": {
     "temporary": "Speicher ist in temporären Chats aus",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Speicher ist ausgeschaltet",
     "memoryUnavailable": "Speicher konnte nicht gelesen werden",
     "lastRequest": "Letzte Anfrage",
-    "usage": "Token-Nutzung"
+    "usage": "Token-Nutzung",
+    "memoryNotOnWeb": "Gedächtnis ist im Web nicht verfügbar"
   },
   "empty": {
     "noModel": "Es ist kein Modell ausgewählt.",

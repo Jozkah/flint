@@ -111,6 +111,8 @@
     "steps_one": "{{count}} चरण",
     "steps_other": "{{count}} चरण",
     "working": "काम जारी",
+
+    "workingEllipsis": "Working…",
     "failed": "विफल:",
     "failedToRun": "चलाने में विफल",
     "summary": {
@@ -366,5 +368,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "यह चैट {{provider}} का उपयोग करती है, जो बंद है। कुछ नहीं भेजा गया। इसे फिर से चालू करें, या इस चैट के लिए कोई दूसरा मॉडल चुनें।",
+    "other": "यह चैट {{provider}} का उपयोग करती है, लेकिन {{selected}} जवाब देने वाला था। कुछ नहीं भेजा गया। इसे दूसरे प्रदाता पर ले जाने के लिए इस चैट में कोई मॉडल चुनें।"
   }
 }

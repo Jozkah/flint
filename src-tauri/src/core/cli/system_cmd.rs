@@ -100,6 +100,11 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
     if new_key != cur_key && (new_key.starts_with(&cur_key) || cur_key.starts_with(&new_key)) {
         return Err("the new data folder cannot be inside the current one, or contain it".to_string());
     }
+    // The environment wins over the settings file, so a pointer written now
+    // would not take effect here -- and would re-point the desktop app instead.
+    if crate::core::app::commands::data_folder_override().is_some() {
+        return Err("the data folder is set by FLINT_DATA_FOLDER / JAN_DATA_FOLDER (or --data-dir); change that instead".to_string());
+    }
     std::fs::create_dir_all(&new_path).map_err(|e| format!("create {}: {e}", new_path.display()))?;
     // A folder this call made is removed again when the call fails.
     let undo = |dir: &Path| {
@@ -210,6 +215,23 @@ mod tests {
             assert!(!data.join("other").exists() && !data.join("child2").exists());
             let info = data_folder_info();
             assert_eq!(info["overriddenByEnvironment"], true);
+        });
+    }
+
+    /// With the data folder redirected, `--set` writes no pointer: it would
+    /// not apply here and would re-point the real desktop app.
+    #[test]
+    fn set_data_folder_is_refused_while_the_environment_names_the_folder() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let target = data.parent().unwrap().join(format!("flint-set-{}", std::process::id()));
+            let err = set_data_folder(&target.to_string_lossy(), false).unwrap_err();
+            assert!(err.contains("FLINT_DATA_FOLDER"), "{err}");
+            assert!(!target.exists());
+            // The settings file it would have written sits beside the redirected
+            // folder, never under the real app-data folder.
+            let config = resolve_config_file_path();
+            assert!(config.starts_with(data.parent().unwrap()), "{}", config.display());
+            assert!(!config.exists());
         });
     }
 

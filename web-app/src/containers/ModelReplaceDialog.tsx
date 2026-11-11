@@ -13,6 +13,8 @@ import { useModelReplacePrompt } from '@/hooks/useModelReplacePrompt'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modelKey, type ModelRef } from '@/lib/modelReplace'
 import { checkModel, defaultProviderLookup } from '@/lib/rooms/availability'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { getProviderTitle } from '@/lib/utils'
 
 /**
  * Asks for a replacement when a model a room, chat or session was using is gone:
@@ -37,21 +39,36 @@ export function ModelReplaceDialog() {
     (m) => checkModel(m, defaultProviderLookup)?.reason === 'provider-not-configured'
   )
   const ready = request.missing.every((m) => choices[modelKey(m)])
+  const offProvider = request.offProvider
+  const offTitle = offProvider ? getProviderTitle(offProvider) : ''
+  // Turning the chat's own provider back on keeps every model as it was.
+  const turnOn = () => {
+    if (!offProvider) return
+    useModelProvider.getState().updateProvider(offProvider, { active: true })
+    answer(Object.fromEntries(request.missing.map((m) => [modelKey(m), m])))
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && answer(null)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {t(keyMissing ? 'common:modelReplace.keyMissingTitle' : 'common:modelReplace.title')}
+            {offProvider
+              ? t('common:modelReplace.providerOffTitle', { provider: offTitle })
+              : t(keyMissing ? 'common:modelReplace.keyMissingTitle' : 'common:modelReplace.title')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              keyMissing
-                ? 'common:modelReplace.keyMissingDescription'
-                : 'common:modelReplace.description',
-              { subject: request.subject }
-            )}
+            {offProvider
+              ? t('common:modelReplace.providerOffDescription', {
+                  subject: request.subject,
+                  provider: offTitle,
+                })
+              : t(
+                  keyMissing
+                    ? 'common:modelReplace.keyMissingDescription'
+                    : 'common:modelReplace.description',
+                  { subject: request.subject }
+                )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -72,6 +89,11 @@ export function ModelReplaceDialog() {
           <Button variant="ghost" onClick={() => answer(null)}>
             {t('common:cancel')}
           </Button>
+          {offProvider && (
+            <Button variant="outline" onClick={turnOn} data-testid="model-replace-turn-on">
+              {t('common:modelReplace.turnOn', { provider: offTitle })}
+            </Button>
+          )}
           <Button disabled={!ready} onClick={() => answer(choices)}>
             {t('common:modelReplace.use')}
           </Button>

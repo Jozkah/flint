@@ -119,6 +119,18 @@ pub fn dismiss_cmd() -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// A redirected data folder redirects the migration target with it: the
+    /// plan must never name the real per-user Flint folder.
+    #[test]
+    fn a_redirected_data_folder_keeps_the_migration_target_beside_it() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let roots = Roots::discover();
+            let base = data.parent().unwrap();
+            assert_eq!(roots.data_folder_override.as_deref(), Some(data));
+            assert_eq!(flint_paths(&roots).data_folder, base.join("Flint").join("data"));
+        });
+    }
+
     #[test]
     fn choices_parse_and_unknown_ones_name_the_options() {
         assert_eq!(parse_enum::<Mode>("mode", "Copy", "x").unwrap(), Mode::Copy);

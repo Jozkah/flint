@@ -120,6 +120,8 @@ export type SnapshotEvidence =
         | 'too-large'
         | 'missing'
         | 'error'
+        /** The web build: `flint serve` keeps no request copies to read. */
+        | 'web'
     }
   | {
       status: 'loaded'
@@ -143,6 +145,11 @@ export interface ChatContextInput {
   /** Files indexed for this conversation; null when they could not be listed. */
   indexedFiles: { id: string; name?: string; chunk_count?: number }[] | null
   temporary: boolean
+  /**
+   * The browser build `flint serve` serves. It has no saved memory, so a
+   * memory that was not read is "not available on web", not an error.
+   */
+  web?: boolean
   /** The last request's memory selection; null when nothing has been sent. */
   memory: ScopedMemoryRetrieved | null
   memoryViews: MemoryView[]
@@ -373,6 +380,15 @@ function memorySection({ input, verified, attribution }: SummaryContext): Contex
       labelIsKey: true,
       state: 'not-offered',
       reason: 'temporaryChat',
+      action: 'open-memory-settings',
+    })
+  } else if (!memory && attribution && input.web) {
+    memoryItems.push({
+      key: 'memory:web',
+      label: 'memoryNotOnWeb',
+      labelIsKey: true,
+      state: 'not-offered',
+      reason: 'memoryNotOnWeb',
       action: 'open-memory-settings',
     })
   } else if (!memory) {

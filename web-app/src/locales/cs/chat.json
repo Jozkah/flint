@@ -113,6 +113,8 @@
     "steps_many": "{{count}} kroku",
     "steps_other": "{{count}} kroků",
     "working": "Pracuji",
+
+    "workingEllipsis": "Working…",
     "failed": "Selhalo:",
     "failedToRun": "Spuštění selhalo",
     "summary": {
@@ -396,5 +398,9 @@
     "send": "Send",
     "dismiss": "Dismiss",
     "sentToast": "Guest message sent to the chat."
+  },
+  "providerBinding": {
+    "off": "Tento chat používá {{provider}}, který je vypnutý. Nic nebylo odesláno. Zapněte ho znovu, nebo pro tento chat vyberte jiný model.",
+    "other": "Tento chat používá {{provider}}, ale odpovídat se chystal {{selected}}. Nic nebylo odesláno. Chcete-li chat přesunout k jinému poskytovateli, vyberte v něm model."
   }
 }

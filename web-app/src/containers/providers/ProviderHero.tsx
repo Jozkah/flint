@@ -57,13 +57,22 @@ export function ProviderHero({
                 // The same words the provider list uses for the same state:
                 // Bedrock has AWS credentials, not an API key, and a remote
                 // provider with no endpoint yet is not "connected".
-                <ProviderStatusChip
-                  status={
-                    provider.provider === 'bedrock' || headerKeyStatus === 'credentials-missing'
-                      ? 'credentials-missing'
-                      : 'missing'
-                  }
-                />
+                <>
+                  <ProviderStatusChip
+                    status={
+                      provider.provider === 'bedrock' || headerKeyStatus === 'credentials-missing'
+                        ? 'credentials-missing'
+                        : 'missing'
+                    }
+                  />
+                  {/* A refresh that could not connect (a refused port, say)
+                      is a fact of its own: a missing key does not hide it. */}
+                  {connectionFailed && (
+                    <Chip tone="warn" dot>
+                      {t('providers:status.failed')}
+                    </Chip>
+                  )}
+                </>
               ) : connectionFailed ? (
                 <Chip tone="warn" dot>
                   {t('providers:status.failed')}

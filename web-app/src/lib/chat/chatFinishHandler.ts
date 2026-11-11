@@ -95,7 +95,7 @@ export type ChatFinishDeps = {
   setPendingContinueMessage: (message: UIMessage | null) => void
   resolveAssistantParent: (messageId: string | undefined) => string | null
   getAddToolOutput: () => ChatToolOutput
-  addMessage: (message: ThreadMessage) => void
+  addMessage: (message: ThreadMessage) => void | Promise<void>
   updateMessage: (message: ThreadMessage) => void
   deleteMessage: (threadId: string, messageId: string) => void
 }

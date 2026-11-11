@@ -149,7 +149,8 @@ pub(super) async fn rpc_route(
         "get_secret" => {
             let key = str_field(&args, "key").unwrap_or_default().to_owned();
             match tokio::task::spawn_blocking(move || resources::get_secret(&key)).await {
-                Ok(value) => json(&value),
+                Ok(Ok(value)) => json(&value),
+                Ok(Err(message)) => reply(StatusCode::FORBIDDEN, "text/plain; charset=utf-8", message),
                 Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
             }
         }
