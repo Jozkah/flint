@@ -589,68 +589,9 @@ pub async fn memory_proposal_resolve(
     approve: bool,
 ) -> Result<Option<MemoryView>, AgentToolsError> {
     blocking(move || -> Result<Option<MemoryView>, AgentToolsError> {
-        use super::inferred::{self, PendingReason};
-        use super::record::Status;
-
         let scope = parse_scope(&scope)?;
-        let access = location.access();
-        let store_root = match scope {
-            Scope::Project => access.project_store.clone(),
-            _ => access.permanent_store.clone(),
-        }
-        .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
-
-        let id = MemoryId::new(id);
-        // Decided and written under the scope's lock, so a memory saved while the
-        // proposal was on screen is not dropped by this rewrite.
-        enum Outcome {
-            Dismissed,
-            Discarded(String),
-            Approved,
-        }
-        let outcome = super::store::update(&store_root, scope, |records| {
-            let Some(index) = records.iter().position(|r| r.id == id) else {
-                return Err("that proposal is no longer there".to_string());
-            };
-            // Another chat's or project's proposal is answered from that chat or
-            // project, not by guessing its id.
-            if !access.may_see(&records[index]) {
-                return Err("that proposal is no longer there".to_string());
-            }
-            let Some(reason) = inferred::pending_reason(&records[index]) else {
-                return Err("that memory is not awaiting an answer".to_string());
-            };
-            if !approve {
-                records.remove(index);
-                return Ok((true, Outcome::Dismissed));
-            }
-            if reason == PendingReason::ConflictsWithExisting {
-                return Err(
-                    "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
-                );
-            }
-            // Re-checked at the moment of the decision, not at the moment of the
-            // proposal: the refusals are what stop a credential being stored, and a
-            // proposal can sit on screen for a long time.
-            // Every content gate, not the credential scan alone: length and an
-            // instruction posing as a fact are refused here as at creation.
-            if let Err(refusal) = super::create::check_content(&records[index].content) {
-                records.remove(index);
-                return Ok((true, Outcome::Discarded(refusal.message())));
-            }
-            records[index].status = Status::Active;
-            records[index].updated_at = now();
-            Ok((true, Outcome::Approved))
-        })
-        .map_err(AgentToolsError::from)?;
-        match outcome {
-            Outcome::Dismissed => return Ok(None),
-            Outcome::Discarded(why) => {
-                return Err(AgentToolsError::from(format!("{why}; it was discarded rather than saved")))
-            }
-            Outcome::Approved => {}
-        }
-        Ok(Some(service::get(&access, scope, &id)?))
+        service::resolve_proposal(&location.access(), scope, &MemoryId::new(id), approve, now())
+            .map_err(AgentToolsError::from)
     })
     .await
 }
