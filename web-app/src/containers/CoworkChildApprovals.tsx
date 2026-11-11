@@ -275,7 +275,7 @@ function CompactApproval({
   const { t } = useTranslation()
   // A file change is shown before it can be allowed, as in the full card.
   const [details, setDetails] = useState(Boolean(entry.preview || entry.secret))
-  const command = approvalPreviewText(entry.input)
+  const command = approvalPreviewText(entry.shownInput ?? entry.input)
   const common = {
     'data-testid': 'child-approval',
     'data-approval-request': entry.requestId,

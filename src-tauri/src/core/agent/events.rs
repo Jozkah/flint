@@ -466,14 +466,27 @@ pub fn describe_tool_call(name: &str, args: &serde_json::Value) -> String {
         };
     }
     // Cap the rendered args: a `write` body or a `bash` command can carry file
-    // contents or a token, and this line lands in terminals and CI logs.
-    let rendered = args.to_string();
+    // contents or a token, and this line lands in terminals and CI logs. Each
+    // string is passed through the credential scanner first, line by line as
+    // it was written, so a flagged value is masked before it is cut short.
+    let rendered = redact_strings(args).to_string();
     let mut chars = rendered.chars();
     let clipped: String = chars.by_ref().take(200).collect();
     if chars.next().is_some() {
         format!("{name} {clipped}\u{2026}")
     } else {
         format!("{name} {rendered}")
+    }
+}
+
+/// `args` with every string value passed through the secret redactor.
+fn redact_strings(args: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match args {
+        Value::String(s) => Value::String(tauri_plugin_agent_tools::secrets::redact_secrets(s)),
+        Value::Array(items) => Value::Array(items.iter().map(redact_strings).collect()),
+        Value::Object(map) => Value::Object(map.iter().map(|(k, v)| (k.clone(), redact_strings(v))).collect()),
+        other => other.clone(),
     }
 }
 
@@ -981,6 +994,20 @@ pub(crate) mod tests {
             describe_tool_call("write", &json!({"path": ".jan/agent/memory/decisions.md"})),
             "Updating memory: decisions"
         );
+    }
+
+    #[test]
+    fn describe_masks_secrets_in_write_args() {
+        let token = format!("{}{}", "ghp_", "9d7f6a5b4c3e2d1f0a9b8c7d6e5f4a3b2c1d0e");
+        let content = format!("# config
+GITHUB_TOKEN={token}
+port = 8080
+");
+        let out = describe_tool_call("write", &json!({"path": "app.env", "content": content}));
+        assert!(!out.contains(&token), "{out}");
+        assert!(!out.contains("9d7f6a5b4c3e"), "{out}");
+        // The rest stays readable.
+        assert!(out.contains("app.env") && out.contains("port = 8080"), "{out}");
     }
 
     #[test]

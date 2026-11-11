@@ -15,6 +15,8 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   previewChange: (...args: unknown[]) => previewChange(...args),
   sandboxStatus: vi.fn().mockResolvedValue({ backend: 'bubblewrap', enforces: true }),
   sandboxToolchains: vi.fn(),
+  secretsRedact: (text: string) =>
+    Promise.resolve(text.replace(/sk-[A-Za-z0-9]+/g, '[redacted]')),
   threadWorkspaceDelete: vi.fn(),
   threadWorkspaceSweep: vi.fn(),
 }))
@@ -159,5 +161,51 @@ describe('a write the credential scan would stop', () => {
     await executeAgentTool('write', input, 't1', { callId: 'c8' })
     expect(requestApproval).not.toHaveBeenCalled()
     expect(executeTool).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a write whose own card already asked about the flagged line', () => {
+  it('is not asked a second time when the person allowed those lines', async () => {
+    const { requestApproval, useToolApprovalRequests } = await setup()
+    useToolApprovalRequests.setState({
+      secretAcks: { c9: 'lib/env.ts:2:API key' },
+    })
+    const { executeAgentTool } = await import('../agentTools')
+    const result = await executeAgentTool('write', input, 't1', { callId: 'c9' })
+    expect(requestApproval).not.toHaveBeenCalled()
+    expect(result.error).toBeUndefined()
+    expect(approvalSent()).toBe('secret')
+  })
+
+  it('asks again when the lines found now differ from the ones allowed', async () => {
+    const { requestApproval, useToolApprovalRequests } = await setup()
+    requestApproval.mockResolvedValue(true)
+    useToolApprovalRequests.setState({
+      secretAcks: { c10: 'other.ts:1:API key' },
+    })
+    const { executeAgentTool } = await import('../agentTools')
+    await executeAgentTool('write', input, 't1', { callId: 'c10' })
+    expect(requestApproval).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows its arguments and diff with the flagged value masked', async () => {
+    const { requestApproval } = await setup()
+    requestApproval.mockResolvedValue(true)
+    previewChange.mockResolvedValue('+const k = "sk-abc123def456"')
+    const { executeAgentTool } = await import('../agentTools')
+    await executeAgentTool(
+      'write',
+      { path: 'lib/env.ts', content: 'const k = "sk-abc123def456"; ok()' },
+      't1',
+      { callId: 'c11' }
+    )
+    const context = requestApproval.mock.calls[0][4]
+    expect(context.shownInput).toEqual({
+      path: 'lib/env.ts',
+      content: 'const k = "[redacted]"; ok()',
+    })
+    expect(context.preview).toBe('+const k = "[redacted]"')
+    // What runs is the real input.
+    expect(context.input.content).toContain('sk-abc123def456')
   })
 })

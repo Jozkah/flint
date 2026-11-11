@@ -5,7 +5,7 @@ import { fingerprintFor } from '@/lib/mcpFingerprint'
 import { toast } from 'sonner'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
-import type { SecretWriteFinding } from '@/lib/secretWrite'
+import { secretWriteReason, type SecretWriteFinding } from '@/lib/secretWrite'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
@@ -112,6 +112,11 @@ export type ApprovalRequestContext = {
    */
   secret?: SecretWriteFinding[]
   /**
+   * The arguments as the card shows them, when they differ from `input`: a
+   * write with a flagged line shows it masked. `input` is what runs.
+   */
+  shownInput?: unknown
+  /**
    * Who is asking, when it is not the conversation's own agent: a subagent or
    * a team child. Their calls are not parts of any message on screen, so the
    * prompt cannot sit under a tool card and is shown on its own instead.
@@ -148,6 +153,8 @@ export type PendingApproval = {
   preview?: string
   /** The flagged lines of a write the credential scan stopped, when it did. */
   secret?: SecretWriteFinding[]
+  /** The arguments with flagged values masked, for display only. */
+  shownInput?: unknown
   /**
    * Who is asking, when it is not the conversation's own agent: a subagent or
    * a team child. Their calls are not parts of any message on screen, so the
@@ -220,6 +227,11 @@ type ToolApprovalRequestsState = {
   bypassedCalls: Record<string, true>
   allowedOnceCommands: Record<string, string[]>
   temporaryGitThreads: Record<string, true>
+  /**
+   * The flagged lines a person allowed on a write's own card, by call id,
+   * until the write takes them, so the write does not ask a second time.
+   */
+  secretAcks: Record<string, string>
 
   requestApproval: (
     toolCallId: string,
@@ -269,6 +281,47 @@ type ToolApprovalRequestsState = {
   /** The reason given with a deny, once; the model is told it. */
   takeRefusalReason: (toolCallId: string) => string | undefined
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
+  /**
+   * Whether a person already allowed exactly these flagged lines for this
+   * call on its card. Once: the record is dropped either way.
+   */
+  takeSecretAck: (
+    toolCallId: string,
+    findings: readonly SecretWriteFinding[]
+  ) => boolean
+}
+
+/**
+ * What a write's card needs to ask about a flagged line on its first card:
+ * the findings and the arguments and diff with the flagged values masked.
+ * Registered by the tool layer, which can reach the scanner.
+ */
+export type SecretWriteProbe = (
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  preview: string | undefined
+) => Promise<{
+  findings: SecretWriteFinding[]
+  shownInput: unknown
+  preview?: string
+} | null>
+
+let secretWriteProbe: SecretWriteProbe | null = null
+
+/** Set (or clear, with null) the scan a write's card runs before it is shown. */
+export function setSecretWriteProbe(probe: SecretWriteProbe | null): void {
+  secretWriteProbe = probe
+}
+
+/** The key a set of flagged lines is compared by: where and which rule. */
+export function secretFindingsKey(
+  findings: readonly SecretWriteFinding[]
+): string {
+  return findings
+    .map((f) => `${f.file}:${f.line}:${f.rule}`)
+    .sort()
+    .join('|')
 }
 
 export { canTemporarilyAllowGit, cleanRefusalReason }
@@ -318,8 +371,46 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     bypassedCalls: {},
     allowedOnceCommands: {},
     temporaryGitThreads: {},
+    secretAcks: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
+      // A write with a line that looks like a secret says so on its first
+      // card, with the value masked, instead of on a second card after
+      // "Allow once". A scan that cannot run leaves the card as it was; the
+      // write itself still asks before anything lands.
+      if (
+        (toolName === 'write' || toolName === 'edit') &&
+        !serverName &&
+        !context?.secret &&
+        secretWriteProbe &&
+        useToolApproval.getState().permissionMode !== 'bypass' &&
+        !context?.signal?.aborted
+      ) {
+        const probe = secretWriteProbe
+        return probe(toolName, context?.input, threadId, context?.preview)
+          .catch(() => null)
+          .then((found) =>
+            get().requestApproval(
+              toolCallId,
+              toolName,
+              threadId,
+              serverName,
+              found && found.findings.length > 0
+                ? {
+                    ...context,
+                    secret: found.findings,
+                    shownInput: found.shownInput,
+                    alwaysAsk: true,
+                    taskContext: secretWriteReason(found.findings),
+                    destructiveChecked: true,
+                    ...(found.preview !== undefined
+                      ? { preview: found.preview }
+                      : {}),
+                  }
+                : { ...context, secret: [] }
+            )
+          )
+      }
       if (serverName && context?.serverFingerprint === undefined) {
         return resolveServerFingerprint(serverName).then((fingerprint) =>
           get().requestApproval(toolCallId, toolName, threadId, serverName, {
@@ -397,7 +488,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         // A standing "similar call" grant answers an ordinary prompt, never the
         // question about a secret: that is for this one write.
         const similar =
-          !serverName && !context?.secret
+          !serverName && !context?.secret?.length
             ? similarToolCall(toolName, context?.input)
             : null
         if (similar && (
@@ -494,6 +585,9 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             ? { preview: context.preview }
             : {}),
           ...(context?.secret?.length ? { secret: context.secret } : {}),
+          ...(context?.secret?.length && context.shownInput !== undefined
+            ? { shownInput: context.shownInput }
+            : {}),
           ...(origin ? { origin } : {}),
           ...(serverFingerprint ? { serverFingerprint } : {}),
           ...(context?.input !== undefined ? { input: context.input } : {}),
@@ -515,6 +609,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           // does not keep every settled request's closure alive.
           resolve: (approved) => {
             signal?.removeEventListener('abort', onAbort)
+            const flagged = context?.secret
+            if (approved && flagged?.length) {
+              set((s) => ({
+                secretAcks: remember(s.secretAcks, [
+                  [toolCallId, secretFindingsKey(flagged)],
+                ]),
+              }))
+            }
             resolve(approved)
           },
         }
@@ -865,6 +967,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           { description: i18n.t('permissions:toast.cancelledDescription') }
         )
       }
+    },
+
+    takeSecretAck: (toolCallId, findings) => {
+      const key = get().secretAcks[toolCallId]
+      if (key === undefined) return false
+      set((s) => ({ secretAcks: forget(s.secretAcks, [toolCallId]) }))
+      return key === secretFindingsKey(findings)
     },
 
     takeRefusal: (toolCallId) => {

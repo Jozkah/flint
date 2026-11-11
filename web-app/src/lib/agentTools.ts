@@ -3,6 +3,7 @@ import i18n from '@/i18n'
 import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   approvalSourceFor,
+  setSecretWriteProbe,
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import type {
@@ -19,6 +20,7 @@ import {
   firePostToolBatch,
   previewChange,
   sandboxStatus,
+  secretsRedact,
   sandboxToolchains,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
@@ -527,10 +529,16 @@ export async function approveSecretWrite(
 
   const callId = options.callId ?? `${toolName}-${Date.now()}`
   const store = useToolApprovalRequests.getState()
+  // The call's own card already showed these lines and the person allowed
+  // it: one question, not two.
+  if (options.callId && store.takeSecretAck(options.callId, findings)) {
+    return { source: 'secret' }
+  }
   const preview = await previewAgentChange(toolName, input, threadId, {
     scope: options.scope,
     writeGrant: options.writeGrant,
   })
+  const masked = await maskSecretsForCard(input, preview)
   const approved = await store.requestApproval(
     callId,
     toolName,
@@ -538,10 +546,11 @@ export async function approveSecretWrite(
     undefined,
     {
       input,
+      shownInput: masked.input,
       alwaysAsk: true,
       secret: findings,
       taskContext: secretWriteReason(findings),
-      ...(preview !== undefined ? { preview } : {}),
+      ...(masked.preview !== undefined ? { preview: masked.preview } : {}),
       signal: options.signal,
       origin: options.origin,
       destructiveChecked: true,
@@ -555,6 +564,72 @@ export async function approveSecretWrite(
   return {
     refusal: secretWriteDenied(findings, state.takeRefusalReason(callId)),
   }
+}
+
+/**
+ * A write's arguments and diff as its card shows them: every string passed
+ * through the backend's credential redactor, so a flagged value reads as
+ * `[redacted]` while the rest of the line stays readable. A redactor that
+ * cannot run hides the text rather than show it.
+ */
+export async function maskSecretsForCard(
+  input: unknown,
+  preview: string | undefined
+): Promise<{ input: unknown; preview?: string }> {
+  const mask = async (text: string): Promise<string> => {
+    try {
+      return await secretsRedact(text)
+    } catch {
+      return '[hidden: could not be checked for secrets]'
+    }
+  }
+  const walk = async (v: unknown): Promise<unknown> => {
+    if (typeof v === 'string') return mask(v)
+    if (Array.isArray(v)) return Promise.all(v.map(walk))
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [k, x] of Object.entries(v)) out[k] = await walk(x)
+      return out
+    }
+    return v
+  }
+  return {
+    input: await walk(input),
+    ...(preview !== undefined ? { preview: await mask(preview) } : {}),
+  }
+}
+
+// The ordinary card for a `write`/`edit` asks about a flagged line itself,
+// so the person answers once, with the value masked. Registered, not called
+// from the store, so the store does not import the tool layer.
+function registerSecretWriteProbe(): void {
+  setSecretWriteProbe(secretWriteProbe)
+}
+
+async function secretWriteProbe(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  preview: string | undefined
+) {
+  const dataFolder = await getServiceHub().app().getJanDataFolder()
+  if (!dataFolder) return null
+  const args =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {}
+  const findings = await checkWriteSecrets(dataFolder, threadId, toolName, args)
+  if (findings.length === 0) return { findings, shownInput: input }
+  const diff = preview ?? (await previewAgentChange(toolName, input, threadId))
+  const masked = await maskSecretsForCard(input, diff)
+  return { findings, shownInput: masked.input, preview: masked.preview }
+}
+
+try {
+  registerSecretWriteProbe()
+} catch {
+  // A partial stand-in for the store (a test double) has no registry: the
+  // write still asks on its own card, as before.
 }
 
 const HOST_ACTION_NAME = 'host_action'
