@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense, useId } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -166,6 +166,7 @@ export default function AddEditAssistant({
   }
 
   const { t } = useTranslation()
+  const fieldId = useId()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,7 +231,7 @@ export default function AddEditAssistant({
             </div>
 
             <div className="space-y-2 w-full">
-              <label className="inline-block text-sm font-medium text-fg-2">
+              <label htmlFor={`${fieldId}-name`} className="inline-block text-sm font-medium text-fg-2">
                 {t(`common:name`)}
               </label>
               <Input
@@ -239,6 +240,7 @@ export default function AddEditAssistant({
                   setName(e.target.value)
                   if (e.target.value.trim()) setNameError(null)
                 }}
+                id={`${fieldId}-name`}
                 placeholder={t('assistants:enterName')}
                 autoFocus
               />
@@ -252,12 +254,13 @@ export default function AddEditAssistant({
           )}
 
           <div className="space-y-2">
-            <label className="inline-block text-sm font-medium text-fg-2">
+            <label htmlFor={`${fieldId}-description`} className="inline-block text-sm font-medium text-fg-2">
               {t('assistants:description')}
             </label>
             <Textarea
               value={description || ''}
               onChange={(e) => setDescription(e.target.value)}
+              id={`${fieldId}-description`}
               placeholder={t('assistants:enterDescription')}
               className="max-h-24 resize-y"
               spellCheck={spellCheckChatInput}
@@ -268,12 +271,13 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2">
-            <label className="inline-block text-sm font-medium text-fg-2">
+            <label htmlFor={`${fieldId}-instructions`} className="inline-block text-sm font-medium text-fg-2">
               {t('assistants:instructions')}
             </label>
             <Textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
+              id={`${fieldId}-instructions`}
               placeholder={t('assistants:enterInstructions')}
               className="max-h-40 min-h-[5.5rem] resize-y"
               rows={4}

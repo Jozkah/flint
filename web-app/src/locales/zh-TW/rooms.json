@@ -595,6 +595,7 @@
     "details": "詳細資料"
   },
   "notes": {
+    "objectiveMet": "一位參與者結束了討論；目標已達成。",
     "modelNone": "未選取模型。",
     "providerMissing": "供應商「{{provider}}」尚未在 Flint 中設定。",
     "providerNotReady": "供應商「{{provider}}」尚未就緒(例如沒有 API 金鑰)。",

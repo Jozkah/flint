@@ -11,6 +11,7 @@
  * down to the file name. The verbose view adds tool inputs and outputs and the
  * reasoning, and keeps paths as they were.
  */
+import { stripInvisible } from '@/lib/invisibleText'
 import { parseFileRefs } from '@/lib/coworkFileRefs'
 
 export type ExportScope = 'thread' | 'branch' | 'session' | 'message'
@@ -92,7 +93,7 @@ export function exportFileName(
   title: string,
   ext: 'md' | 'pdf' | 'png' | 'html'
 ): string {
-  let stem = (title ?? '')
+  let stem = stripInvisible(title ?? '').text
     .replace(/[<>:"/\\|?*]/g, '-')
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, ' ')

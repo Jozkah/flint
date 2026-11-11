@@ -17,8 +17,13 @@ pub fn normalize_drive_path(raw: &str) -> Cow<'_, str> {
         let b = s.as_bytes();
         b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\')
     }
-    if raw.len() >= 7 && raw[..7].eq_ignore_ascii_case("file://") {
-        let rest = &raw[7..];
+    // `get` rather than `[..7]`: byte 7 can fall inside a multibyte char
+    // (`日本語ファイル.txt`), and slicing there panics.
+    if let Some(rest) = raw
+        .get(..7)
+        .filter(|p| p.eq_ignore_ascii_case("file://"))
+        .map(|_| &raw[7..])
+    {
         let rest = rest.strip_prefix('/').unwrap_or(rest);
         return if drive_at(rest) { Cow::Owned(rest.to_string()) } else { Cow::Borrowed(raw) };
     }
@@ -1105,6 +1110,48 @@ mod tests {
         assert!(g.dirs.is_empty());
         assert_eq!(g.files, vec![wt.join(".git")]);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Names whose byte 7 falls inside a multibyte char used to panic in the
+    /// `file://` prefix check. Every spelling must resolve and pass the
+    /// containment checks without panicking.
+    #[test]
+    fn multibyte_paths_do_not_panic() {
+        let names = [
+            "日本語ファイル.txt",
+            "新文件.txt",
+            "שלום.txt",
+            "مرحبا/ملف.txt",
+            "😀😀/a.txt",
+            "e\u{301}e\u{301}e\u{301}e\u{301}.txt",
+            "ab",
+            "",
+            "é",
+            "file://",
+            "file:/",
+            r"C:\日本語\x.txt",
+            "/C:/日本語.txt",
+            r"\\?\C:\日本語.txt",
+            r"\\server\share\日本語.txt",
+            "file:///C:/日本語.txt",
+            "file:///日本語.txt",
+        ];
+        let project = std::env::temp_dir().join(format!("jan-mb-{}", std::process::id()));
+        std::fs::create_dir_all(&project).unwrap();
+        for raw in names {
+            let n = normalize_drive_path(raw);
+            if !raw.starts_with("/C:") && !raw.starts_with("file:///C:") {
+                assert_eq!(n, raw);
+            }
+            let _ = resolve_path(&project, None, raw);
+            let _ = escapes_project(&project, None, raw);
+            let _ = escapes_write_roots(&project, None, &[], raw);
+        }
+        for raw in ["日本語ファイル.txt", "新文件.txt", "שלום.txt", "😀😀/a.txt"] {
+            assert!(!escapes_project(&project, None, raw).unwrap(), "{raw}");
+            assert_eq!(resolve_path(&project, None, raw), project.join(raw));
+        }
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     /// `/C:\x`, `/C:/x`, `\C:\x` and `file:///C:/x` are drive paths on

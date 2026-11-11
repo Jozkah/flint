@@ -862,10 +862,60 @@ pub fn by_session(data_folder: &Path, session: &str) -> Vec<PromptSnapshot> {
         .collect()
 }
 
+/// Shortest prefix [`resolve_session`] expands: the CLI prints 8 characters.
+pub const MIN_SESSION_PREFIX: usize = 4;
+
+/// The recorded session `given` names: itself when recorded (or when nothing
+/// matches, so the caller's own "nothing recorded" message applies), else the
+/// one recorded session it is a prefix of. A prefix of several is an error
+/// naming them, never a guess.
+pub fn resolve_session(data_folder: &Path, given: &str) -> Result<String, String> {
+    let given = given.trim();
+    let mut sessions: Vec<String> = read_all(data_folder).into_iter().map(|s| s.session).collect();
+    sessions.sort();
+    sessions.dedup();
+    if given.chars().count() < MIN_SESSION_PREFIX || sessions.iter().any(|s| s == given) {
+        return Ok(given.to_string());
+    }
+    let matches: Vec<&String> = sessions.iter().filter(|s| s.starts_with(given)).collect();
+    match matches.as_slice() {
+        [] => Ok(given.to_string()),
+        [one] => Ok((*one).clone()),
+        many => Err(format!(
+            "session '{given}' is ambiguous: it matches {} sessions ({}); give more of the id",
+            many.len(),
+            many.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The 8-character id the CLI prints finds its session; an ambiguous
+    /// prefix is refused by name; an unknown one is passed through.
+    #[test]
+    fn a_unique_session_prefix_resolves_and_an_ambiguous_one_is_refused() {
+        let dir = std::env::temp_dir().join(format!("jan_snap_prefix_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for session in ["3f7a91c2-aaaa", "3f7a91c2-bbbb", "9e8d7c6b-cccc"] {
+            let s = capture(
+                &json!({ "messages": [] }),
+                &Identity { session: session.to_string(), ..Default::default() },
+            );
+            append(&dir, &s);
+        }
+        assert_eq!(resolve_session(&dir, "9e8d7c6b").unwrap(), "9e8d7c6b-cccc");
+        assert_eq!(resolve_session(&dir, "3f7a91c2-aaaa").unwrap(), "3f7a91c2-aaaa");
+        let err = resolve_session(&dir, "3f7a91c2").unwrap_err();
+        assert!(err.contains("ambiguous") && err.contains("3f7a91c2-bbbb"), "{err}");
+        assert_eq!(resolve_session(&dir, "nope1234").unwrap(), "nope1234");
+        assert_eq!(resolve_session(&dir, "9e8").unwrap(), "9e8", "too short to expand");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn token_named_credentials_are_redacted_and_token_counters_kept() {

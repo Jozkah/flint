@@ -457,6 +457,7 @@ describe('structural coverage of the settings surface', () => {
 
 /** Cards a page mounts from their own files, whose anchors live there. */
 const CARD_FILES: Record<string, string[]> = {
+  appearance: ['containers/AccentSettings.tsx'],
   general: ['containers/StartupItems.tsx'],
   permissions: [
     'containers/TrustedFoldersCard.tsx',

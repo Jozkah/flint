@@ -30,6 +30,14 @@ vi.mock('@/containers/ReplyLanguageSwitcher', () => ({
   default: () => <div data-testid="reply-language-switcher" />,
 }))
 
+vi.mock('@/containers/GuestLinksCard', () => ({
+  GuestLinksCard: () => <div data-testid="guest-links-card" />,
+}))
+
+vi.mock('@/containers/ChatRulesCard', () => ({
+  ChatRulesCard: () => <div data-testid="chat-rules-card" />,
+}))
+
 vi.mock('@/containers/VisualizeSettings', () => ({
   VisualizeSettings: () => <div data-testid="visualize-settings" />,
 }))
@@ -75,6 +83,8 @@ describe('Chat settings page', () => {
       'settings-chat-web-preview',
     ])
     expect(screen.getByTestId('reply-language-switcher')).toBeInTheDocument()
+    expect(screen.getByTestId('guest-links-card')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-rules-card')).toBeInTheDocument()
   })
 
   it('binds Enter adds a new line to the general setting', () => {

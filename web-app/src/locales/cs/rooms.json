@@ -631,6 +631,7 @@
     "details": "Podrobnosti"
   },
   "notes": {
+    "objectiveMet": "Účastník uzavřel diskusi; cíl je splněn.",
     "modelNone": "Není vybrán žádný model.",
     "providerMissing": "Poskytovatel „{{provider}}“ není ve Flintu nastaven.",
     "providerNotReady": "Poskytovatel „{{provider}}“ není připraven (například nemá klíč API).",
