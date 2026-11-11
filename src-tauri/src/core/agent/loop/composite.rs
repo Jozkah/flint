@@ -2469,11 +2469,20 @@ impl CompositeToolInvoker {
         let self_approval =
             tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
         // A standing `mcp trust` grant for the server as configured now
-        // counts like a session grant, as it does on the desktop.
+        // stands in for the prompt, but only where a person could have been
+        // asked: an unattended run (schedule, durable job, no terminal) keeps
+        // refusing, so one `mcp trust` never lets nightly work call the
+        // server's tools on its own.
+        let trusted_here = || {
+            let unattended = std::env::var_os(crate::core::agent::auto_mode::UNATTENDED_ENV)
+                .is_some_and(|v| v == "1");
+            trust_grant_applies(self.can_prompt(), unattended)
+                && crate::core::agent::upstream::mcp_server_trusted(&server)
+        };
         if (!self_approval || self.bypass)
             && (self.auto_approve || self.bypass
                 || self.grants.lock().unwrap().covers_mcp(&server, name)
-                || crate::core::agent::upstream::mcp_server_trusted(&server))
+                || trusted_here())
         {
             mcp_calls.push(tc.clone());
             return;
@@ -3692,4 +3701,24 @@ pub(super) struct PromptCall<'a> {
     pub null_refusal: &'a tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal,
     /// What the `pre-tool` hooks said that belongs on the call's result.
     pub pre_warnings: &'a [String],
+}
+
+/// Whether a standing `mcp trust` grant may stand in for a prompt. Only in a
+/// run that could have asked a person: a run nobody watches is not approved
+/// by a grant given once, at some other time.
+pub(super) fn trust_grant_applies(can_prompt: bool, unattended: bool) -> bool {
+    can_prompt && !unattended
+}
+
+#[cfg(test)]
+mod trust_grant_tests {
+    use super::trust_grant_applies;
+
+    #[test]
+    fn a_trust_grant_counts_only_where_a_person_could_be_asked() {
+        assert!(trust_grant_applies(true, false), "interactive + trusted -> allowed");
+        assert!(!trust_grant_applies(false, false), "no terminal -> still denied");
+        assert!(!trust_grant_applies(true, true), "scheduled/unattended -> still denied");
+        assert!(!trust_grant_applies(false, true));
+    }
 }
