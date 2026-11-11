@@ -54,7 +54,6 @@ export function stripInvisible(text: string): { text: string; removed: number } 
  * left-to-right, right-to-left and Arabic letter marks, zero-width joiners and
  * non-joiners, and variation selectors (text or emoji presentation).
  */
-// eslint-disable-next-line no-control-regex, no-misleading-character-class
 const TITLE_STRIP = /[\u202A-\u202E\u2066-\u2069\u200B\uFEFF\u{E0000}-\u{E007F}]/gu
 // eslint-disable-next-line no-control-regex
 const TITLE_CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g
@@ -66,5 +65,7 @@ export function cleanTitle(title: string): string {
 
 /** Whether a title has nothing left to show once cleaned. */
 export function isBlankTitle(title: string): boolean {
+  // The class lists marks and selectors on purpose: they are what is ignored.
+  // eslint-disable-next-line no-misleading-character-class
   return cleanTitle(title).replace(/[\s\u200C-\u200F\u061C\uFE0E\uFE0F]/g, '') === ''
 }
