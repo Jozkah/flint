@@ -1083,7 +1083,10 @@
     "thisRoom": "Ruang ini",
     "thisSession": "Sesi ini",
     "keyMissingTitle": "Kunci API belum ada",
-    "keyMissingDescription": "{{subject}} memakai penyedia yang belum memiliki kunci API. Tambahkan kunci di Pengaturan, atau pilih model lain untuk melanjutkan."
+    "keyMissingDescription": "{{subject}} memakai penyedia yang belum memiliki kunci API. Tambahkan kunci di Pengaturan, atau pilih model lain untuk melanjutkan.",
+    "providerOffTitle": "{{provider}} dimatikan",
+    "providerOffDescription": "{{subject}} memakai {{provider}}, yang dimatikan, jadi tidak ada yang dikirim. Nyalakan lagi untuk tetap memakainya di sini, atau pilih model lain.",
+    "turnOn": "Nyalakan {{provider}}"
   },
   "skillsUsedCount_other": "Memakai {{count}} skill",
   "artifactsAll": "Semua",

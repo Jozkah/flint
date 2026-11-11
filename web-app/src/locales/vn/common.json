@@ -1101,7 +1101,10 @@
     "thisRoom": "Phòng này",
     "thisSession": "Phiên này",
     "keyMissingTitle": "Thiếu khóa API",
-    "keyMissingDescription": "{{subject}} dùng một nhà cung cấp chưa có khóa API. Hãy thêm khóa trong Cài đặt, hoặc chọn mô hình khác để tiếp tục."
+    "keyMissingDescription": "{{subject}} dùng một nhà cung cấp chưa có khóa API. Hãy thêm khóa trong Cài đặt, hoặc chọn mô hình khác để tiếp tục.",
+    "providerOffTitle": "{{provider}} đang tắt",
+    "providerOffDescription": "{{subject}} dùng {{provider}}, hiện đang tắt, nên chưa có gì được gửi. Bật lại để tiếp tục dùng ở đây, hoặc chọn mô hình khác.",
+    "turnOn": "Bật {{provider}}"
   },
   "skillsUsedCount_one": "Đã dùng {{count}} kỹ năng",
   "skillsUsedCount_other": "Đã dùng {{count}} kỹ năng",

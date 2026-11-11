@@ -345,5 +345,9 @@
     "recovered": "Recuperat: el motor del model s'havia aturat, s'ha reiniciat i el missatge ha rebut resposta.",
     "retryFailed": "El motor del model s'ha tornat a aturar. Flint ho ha reintentat una vegada; feu servir Regenera per tornar-ho a provar.",
     "restartFailed": "No s'ha pogut tornar a carregar el model automàticament. Feu servir Regenera o torneu a triar el model."
+  },
+  "providerBinding": {
+    "off": "Aquest xat fa servir {{provider}}, que està desactivat. No s'ha enviat res. Torna'l a activar o tria un altre model per a aquest xat.",
+    "other": "Aquest xat fa servir {{provider}}, però estava a punt de respondre {{selected}}. No s'ha enviat res. Tria un model en aquest xat per passar-lo a un altre proveïdor."
   }
 }
