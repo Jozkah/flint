@@ -616,6 +616,7 @@
     "details": "Detalls"
   },
   "notes": {
+    "objectiveMet": "Un participant ha conclòs la discussió; l'objectiu s'ha complert.",
     "modelNone": "No hi ha cap model seleccionat.",
     "providerMissing": "El proveïdor “{{provider}}” no està configurat a Flint.",
     "providerNotReady": "El proveïdor “{{provider}}” no està a punt (per exemple, no té clau d'API).",

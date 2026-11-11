@@ -1,5 +1,6 @@
 // The threads store's hydration of summarised threads, and thread creation.
 
+import { cleanTitle, isBlankTitle } from '@/lib/invisibleText'
 import type { StoreApi } from 'zustand'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { ulid } from 'ulidx'
@@ -70,7 +71,7 @@ export const threadCreationSlice = (
     const newThread: Thread = {
       id: isTemporary ? TEMPORARY_CHAT_ID : ulid(),
       title:
-        title ??
+        (title === undefined || isBlankTitle(title) ? undefined : cleanTitle(title).trim()) ??
         i18n.t(isTemporary ? 'common:temporaryChat' : 'common:newThread'),
       model,
       updated: Date.now() / 1000,

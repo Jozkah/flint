@@ -39,7 +39,7 @@ pub async fn cli_agent_step(
     overrides: ProviderOverrides,
     flags: SessionFlags,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
-    run_agent_loop(
+    let result = run_agent_loop(
         project,
         task,
         model,
@@ -54,7 +54,19 @@ pub async fn cli_agent_step(
         None,
         false,
     )
-    .await
+    .await;
+    step_outcome(result)
+}
+
+/// A step is one turn by design: ending at that one-turn limit with the
+/// model's tool calls run is the step finishing, not failing.
+pub(super) fn step_outcome(
+    result: Result<(), tauri_plugin_agent_tools::harness_error::HarnessError>,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    match result {
+        Err(e) if crate::core::agent::end_reason::is_turn_limit(&e) => Ok(()),
+        other => other,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -508,6 +520,11 @@ async fn finish_run(
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
+    // A completion the loop cut off at its token or cost budget: saved and
+    // reported with its partial answer, but the command fails like a turn limit.
+    let budget_stop = result.as_ref().is_ok_and(|c| {
+        c.pointer("/choices/0/finish_reason").and_then(|v| v.as_str()) == Some("budget_exceeded")
+    });
     let structured = result.as_ref().ok().and_then(|c| c.get("structured_output").cloned());
     let structured_error = result
         .as_ref()
@@ -570,7 +587,13 @@ async fn finish_run(
         let _ = workspace::remove_scratch_dir(session).await;
     }
     if aborted {
-        return Ok(());
+        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::cancelled(ABORTED_BY_CLIENT_MESSAGE));
+    }
+    if budget_stop {
+        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::BudgetExhausted,
+            super::run_report::BUDGET_STOP_MESSAGE,
+        ));
     }
     if let Some(reason) = structured_error {
         return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
@@ -603,6 +626,9 @@ pub(super) async fn run_agent_loop(
     // upgraded: a caller parsing plain text should not have the format changed
     // under it.
     let started = std::time::Instant::now();
+    // Asked before a stream-json reader holds stdin: on Windows the question
+    // would otherwise wait behind the reader's pending read.
+    crate::core::agent::r#loop::warm_stdin_is_terminal();
     // Read before the flags are handed on: this is the run's own answer about
     // how much to say, and it is wanted after the run as well as during it.
     let asked_density = flags.density;
@@ -746,9 +772,9 @@ pub(super) async fn run_agent_loop(
         },
     ));
 
-    // `None` when the client aborted: the run produced no completion, but a
-    // deliberate stop is an outcome rather than a failure, so it is reported on
-    // the stream and the process still exits 0.
+    // `None` when the client aborted: the run produced no completion. It is
+    // reported like a stop through `agent serve`'s cancel -- `user_stop`,
+    // `is_error`, exit 130 -- with whatever text had streamed kept.
     let outcome = match input.as_ref() {
         Some(input) => run_steered(&tx, &body, &args, input).await,
         None => Some(run_orchestration_streamed(&tx, &body, &args).await),
@@ -765,7 +791,10 @@ pub(super) async fn run_agent_loop(
     let aborted = outcome.is_none();
     let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
     drop(tx);
-    let (report, conversation) = printer.await.unwrap_or_default();
+    let (mut report, conversation) = printer.await.unwrap_or_default();
+    if aborted {
+        report.cancel(ABORTED_BY_CLIENT_MESSAGE);
+    }
     if let Some(input) = input.as_ref() {
         report_dropped_follow_ups(input, format);
     }
@@ -946,9 +975,13 @@ pub(super) fn tool_name(tool: &serde_json::Value) -> Option<String> {
     Some(tool.get("function")?.get("name")?.as_str()?.to_string())
 }
 
-/// Stop reason reported for a run the client ended with an `abort` message, and
-/// the error the run itself returns -- never printed, since an abort exits 0.
+/// The error the run itself returns when the client ended it with an `abort`
+/// message; the command reports [`ABORTED_BY_CLIENT_MESSAGE`] instead.
 pub(super) const ABORTED_BY_CLIENT: &str = "aborted by client";
+
+/// What an aborted run reports: the same `user_stop` ending as a cancel
+/// through `agent serve`.
+pub(super) const ABORTED_BY_CLIENT_MESSAGE: &str = "the run was aborted by the client";
 
 /// Drive the run against a duplex client: the orchestration loop's steering
 /// handshake is answered from the queue the reader fills, and an `abort`
@@ -1164,5 +1197,25 @@ pub(super) fn request_cancelled(request_id: &str, reason: &str) -> StreamEvent {
     StreamEvent::ToolRequestCancelled {
         request_id: request_id.to_string(),
         reason: reason.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod step_tests {
+    use super::step_outcome;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+
+    /// `agent step` runs one turn on purpose: reaching that limit is success,
+    /// while any other failure (a real budget stop included) still fails.
+    #[test]
+    fn a_step_that_used_its_one_turn_succeeds() {
+        let limit = HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 1-turn limit while the model was still calling tools",
+        );
+        assert!(step_outcome(Err(limit)).is_ok());
+        let tokens = HarnessError::new(ErrorKind::BudgetExhausted, "session token budget spent");
+        assert_eq!(step_outcome(Err(tokens)).unwrap_err().kind(), ErrorKind::BudgetExhausted);
+        assert!(step_outcome(Ok(())).is_ok());
     }
 }

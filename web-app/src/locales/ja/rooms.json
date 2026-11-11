@@ -595,6 +595,7 @@
     "details": "詳細"
   },
   "notes": {
+    "objectiveMet": "参加者が議論を締めくくりました。目的は達成されています。",
     "modelNone": "モデルが選択されていません。",
     "providerMissing": "プロバイダー「{{provider}}」はFlintで設定されていません。",
     "providerNotReady": "プロバイダー「{{provider}}」は準備ができていません（例: APIキーがありません）。",

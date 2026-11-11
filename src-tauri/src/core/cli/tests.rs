@@ -47,6 +47,15 @@ fn permission_modes_map_to_the_two_switches() {
     assert_eq!(PermissionMode::resolve(Some("bypass"), false, false), Ok((true, false)));
     assert_eq!(PermissionMode::resolve(Some("review"), false, false), Ok((false, true)));
     assert!(PermissionMode::resolve(Some("ask"), true, false).is_err());
+    assert_eq!(
+        PermissionMode::resolve(Some("auto"), true, false),
+        Err("--mode replaces --safe; give one or the other".to_string()),
+        "a headless --safe --mode does not mention --plan, which it has no flag for"
+    );
+    assert_eq!(
+        PermissionMode::resolve(Some("auto"), false, true),
+        Err("--mode replaces --plan; give one or the other".to_string())
+    );
     assert!(PermissionMode::resolve(Some("nope"), false, false).is_err());
     assert_eq!(PermissionMode::parse("review").unwrap().as_str(), "review");
 }
@@ -114,6 +123,26 @@ fn cli_sources_hold_no_raw_escape_sequences() {
         assert!(!src.contains(escaped), "{name} writes an escape sequence directly");
         assert!(!src.contains('\u{1b}'), "{name} holds a raw ESC character");
     }
+}
+
+/// A stream-json run whose write tripped the secret scan sat silent until the
+/// client closed stdin: on Windows, asking whether stdin is a terminal waits
+/// behind the client reader's pending read. The run's code asks the
+/// remembered answer instead, taken before the reader starts.
+#[test]
+fn run_paths_never_ask_stdin_directly() {
+    let direct = concat!("stdin()", ".is_terminal()");
+    for (name, src) in [
+        ("agent/loop/composite.rs", include_str!("../agent/loop/composite.rs")),
+        ("cli/output.rs", include_str!("output.rs")),
+        ("cli/run.rs", include_str!("run.rs")),
+    ] {
+        assert!(!src.contains(direct), "{name} asks stdin directly mid-run");
+    }
+    assert_eq!(
+        crate::core::agent::r#loop::stdin_is_terminal(),
+        crate::core::agent::r#loop::stdin_is_terminal()
+    );
 }
 
 /// #143: deleting a thread drops its snapshot ref in the repository the
@@ -1051,6 +1080,22 @@ fn resume_cycle_preserves_thread_id_and_history() {
         .history,
         extended
     );
+}
+
+/// `--resume=<id>` naming no session is refused; `--continue` with nothing
+/// saved still starts a new session.
+#[test]
+fn an_explicit_resume_id_that_matches_nothing_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = dir.path();
+    let by_id = ResumeRequest::resume(ResumeTarget::Id("deadbeef".to_string()));
+    let err = load_resume_history(base, &by_id).err().unwrap();
+    let refused = super::session::return_or_start_fresh(&by_id, err).err().unwrap();
+    assert!(refused.contains("deadbeef") && refused.contains("cannot resume"), "{refused}");
+
+    let latest = ResumeRequest::resume(ResumeTarget::Latest);
+    let err = load_resume_history(base, &latest).err().unwrap();
+    assert!(super::session::return_or_start_fresh(&latest, err).unwrap().is_none());
 }
 
 fn call(id: &str, name: &str) -> serde_json::Value {

@@ -1747,6 +1747,11 @@ enum ImportClaudeCommands {
 }
 
 /// `scope` is project, user or chat (chat needs `--session`).
+///
+/// These are the scoped memory records the desktop's Memory page manages. The
+/// whole-file notes the agent saves with its `memory_write` tool
+/// (`.jan/agent/memory/*.md`) are a separate store: `notes`, `note-show` and
+/// `note-forget` manage those.
 #[derive(Subcommand)]
 enum MemoryCommands {
     /// List the memories in a scope
@@ -1814,6 +1819,49 @@ enum MemoryCommands {
     Export {
         scope: String,
         path: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// List the notes the agent saved with memory_write (a separate store)
+    Notes {
+        /// The user's notes in the data folder instead of the project's
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Print one memory_write note
+    NoteShow {
+        name: String,
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Delete one memory_write note so later runs no longer recall it
+    NoteForget {
+        name: String,
+        #[arg(long)]
+        user: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// List memories the agent proposed (memory_propose) that await an answer
+    Proposals {
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Save a proposed memory (its content is checked again first)
+    Accept {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Discard a proposed memory
+    Reject {
+        scope: String,
+        id: String,
         #[command(flatten)]
         place: MemoryPlace,
     },
@@ -3469,6 +3517,16 @@ fn run_exit_code(e: &HarnessError) -> i32 {
     app_lib::core::agent::end_reason::EndReason::from_error(e).exit_code(Some(e))
 }
 
+/// A session id as given on the command line, expanded when it is a unique
+/// prefix (the 8-character id the CLI prints) of a recorded session.
+fn full_session(session: &str) -> Result<String, HarnessError> {
+    tauri_plugin_agent_tools::snapshot::resolve_session(
+        &app_lib::core::app::commands::resolve_jan_data_folder(),
+        session,
+    )
+    .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput, e))
+}
+
 /// `flint cli agent prompts`: what a session sent to the model (AH-087).
 ///
 /// Without `show`, one line per recorded request. With `show`, that request as
@@ -3487,6 +3545,8 @@ fn agent_prompts_text(
         Some("last") | None => None,
         Some(id) => Some(id),
     };
+    // The short id the CLI prints names the session too.
+    let session = &tauri_plugin_agent_tools::snapshot::resolve_session(data_folder, session)?;
     let found = scoped_lookup(data_folder, one, None, Some(session))?;
     if found.is_empty() {
         return Err(match one {
@@ -3678,6 +3738,16 @@ fn handle_memory(cmd: MemoryCommands) {
         MemoryCommands::Unpin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, false),
         MemoryCommands::Audit { json, stale_days, project } => m::audit(&project, json, stale_days),
         MemoryCommands::Export { scope, path, place } => m::export(&place.project, place.session.as_deref(), &scope, &path),
+        MemoryCommands::Notes { user, project } => m::notes(&project, user),
+        MemoryCommands::NoteShow { name, user, project } => m::note_show(&project, &name, user),
+        MemoryCommands::NoteForget { name, user, project } => m::note_forget(&project, &name, user),
+        MemoryCommands::Proposals { place } => m::proposals(&place.project, place.session.as_deref()),
+        MemoryCommands::Accept { scope, id, place } => {
+            m::resolve_proposal(&place.project, place.session.as_deref(), &scope, &id, true)
+        }
+        MemoryCommands::Reject { scope, id, place } => {
+            m::resolve_proposal(&place.project, place.session.as_deref(), &scope, &id, false)
+        }
     });
 }
 

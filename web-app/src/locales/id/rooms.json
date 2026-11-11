@@ -595,6 +595,7 @@
     "details": "Detail"
   },
   "notes": {
+    "objectiveMet": "Seorang peserta menyimpulkan diskusi; tujuan telah tercapai.",
     "modelNone": "Tidak ada model yang dipilih.",
     "providerMissing": "Penyedia \"{{provider}}\" belum dikonfigurasi di Flint.",
     "providerNotReady": "Penyedia \"{{provider}}\" belum siap (misalnya, belum memiliki kunci API).",

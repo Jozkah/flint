@@ -222,7 +222,7 @@ class RoomRun extends RoomRunTurns {
         // those only restate a point already made and read as noise after
         // "concluded". Moderator/repetition convergence still synthesises,
         // where an automatic summary earns its place.
-        await this.system('A participant concluded the discussion; the objective is met.')
+        await this.note('objectiveMet')
         await this.save({
           status: 'completed',
           stopReason: { kind: 'converged', by: 'consensus' },
@@ -634,11 +634,9 @@ export async function runRoom(
       const storage = isRoomPersistenceError(e)
       const code: string = isRoomPersistenceError(e) ? e.code : 'engine'
       try {
-        await run.system(
-          storage
-            ? rt('storageFailed', { code, message })
-            : rt('internalError', { message })
-        )
+        await (storage
+          ? run.note('storageFailed', { code, message })
+          : run.note('internalError', { message }))
         await run.save({ status: 'paused', stopReason: { kind: 'error', code, message } })
       } catch {
         // Persistence itself failed; the caller reports the original error.

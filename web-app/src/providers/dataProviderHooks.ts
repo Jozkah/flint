@@ -40,6 +40,7 @@ import {
   providerHasRemoteApiKeys,
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
+import { registersWithoutKey } from '@/lib/providerKeyStatus'
 import {
   fillSecretHeaderValues,
   loadSecretHeaderValues,
@@ -80,7 +81,9 @@ async function registerRemoteProvider(
   if (provider.provider === 'llamacpp') return
 
   const chain = providerRemoteApiKeyChain(provider)
-  if (chain.length === 0) {
+  // A provider that needs no key (a LAN or loopback server) is registered
+  // without one, so the Local API server can serve its models.
+  if (chain.length === 0 && !registersWithoutKey(provider)) {
     console.log(`Provider ${provider.provider} has no API key, skipping registration`)
     return
   }

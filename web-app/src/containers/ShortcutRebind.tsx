@@ -85,6 +85,8 @@ export function ShortcutRebind({
             setRecording((r) => !r)
           }}
           data-testid="rebind-change"
+          // Every row has a Change button; the action name tells them apart.
+          aria-label={`${recording ? t('common:cancel') : t('settings:shortcuts.change')}: ${label(action)}`}
         >
           {recording ? t('common:cancel') : t('settings:shortcuts.change')}
         </Button>
@@ -94,6 +96,7 @@ export function ShortcutRebind({
             className="pointer-coarse:h-11"
             onClick={() => useKeybindings.getState().reset(action)}
             data-testid="rebind-reset"
+            aria-label={`${t('settings:shortcuts.reset')}: ${label(action)}`}
             title={PlatformShortcuts[action].key}
           >
             {t('settings:shortcuts.reset')}

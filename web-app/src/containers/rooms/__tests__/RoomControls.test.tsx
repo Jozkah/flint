@@ -52,6 +52,16 @@ describe('RoomControls', () => {
     expect(controller.start).toHaveBeenCalledWith('r1')
   })
 
+  it('says which limit blocks a stopped room instead of starting it silently', async () => {
+    const fake = createFakeApi()
+    const room = makeRoom({ status: 'stopped' })
+    room.usage = { ...room.usage, rounds: room.limits.maxRounds }
+    renderWithApi(<RoomControls room={room} />, fake.api)
+    await userEvent.click(btn('Start'))
+    expect(fake.controller.start).not.toHaveBeenCalled()
+    expect(screen.getByText(/limit was reached/)).toBeInTheDocument()
+  })
+
   it('asks for another model before starting when one is gone, and does not start if cancelled', async () => {
     prompt.mockResolvedValue(null)
     useModelProvider.setState({ providers: [provider(['plain-model'])] } as never)

@@ -601,6 +601,7 @@
     "details": "Ayrıntılar"
   },
   "notes": {
+    "objectiveMet": "Bir katılımcı tartışmayı sonuçlandırdı; hedefe ulaşıldı.",
     "modelNone": "Hiçbir model seçilmedi.",
     "providerMissing": "\"{{provider}}\" sağlayıcısı Flint'te yapılandırılmamış.",
     "providerNotReady": "\"{{provider}}\" sağlayıcısı hazır değil (örneğin API anahtarı yok).",

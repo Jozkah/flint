@@ -240,7 +240,7 @@
     "empty": "Nic jeszcze nie powiedziano.",
     "loadEarlier": "Wczytaj wcześniejsze wiadomości",
     "you": "Ty",
-    "system": "System",
+    "system": "Komunikat systemowy",
     "moderator": "Moderator",
     "moderatorNamed": "{{name}} · Moderator",
     "removed": "(usunięty)",
@@ -320,7 +320,7 @@
   },
   "controls": {
     "label": "Sterowanie pokojem",
-    "start": "Start",
+    "start": "Rozpocznij",
     "pause": "Wstrzymaj",
     "resume": "Wznów",
     "stop": "Zatrzymaj",
@@ -515,7 +515,7 @@
     },
     "retry": "Ponów",
     "retryFor": "Ponów {{name}}",
-    "exportName": "{{title}} comparison"
+    "exportName": "{{title}} – porównanie"
   },
   "changes": {
     "summaryOne": "Zmieniono {{count}} plik",
@@ -631,6 +631,7 @@
     "details": "Szczegóły"
   },
   "notes": {
+    "objectiveMet": "Uczestnik zakończył dyskusję; cel został osiągnięty.",
     "modelNone": "Nie wybrano modelu.",
     "providerMissing": "Dostawca „{{provider}}” nie jest skonfigurowany w Flint.",
     "providerNotReady": "Dostawca „{{provider}}” nie jest gotowy (np. brak klucza API).",

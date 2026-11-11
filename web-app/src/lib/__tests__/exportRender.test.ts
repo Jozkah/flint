@@ -48,3 +48,30 @@ describe('pdfStrategy', () => {
     expect(pdfStrategy({ platform: '', canPrint: true })).toBe('html')
   })
 })
+
+describe('renderHtmlPage with hostile content', () => {
+  it('cannot run script from text, title, code, links or images', () => {
+    const page = renderHtmlPage({
+      title: '</title><script>alert(1)</script>',
+      scope: 'thread',
+      exportedAt: '2026-10-01T10:00:00.000Z',
+      messages: [
+        {
+          role: 'assistant',
+          text: [
+            '<svg onload=alert(1)>',
+            '[click](javascript:alert(1)) [data](data:text/html,<script>alert(1)</script>)',
+            '![x](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=) ![y](javascript:alert(1))',
+            '```html\n<script>alert(3)</script>\n```',
+            '<a href="javascript:alert(4)">raw</a> <iframe src="x"></iframe>',
+          ].join('\n\n'),
+        },
+      ],
+    })
+    expect(page).not.toMatch(/<script/i)
+    expect(page).not.toMatch(/<(svg|iframe|img)/i)
+    expect(page).not.toMatch(/<a [^>]*href="(javascript|data):/i)
+    expect(page).not.toMatch(/<[^>]+\son\w+=/i)
+    expect(page).toContain("default-src 'none'")
+  })
+})

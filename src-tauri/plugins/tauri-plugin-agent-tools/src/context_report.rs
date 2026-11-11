@@ -409,7 +409,10 @@ pub fn of_snapshot(
     deferred_tools: u64,
 ) -> Result<Breakdown, crate::harness_error::HarnessError> {
     use crate::harness_error::{ErrorKind, HarnessError, Stage};
-    let mine = crate::snapshot::by_session(data_folder, session);
+    // The short id the CLI prints names the session too.
+    let session = crate::snapshot::resolve_session(data_folder, session)
+        .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e).at(Stage::Context))?;
+    let mine = crate::snapshot::by_session(data_folder, &session);
     let found = match snapshot_id {
         Some(id) => mine.into_iter().find(|s| s.id == id),
         None => mine.into_iter().next_back(),
