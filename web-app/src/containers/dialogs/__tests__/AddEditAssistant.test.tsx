@@ -113,6 +113,19 @@ describe('AddEditAssistant', () => {
     expect(screen.getByText('assistants:addAssistant')).toBeInTheDocument()
   })
 
+  it('names each field by its visible label, not its placeholder', () => {
+    render(<AddEditAssistant {...baseProps()} />)
+    expect(screen.getByLabelText('common:name')).toHaveAttribute('placeholder', 'assistants:enterName')
+    expect(screen.getByLabelText('assistants:description')).toHaveAttribute(
+      'placeholder',
+      'assistants:enterDescription'
+    )
+    expect(screen.getByLabelText('assistants:instructions')).toHaveAttribute(
+      'placeholder',
+      'assistants:enterInstructions'
+    )
+  })
+
   it('renders edit title and fields when editing', () => {
     const props = baseProps()
     props.editingKey = 'asst-1'

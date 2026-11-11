@@ -616,6 +616,7 @@
     "details": "Detalles"
   },
   "notes": {
+    "objectiveMet": "Un participante concluyó la discusión; el objetivo se ha cumplido.",
     "modelNone": "No hay ningún modelo seleccionado.",
     "providerMissing": "El proveedor “{{provider}}” no está configurado en Flint.",
     "providerNotReady": "El proveedor “{{provider}}” no está listo (por ejemplo, no tiene clave de API).",

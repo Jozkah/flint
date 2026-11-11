@@ -601,6 +601,7 @@
     "details": "Details"
   },
   "notes": {
+    "objectiveMet": "A participant concluded the discussion; the objective is met.",
     "modelNone": "No model is selected.",
     "providerMissing": "The provider \"{{provider}}\" is not configured in Flint.",
     "providerNotReady": "The provider \"{{provider}}\" is not ready (for example, it has no API key).",

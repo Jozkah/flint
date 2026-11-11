@@ -696,6 +696,27 @@ fn announce_screened(
 /// cannot disagree. A `bash` call that exits non-zero isn't prefixed "ERROR"
 /// (that convention is reserved for hard tool failures the model must treat as
 /// errors), but its failed exit marker still flags the call as failed.
+/// Whether this process's stdin is a terminal, asked once and remembered.
+///
+/// On Windows, asking a pipe handle while another thread has a read pending
+/// on it (a stream-json client's reader) blocks until that read completes,
+/// so a run that asked mid-turn waited for the client's next line or for
+/// stdin to close. Whether stdin is a terminal never changes while the
+/// process runs, so the answer is taken before any reader starts
+/// ([`warm_stdin_is_terminal`]) and reused.
+pub(crate) fn stdin_is_terminal() -> bool {
+    static IS_TERMINAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IS_TERMINAL.get_or_init(|| {
+        use std::io::IsTerminal;
+        std::io::stdin().is_terminal()
+    })
+}
+
+/// Answer [`stdin_is_terminal`] now, before a stdin reader is started.
+pub fn warm_stdin_is_terminal() {
+    let _ = stdin_is_terminal();
+}
+
 pub(crate) fn tool_outcome_failed(name: &str, content: &str) -> bool {
     tauri_plugin_agent_tools::harness_error::classify_tool(name, content).is_some()
         || (name == "bash"
@@ -1464,6 +1485,65 @@ fn record_cancelled_call(
         .with_agent("main")
         .with_project(project_root.to_string_lossy()),
     );
+}
+
+/// Record how a gated call was settled in the permission audit log: the
+/// person's answer (`granted` / `refused`), or a refusal made because nobody
+/// could be asked (`deny`). One record per resource the call names, as the
+/// desktop gate writes, so `agent audit` shows CLI and desktop decisions alike.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_permission_decision(
+    data_folder: &std::path::Path,
+    scope: &tauri_plugin_agent_tools::lifecycle::Scope,
+    project_root: &std::path::Path,
+    tool: &tauri_plugin_agent_tools::tools::BuiltinTool,
+    args: &serde_json::Value,
+    id: &str,
+    outcome: tauri_plugin_agent_tools::audit::Outcome,
+    reason: &str,
+) {
+    use tauri_plugin_agent_tools::audit::{self, PermissionRecord};
+    use tauri_plugin_agent_tools::resource::Resource;
+    use tauri_plugin_agent_tools::tools::Capability;
+
+    let capability = match tool.capability {
+        Capability::Read => "read",
+        Capability::Write => "write",
+        Capability::Exec => "exec",
+        Capability::Net => "net",
+    };
+    let mut resources = Resource::for_builtin(
+        tool.name,
+        tool.path_args,
+        tool.capability == Capability::Net,
+        args,
+        Some(project_root),
+    );
+    if resources.is_empty() {
+        resources.push(Resource::Unknown {
+            tool: tool.name.to_string(),
+            why: "call names no resource".into(),
+        });
+    }
+    let at = audit::now();
+    for resource in &resources {
+        audit::append(
+            data_folder,
+            &PermissionRecord::new(
+                at.clone(),
+                scope.session.clone(),
+                tool.name,
+                capability,
+                resource,
+                outcome,
+                reason,
+            )
+            .with_run(scope.run.clone())
+            .with_call(id)
+            .with_agent("main")
+            .with_project(project_root.to_string_lossy()),
+        );
+    }
 }
 
 /// Whether a run takes part in cross-session messaging: only a top-level run
@@ -5701,6 +5781,16 @@ Address it and continue."
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });
+            // Marked like the cost ceiling's stop, so every surface reports a
+            // budget stop rather than a finished run. The crossing turn is
+            // kept whole, its unrun tool calls included, so the transcript
+            // shows what the run was about to do.
+            let mut completion = completion;
+            if let Some(choice) = completion.pointer_mut("/choices/0").and_then(|c| c.as_object_mut()) {
+                choice.insert("finish_reason".to_string(), serde_json::json!("budget_exceeded"));
+                // Which budget: the cost ceiling's stop carries none.
+                choice.insert("budget_kind".to_string(), serde_json::json!("tokens"));
+            }
             return Ok(completion);
         }
 
@@ -5926,7 +6016,7 @@ Address it and continue."
                     // the ledger says they were attempted and did not report.
                     if let Some(record) = record {
                         for pending in ledger_pending {
-                            record.ledger(&crate::core::agent::ledger::finish(pending, true));
+                            record.ledger(&crate::core::agent::ledger::finish(pending, true, false));
                         }
                     }
                     return Err(e);
@@ -5975,6 +6065,7 @@ Address it and continue."
         }
         let mut todo_touched_this_batch = false;
         let mut ledger_failed: HashMap<String, bool> = HashMap::new();
+        let mut ledger_denied: std::collections::HashSet<String> = std::collections::HashSet::new();
         for outcome in tool_results {
             // Emitted here only when the invoker did not announce it already
             // (the default invoker never does; a call refused before execution
@@ -5985,6 +6076,12 @@ Address it and continue."
                 None => emit_tool_result(events, &tool_names, &outcome),
             };
             ledger_failed.insert(outcome.id.clone(), is_error);
+            if crate::core::agent::ledger::is_refused_unrun(
+                tool_names.get(outcome.id.as_str()).copied().unwrap_or(""),
+                &outcome.content,
+            ) {
+                ledger_denied.insert(outcome.id.clone());
+            }
             let ToolOutcome {
                 id,
                 content,
@@ -6030,7 +6127,8 @@ Address it and continue."
         if let Some(record) = record {
             for pending in ledger_pending {
                 let failed = ledger_failed.get(pending.call_id()).copied().unwrap_or(true);
-                record.ledger(&crate::core::agent::ledger::finish(pending, failed));
+                let denied = ledger_denied.contains(pending.call_id());
+                record.ledger(&crate::core::agent::ledger::finish(pending, failed, denied));
             }
         }
         if let Some(reason) = stuck_reason {

@@ -191,11 +191,25 @@ export function searchSettings(
     })
     fuseCache.set(index, fuse)
   }
-  const found = fuse.search(trimmed, { limit }).map((result) => result.item)
-  // Fuzzy matching can rank a loose hit above a title that contains the words
-  // typed; keep the order otherwise, but put those exact hits first.
+  // Search everything, rank, then cut: a title naming the query must not be
+  // lost because twenty loose fuzzy hits came first.
+  const found = fuse.search(trimmed).map((result) => result.item)
   const q = trimmed.toLowerCase()
-  const exact = (e: SettingsIndexEntry) =>
-    e.title.toLowerCase().includes(q) || (e.keywords ?? []).some((k) => k.toLowerCase().includes(q))
-  return [...found.filter(exact), ...found.filter((e) => !exact(e))]
+  const startsWord = (text: string) =>
+    text.startsWith(q) || text.split(/[\s/(),.-]+/).some((w) => w.startsWith(q))
+  const tier = (e: SettingsIndexEntry): number => {
+    const title = e.title.toLowerCase()
+    const keywords = (e.keywords ?? []).map((k) => k.toLowerCase())
+    if (title === q) return 0
+    if (startsWord(title)) return 1
+    if (title.includes(q)) return 2
+    if (keywords.some((k) => k === q || startsWord(k))) return 3
+    if (keywords.some((k) => k.includes(q))) return 4
+    return 5
+  }
+  return found
+    .map((e, i) => ({ e, i, t: tier(e) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .slice(0, limit)
+    .map(({ e }) => e)
 }

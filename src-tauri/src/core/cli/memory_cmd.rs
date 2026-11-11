@@ -2,6 +2,11 @@
 //! read, pin, forget and export what Flint remembers, by scope (project, user,
 //! chat).
 //!
+//! The agent's `memory_write` notes (`.jan/agent/memory/*.md`, or the user
+//! store's `memory/` folder) are a separate store: whole notes the agent reads
+//! and rewrites itself, not the scoped records listed here. `memory notes`,
+//! `note-show` and `note-forget` manage them.
+//!
 //! Every call goes through the same service the desktop page uses, so the
 //! same containment rules apply: a scope the place has no standing in is
 //! refused, a chat memory is visible only to its own chat, and forgetting also
@@ -206,9 +211,136 @@ pub fn export(project: &str, session: Option<&str>, scope: &str, path: &str) -> 
     Ok(())
 }
 
+/// The note store `memory_write` writes to: the project's own store, or the
+/// user's (data folder) store with `user`.
+fn notes_store(project: &str, user: bool) -> Result<PathBuf, String> {
+    let (a, _) = access(project, None);
+    if user {
+        return a.permanent_store.ok_or_else(|| "no user store here".to_string());
+    }
+    a.project_store
+        .ok_or_else(|| a.project_refused.unwrap_or_else(|| "no project is open".to_string()))
+}
+
+/// Note names in a store, sorted. Only names read from the folder are ever
+/// opened, so a name given on the command line cannot reach outside it.
+fn note_names(store: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(tauri_plugin_agent_tools::memory::memory_dir(store))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("md"))
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+        .collect();
+    names.sort();
+    names
+}
+
+fn note_path(store: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = name.trim().trim_end_matches(".md");
+    if !note_names(store).iter().any(|n| n == name) {
+        return Err(format!("no memory note named '{name}' (see `memory notes`)"));
+    }
+    Ok(tauri_plugin_agent_tools::memory::memory_dir(store).join(format!("{name}.md")))
+}
+
+/// `memory notes [--user]`: the notes the agent saved with `memory_write`.
+pub fn notes(project: &str, user: bool) -> Result<(), String> {
+    let store = notes_store(project, user)?;
+    let names = note_names(&store);
+    print(&serde_json::json!({
+        "store": if user { "user" } else { "project" },
+        "folder": tauri_plugin_agent_tools::memory::memory_dir(&store),
+        "total": names.len(),
+        "notes": names,
+    }))
+}
+
+/// `memory note-show <name> [--user]`
+pub fn note_show(project: &str, name: &str, user: bool) -> Result<(), String> {
+    let path = note_path(&notes_store(project, user)?, name)?;
+    print!("{}", std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?);
+    Ok(())
+}
+
+/// `memory note-forget <name> [--user]`: delete the note, so no later run
+/// recalls it.
+pub fn note_forget(project: &str, name: &str, user: bool) -> Result<(), String> {
+    let path = note_path(&notes_store(project, user)?, name)?;
+    std::fs::remove_file(&path).map_err(|e| format!("delete {}: {e}", path.display()))?;
+    println!("Forgot memory note '{}'.", name.trim().trim_end_matches(".md"));
+    Ok(())
+}
+
+/// `memory proposals`: memories the agent proposed (`memory_propose`) that
+/// wait for an answer, as the desktop's proposal cards show them.
+pub fn proposals(project: &str, session: Option<&str>) -> Result<(), String> {
+    use tauri_plugin_agent_tools::memory::{inferred, store};
+    let (a, _) = access(project, session);
+    let mut out = Vec::new();
+    for (scope, root) in [
+        (Scope::Session, a.permanent_store.clone()),
+        (Scope::User, a.permanent_store.clone()),
+        (Scope::Project, a.project_store.clone()),
+    ] {
+        let Some(root) = root else { continue };
+        for record in store::load(&root, scope).records {
+            let Some(reason) = inferred::pending_reason(&record) else { continue };
+            if !record.applies_to(a.session_id.as_deref(), a.project_id.as_deref()) {
+                continue;
+            }
+            out.push(serde_json::json!({
+                "id": record.id.to_string(),
+                "scope": format!("{scope:?}").to_lowercase().replace("session", "chat"),
+                "content": record.content,
+                "reason": reason.as_str(),
+                "explanation": reason.explain(),
+                "createdAt": record.created_at,
+            }));
+        }
+    }
+    print(&out)
+}
+
+/// `memory accept|reject <scope> <id>`: answer a proposal the way its card
+/// does -- accepting re-checks the content first, rejecting removes it.
+pub fn resolve_proposal(project: &str, session: Option<&str>, scope: &str, id: &str, approve: bool) -> Result<(), String> {
+    let scope = parse_scope(scope)?;
+    let (a, _) = access(project, session);
+    match service::resolve_proposal(&a, scope, &MemoryId::new(id.to_string()), approve, now())? {
+        Some(memory) => print(&memory),
+        None => {
+            println!("Rejected proposal {id}.");
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Notes `memory_write` saved are listed, shown and forgotten; a name
+    /// that is not a note in the folder is refused rather than opened.
+    #[test]
+    fn agent_memory_notes_are_listed_shown_and_forgotten() {
+        crate::core::app::commands::with_temp_data_folder(|_| {
+            let project = tempfile::tempdir().unwrap();
+            let p = project.path().to_string_lossy().to_string();
+            let store = notes_store(&p, false).unwrap();
+            let dir = tauri_plugin_agent_tools::memory::memory_dir(&store);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("prefs.md"), "likes tabs").unwrap();
+            assert_eq!(note_names(&store), vec!["prefs".to_string()]);
+            notes(&p, false).unwrap();
+            note_show(&p, "prefs", false).unwrap();
+            assert!(note_show(&p, "../../secret", false).is_err());
+            note_forget(&p, "prefs.md", false).unwrap();
+            assert!(note_names(&store).is_empty());
+            assert!(note_forget(&p, "prefs", false).is_err());
+        });
+    }
 
     #[test]
     fn scopes_parse_and_scopes_without_standing_are_refused() {

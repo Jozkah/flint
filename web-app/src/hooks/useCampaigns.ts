@@ -6,6 +6,7 @@ import type { Campaign } from '@/lib/campaignModel'
 import { errorText } from '@/lib/errorText'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { isServerTransport } from '@/lib/serverTransportFlag'
+import { probeRunner } from '@/lib/remoteRunner'
 
 /**
  * The campaigns the backend knows, kept fresh by polling the Rust commands
@@ -119,9 +120,36 @@ function splitCampaigns(listed: unknown[]): {
 /** False once the app turned out not to have `agent_campaign_list_with_skipped`. */
 let combinedListing = true
 
+/**
+ * Whether the Flint server runs campaigns, asked once. A server started
+ * without --agent-root refuses every campaign call, so the page says so and
+ * stops polling instead of logging a refusal every few seconds.
+ */
+let serverAgent: Promise<boolean> | null = null
+function serverHasAgent(): Promise<boolean> {
+  if (!serverAgent) {
+    const asked: Promise<boolean> = withTimeout(probeRunner()).then(
+      (info) => info.agent,
+      (e) => {
+        // An older server without the probe: ask for the list as before, and
+        // remember that. Any other failure (a network blip, a sign-in) is
+        // not an answer: ask again next time.
+        const text = errorText(e)
+        if (!/^Unknown command$/i.test(text.trim()) && !isUnknownCommand(text)) {
+          if (serverAgent === asked) serverAgent = null
+        }
+        return true
+      }
+    )
+    serverAgent = asked
+  }
+  return serverAgent
+}
+
 /** For tests. */
 export function resetListMode(): void {
   combinedListing = true
+  serverAgent = null
 }
 
 /**
@@ -181,6 +209,11 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
       set({ loaded: true, error: null, unavailable: 'desktop', staleApp: false })
       return
     }
+    if (isServerTransport() && !isPlatformTauri() && !(await serverHasAgent())) {
+      if (seq !== refreshSeq) return
+      set({ loaded: true, error: null, unavailable: 'desktop', staleApp: false })
+      return
+    }
     try {
       let got: Awaited<ReturnType<typeof listOnce>>
       try {
@@ -236,7 +269,10 @@ let chain = 0
 
 const schedule = (id: number) => {
   if (subscribers === 0 || id !== chain) return
-  const { campaigns, error, refresh } = useCampaignStore.getState()
+  const { campaigns, error, refresh, unavailable } = useCampaignStore.getState()
+  // Nothing to poll: no backend, or a server without campaigns. Asked again
+  // on the next mount.
+  if (unavailable) return
   timer = setTimeout(() => {
     void refresh().finally(() => schedule(id))
   }, pollDelay(campaigns, error))

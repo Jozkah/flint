@@ -122,7 +122,7 @@ pub(super) fn page_csp() -> &'static str {
 fn page_response() -> Resp {
     let mut response = reply(StatusCode::OK, "text/html; charset=utf-8", page_html());
     let headers = response.headers_mut();
-    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_str(page_csp()).expect("ascii policy"));
+    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_str(page_csp()).unwrap_or_else(|_| HeaderValue::from_static("default-src 'none'")));
     headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     headers.insert("x-robots-tag", HeaderValue::from_static("noindex, nofollow"));
     response
@@ -433,4 +433,16 @@ async fn message_response(state: &State, access: &Access, req: Request<Incoming>
 /// guest following it looks again at once.
 pub(super) fn announce_message(state: &State, thread_id: &str, message_id: &str) {
     state.events.publish("thread-message", &serde_json::json!({ "threadId": thread_id, "messageId": message_id }));
+}
+
+#[cfg(test)]
+mod csp_header_tests {
+    use super::*;
+
+    #[test]
+    fn page_response_carries_the_page_csp() {
+        let response = page_response();
+        let value = response.headers().get(header::CONTENT_SECURITY_POLICY).map(|v| v.to_str().unwrap_or_default());
+        assert_eq!(value, Some(page_csp()));
+    }
 }

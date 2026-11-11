@@ -358,8 +358,17 @@ impl PermissionMode {
     pub fn resolve(mode: Option<&str>, safe: bool, plan: bool) -> Result<(bool, bool), String> {
         match mode {
             Some(m) => {
-                if safe || plan {
-                    return Err("--mode replaces --safe and --plan; give one or the other".to_string());
+                // Name only the switches that were given: a headless command
+                // has no `--plan`, so naming it there points at a flag that
+                // does not exist.
+                let given = match (safe, plan) {
+                    (true, true) => Some("--safe and --plan"),
+                    (true, false) => Some("--safe"),
+                    (false, true) => Some("--plan"),
+                    (false, false) => None,
+                };
+                if let Some(given) = given {
+                    return Err(format!("--mode replaces {given}; give one or the other"));
                 }
                 let m = PermissionMode::parse(m)?;
                 // Review reads only, so what it would approve never comes up.
@@ -736,6 +745,9 @@ fn resolve_limits(
         cfg.agent.compaction_reserve_tokens,
     )
     .map_err(|e| e.message().to_string())?;
+    compaction
+        .check_window(cfg.agent.context_window)
+        .map_err(|e| e.message().to_string())?;
 
     // Resolved before the session is built: a run that asked for a ceiling it
     // cannot be priced against is refused here, before any paid request.
@@ -930,6 +942,23 @@ pub(super) fn load_resume_history(
     Ok(ResumedSession { thread_id, history })
 }
 
+/// What a resume that found nothing does: an explicit `--resume=<id>` fails,
+/// a request for the latest session starts a new one.
+pub(super) fn return_or_start_fresh(
+    request: &ResumeRequest,
+    error: String,
+) -> Result<Option<ResumedSession>, String> {
+    match request.target {
+        ResumeTarget::Id(_) => Err(format!(
+            "cannot resume: {error} (check the id, or leave it out to continue the latest session)"
+        )),
+        ResumeTarget::Latest => {
+            eprintln!("{error}; starting a new session");
+            Ok(None)
+        }
+    }
+}
+
 /// Decide what a resumed session continues from when its last run did not end
 /// (AH-026).
 ///
@@ -1047,15 +1076,14 @@ pub(super) fn prepare_agent_run(
         format!("{clean_task}\n\n---\nReferenced file contents:\n\n{injected}")
     };
 
-    // A failed resume is not fatal: report it and run the prompt in a new session.
+    // `--continue` (or a bare `--resume`) with nothing saved starts a new
+    // session. An explicit id that matches nothing, or more than one session,
+    // is refused: a typo must not quietly become a fresh conversation.
     let resumed = match resume {
         None => None,
         Some(target) => match load_resume_history(&agent_dir_for(&project_root), &target) {
             Ok(r) => Some(recover_interrupted(&agent_dir_for(&project_root), r, interrupted_choice)?),
-            Err(e) => {
-                eprintln!("{e}; starting a new session");
-                None
-            }
+            Err(e) => return_or_start_fresh(&target, e)?,
         },
     };
     if let Some(r) = resumed.as_ref() {

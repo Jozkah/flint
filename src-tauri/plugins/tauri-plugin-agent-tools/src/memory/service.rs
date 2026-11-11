@@ -990,3 +990,74 @@ mod tests {
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
     }
 }
+
+/// Answer a memory the agent proposed and left pending, for the desktop card
+/// and the CLI alike. `Ok(None)` is a rejection (the proposal is removed);
+/// `Ok(Some)` the saved memory.
+///
+/// The card is not the decision. Approving re-runs the refusals against the
+/// content as stored, so a proposal that sat on screen while the rules changed
+/// cannot be waved through; rejecting removes it rather than leaving a question
+/// that will be asked again.
+pub fn resolve_proposal(
+    access: &Access,
+    scope: Scope,
+    id: &MemoryId,
+    approve: bool,
+    now: i64,
+) -> Result<Option<MemoryView>, String> {
+    use super::inferred::{self, PendingReason};
+
+    let store_root = match scope {
+        Scope::Project => access.project_store.clone(),
+        _ => access.permanent_store.clone(),
+    }
+    .ok_or_else(|| format!("no store for {scope:?} memories here"))?;
+
+    // Decided and written under the scope's lock, so a memory saved while the
+    // proposal was on screen is not dropped by this rewrite.
+    enum Outcome {
+        Dismissed,
+        Discarded(String),
+        Approved,
+    }
+    let outcome = store::update(&store_root, scope, |records| {
+        let Some(index) = records.iter().position(|r| &r.id == id) else {
+            return Err("that proposal is no longer there".to_string());
+        };
+        // Another chat's or project's proposal is answered from that chat or
+        // project, not by guessing its id.
+        if !access.may_see(&records[index]) {
+            return Err("that proposal is no longer there".to_string());
+        }
+        let Some(reason) = inferred::pending_reason(&records[index]) else {
+            return Err("that memory is not awaiting an answer".to_string());
+        };
+        if !approve {
+            records.remove(index);
+            return Ok((true, Outcome::Dismissed));
+        }
+        if reason == PendingReason::ConflictsWithExisting {
+            return Err(
+                "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
+            );
+        }
+        // Re-checked at the moment of the decision, not at the moment of the
+        // proposal: the refusals are what stop a credential being stored, and a
+        // proposal can sit on screen for a long time.
+        // Every content gate, not the credential scan alone: length and an
+        // instruction posing as a fact are refused here as at creation.
+        if let Err(refusal) = super::create::check_content(&records[index].content) {
+            records.remove(index);
+            return Ok((true, Outcome::Discarded(refusal.message())));
+        }
+        records[index].status = Status::Active;
+        records[index].updated_at = now;
+        Ok((true, Outcome::Approved))
+    })?;
+    match outcome {
+        Outcome::Dismissed => Ok(None),
+        Outcome::Discarded(why) => Err(format!("{why}; it was discarded rather than saved")),
+        Outcome::Approved => get(access, scope, id).map(Some).map_err(|d| d.message()),
+    }
+}

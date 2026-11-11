@@ -60,6 +60,16 @@ pub async fn register_provider_config(
 ) -> Result<(), String> {
     // `auth:*` is the store's internal namespace (Bedrock, CLI login records).
     crate::core::server::provider_secrets::reject_reserved_key(&request.provider)?;
+    // A provider pointed at the Local API server itself would make the server
+    // forward each request back to itself.
+    if let Some(url) = request.base_url.as_deref() {
+        if crate::core::server::proxy::points_at_running_server(url) {
+            return Err(format!(
+                "The base URL {url} is this app's own Local API server; point the provider '{}' at the real upstream instead.",
+                request.provider
+            ));
+        }
+    }
     let key_chain = merge_register_api_keys(request.api_key.clone(), request.api_keys.clone());
     let api_key = key_chain.first().cloned();
     // Before anything can log them: an upstream error that echoes the request
@@ -93,8 +103,18 @@ pub async fn register_provider_config(
     // access is blocking, so run it off-thread and before taking the config
     // lock. Keyring failure (e.g. headless Linux without an unlocked Secret
     // Service) must not block registration; the in-memory config still works.
+    //
+    // A keyless provider (a LAN or loopback server) registers with no key at
+    // all; it leaves the keyring alone, so a registration that arrives before
+    // the saved keys were read back can never erase them.
     let provider_name = request.provider.clone();
     let keys = config.api_keys.clone();
+    if keys.is_empty() {
+        let provider_configs = state.provider_configs.clone();
+        provider_configs.lock().await.insert(provider_name.clone(), config);
+        log::debug!("Registered keyless provider config: {provider_name}");
+        return Ok(());
+    }
     if let Err(err) = tauri::async_runtime::spawn_blocking(move || {
         crate::core::server::provider_secrets::store_provider_keys(&provider_name, &keys)
     })

@@ -616,6 +616,7 @@
     "details": "Chi tiết"
   },
   "notes": {
+    "objectiveMet": "Một người tham gia đã kết thúc thảo luận; mục tiêu đã đạt được.",
     "modelNone": "Chưa chọn mô hình nào.",
     "providerMissing": "Nhà cung cấp \"{{provider}}\" chưa được cấu hình trong Flint.",
     "providerNotReady": "Nhà cung cấp \"{{provider}}\" chưa sẵn sàng (ví dụ: chưa có khóa API).",

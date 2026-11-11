@@ -595,6 +595,7 @@
     "details": "자세히"
   },
   "notes": {
+    "objectiveMet": "참가자가 토론을 마무리했습니다. 목표가 달성되었습니다.",
     "modelNone": "선택된 모델이 없습니다.",
     "providerMissing": "공급자 \"{{provider}}\"이(가) Flint에 설정되어 있지 않습니다.",
     "providerNotReady": "공급자 \"{{provider}}\"이(가) 준비되지 않았습니다(예: API 키 없음).",
