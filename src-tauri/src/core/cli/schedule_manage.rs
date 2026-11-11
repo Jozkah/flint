@@ -135,6 +135,16 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
         task.schedule = s;
     }
     if !input.allow_tools.is_empty() {
+        // The names given here must be real built-ins, as an automation's
+        // are; a typo would otherwise be saved and only show up as a run
+        // that could not do its work.
+        for t in &input.allow_tools {
+            if !tauri_plugin_agent_tools::tools::BUILTIN_TOOLS.iter().any(|b| b.name == t.as_str()) {
+                return Err(invalid(format!(
+                    "'{t}' is not a built-in tool (see `flint cli schedule tools`)"
+                )));
+            }
+        }
         task.policy.allow_tools = input.allow_tools.clone();
     }
     if let Some(w) = input.write {
@@ -164,6 +174,9 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
     if let Some(why) = super::schedule::worktree_unavailable(task) {
         return Err(invalid(why));
     }
+    // Validated here so a bad value (a cron minute out of range, a zero
+    // limit) is reported as invalid input, not as a storage failure.
+    task.validate().map_err(|e| invalid(e.message))?;
     Ok(())
 }
 
@@ -176,12 +189,7 @@ fn print_task(task: &Task, json: bool) {
         println!("{}", serde_json::to_string_pretty(task).unwrap_or_default());
         return;
     }
-    let next = task
-        .next_fires(chrono::Utc::now(), 1)
-        .ok()
-        .and_then(|f| f.first().copied())
-        .map(|f| stamp(f.timestamp_millis() as u64))
-        .unwrap_or_else(|| "-".to_string());
+    let next = super::schedule::next_label(task, chrono::Utc::now());
     println!(
         "{}  {}  next {}  {}",
         task.id,
@@ -201,12 +209,7 @@ pub fn summary_lines() -> Result<Vec<String>, String> {
     Ok(tasks
         .iter()
         .map(|t| {
-            let next = t
-                .next_fires(now, 1)
-                .ok()
-                .and_then(|f| f.first().copied())
-                .map(|f| stamp(f.timestamp_millis() as u64))
-                .unwrap_or_else(|| "-".to_string());
+            let next = super::schedule::next_label(t, now);
             format!("{}  {}  next {}  {}", t.id, if t.enabled { "on " } else { "off" }, next, t.name)
         })
         .collect())
@@ -320,7 +323,11 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
     };
     let tz = parse_timezone(&tz_name).map_err(|e| invalid(e.message))?;
     let exprs = schedule.compile().map_err(|e| invalid(e.message))?;
-    let count = count.clamp(1, 20);
+    const MAX_PREVIEW: usize = 20;
+    if count > MAX_PREVIEW {
+        eprintln!("(showing the first {MAX_PREVIEW}; --count {count} is more than preview lists)");
+    }
+    let count = count.clamp(1, MAX_PREVIEW);
     let mut all: Vec<DateTime<Utc>> = Vec::new();
     for e in exprs {
         all.extend(e.next_fires(tz, Utc::now(), count));
@@ -543,6 +550,48 @@ mod tests {
             delete(&id).unwrap();
             assert!(store.load_tasks().unwrap().is_empty());
             assert!(delete(&id).is_err());
+        });
+    }
+
+    #[test]
+    fn a_disabled_task_shows_no_next_run() {
+        let mut t = task("task-n");
+        t.schedule = Schedule::Daily { times: vec![TimeOfDay { hour: 9, minute: 0 }] };
+        t.timezone = "UTC".into();
+        let now = chrono::Utc::now();
+        assert_ne!(super::super::schedule::next_label(&t, now), "-");
+        t.enabled = false;
+        assert_eq!(super::super::schedule::next_label(&t, now), "-");
+    }
+
+    #[test]
+    fn bad_values_are_invalid_input_and_unknown_tools_are_refused() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let project = data.join("p");
+            std::fs::create_dir_all(&project).unwrap();
+            let base = TaskInput {
+                name: Some("V".into()),
+                prompt: Some("p".into()),
+                model: Some("mock/m".into()),
+                project: Some(project.to_string_lossy().into()),
+                daily: Some("09:00".into()),
+                allow_tools: vec!["read".into()],
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            };
+            let err = add(TaskInput { allow_tools: vec!["reed".into()], ..base.clone() }, true).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+            assert!(err.message().contains("'reed' is not a built-in tool"), "{}", err.message());
+            let err = add(
+                TaskInput { daily: None, cron: Some("99 9 * * *".into()), ..base.clone() },
+                true,
+            )
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{}", err.message());
+            let err = add(TaskInput { max_turns: Some(0), ..base.clone() }, true).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{}", err.message());
+            assert!(Store::new(data).load_tasks().unwrap().is_empty());
+            add(base, true).unwrap();
         });
     }
 

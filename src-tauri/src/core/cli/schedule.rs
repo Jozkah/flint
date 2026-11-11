@@ -115,6 +115,19 @@ pub(super) fn stamp(ms: u64) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
+/// When `task` fires next, for a listing: `-` when it is disabled (it will
+/// not fire at all) or never fires again.
+pub(super) fn next_label(task: &crate::core::schedule::spec::Task, now: chrono::DateTime<chrono::Utc>) -> String {
+    if !task.enabled {
+        return "-".to_string();
+    }
+    task.next_fires(now, 1)
+        .ok()
+        .and_then(|f| f.first().copied())
+        .map(|f| stamp(f.timestamp_millis() as u64))
+        .unwrap_or_else(|| "-".to_string())
+}
+
 /// `flint cli schedule list`
 pub fn list(json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
@@ -129,12 +142,7 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
     }
     let now = chrono::Utc::now();
     for t in tasks {
-        let next = t
-            .next_fires(now, 1)
-            .ok()
-            .and_then(|f| f.first().copied())
-            .map(|f| stamp(f.timestamp_millis() as u64))
-            .unwrap_or_else(|| "-".to_string());
+        let next = next_label(&t, now);
         println!(
             "{}  {:<8}  next {}  {}",
             t.id,
