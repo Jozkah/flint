@@ -117,6 +117,21 @@ pub(crate) fn validate_project_root(raw: &Path, data_folder: &Path) -> Result<Pa
     if !data_folder.as_os_str().is_empty() {
         let data = data_folder.canonicalize().unwrap_or_else(|_| data_folder.to_path_buf());
         if canonical.starts_with(&data) || data.starts_with(&canonical) {
+            // A worktree Flint made for a session lives inside the data
+            // folder, but its memory is the memory of the repository it was
+            // cut from: every turn of such a session used to run without
+            // project memory. The repository is read from the worktree's own
+            // `.git` pointer and only believed when the repository points
+            // back (`folder_trust::project_root`); it is then held to every
+            // rule here, so it cannot be another way into the data folder.
+            let source = crate::folder_trust::project_root(&canonical);
+            if canonical.starts_with(&data) && source != canonical {
+                if let Ok(source) = source.canonicalize() {
+                    if !source.starts_with(&data) && !data.starts_with(&source) {
+                        return validate_project_root(&source, data_folder);
+                    }
+                }
+            }
             return Err("the project folder overlaps the Jan data folder".into());
         }
     }
@@ -2260,6 +2275,43 @@ mod security_tests {
         let project = base.join("real-project");
         std::fs::create_dir_all(&project).unwrap();
         assert!(validate_project_root(&project, &data).is_ok());
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A session's managed worktree lives inside the data folder; its memory
+    /// is the memory of the repository it was cut from. A worktree whose
+    /// repository does not point back, or a repository that is itself inside
+    /// the data folder, is still refused.
+    #[test]
+    fn a_managed_worktree_uses_the_memory_of_its_source_repository() {
+        let data = root("wt-data");
+        let base = root("wt-base");
+        let link = |repo: &Path, wt: &Path, back: bool| {
+            let gitdir = repo.join(".git").join("worktrees").join("s1");
+            std::fs::create_dir_all(&gitdir).unwrap();
+            std::fs::create_dir_all(wt).unwrap();
+            std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+            if back {
+                std::fs::write(gitdir.join("gitdir"), wt.join(".git").display().to_string()).unwrap();
+            }
+        };
+        let repo = base.join("repo");
+        let wt = data.join("agent-workspace").join("worktrees").join("s1");
+        link(&repo, &wt, true);
+        let resolved = validate_project_root(&wt, &data).expect("worktree resolves to its repository");
+        assert_eq!(resolved, repo.canonicalize().unwrap());
+
+        // Forged: the repository never heard of this worktree.
+        let forged = data.join("agent-workspace").join("worktrees").join("s2");
+        link(&base.join("other"), &forged, false);
+        assert!(validate_project_root(&forged, &data).is_err());
+
+        // A source repository inside the data folder is no way around the rule.
+        let inner = data.join("inner-repo");
+        let wt3 = data.join("agent-workspace").join("worktrees").join("s3");
+        link(&inner, &wt3, true);
+        assert!(validate_project_root(&wt3, &data).is_err());
         let _ = std::fs::remove_dir_all(&data);
         let _ = std::fs::remove_dir_all(&base);
     }
