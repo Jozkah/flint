@@ -502,7 +502,7 @@ enum McpServeCommands {
         /// Transport: stdio for a spawned child process, http for loopback Streamable HTTP
         #[arg(long, value_enum, default_value_t = ServeTransport::Stdio)]
         transport: ServeTransport,
-        /// Also serve the mutating filesystem tools (write, edit), confined to the project root
+        /// Also serve the tools that change the project (write, edit, apply_patch, git), confined to the project root
         #[arg(long)]
         allow_write: bool,
         /// Also serve bash (runs under the same OS sandbox the agent's shell does)

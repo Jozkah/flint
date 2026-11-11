@@ -32,7 +32,7 @@ use tauri_plugin_agent_tools::tools::gate::{
 use tauri_plugin_agent_tools::tools::handlers::{bash_result_failed, execute_builtin};
 use tauri_plugin_agent_tools::tools::schema::{builtin_tool_schemas, search_tool_schemas};
 use tauri_plugin_agent_tools::subject::Subject;
-use tauri_plugin_agent_tools::tools::{lookup, Capability, ToolContext};
+use tauri_plugin_agent_tools::tools::{lookup, ToolContext};
 
 pub mod http;
 pub mod stdio;
@@ -82,32 +82,52 @@ pub struct ServedTools {
     pub only: Vec<String>,
 }
 
+/// Tools a peer gets with no opt-in. Each one only reads, or writes into the
+/// agent's own memory/skill store by sanitized name (never a project file).
+///
+/// This is an allowlist on purpose. Deciding by argument shape ("a `Write` tool
+/// with no path argument is a workspace tool") let `apply_patch`, whose paths
+/// sit inside the patch text, and `git`, whose effect sits in its arguments,
+/// change project files with no opt-in. A built-in not named in one of these
+/// lists is never served, so a new tool stays refused until someone decides it
+/// is safe for a caller that cannot be asked. Host actions, `docker`, the
+/// clipboard, the browser, messaging and the like are deliberately absent.
+pub(crate) const READ_ONLY_SERVED: &[&str] = &[
+    "read",
+    "ls",
+    "find",
+    "grep",
+    "memory_list",
+    "memory_read",
+    "memory_write",
+    "skill_list",
+    "skill_read",
+    "skill_write",
+    "web_search",
+    "web_fetch",
+    "git_inspect",
+];
+
+/// Added by `--allow-write`: everything that can change a project file or the
+/// repository. The gate still confines each call to the served root.
+pub(crate) const WRITE_SERVED: &[&str] = &["write", "edit", "apply_patch", "git"];
+
+/// Added by `--allow-exec`.
+pub(crate) const EXEC_SERVED: &[&str] = &["bash"];
+
 impl ServedTools {
-    /// Whether `name` is offered. Unknown names are not served: `lookup()`
-    /// decides what a built-in is, and `path_args`/`capability` come from there.
+    /// Whether `name` is offered: by capability, from the fixed lists above.
+    /// Unknown and unlisted names are refused.
     pub fn is_served(&self, name: &str) -> bool {
-        let Some(tool) = lookup(name) else {
-            return false;
-        };
-        // A peer has no browser pane to drive, and the interactive `browser`
-        // tool is a `Write` tool with no path argument, which the rule below
-        // would otherwise serve by default. It needs a person to approve each
-        // address it opens, and a peer program cannot be asked.
-        if tauri_plugin_agent_tools::tools::is_browser_tool(name) || name == "browser" {
+        if lookup(name).is_none() {
             return false;
         }
         if !self.only.is_empty() && !self.only.iter().any(|n| n == name) {
             return false;
         }
-        match tool.capability {
-            Capability::Exec => self.allow_exec,
-            // A `Write` tool with no path argument is a workspace tool
-            // (`memory_write`, `skill_write`): it writes into the agent's own
-            // store by sanitized name and can never reach a project file, so it
-            // belongs to the memory/skill set rather than the mutating one.
-            Capability::Write => self.allow_write || tool.path_args.is_empty(),
-            Capability::Read | Capability::Net => true,
-        }
+        READ_ONLY_SERVED.contains(&name)
+            || (self.allow_write && WRITE_SERVED.contains(&name))
+            || (self.allow_exec && EXEC_SERVED.contains(&name))
     }
 }
 
