@@ -3285,6 +3285,24 @@ impl CompositeToolInvoker {
             out.push(ToolOutcome::plain(id.to_string(), secret_unattended_msg(name, &secret_findings)));
             return None;
         }
+        // A write or edit that would be refused for not having read the file
+        // is refused now, before anyone is asked to approve it. Only when a
+        // person is about to be asked: a question put off for later is
+        // checked against the file when it is answered, as before.
+        let unread = if self.can_prompt() {
+            tauri_plugin_agent_tools::tools::handlers::unread_edit_refusal(
+                tool,
+                args,
+                &self.streaming_tool_context(id),
+            )
+            .await
+        } else {
+            None
+        };
+        if let Some(refusal) = unread {
+            out.push(ToolOutcome::plain(id.to_string(), refusal));
+            return None;
+        }
         // A question answered while this run was paused, or one to put
         // off now because nobody is here: see `approval_flow`.
         let early_digest = approval_digest(name, args);

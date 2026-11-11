@@ -810,6 +810,19 @@ async fn denying_a_flagged_write_tells_the_model_the_user_was_asked() {
     assert!(!root.join("src/env.ts").exists());
 }
 
+/// An overwrite of a file this session never read is refused before the
+/// person is asked: approving it would only end in the same refusal.
+#[tokio::test]
+async fn an_unread_file_is_refused_before_anyone_is_asked() {
+    let (root, _data, mut invoker, mut rx, _registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    std::fs::write(root.join("other.txt"), "original").unwrap();
+    let out = invoke_within(&invoker, &[write_to("unread-1", "other.txt", "hello")]).await;
+    assert!(out[0].content.contains("has not been read"), "{}", out[0].content);
+    assert_eq!(prompts(&mut rx), 0);
+    assert_eq!(std::fs::read_to_string(root.join("other.txt")).unwrap(), "original");
+}
+
 /// Every answer to a prompt, and every refusal made because nobody could be
 /// asked, lands in the permission audit, not only cancelled calls.
 #[tokio::test]

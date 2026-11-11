@@ -885,6 +885,12 @@ pub async fn execute_builtin_with_diff(
             // last is what is there now, so its next edit is not "stale".
             record_seen(args, ctx).await;
             let content = append_syntax_warning(content, args, ctx).await;
+            // The model only sees `content`: say the file changed under it,
+            // or its next edit quotes text the formatter already rewrote.
+            let content = match diff.as_deref().and_then(reformat_note) {
+                Some(note) => format!("{}\n{note}", content.trim_end()),
+                None => content,
+            };
             (content, diff, images)
         }
         // Tools that can hand the model an image. `screenshot` and `browser`
@@ -895,6 +901,35 @@ pub async fn execute_builtin_with_diff(
         }
         _ => (execute_builtin(tool, args, ctx).await.0, None, None),
     }
+}
+
+/// The read-before-edit refusal a `write` or `edit` would get if it ran now,
+/// so a caller can refuse the call before asking anyone to approve it:
+/// approving an edit that then fails because the file was never read wastes
+/// the person's answer.
+pub async fn unread_edit_refusal(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Option<String> {
+    let verb = match tool.name {
+        "write" => "overwrite",
+        "edit" => "edit",
+        _ => return None,
+    };
+    stale_edit_refusal(verb, args, ctx).await
+}
+
+/// What the model is told when the project's formatter rewrote the file after
+/// its change: read from the `[formatted with ...]` line the redrawn diff
+/// ends with.
+fn reformat_note(diff: &str) -> Option<String> {
+    let last = diff.lines().last()?.trim();
+    let what = last.strip_prefix("[formatted with ")?.strip_suffix(']')?;
+    Some(format!(
+        "Note: the file was reformatted after this change (formatted with {what}), so its layout may \
+         differ from what you wrote. Read it again before editing it further."
+    ))
 }
 
 /// Append a one-line warning to the result of a `write`/`edit` when the file

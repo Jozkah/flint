@@ -1248,6 +1248,16 @@ async fn edit_replace_all_swaps_every_occurrence() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A formatter rewriting the file after an edit is told to the model, which
+/// otherwise only sees "Applied 1 edit(s)" and quotes stale text next time.
+#[test]
+fn a_reformatted_file_is_named_in_the_model_result() {
+    let note = super::reformat_note("+    1 | a\n[formatted with rustfmt (rustfmt.toml)]").expect("a note");
+    assert!(note.contains("reformatted") && note.contains("rustfmt"), "{note}");
+    assert!(super::reformat_note("+    1 | a\n[formatter not run: no config]").is_none());
+    assert!(super::reformat_note("+    1 | a").is_none());
+}
+
 /// The approval diff of a replace_all edit shows every line it changes, not
 /// only the first match with the rest as context.
 #[tokio::test]
