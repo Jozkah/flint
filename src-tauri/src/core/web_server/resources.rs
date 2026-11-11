@@ -80,15 +80,16 @@ pub fn delete_provider_keys(name: &str) -> Result<(), String> {
 }
 
 /// One generic secret (web search keys, header secrets, tokens) from the
-/// keyring/encrypted-file store the desktop `get_secret` reads. A reserved
-/// name reads as absent, as on the desktop.
-pub fn get_secret(key: &str) -> Option<String> {
+/// keyring/encrypted-file store the desktop `get_secret` reads. `Ok(None)` is
+/// a readable name with nothing stored. A name the page may not read back (a
+/// provider's API key, a reserved name) is an error rather than a silent
+/// `None`, which looked exactly like "the value you just saved is gone".
+pub fn get_secret(key: &str) -> Result<Option<String>, String> {
     use crate::core::server::provider_secrets as secrets;
-    secrets::reject_reserved_key(key).ok()?;
-    if !secrets::is_webview_readable_secret(key) {
-        return None;
+    if secrets::reject_reserved_key(key).is_err() || !secrets::is_webview_readable_secret(key) {
+        return Err(format!("the secret {key:?} cannot be read back from the page"));
     }
-    secrets::load_provider_keys(key).into_iter().next()
+    Ok(secrets::load_provider_keys(key).into_iter().next())
 }
 
 /// The desktop `set_secret`: an empty value deletes the entry.
@@ -277,14 +278,20 @@ mod tests {
         std::env::set_var("JAN_DATA_FOLDER", dir.path());
         crate::core::server::provider_secrets::force_file_secrets();
         set_secret("exa-api-key", "k1").unwrap();
-        assert_eq!(get_secret("exa-api-key").as_deref(), Some("k1"));
+        assert_eq!(get_secret("exa-api-key").unwrap().as_deref(), Some("k1"));
         set_secret("exa-api-key", "").unwrap();
-        assert_eq!(get_secret("exa-api-key"), None);
+        assert_eq!(get_secret("exa-api-key").unwrap(), None);
+        // The Hugging Face token and the other web search keys read back too.
+        for key in ["general:huggingface-token", "tavily-api-key", "brave-api-key", "provider-headers:x"] {
+            set_secret(key, "v").unwrap();
+            assert_eq!(get_secret(key).unwrap().as_deref(), Some("v"), "{key}");
+            set_secret(key, "").unwrap();
+        }
         // A provider's API key is not a generic secret the page may read back.
         set_secret("openai", "sk-1").unwrap();
-        assert_eq!(get_secret("openai"), None);
+        assert!(get_secret("openai").is_err());
         assert!(set_secret("auth:bedrock-aws", "x").is_err());
-        assert_eq!(get_secret("AUTH:bedrock-aws"), None);
+        assert!(get_secret("AUTH:bedrock-aws").is_err());
         match &prev {
             Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
             None => std::env::remove_var("JAN_DATA_FOLDER"),
