@@ -76,7 +76,9 @@ impl Roots {
             .filter(|s| !s.is_empty())
             .map(PathBuf::from);
         Self {
-            data_dir: dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")),
+            // Follows a redirected data folder, so a redirected run never
+            // plans a copy into the real Flint folder.
+            data_dir: crate::core::app::commands::app_data_base().unwrap_or_else(|| PathBuf::from(".")),
             home_dir: dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")),
             data_folder_override,
             home_override,

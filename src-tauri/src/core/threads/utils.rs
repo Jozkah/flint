@@ -14,10 +14,11 @@ pub fn get_data_dir(data_folder: &Path) -> PathBuf {
 /// id is only ever a name `create_thread` (or the CLI) chose, so anything that
 /// could step out of that directory -- `..`, a separator, a drive or an
 /// absolute path -- is refused before the filesystem is touched
-/// (Jozkah/jan#35).
+/// (Jozkah/jan#35). Names Windows rewrites (`...`, a trailing dot or space,
+/// device names) are refused too: `threads\...` is `threads\` itself there.
 pub fn validate_thread_id(thread_id: &str) -> Result<(), String> {
     use std::path::Component;
-    let plain = !thread_id.is_empty()
+    let plain = crate::core::path_ids::validate_path_id("thread id", thread_id).is_ok()
         && !thread_id.contains(['/', '\\', ':', '\0'])
         && matches!(
             Path::new(thread_id).components().collect::<Vec<_>>().as_slice(),
