@@ -101,9 +101,11 @@
       "disabled": "Migawki żądań są wyłączone.",
       "too-large": "Żądanie było zbyt duże, aby zapisać je w całości.",
       "missing": "Oczyszczonej kopii nie ma już na dysku (mogła wygasnąć lub zostać usunięta).",
-      "error": "Nie udało się odczytać oczyszczonej kopii."
+      "error": "Nie udało się odczytać oczyszczonej kopii.",
+      "web": "Wersja webowa nie przechowuje kopii żądań, więc nic powyżej nie jest oznaczone jako zweryfikowane."
     },
-    "usageRecorded": "Dostawca zgłosił użycie tokenów, zapisane przy tym żądaniu."
+    "usageRecorded": "Dostawca zgłosił użycie tokenów, zapisane przy tym żądaniu.",
+    "memoryNotOnWeb": "Zapisana pamięć nie jest dostępna w wersji webowej, więc nic nie zostało wysłane."
   },
   "label": {
     "temporary": "Pamięć jest wyłączona w czatach tymczasowych",
@@ -116,7 +118,8 @@
     "memoryDisabled": "Pamięć jest wyłączona",
     "memoryUnavailable": "Nie udało się odczytać pamięci",
     "lastRequest": "Ostatnie żądanie",
-    "usage": "Użycie tokenów"
+    "usage": "Użycie tokenów",
+    "memoryNotOnWeb": "Pamięć nie jest dostępna w wersji webowej"
   },
   "empty": {
     "noModel": "Nie wybrano modelu.",

@@ -1100,7 +1100,10 @@
     "thisRoom": "Aquesta sala",
     "thisSession": "Aquesta sessió",
     "keyMissingTitle": "Falta una clau API",
-    "keyMissingDescription": "{{subject}} utilitza un proveïdor que encara no té cap clau API. Afegeix la clau a Configuració o tria un altre model per continuar."
+    "keyMissingDescription": "{{subject}} utilitza un proveïdor que encara no té cap clau API. Afegeix la clau a Configuració o tria un altre model per continuar.",
+    "providerOffTitle": "{{provider}} està desactivat",
+    "providerOffDescription": "{{subject}} fa servir {{provider}}, que està desactivat, així que no s'ha enviat res. Torna'l a activar per continuar fent-lo servir aquí, o tria un altre model.",
+    "turnOn": "Activa {{provider}}"
   },
   "skillsUsedCount_one": "S'ha utilitzat {{count}} habilitat",
   "skillsUsedCount_many": "S'han utilitzat {{count}} d'habilitats",

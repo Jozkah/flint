@@ -530,9 +530,8 @@ impl Runner {
         let mut response = Response::new(body.boxed_unsync());
         let headers = response.headers_mut();
         headers.insert(header::CONTENT_TYPE, "text/event-stream".parse().unwrap());
-        headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        super::server::add_security_headers(headers);
         headers.insert("x-accel-buffering", "no".parse().unwrap());
-        headers.insert("x-content-type-options", "nosniff".parse().unwrap());
         Some(response)
     }
 

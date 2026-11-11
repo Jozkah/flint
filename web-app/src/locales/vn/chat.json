@@ -345,5 +345,9 @@
     "recovered": "Đã khôi phục: công cụ chạy mô hình đã dừng, đã được khởi động lại và tin nhắn của bạn đã được trả lời.",
     "retryFailed": "Công cụ chạy mô hình lại dừng. Flint đã thử lại một lần; hãy dùng Tạo lại để thử lần nữa.",
     "restartFailed": "Không thể tự động tải lại mô hình. Hãy dùng Tạo lại hoặc chọn lại mô hình."
+  },
+  "providerBinding": {
+    "off": "Cuộc trò chuyện này dùng {{provider}}, hiện đang tắt. Chưa có gì được gửi. Hãy bật lại, hoặc chọn mô hình khác cho cuộc trò chuyện này.",
+    "other": "Cuộc trò chuyện này dùng {{provider}}, nhưng {{selected}} sắp trả lời. Chưa có gì được gửi. Hãy chọn một mô hình trong cuộc trò chuyện này để chuyển sang nhà cung cấp khác."
   }
 }

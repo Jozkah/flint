@@ -182,3 +182,32 @@ describe('forkThread message ids (T7-023)', () => {
     expect([...ids].sort()).toEqual(ids)
   })
 })
+
+describe('forkThread write order', () => {
+  // The web build appends each message over HTTP; writes started together
+  // could reach the file in any order (u, a, u, u, a). The next write starts
+  // only once the previous one is stored, so a slow first write cannot be
+  // overtaken by a fast second one.
+  it('stores each copied message before starting the next', async () => {
+    const stored: string[] = []
+    let inFlight = 0
+    let maxInFlight = 0
+    messagesState.addMessage.mockImplementation((m: ThreadMessage) => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      const text = (m.content[0] as { text: { value: string } }).text.value
+      // Earlier messages are slower to store, as a busy server could make them.
+      const delay = text === 'u1' ? 30 : text === 'a1' ? 20 : 5
+      return new Promise<void>((resolve) =>
+        setTimeout(() => {
+          stored.push(text)
+          inFlight--
+          resolve()
+        }, delay)
+      )
+    })
+    await forkThread('t1')
+    expect(maxInFlight).toBe(1)
+    expect(stored).toEqual(['u1', 'a1', 'u2', 'a2'])
+  })
+})

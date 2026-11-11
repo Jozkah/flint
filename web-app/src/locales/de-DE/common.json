@@ -1091,7 +1091,10 @@
     "thisRoom": "Dieser Raum",
     "thisSession": "Diese Sitzung",
     "keyMissingTitle": "Ein API-Schlüssel fehlt",
-    "keyMissingDescription": "{{subject}} nutzt einen Anbieter, für den noch kein API-Schlüssel hinterlegt ist. Fügen Sie den Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes Modell, um fortzufahren."
+    "keyMissingDescription": "{{subject}} nutzt einen Anbieter, für den noch kein API-Schlüssel hinterlegt ist. Fügen Sie den Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes Modell, um fortzufahren.",
+    "providerOffTitle": "{{provider}} ist ausgeschaltet",
+    "providerOffDescription": "{{subject}} verwendet {{provider}}, das ausgeschaltet ist, daher wurde nichts gesendet. Schalte es wieder ein, um es hier weiter zu nutzen, oder wähle ein anderes Modell.",
+    "turnOn": "{{provider}} einschalten"
   },
   "skillsUsedCount_one": "{{count}} Skill verwendet",
   "skillsUsedCount_other": "{{count}} Skills verwendet",

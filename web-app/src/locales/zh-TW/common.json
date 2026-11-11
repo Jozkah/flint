@@ -1091,7 +1091,10 @@
     "thisRoom": "此房間",
     "thisSession": "此工作階段",
     "keyMissingTitle": "缺少 API 金鑰",
-    "keyMissingDescription": "{{subject}} 使用的供應商尚未設定 API 金鑰。請在設定中新增金鑰，或選擇其他模型以繼續。"
+    "keyMissingDescription": "{{subject}} 使用的供應商尚未設定 API 金鑰。請在設定中新增金鑰，或選擇其他模型以繼續。",
+    "providerOffTitle": "{{provider}} 已關閉",
+    "providerOffDescription": "{{subject}}使用的 {{provider}} 已關閉，因此沒有傳送任何內容。重新開啟即可繼續在此使用，或選擇其他模型。",
+    "turnOn": "開啟 {{provider}}"
   },
   "skillsUsedCount_one": "使用了 {{count}} 個技能",
   "skillsUsedCount_other": "使用了 {{count}} 個技能",

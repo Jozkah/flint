@@ -10,7 +10,11 @@ import {
   getLocalPropsExtension,
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
-import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import {
+  fetchServerWindow,
+  resolveServerWindowHeaders,
+  serverWindowHeaders,
+} from '@/lib/serverWindow'
 import { fetchOllamaWindow, isOllamaProvider } from '@/lib/ollamaWindow'
 import { listedWindow } from '@/lib/listedWindows'
 import { useContextBreakdown } from './useContextBreakdown'
@@ -326,12 +330,14 @@ export const useTokensCount = (
     let current = true
     // Ollama runs a model at its loaded `num_ctx`, which `/props` and
     // `/v1/models` do not name (janhq/jan#9476).
-    const ollama = isOllamaProvider(remoteProvider)
-      ? fetchOllamaWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders)
-      : Promise.resolve(null)
-    ollama.then((loaded) =>
-      loaded ?? fetchServerWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders)
-    ).then((tokens) => {
+    // A secret header not yet in memory is read from the credential store, as
+    // the chat request has it: without it the probe is refused with a 401.
+    resolveServerWindowHeaders(remoteProvider).then(async (headers) => {
+      const loaded = isOllamaProvider(remoteProvider)
+        ? await fetchOllamaWindow(remoteBaseUrl, selectedModel?.id, headers)
+        : null
+      return loaded ?? fetchServerWindow(remoteBaseUrl, selectedModel?.id, headers)
+    }).then((tokens) => {
       if (current && tokens) setLearnedWindow(threadId, tokens, selectedModel?.id)
     })
     return () => {

@@ -114,10 +114,12 @@ export async function forkThread(
   // Ids sort in copy order: plain ulid() is random within one millisecond, and
   // a tight loop scrambled the fork's message order (T7-023).
   const nextId = monotonicFactory()
+  // One write at a time: the web build appends each message over HTTP, and
+  // writes started together could land in the file out of order.
   for (const message of copied) {
     const metadata = { ...((message.metadata ?? {}) as Record<string, unknown>) }
     for (const key of MESSAGE_METADATA_DROPPED) delete metadata[key]
-    useMessages.getState().addMessage({
+    await useMessages.getState().addMessage({
       ...message,
       id: nextId(),
       thread_id: created.id,

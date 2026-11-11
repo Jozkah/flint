@@ -345,5 +345,9 @@
     "recovered": "Recuperado: o motor do modelo parou, foi reiniciado e sua mensagem foi respondida.",
     "retryFailed": "O motor do modelo parou de novo. O Flint tentou novamente uma vez; use Gerar novamente para tentar outra vez.",
     "restartFailed": "Não foi possível carregar o modelo novamente de forma automática. Use Gerar novamente ou escolha o modelo de novo."
+  },
+  "providerBinding": {
+    "off": "Este chat usa {{provider}}, que está desativado. Nada foi enviado. Ative-o de novo ou escolha outro modelo para este chat.",
+    "other": "Este chat usa {{provider}}, mas {{selected}} ia responder. Nada foi enviado. Escolha um modelo neste chat para movê-lo para outro provedor."
   }
 }

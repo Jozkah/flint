@@ -18,6 +18,7 @@ const probe = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null as numb
 vi.mock('@/lib/serverWindow', () => ({
   fetchServerWindow: probe,
   serverWindowHeaders: () => undefined,
+  resolveServerWindowHeaders: async () => undefined,
 }))
 
 const userSet = (value: unknown) => ({

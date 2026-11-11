@@ -187,7 +187,12 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
       // written like any other thread.
       const created = await threads.createThread(
         temporary.model,
-        titleForKeptChat(firstUserText, i18n.t('common:keptChat')),
+        titleForKeptChat(
+          firstUserText,
+          i18n.t('common:keptChat'),
+          temporary,
+          i18n.t('common:temporaryChat')
+        ),
         temporary.assistants?.[0]
       )
       if (!created?.id || created.id === TEMPORARY_CHAT_ID) {

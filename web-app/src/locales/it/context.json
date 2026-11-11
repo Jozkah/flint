@@ -101,9 +101,11 @@
       "disabled": "Gli snapshot delle richieste sono disattivati.",
       "too-large": "La richiesta era troppo grande per essere salvata per intero.",
       "missing": "La copia sanificata non è più su disco (potrebbe essere scaduta o stata eliminata).",
-      "error": "Non è stato possibile leggere la copia sanificata."
+      "error": "Non è stato possibile leggere la copia sanificata.",
+      "web": "La versione web non conserva copie delle richieste, quindi nulla di quanto sopra è segnato come verificato."
     },
-    "usageRecorded": "Il provider ha segnalato l'uso di token, registrato per questa richiesta."
+    "usageRecorded": "Il provider ha segnalato l'uso di token, registrato per questa richiesta.",
+    "memoryNotOnWeb": "La memoria salvata non è disponibile nella versione web, quindi non ne è stata inviata nessuna."
   },
   "label": {
     "temporary": "La memoria è disattivata nelle chat temporanee",
@@ -116,7 +118,8 @@
     "memoryDisabled": "La memoria è disattivata",
     "memoryUnavailable": "Impossibile leggere la memoria",
     "lastRequest": "Ultima richiesta",
-    "usage": "Uso dei token"
+    "usage": "Uso dei token",
+    "memoryNotOnWeb": "La memoria non è disponibile sul web"
   },
   "empty": {
     "noModel": "Nessun modello selezionato.",

@@ -53,7 +53,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
 import { contextUsage } from '@/lib/contextUsage'
 import { useProviderLocations } from '@/hooks/useEndpointLocations'
-import { cn, isLocalProvider } from '@/lib/utils'
+import { cn, getProviderTitle, isLocalProvider } from '@/lib/utils'
 import { endpointHost } from '@/lib/modelLocation'
 import { endpointScope } from '@/lib/endpointDiagnostics'
 import {
@@ -81,6 +81,7 @@ import {
   getCompactionPolicy,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
+import { isServedByFlint } from '@/lib/platform/utils'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { StatusChip, WorkStatus } from '@/containers/StatusChip'
 
@@ -775,7 +776,13 @@ export function WhatJanIsUsingPanel({
         })
         if (!cancelled) setEvidence(evidenceFromSnapshot(found?.[0] ?? null))
       } catch {
-        if (!cancelled) setEvidence({ status: 'unavailable', reason: 'error' })
+        // The web build has no request copies to read: say so, not "error".
+        if (!cancelled) {
+          setEvidence({
+            status: 'unavailable',
+            reason: isServedByFlint() ? 'web' : 'error',
+          })
+        }
       }
     })()
     return () => {
@@ -857,7 +864,9 @@ export function WhatJanIsUsingPanel({
       summarizeChatContext({
         model: {
           id: selectedModel?.id,
-          provider: selectedProvider,
+          // The name the user gave the provider: after a rename the id stays
+          // the old one. `provider` below makes this follow a rename.
+          provider: selectedProvider ? getProviderTitle(selectedProvider) : undefined,
           location: provider ? providerReach(provider) : 'unknown',
           host: provider && !isLocalProvider(provider.provider) ? endpointHost(provider.base_url) : null,
         },
@@ -869,6 +878,7 @@ export function WhatJanIsUsingPanel({
         pendingFiles,
         indexedFiles,
         temporary,
+        web: isServedByFlint(),
         memory,
         memoryViews,
         tools: {

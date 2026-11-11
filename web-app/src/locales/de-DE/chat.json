@@ -330,5 +330,9 @@
     "recovered": "Wiederhergestellt: Die Modell-Engine wurde beendet und neu gestartet, und deine Nachricht wurde beantwortet.",
     "retryFailed": "Die Modell-Engine wurde erneut beendet. Flint hat es einmal erneut versucht; nutze „Neu generieren“ für einen weiteren Versuch.",
     "restartFailed": "Das Modell konnte nicht automatisch neu geladen werden. Nutze „Neu generieren“ oder wähle das Modell erneut aus."
+  },
+  "providerBinding": {
+    "off": "Dieser Chat verwendet {{provider}}, das ausgeschaltet ist. Es wurde nichts gesendet. Schalte es wieder ein oder wähle ein anderes Modell für diesen Chat.",
+    "other": "Dieser Chat verwendet {{provider}}, aber {{selected}} hätte geantwortet. Es wurde nichts gesendet. Wähle in diesem Chat ein Modell, um ihn zu einem anderen Anbieter zu verschieben."
   }
 }

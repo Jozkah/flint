@@ -360,5 +360,9 @@
     "recovered": "Przywrócono: silnik modelu się zatrzymał, został uruchomiony ponownie, a wiadomość otrzymała odpowiedź.",
     "retryFailed": "Silnik modelu znowu się zatrzymał. Flint ponowił próbę raz; użyj opcji Wygeneruj ponownie, aby spróbować jeszcze raz.",
     "restartFailed": "Nie udało się automatycznie wczytać modelu ponownie. Użyj opcji Wygeneruj ponownie lub wybierz model jeszcze raz."
+  },
+  "providerBinding": {
+    "off": "Ten czat używa {{provider}}, który jest wyłączony. Nic nie zostało wysłane. Włącz go ponownie albo wybierz inny model dla tego czatu.",
+    "other": "Ten czat używa {{provider}}, ale odpowiedzieć miał {{selected}}. Nic nie zostało wysłane. Wybierz model w tym czacie, aby przenieść go do innego dostawcy."
   }
 }

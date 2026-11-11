@@ -360,5 +360,9 @@
     "recovered": "Obnoveno: engine modelu se zastavil, byl restartován a na zprávu přišla odpověď.",
     "retryFailed": "Engine modelu se znovu zastavil. Flint to jednou zkusil znovu; pro další pokus použijte Vygenerovat znovu.",
     "restartFailed": "Model se nepodařilo automaticky znovu načíst. Použijte Vygenerovat znovu nebo model vyberte znovu."
+  },
+  "providerBinding": {
+    "off": "Tento chat používá {{provider}}, který je vypnutý. Nic nebylo odesláno. Zapněte ho znovu, nebo pro tento chat vyberte jiný model.",
+    "other": "Tento chat používá {{provider}}, ale odpovídat se chystal {{selected}}. Nic nebylo odesláno. Chcete-li chat přesunout k jinému poskytovateli, vyberte v něm model."
   }
 }

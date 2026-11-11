@@ -1099,7 +1099,10 @@
     "thisRoom": "Esta sala",
     "thisSession": "Esta sesión",
     "keyMissingTitle": "Falta una clave de API",
-    "keyMissingDescription": "{{subject}} usa un proveedor que aún no tiene clave de API. Añada la clave en Ajustes o elija otro modelo para continuar."
+    "keyMissingDescription": "{{subject}} usa un proveedor que aún no tiene clave de API. Añada la clave en Ajustes o elija otro modelo para continuar.",
+    "providerOffTitle": "{{provider}} está desactivado",
+    "providerOffDescription": "{{subject}} usa {{provider}}, que está desactivado, así que no se envió nada. Vuelve a activarlo para seguir usándolo aquí o elige otro modelo.",
+    "turnOn": "Activar {{provider}}"
   },
   "skillsUsedCount_one": "Usó {{count}} habilidad",
   "skillsUsedCount_many": "Usó {{count}} de habilidades",

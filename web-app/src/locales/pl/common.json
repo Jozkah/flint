@@ -1111,7 +1111,10 @@
     "thisRoom": "Ten pokój",
     "thisSession": "Ta sesja",
     "keyMissingTitle": "Brakuje klucza API",
-    "keyMissingDescription": "{{subject}} używa dostawcy, który nie ma jeszcze klucza API. Dodaj klucz w Ustawieniach lub wybierz inny model, aby kontynuować."
+    "keyMissingDescription": "{{subject}} używa dostawcy, który nie ma jeszcze klucza API. Dodaj klucz w Ustawieniach lub wybierz inny model, aby kontynuować.",
+    "providerOffTitle": "{{provider}} jest wyłączony",
+    "providerOffDescription": "{{subject}} używa {{provider}}, który jest wyłączony, więc nic nie zostało wysłane. Włącz go ponownie, aby dalej go tu używać, albo wybierz inny model.",
+    "turnOn": "Włącz {{provider}}"
   },
   "skillsUsedCount_one": "Użyto {{count}} umiejętności",
   "skillsUsedCount_other": "Użyto {{count}} umiejętności",

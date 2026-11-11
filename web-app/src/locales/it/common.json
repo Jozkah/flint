@@ -1099,7 +1099,10 @@
     "thisRoom": "Questa stanza",
     "thisSession": "Questa sessione",
     "keyMissingTitle": "Manca una chiave API",
-    "keyMissingDescription": "{{subject}} usa un provider che non ha ancora una chiave API. Aggiungi la chiave nelle Impostazioni o scegli un altro modello per continuare."
+    "keyMissingDescription": "{{subject}} usa un provider che non ha ancora una chiave API. Aggiungi la chiave nelle Impostazioni o scegli un altro modello per continuare.",
+    "providerOffTitle": "{{provider}} è disattivato",
+    "providerOffDescription": "{{subject}} usa {{provider}}, che è disattivato, quindi non è stato inviato nulla. Riattivalo per continuare a usarlo qui, oppure scegli un altro modello.",
+    "turnOn": "Attiva {{provider}}"
   },
   "skillsUsedCount_one": "Ha usato {{count}} skill",
   "skillsUsedCount_other": "Ha usato {{count}} skill",
