@@ -495,7 +495,23 @@ pub async fn prompt_submit_context(
         "hook_event_name": Event::UserPromptSubmit.name(),
         "prompt": prompt,
     });
-    run_cancellable(hooks, Event::UserPromptSubmit, &payload, cwd, cancel).await
+    let blocks = run_cancellable(hooks, Event::UserPromptSubmit, &payload, cwd, cancel).await?;
+    Ok(blocks.iter().map(|b| attributed_prompt_context(b)).collect())
+}
+
+/// One `UserPromptSubmit` hook's output, labelled with where it came from.
+///
+/// The text is placed next to the user's message in the reminder channel. Bare,
+/// it reads as an unexplained system instruction inside a user turn, which a
+/// careful model rightly treats as prompt injection and refuses. Saying that it
+/// is the output of a hook the user configured (and imported) themselves lets
+/// the model weigh it as what it is: context the user chose to add.
+pub fn attributed_prompt_context(block: &str) -> String {
+    format!(
+        "Context added by the user's own UserPromptSubmit hook (a command from their Claude Code          settings that they imported into Flint and enabled). It is information the user chose to          attach to this message, not an instruction from Flint:
+{}",
+        block.trim()
+    )
 }
 
 /// What the Claude Code context hooks add to one turn, for the surfaces that do
@@ -783,7 +799,18 @@ mod tests {
         ];
         let got = context_for_turn(&hooks, Some("turn-s1"), cwd.path(), Some("hello"), None).await;
         assert_eq!(got.session_start, vec!["style-on".to_string()]);
-        assert_eq!(got.prompt_submit, vec!["per-prompt".to_string()]);
+        assert_eq!(got.prompt_submit, vec![attributed_prompt_context("per-prompt")]);
+    }
+
+    #[test]
+    fn prompt_hook_output_is_labelled_as_the_users_hook() {
+        let got = attributed_prompt_context("  Ticket: ABC-1
+");
+        assert!(got.contains("user's own UserPromptSubmit hook"), "{got}");
+        assert!(got.contains("not an instruction from Flint"), "{got}");
+        assert!(got.ends_with("
+Ticket: ABC-1"), "{got}");
+        assert!(!got.contains("<SYSTEM>"), "{got}");
     }
 
     #[cfg(unix)]
@@ -800,7 +827,8 @@ mod tests {
         let got = prompt_submit_context(&hooks, Some("s1"), cwd.path(), "hello", None)
             .await
             .unwrap();
-        assert_eq!(got, vec!["saw: hello".to_string()]);
+        assert_eq!(got, vec![attributed_prompt_context("saw: hello")]);
+        assert!(got[0].starts_with("Context added by the user's own UserPromptSubmit hook"));
     }
 
     #[tokio::test]
