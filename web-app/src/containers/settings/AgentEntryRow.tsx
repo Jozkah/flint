@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { Icon } from '@/components/ui/icon'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { SkillWarning } from './SkillWarning'
 
 /** True when `query` (already trimmed and lower-cased) is empty or in the name or description. */
 export function entryMatches(
@@ -25,12 +26,15 @@ export function AgentEntryRow({
   name,
   description,
   plugin,
+  warning,
   onEdit,
   onDelete,
 }: {
   name: string
   description?: string
   plugin?: string
+  /** What was wrong with the skill's front matter, when something was. */
+  warning?: string
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -39,8 +43,13 @@ export function AgentEntryRow({
     <CardItem
       title={name}
       description={
-        description ? (
-          <span className="line-clamp-2 break-words">{description}</span>
+        description || warning ? (
+          <span className="flex min-w-0 flex-col gap-1">
+            {description && (
+              <span className="line-clamp-2 break-words">{description}</span>
+            )}
+            <SkillWarning warning={warning} />
+          </span>
         ) : undefined
       }
       actions={

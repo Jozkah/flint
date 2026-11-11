@@ -339,6 +339,7 @@
     "search": "Szukaj",
     "noMatches": "Nic nie pasuje do tego wyszukiwania.",
     "skillsHelp": "Umiejętności to instrukcje, które agent może wczytać, gdy zadanie ich potrzebuje. Umiejętności pochodzące z wtyczki są tutaj tylko do odczytu.",
+    "skillWarning": "Problem z nagłówkiem",
     "yourSkills": "Twoje umiejętności ({{count}})",
     "pluginSkills": "Z wtyczek ({{count}})",
     "computerApps": "Ogranicz do tych aplikacji",

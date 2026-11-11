@@ -337,6 +337,7 @@
     "search": "搜索",
     "noMatches": "没有与该搜索匹配的内容。",
     "skillsHelp": "技能是智能体在任务需要时可以加载的指令。来自插件的技能在此为只读。",
+    "skillWarning": "前置元数据有问题",
     "yourSkills": "你的技能（{{count}}）",
     "pluginSkills": "来自插件（{{count}}）",
     "computerApps": "仅限这些应用",

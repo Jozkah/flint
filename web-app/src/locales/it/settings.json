@@ -338,6 +338,7 @@
     "search": "Cerca",
     "noMatches": "Nulla corrisponde a quella ricerca.",
     "skillsHelp": "Le skill sono istruzioni che l'agente può caricare quando un compito ne ha bisogno. Le skill provenienti da un plugin sono di sola lettura qui.",
+    "skillWarning": "Problema nell'intestazione",
     "yourSkills": "Le tue skill ({{count}})",
     "pluginSkills": "Dai plugin ({{count}})",
     "computerApps": "Limita a queste app",

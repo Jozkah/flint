@@ -308,6 +308,7 @@ export function SkillsCard({
               key={`skill-${skill.name}`}
               name={skill.name}
               description={skill.description}
+              warning={skill.warning}
               onEdit={() => openEditor(skill.name)}
               onDelete={() => remove(skill.name)}
             />
@@ -322,6 +323,7 @@ export function SkillsCard({
               key={`skill-${skill.name}`}
               name={skill.name}
               description={skill.description}
+              warning={skill.warning}
               plugin={skill.plugin}
               onEdit={() => openEditor(skill.name)}
               onDelete={() => remove(skill.name)}

@@ -28,6 +28,7 @@ import {
 import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
 import { folderTrustStatus } from '@/lib/folderTrust'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
+import { SkillWarning } from '@/containers/settings/SkillWarning'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon } from '@/components/ui/icon'
 import {
@@ -236,6 +237,7 @@ export default function SkillsTab() {
           <p className="m-0 line-clamp-2 min-h-[2lh] text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
             {s.description || '—'}
           </p>
+          <SkillWarning warning={s.warning} />
           <div className="flex items-center justify-between gap-2 text-xs text-subtle-foreground">
             <span className="min-w-0 truncate">
               {isPluginSkill(s)

@@ -337,6 +337,7 @@
     "search": "Ara",
     "noMatches": "Bu aramayla eşleşen bir şey yok.",
     "skillsHelp": "Beceriler, bir görev gerektirdiğinde ajanın yükleyebileceği talimatlardır. Bir eklentiden gelen beceriler burada salt okunurdur.",
+    "skillWarning": "Ön bilgi sorunu",
     "yourSkills": "Becerileriniz ({{count}})",
     "pluginSkills": "Eklentilerden ({{count}})",
     "computerApps": "Yalnızca bu uygulamalarla sınırla",

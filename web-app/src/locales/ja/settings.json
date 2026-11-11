@@ -337,6 +337,7 @@
     "search": "検索",
     "noMatches": "その検索に一致するものはありません。",
     "skillsHelp": "スキルは、タスクに必要なときにエージェントが読み込める指示です。プラグイン由来のスキルは、ここでは読み取り専用です。",
+    "skillWarning": "フロントマターの問題",
     "yourSkills": "あなたのスキル ({{count}})",
     "pluginSkills": "プラグインから ({{count}})",
     "computerApps": "次のアプリに限定",

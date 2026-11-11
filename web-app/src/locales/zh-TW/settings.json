@@ -337,6 +337,7 @@
     "search": "搜尋",
     "noMatches": "沒有符合該搜尋的內容。",
     "skillsHelp": "技能是代理程式在任務需要時可以載入的指示。來自外掛程式的技能在此為唯讀。",
+    "skillWarning": "前置中繼資料有問題",
     "yourSkills": "你的技能（{{count}}）",
     "pluginSkills": "來自外掛程式（{{count}}）",
     "computerApps": "僅限這些應用程式",

@@ -340,6 +340,7 @@
     "search": "Cerca",
     "noMatches": "Res coincideix amb aquesta cerca.",
     "skillsHelp": "Les habilitats són instruccions que l'agent pot carregar quan una tasca les necessita. Les habilitats que vénen d'un connector són de només lectura aquí.",
+    "skillWarning": "Problema a la capçalera",
     "yourSkills": "Les teves habilitats ({{count}})",
     "pluginSkills": "De connectors ({{count}})",
     "computerApps": "Limita a aquestes aplicacions",
