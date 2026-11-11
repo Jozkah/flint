@@ -3072,9 +3072,11 @@ mod tests {
     fn the_roots_record_folder_can_be_overridden_for_isolated_runs() {
         let temp = Path::new(r"T:\temp");
         let local = || Some(std::ffi::OsString::from(r"C:\Users\me\AppData\Local"));
+        // Absolute on every platform (a `Q:\..` literal is relative on unix).
+        let absolute = std::env::temp_dir().join("qa-records");
         assert_eq!(
-            roots_record_dir_from(Some(r"Q:\qa\records".into()), local(), temp),
-            PathBuf::from(r"Q:\qa\records")
+            roots_record_dir_from(Some(absolute.clone().into_os_string()), local(), temp),
+            absolute
         );
         assert_eq!(roots_record_dir_from(None, local(), temp), roots_record_dir_in(local(), temp));
         let relative = roots_record_dir_from(Some("rec".into()), local(), temp);
