@@ -891,6 +891,25 @@ fn remote_model_ids(pc: &HashMap<String, ProviderConfig>) -> Vec<String> {
     out
 }
 
+/// `404 model_not_found` for a model nothing here can serve.
+fn unknown_model_response(
+    model_id: &str,
+    host_header: &str,
+    origin_header: &str,
+    trusted_hosts: &[Vec<String>],
+) -> Response<ResBody> {
+    let builder = Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header("Content-Type", "application/json");
+    add_cors_headers_with_host_and_origin(builder, host_header, origin_header, trusted_hosts)
+        .body(full(error_json(
+            &format!("The model '{model_id}' does not exist or is not available on this server"),
+            "invalid_request_error",
+            "model_not_found",
+        )))
+        .unwrap_or_else(|_| Response::new(full("model not found")))
+}
+
 /// Header counting the Flint proxies a request has already passed through.
 pub(crate) const PROXY_HOPS_HEADER: &str = "x-flint-proxy-hops";
 /// A request that has passed this many Flint proxies is refused, so a
@@ -2547,26 +2566,19 @@ async fn route_model_in_body(cx: &RouteCtx<'_>, body: Incoming, plan: &mut Forwa
                     let router_up = engine_upstream(&llama_state, &destination_path).await;
 
                     if mlx_session_info.is_none() && router_up.is_none() {
+                        // No provider lists it and no local engine is up to
+                        // serve it: the model does not exist here. A 404, as
+                        // /v1/messages answers, and no Retry-After -- waiting
+                        // will not make it appear.
                         log::warn!(
-                            "Request for model '{model_id}' but no models are running."
+                            "Request for unknown model '{model_id}': no provider lists it and no local engine is running."
                         );
-                        let mut error_response = Response::builder()
-                            .status(StatusCode::SERVICE_UNAVAILABLE)
-                            .header("Content-Type", "application/json")
-                            .header("Retry-After", "1");
-                        error_response = add_cors_headers_with_host_and_origin(
-                            error_response,
+                        return Ok(Routed::Done(unknown_model_response(
+                            model_id,
                             &host_header,
                             &origin_header,
                             &config.trusted_hosts,
-                        );
-                        return Ok(Routed::Done(error_response
-                            .body(full(error_json(
-                                "No models are available",
-                                "server_error",
-                                "no_model_loaded",
-                            )))
-                            .unwrap()));
+                        )));
                     }
 
                     if let Some(info) = mlx_session_info {
