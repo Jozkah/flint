@@ -95,6 +95,28 @@ fn workspace_project(raw: Option<&str>) -> Option<String> {
     ok.then(|| format!("{JAN_PROJECT_PREFIX}{id}"))
 }
 
+fn home_folder() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+}
+
+/// Whether the repository a managed worktree was cut from may stand in for it
+/// as the memory root: trusted by the user, not the home folder or a folder
+/// that holds it, and not a folder `folder_trust` calls too broad to trust.
+fn worktree_source_allowed(source: &Path, home: Option<&Path>, trusted: impl Fn(&Path) -> bool) -> bool {
+    if crate::folder_trust::broad_folder(source).is_some() {
+        return false;
+    }
+    if let Some(home) = home {
+        let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+        if home.starts_with(source) {
+            return false;
+        }
+    }
+    trusted(source)
+}
+
 /// Whether `raw` may be used as a project whose memory lives inside it.
 ///
 /// The renderer names the project root, and the project store and identity
@@ -124,10 +146,19 @@ pub(crate) fn validate_project_root(raw: &Path, data_folder: &Path) -> Result<Pa
             // `.git` pointer and only believed when the repository points
             // back (`folder_trust::project_root`); it is then held to every
             // rule here, so it cannot be another way into the data folder.
+            //
+            // A pointer and its back-pointer are both text a folder can carry,
+            // so the source must also be a folder the user trusts and not a
+            // broad one (a drive root, the home folder or a folder holding
+            // it): a forged worktree in the data folder cannot adopt an
+            // arbitrary repository, or the home folder, as the memory root.
             let source = crate::folder_trust::project_root(&canonical);
             if canonical.starts_with(&data) && source != canonical {
                 if let Ok(source) = source.canonicalize() {
-                    if !source.starts_with(&data) && !data.starts_with(&source) {
+                    if !source.starts_with(&data)
+                        && !data.starts_with(&source)
+                        && worktree_source_allowed(&source, home_folder().as_deref(), crate::folder_trust::is_trusted)
+                    {
                         return validate_project_root(&source, data_folder);
                     }
                 }
@@ -2313,6 +2344,26 @@ mod security_tests {
         link(&inner, &wt3, true);
         assert!(validate_project_root(&wt3, &data).is_err());
         let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The source a worktree names must be trusted and must not be the home
+    /// folder or a folder holding it.
+    #[test]
+    fn a_worktree_source_must_be_trusted_and_not_the_home_folder() {
+        let base = root("wt-src");
+        let home = base.join("home").join("me");
+        let repo = home.join("code").join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let (home, repo) = (home.canonicalize().unwrap(), repo.canonicalize().unwrap());
+        let parent = home.parent().unwrap().to_path_buf();
+        let yes = |_: &Path| true;
+        assert!(!worktree_source_allowed(&home, Some(&home), yes), "home itself");
+        assert!(!worktree_source_allowed(&parent, Some(&home), yes), "an ancestor of home");
+        assert!(worktree_source_allowed(&repo, Some(&home), yes), "a trusted repository");
+        let granted = repo.clone();
+        assert!(worktree_source_allowed(&repo, Some(&home), |p: &Path| p == granted));
+        assert!(!worktree_source_allowed(&repo, Some(&home), |_: &Path| false), "not trusted");
         let _ = std::fs::remove_dir_all(&base);
     }
 
