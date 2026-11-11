@@ -95,6 +95,37 @@ describe('titleForKeptChat', () => {
     expect(titleForKeptChat(undefined, 'Kept chat')).toBe('Kept chat')
     expect(titleForKeptChat('   ', 'Kept chat')).toBe('Kept chat')
   })
+  it('keeps a title generated for the chat instead of the first prompt', () => {
+    expect(
+      titleForKeptChat('what is a monad, explain', 'Kept chat', {
+        title: 'Monads explained',
+        metadata: { autoTitleSource: 'model' },
+      })
+    ).toBe('Monads explained')
+    expect(
+      titleForKeptChat('hi', 'Kept chat', {
+        title: 'My notes',
+        metadata: { titleSetManually: true },
+      })
+    ).toBe('My notes')
+  })
+  it('does not keep the placeholder title nothing generated', () => {
+    expect(
+      titleForKeptChat('What is a monad?', 'Kept chat', {
+        title: 'Temporary Chat',
+        metadata: {},
+      })
+    ).toBe('What is a monad?')
+    // A titling attempt that came back empty leaves the placeholder.
+    expect(
+      titleForKeptChat(
+        'What is a monad?',
+        'Kept chat',
+        { title: 'Temporary Chat', metadata: { autoTitleSource: 'model' } },
+        'Temporary Chat'
+      )
+    ).toBe('What is a monad?')
+  })
   it('truncates long titles with an ellipsis', () => {
     const long = 'x'.repeat(100)
     const title = titleForKeptChat(long, 'Kept chat')
