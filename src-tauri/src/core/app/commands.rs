@@ -93,11 +93,30 @@ pub fn data_folder_override() -> Option<PathBuf> {
 /// Windows), or, when the data folder is redirected, the folder holding the
 /// redirected one. A redirected run must never write the real settings file
 /// or migrate into the real Flint folder.
+///
+/// The redirect is the CLI's only: the desktop app keeps its settings and
+/// migration roots in the real app-data folder whatever data folder it uses,
+/// as it always has.
 pub fn app_data_base() -> Option<PathBuf> {
-    match data_folder_override() {
-        Some(folder) => Some(folder.parent().map(Path::to_path_buf).unwrap_or(folder)),
-        None => dirs::data_dir(),
+    if !cfg!(feature = "cli") {
+        return dirs::data_dir();
     }
+    base_beside_override(data_folder_override()).or_else(dirs::data_dir)
+}
+
+/// The folder holding `folder`, made absolute first: a relative override such
+/// as `data` has an empty parent, which would put the base in whatever the
+/// working directory happens to be, unnamed.
+fn base_beside_override(folder: Option<PathBuf>) -> Option<PathBuf> {
+    let folder = folder?;
+    let folder = std::path::absolute(&folder).unwrap_or(folder);
+    Some(
+        folder
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or(folder),
+    )
 }
 
 /// Canonical Flint app support directory (`%APPDATA%/Jan` on Windows).
@@ -711,6 +730,26 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    /// A relative data-folder override still has a real folder beside it:
+    /// the base is resolved against the working directory, never empty.
+    #[test]
+    fn a_relative_override_resolves_beside_an_absolute_folder() {
+        let base = base_beside_override(Some(PathBuf::from("data"))).unwrap();
+        assert!(base.is_absolute(), "{base:?}");
+        assert_eq!(base, std::env::current_dir().unwrap());
+        let abs = std::env::temp_dir().join("flint-x").join("data");
+        assert_eq!(base_beside_override(Some(abs.clone())), abs.parent().map(Path::to_path_buf));
+        assert_eq!(base_beside_override(None), None);
+    }
+
+    /// The desktop app keeps its settings in the real app-data folder even
+    /// when it runs with a data-folder override.
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn the_desktop_ignores_the_override_for_its_app_data_base() {
+        assert_eq!(app_data_base(), dirs::data_dir());
+    }
 
     /// #54: the configuration is replaced whole, never left half-written, and
     /// no staging file is left beside it.
