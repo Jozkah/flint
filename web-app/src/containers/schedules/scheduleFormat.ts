@@ -18,6 +18,7 @@ export function describeSchedule(
   locale?: string
 ): string {
   if (spec.kind === 'cron') return t('schedules:summary.cron', { expr: spec.expr })
+  if (spec.kind === 'webhook') return t('schedules:summary.webhook')
   if (spec.kind === 'once') return t('schedules:summary.once', { at: spec.at.replace('T', ' ') })
   const times = spec.times.map(formatTime).join(', ')
   if (spec.kind === 'weekly') {

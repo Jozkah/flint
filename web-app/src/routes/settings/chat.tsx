@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { ChatRulesCard } from '@/containers/ChatRulesCard'
+import { GuestLinksCard } from '@/containers/GuestLinksCard'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
@@ -98,6 +99,7 @@ function ChatSettings() {
         {tab === 'input' && <ComposerCard />}
         {tab === 'input' && <RepliesCard />}
         {tab === 'input' && <LinksCard />}
+        {tab === 'input' && <GuestLinksCard />}
         {tab === 'input' && <ChatRulesCard />}
         {tab === 'display' && <TranscriptCard />}
         {tab === 'display' && <ArtifactsCard />}
@@ -547,11 +549,15 @@ function TranscriptViewPicker() {
   const value = useInterfaceSettings((s) => s.transcriptView)
   const setValue = useInterfaceSettings((s) => s.setTranscriptView)
   const label = {
+    zen: t('settings:interface.transcriptViewZen'),
+    quiet: t('settings:interface.transcriptViewQuiet'),
     normal: t('settings:interface.transcriptViewNormal'),
     thinking: t('settings:interface.transcriptViewThinking'),
     verbose: t('settings:interface.transcriptViewVerbose'),
   }
   const desc = {
+    zen: t('settings:interface.transcriptViewZenDesc'),
+    quiet: t('settings:interface.transcriptViewQuietDesc'),
     normal: t('settings:interface.transcriptViewNormalDesc'),
     thinking: t('settings:interface.transcriptViewThinkingDesc'),
     verbose: t('settings:interface.transcriptViewVerboseDesc'),

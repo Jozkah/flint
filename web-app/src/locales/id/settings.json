@@ -195,6 +195,14 @@
     "resetCodeBlockSuccessDesc": "Gaya blok kode telah dikembalikan ke default.",
     "transcriptView": "Tampilan transkrip",
     "transcriptViewDesc": "Seberapa banyak tiap giliran yang ditampilkan Chat, Cowork, dan Rooms. Persetujuan, pertanyaan, dan galat selalu tampil.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Jawaban dan hal yang memerlukan Anda. Panggilan alat dilipat menjadi satu baris langkah.",
     "transcriptViewThinking": "Penalaran",

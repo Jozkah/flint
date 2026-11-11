@@ -58,6 +58,7 @@ import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { GuestRequestsBanner } from '@/containers/GuestRequestsBanner'
 import { WhatJanIsUsingPanel, WhatJanIsUsingToggle } from '@/containers/WhatJanIsUsing'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { route } from '@/constants/routes'
@@ -669,6 +670,7 @@ export function ThreadConversationView(props: ThreadConversationViewProps) {
           <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
           <CoworkChildApprovals sessionId={threadId} />
           <ChatTasks threadId={threadId} />
+          <GuestRequestsBanner threadId={threadId} />
           {currentHistoryError ? (
             <div role="alert" className="rounded-lg border p-4">
               <p>

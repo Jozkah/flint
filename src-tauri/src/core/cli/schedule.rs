@@ -129,6 +129,9 @@ pub(super) fn next_label(task: &crate::core::schedule::spec::Task, now: chrono::
     if !task.enabled {
         return "-".to_string();
     }
+    if task.schedule.is_webhook() {
+        return "on webhook".to_string();
+    }
     task.next_fires(now, 1)
         .ok()
         .and_then(|f| f.first().copied())
@@ -141,7 +144,8 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
     let tasks = store.load_tasks().map_err(store_err)?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&tasks).unwrap_or_default());
+        let shown: Vec<_> = tasks.iter().map(super::schedule_manage::listing_copy).collect();
+        println!("{}", serde_json::to_string_pretty(&shown).unwrap_or_default());
         return Ok(());
     }
     if tasks.is_empty() {
@@ -231,6 +235,9 @@ pub async fn run_now(task_id: &str, wait: bool) -> Result<(), HarnessError> {
         .get_task(task_id)
         .map_err(store_err)?
         .ok_or_else(|| HarnessError::new(ErrorKind::NotFound, format!("no scheduled task '{task_id}'")).at(Stage::Startup))?;
+    if task.schedule.is_webhook() {
+        return Err(invalid("a task that runs on a webhook starts when its URL is called"));
+    }
     run_task(task, wait).await
 }
 

@@ -41,14 +41,16 @@
     "hideHistory": "Скрыть историю",
     "noRuns": "Запусков пока нет.",
     "started": "«{{name}}» запущена",
-    "ended": "«{{name}}»: {{status}}"
+    "ended": "«{{name}}»: {{status}}",
+    "onWebhook": "Runs when its webhook is called"
   },
   "summary": {
     "daily": "Каждый день в {{times}}",
     "weekdays": "По будням в {{times}}",
     "weekly": "{{days}} в {{times}}",
     "cron": "Cron {{expr}}",
-    "once": "Once, on {{at}}"
+    "once": "Once, on {{at}}",
+    "webhook": "On webhook"
   },
   "status": {
     "running": "Выполняется",
@@ -62,7 +64,8 @@
   "trigger": {
     "manual": "Запущено вами",
     "on_time": "По расписанию",
-    "catch_up": "Догоняющий запуск пропущенного"
+    "catch_up": "Догоняющий запуск пропущенного",
+    "webhook": "Webhook request"
   },
   "run": {
     "blockedOn": "Заблокировано",
@@ -86,7 +89,8 @@
       "daily": "Каждый день",
       "weekdays": "По будням",
       "weekly": "В определённые дни",
-      "cron": "Cron"
+      "cron": "Cron",
+      "webhook": "On webhook"
     },
     "times": "Время",
     "addTime": "Добавить время",
@@ -155,6 +159,47 @@
     "turnsRange": "Число ходов должно быть от 1 до 200.",
     "tokensRange": "Число токенов должно быть от 1 до 5 000 000.",
     "minutesRange": "Число минут должно быть от 1 до 360.",
-    "costRange": "Лимит стоимости должен быть больше $0 и не более $1000 или пустым."
+    "costRange": "Лимит стоимости должен быть больше $0 и не более $1000 или пустым.",
+    "webhookHeader": "Use a header name like x-hub-signature-256.",
+    "webhookSecret": "Enter the secret the sender signs with, or turn the signature check off.",
+    "webhookFilters": "A filter name starts with body., headers. or query. (for example body.action)."
+  },
+  "webhook": {
+    "url": "Webhook URL path",
+    "urlHint": "Append this path to the address of a running Flint web server (flint serve). Anyone who has the whole path can start this task, so keep it private.",
+    "unsaved": "The URL is made when you save the task. Open it again to copy it.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy the path.",
+    "rotate": "Rotate",
+    "rotateHint": "Rotating replaces the URL; the old one stops working at once.",
+    "rotated": "The webhook URL was replaced.",
+    "rotateFailed": "Could not rotate the URL.",
+    "signature": "Require signature",
+    "signatureHint": "The sender signs each request body with a shared secret (HMAC-SHA256). Requests without a valid signature are refused.",
+    "unsignedWarning": "Without a signature, anyone who learns the URL can start a run with any content. A signature is recommended.",
+    "header": "Header",
+    "encoding": "Encoding",
+    "prefix": "Prefix",
+    "secret": "Secret",
+    "secretHint": "The same secret you give the sender. It is stored on this computer and never shown again.",
+    "secretStored": "A secret is stored. Leave this empty to keep it, or type a new one to replace it.",
+    "secretKeep": "Stored (hidden)",
+    "githubPreset": "Use the GitHub settings",
+    "filters": "Filters",
+    "filtersHint": "The task runs only when every filter matches. Other requests are answered normally and start nothing. Names look like body.action, headers.x-github-event or query.name.",
+    "filterPath": "Filter name",
+    "filterOp": "Condition",
+    "filterValue": "Value",
+    "addFilter": "Add a filter",
+    "removeFilter": "Remove",
+    "ops": {
+      "equals": "equals",
+      "not_equals": "does not equal",
+      "one_of": "is one of (comma separated)",
+      "contains": "contains"
+    },
+    "placeholders": "Use request values in the prompt: {{body}} for a JSON or form field, {{headers}} for a header, {{query}} for a query value, {{raw}} for the whole body and {{request}} for everything. A value that is missing is left empty.",
+    "untrusted": "Each value reaches the agent fenced off and marked as untrusted request data, and mentions such as $skill, @file and /command are defused. This helps but does not guarantee the agent ignores what the text says; a signature only proves who sent it, not that the text is safe."
   }
 }

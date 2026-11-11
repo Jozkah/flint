@@ -196,6 +196,14 @@
     "resetCodeBlockSuccessDesc": "코드 블록 스타일이 기본값으로 복원되었습니다.",
     "transcriptView": "대화 기록 보기",
     "transcriptViewDesc": "채팅, Cowork, 룸에서 각 턴을 얼마나 보여줄지 정합니다. 승인, 질문, 오류는 항상 표시됩니다.",
+
+    "transcriptViewZen": "Zen",
+
+    "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
+
+    "transcriptViewQuiet": "Hide tool calls",
+
+    "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "기본",
     "transcriptViewNormalDesc": "답변과 조치가 필요한 항목만. 도구 호출은 한 줄의 단계로 접힙니다.",
     "transcriptViewThinking": "사고",

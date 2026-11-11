@@ -329,7 +329,16 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
   item('chat', 'transcript-view', 'settings:interface.transcriptView', {
     descriptionKey: 'settings:interface.transcriptViewDesc',
-    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
+    keywords: [
+      'thinking',
+      'reasoning',
+      'verbose',
+      'tool calls',
+      'steps',
+      'zen',
+      'quiet',
+      'hide tool calls',
+    ],
   }),
   item('chat', 'token-speed', 'settings:interface.showTokenSpeed', {
     descriptionKey: 'settings:interface.showTokenSpeedDesc',

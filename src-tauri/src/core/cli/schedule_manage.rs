@@ -184,9 +184,24 @@ fn not_found(id: &str) -> HarnessError {
     HarnessError::new(ErrorKind::NotFound, format!("no scheduled task '{id}'")).at(Stage::Startup)
 }
 
+/// A token as a listing shows it: enough to tell two apart, not enough to call.
+fn mask_token(token: &str) -> String {
+    format!("{}...", token.chars().take(4).collect::<String>())
+}
+
+/// The copy of a task a listing may print: no signature secret, a masked
+/// webhook token. `flint cli schedule webhook <id> --show-url` prints the path.
+pub fn listing_copy(task: &Task) -> Task {
+    let mut out = task.redacted();
+    if let Some(w) = out.webhook.as_mut() {
+        w.token = mask_token(&w.token);
+    }
+    out
+}
+
 fn print_task(task: &Task, json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(task).unwrap_or_default());
+        println!("{}", serde_json::to_string_pretty(&listing_copy(task)).unwrap_or_default());
         return;
     }
     let next = super::schedule::next_label(task, chrono::Utc::now());
@@ -226,6 +241,9 @@ pub fn start_now(id: &str) -> Result<String, String> {
         .get_task(id)
         .map_err(|e| e.message)?
         .ok_or_else(|| format!("no scheduled task '{id}'"))?;
+    if task.schedule.is_webhook() {
+        return Err("a task that runs on a webhook starts when its URL is called".to_string());
+    }
     let record = start_run(&store, &data, &SupervisorLauncher, &task, Trigger::Manual, chrono::Utc::now())
         .map_err(|e| e.message)?;
     Ok(record.id)
@@ -259,6 +277,7 @@ pub fn add(input: TaskInput, json: bool) -> Result<(), HarnessError> {
         budgets: Budgets { max_turns: 30, max_tokens: 200_000, max_wall_clock_secs: 1800, max_cost_usd: None },
         on_block: OnBlock::Continue,
         catch_up: CatchUp::Once,
+        webhook: None,
         enabled: true,
         created_at_ms: 0,
         updated_at_ms: 0,
@@ -346,6 +365,41 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
     println!("cron: {} ({tz_name}; times below are in your local time)", cron.join(" | "));
     for t in all {
         println!("{}", stamp(t.timestamp_millis() as u64));
+    }
+    Ok(())
+}
+
+/// `flint cli schedule webhook <id> [--rotate] [--show-url]`: a webhook task's
+/// URL path. The token is a credential, so it is printed only when asked for
+/// (`--show-url`) or just made (`--rotate`).
+pub fn webhook(id: &str, rotate: bool, show_url: bool, json: bool) -> Result<(), HarnessError> {
+    let store = Store::new(&data_folder());
+    let task = if rotate {
+        // Rotating changes the task; one an automation owns changes only
+        // through it, like every other edit.
+        refuse_automation_task(id, "webhook --rotate")?;
+        store.rotate_webhook_token(id).map_err(store_err)?
+    } else {
+        store.get_task(id).map_err(store_err)?.ok_or_else(|| not_found(id))?
+    };
+    let hook = task
+        .webhook
+        .as_ref()
+        .ok_or_else(|| invalid("that task does not run on a webhook"))?;
+    let reveal = rotate || show_url;
+    let path = if reveal { hook.path_for(&task.id) } else { format!("/hooks/{}/{}", task.id, mask_token(&hook.token)) };
+    let signed = hook.signature.as_ref().is_some_and(|s| !s.secret.is_empty());
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({ "id": task.id, "path": path, "signature": signed, "filters": hook.filters.len() })
+        );
+    } else {
+        println!("{path}");
+        println!("signature: {}", if signed { "required" } else { "off (anyone with the URL can start a run)" });
+        if !reveal {
+            println!("(token hidden; add --show-url to print the full path)");
+        }
     }
     Ok(())
 }
@@ -660,6 +714,7 @@ mod tests {
             assert!(set_enabled("auto-nightly", false, true).is_err());
             assert!(delete("auto-nightly").is_err());
             assert!(start_now("auto-nightly").is_err());
+            assert!(webhook("auto-nightly", true, false, true).is_err(), "rotating is an edit");
             let kept = store.get_task("auto-nightly").unwrap().unwrap();
             assert_eq!(kept.policy.write, WriteMode::ReadOnly);
             assert!(kept.enabled);
