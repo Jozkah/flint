@@ -38,6 +38,9 @@ pub mod crash_trace;
 // Jev (TypeSafe) decision support: optional, off by default; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod jev;
+// Opt-in token counts from other coding agents' local session logs; read-only.
+#[cfg(not(feature = "cli"))]
+pub mod usage_import;
 #[cfg(feature = "cli")]
 pub mod cli;
 // The CLI's secret scrubber (`flint bug-report`, the persistent log), compiled

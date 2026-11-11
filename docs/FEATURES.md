@@ -150,6 +150,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 
 - **Token usage per message and per session:** input, cached input, cache writes, output and total, marked "Not reported" when a provider does not report a figure.
 - **Token and cost dashboard** per run and period, priced where you set prices.
+- **Other agents' usage (opt-in, off by default):** an "Other agents" panel in the Overview usage section reads, read-only, Claude Code's (`CLAUDE_CONFIG_DIR` or `~/.claude`, `projects/**/*.jsonl`) and Codex's (`CODEX_HOME` or `~/.codex`, `sessions/**/*.jsonl`) local session logs and totals input, cache read, cache write and output tokens by day, model and agent, with cache hit rate and cost per million tokens next to Flint's own totals. Only token counts, model, time and project name are kept and nothing leaves the computer. Repeated replies are counted once; unreadable lines are counted and reported; unchanged logs come from an on-disk cache. Cost is an estimate (API-equivalent, not a bill) at prices from `prices.toml` or set on the page; models without a price show tokens and "unpriced". Compressed Codex logs (`.jsonl.zst`) are not read.
 - **Usage quotas and spend budgets** across runs.
 - **Correct generation speed** for providers that stream without a start event.
 
