@@ -61,6 +61,14 @@ pub(super) fn owning_automation(task_id: &str) -> Option<&str> {
 pub(super) fn refuse_automation_task(task_id: &str, action: &str) -> Result<(), HarnessError> {
     match owning_automation(task_id) {
         None => Ok(()),
+        // An orphan (its automation is gone) can still be stopped and removed
+        // here; nothing else would ever remove it.
+        Some(id)
+            if matches!(action, "delete" | "disable")
+                && matches!(crate::core::automation::AutomationStore::new(&data_folder()).get(id), Ok(None)) =>
+        {
+            Ok(())
+        }
         Some(id) => Err(invalid(format!(
             "'{task_id}' belongs to the automation '{id}', so `schedule {action}` cannot touch it; \
              change it through the automation instead (`flint cli automation run {id}`, \

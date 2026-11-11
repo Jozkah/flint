@@ -629,10 +629,27 @@ mod tests {
     #[test]
     fn tasks_owned_by_an_automation_change_only_through_it() {
         crate::core::app::commands::with_temp_data_folder(|data| {
-            let mut t = task("auto-nightly");
-            t.policy.write = WriteMode::ReadOnly;
+            use crate::core::automation::{Automation, AutomationStore, ToolProfile, Trigger};
+            let repo = data.join("repo");
+            std::fs::create_dir_all(repo.join(".git")).unwrap();
+            AutomationStore::new(data)
+                .save(Automation {
+                    id: "nightly".into(),
+                    name: "Nightly".into(),
+                    trigger: Trigger::Schedule {
+                        schedule: Schedule::Daily { times: vec![TimeOfDay { hour: 9, minute: 0 }] },
+                        timezone: "UTC".into(),
+                    },
+                    prompt: "Summarise.".into(),
+                    model: "mock/m".into(),
+                    folders: vec![repo.to_string_lossy().into_owned()],
+                    tool_profile: ToolProfile::ReadOnly,
+                    budget: Budgets { max_turns: 10, max_tokens: 40_000, max_wall_clock_secs: 300, max_cost_usd: None },
+                    on_block: OnBlock::Continue,
+                    enabled: true,
+                })
+                .unwrap();
             let store = Store::new(data);
-            store.save_task(t).unwrap();
             let widen = TaskInput {
                 allow_tools: vec!["write".into()],
                 write: Some(WriteMode::Worktree),
@@ -646,6 +663,22 @@ mod tests {
             let kept = store.get_task("auto-nightly").unwrap().unwrap();
             assert_eq!(kept.policy.write, WriteMode::ReadOnly);
             assert!(kept.enabled);
+        });
+    }
+
+    #[test]
+    fn an_orphaned_automation_task_can_be_disabled_and_deleted() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            // No automation named "gone" exists: its task is an orphan.
+            let store = Store::new(data);
+            store.save_task(task("auto-gone")).unwrap();
+            assert!(edit("auto-gone", TaskInput { max_turns: Some(3), ..Default::default() }, true).is_err());
+            assert!(start_now("auto-gone").is_err());
+            set_enabled("auto-gone", false, true).unwrap();
+            assert!(!store.get_task("auto-gone").unwrap().unwrap().enabled);
+            assert!(set_enabled("auto-gone", true, true).is_err(), "re-enabling stays with the automation");
+            delete("auto-gone").unwrap();
+            assert!(store.get_task("auto-gone").unwrap().is_none());
         });
     }
 }
