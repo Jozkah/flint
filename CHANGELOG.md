@@ -1,3 +1,31 @@
+# Flint 1.1.0
+
+The release after 1.0.1. It covers everything merged since, including a long round of testing against real local and hosted models. The full list is in the [v1.1.0 release notes](https://github.com/Jozkah/flint/releases/tag/v1.1.0).
+
+## Highlights
+
+- Your data is safer. Thread, assistant and project ids that Windows rewrites (trailing dots or spaces, device names such as `CON`, percent-encoded forms) are refused instead of touching another folder, and recursive deletes are confined to the folder they belong to.
+- A chat is never sent to a provider it is not bound to. A thread keeps its provider, a disabled or removed provider sends nothing, and switching model mid-run no longer reroutes the rest of the run.
+- Local API server: providers that need no key now register, an unknown model answers 404 while a loading model answers 503, provider-prefixed ids route correctly, and proxy loops are stopped.
+- `flint mcp serve` serves tools by capability: read-only by default, writes only with `--allow-write`, and a shell never.
+- Secrets: a thread export redacts keys and strips direction-override characters from titles, an optional file secret store (`FLINT_SECRET_STORE=file`) keeps isolated runs apart from your keyring, and a write that looks like a secret is asked about instead of refused.
+- Context limits are honest. The pre-flight estimate no longer over-counts by about 13 percent, Max Context Tokens bounds the Cowork window, a refusal teaches the real window, and an overflow error names the largest part (usually MCP tool definitions).
+- llama.cpp is updated to b12219, with a setting to run your own `llama-server` instead of the bundled worker, MODEL_DOES_NOT_FIT reporting for models auto-fit cannot place, GGUF import that lists on Windows, and retry of a local turn when the engine dies under it.
+- Cowork gains subagent continuation and nesting, forked subagents, a `workflow` tool with phases, resume and saved workflows, per-agent memory, and per-folder read-only or editable access.
+- Chat gains standing rules, read-aloud, PDF pages as images, Zen and hidden-tool-call views, MCP prompts in the `/` menu, and a choice of how full the context gets before compacting.
+- Settings are reorganized into Chat, Data and Integrations pages with tabs, plus backup and restore of threads, assistants and settings, and a diagnostic bundle you can save from the app.
+- Headless and CLI: `flint serve` guest links for one thread, scheduled tasks that run from an inbound webhook, `--safe-mode`, `agent run --json-schema`, and `/review`.
+
+## Behavior changes
+
+- `rm -rf` and other recursive deletes ask in every mode except Bypass.
+- `mcp trust` grants mean no prompt in an interactive CLI run only; unattended runs still deny.
+- Git globs in the agent git tool are literal paths, not patterns.
+- The browser build has no room file tools, and says so.
+- Thread titles lose direction overrides and control characters.
+- A provider pointed at Flint's own Local API is refused.
+- Starting with `FLINT_DATA_FOLDER` set copies, and never moves, the legacy vector database into the new folder.
+
 # Flint 1.0.1
 
 A fix release for 1.0.0. The full list is in the [v1.0.1 release notes](https://github.com/Jozkah/flint/releases/tag/v1.0.1).
