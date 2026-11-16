@@ -21,7 +21,12 @@
     "unsupportedToast": "Lokalne generowanie obrazów wymaga Windows x64 lub Linux x64.",
     "pickKindFirst": "Najpierw wybierz, jakiego rodzaju jest ten model.",
     "added": "Dodano {{name}} do Studio",
-    "openStudio": "Otwórz Studio"
+    "openStudio": "Otwórz Studio",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "Studio",

@@ -287,6 +287,11 @@ pub struct CustomModel {
     pub size: u64,
     pub sha256: String,
     pub license: String,
+    /// A weights file already on this computer, used where it is instead of
+    /// being downloaded. `repo` is then `local:<id>`, which no Hugging Face
+    /// repository can be named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
 }
 
 struct Registry {
@@ -337,6 +342,17 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
         extra_args: family.extra_args,
     })
 }
+
+/// Where a model added from a file on this computer lives, for the repo name
+/// its record carries. `None` for a Hugging Face model.
+pub fn local_path(repo: &str) -> Option<PathBuf> {
+    let id = repo.strip_prefix(LOCAL_REPO_PREFIX)?;
+    let reg = registry().lock().ok()?;
+    reg.records.iter().find(|r| r.id == id)?.local_path.as_ref().map(PathBuf::from)
+}
+
+/// The repo name given to a model added from a file on this computer.
+pub const LOCAL_REPO_PREFIX: &str = "local:";
 
 pub fn lookup(id: &str) -> Option<&'static ModelDef> {
     registry().lock().ok()?.defs.iter().copied().find(|d| d.id == id)
@@ -500,6 +516,7 @@ mod tests {
             size: 13_065_746_976,
             sha256: "645473886d7dbb0103f84c563c798f7b0867293d919752d4d6be6a432b0bc988".into(),
             license: "apache-2.0".into(),
+            local_path: None,
         }
     }
 
@@ -603,6 +620,18 @@ mod tests {
         assert!(weights_file_problem("m.bin", 1_000).is_some());
         assert!(weights_file_problem("m.gguf", 0).is_some());
         assert!(weights_file_problem("m.gguf", 61 * 1024 * 1024 * 1024).is_some());
+    }
+
+    #[test]
+    fn a_local_record_keeps_its_path_and_older_records_still_read() {
+        let mut r = record("flux1", "f.gguf");
+        r.local_path = Some("D:/models/f.gguf".into());
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"localPath\""));
+        assert_eq!(serde_json::from_str::<CustomModel>(&json).unwrap(), r);
+        let plain = serde_json::to_string(&record("flux1", "f.gguf")).unwrap();
+        assert!(!plain.contains("localPath"));
+        assert_eq!(serde_json::from_str::<CustomModel>(&plain).unwrap().local_path, None);
     }
 
     #[test]

@@ -21,7 +21,12 @@
     "unsupportedToast": "लोकल इमेज जनरेशन के लिए Windows x64 या Linux x64 चाहिए।",
     "pickKindFirst": "पहले चुनें कि यह किस प्रकार का मॉडल है।",
     "added": "{{name}} Studio में जोड़ा गया",
-    "openStudio": "Studio खोलें"
+    "openStudio": "Studio खोलें",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "स्टूडियो",

@@ -126,6 +126,13 @@ pub async fn diffusion_download_model<R: Runtime>(
         {
             continue;
         }
+        if file.repo.starts_with(custom::LOCAL_REPO_PREFIX) {
+            return Err(format!(
+                "{} is not at {} any more. Put the file back, or remove the model and add it again.",
+                def.display_name,
+                runtime::model_file_path(&app, file).display()
+            ));
+        }
         crate::core::huggingface::huggingface_download_model(
             app.clone(),
             format!("diffusion:{}:{index}", def.id),
@@ -384,6 +391,63 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
         size,
         sha256,
         license,
+        local_path: None,
+    };
+    let def = custom::add(&app, record)?;
+    Ok(ModelStatus {
+        def: *def,
+        installed: runtime::model_installed(&app, def),
+        total_bytes: def.total_bytes(),
+        custom: true,
+        family: custom::family_of(def.id),
+    })
+}
+
+/// Add a weights file that is already on this computer. It is used where it
+/// is, not copied; the family's small companion files (VAE, text encoder) are
+/// downloaded as for any model, from the Studio model list.
+#[tauri::command(async)]
+pub fn diffusion_add_local_model<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+    family: String,
+    display_name: Option<String>,
+) -> Result<ModelStatus, String> {
+    if !engine::platform_supported() {
+        return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
+    }
+    custom::family(&family).ok_or("That model family is not supported.")?;
+    let source = Path::new(&path);
+    let meta = std::fs::metadata(source).map_err(|_| "That file could not be found.".to_string())?;
+    if !meta.is_file() {
+        return Err("Choose a weights file, not a folder.".to_string());
+    }
+    let source = std::fs::canonicalize(source).map_err(|e| format!("Could not read that path: {e}"))?;
+    let filename = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("That file name is not usable.")?
+        .to_string();
+    if let Some(problem) = custom::weights_file_problem(&filename, meta.len()) {
+        return Err(problem.to_string());
+    }
+    // Windows hands back a `\?\` verbatim prefix; keep the path a person would recognise.
+    let shown = source.to_string_lossy().trim_start_matches(r"\?\").to_string();
+    let id = custom::id_for("local", &shown);
+    let name = display_name
+        .map(|n| n.trim().chars().take(80).collect::<String>())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| filename.clone());
+    let record = CustomModel {
+        id: id.clone(),
+        display_name: name,
+        family,
+        repo: format!("{}{id}", custom::LOCAL_REPO_PREFIX),
+        filename,
+        size: meta.len(),
+        sha256: String::new(),
+        license: "Local file".to_string(),
+        local_path: Some(shown),
     };
     let def = custom::add(&app, record)?;
     Ok(ModelStatus {

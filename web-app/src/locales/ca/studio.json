@@ -21,7 +21,12 @@
     "unsupportedToast": "La generació local d'imatges requereix Windows x64 o Linux x64.",
     "pickKindFirst": "Tria primer quin tipus de model és.",
     "added": "{{name}} afegit a Studio",
-    "openStudio": "Obre Studio"
+    "openStudio": "Obre Studio",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "Estudi",

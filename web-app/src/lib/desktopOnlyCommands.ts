@@ -19,6 +19,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
     reason: "Local models, engines and the GPU run on the desktop app's own machine.",
     commands: [
       'diffusion_add_custom_model',
+      'diffusion_add_local_model',
       'diffusion_cancel',
       'diffusion_delete',
       'diffusion_download_model',

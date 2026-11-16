@@ -21,7 +21,12 @@
     "unsupportedToast": "Tạo hình ảnh cục bộ yêu cầu Windows x64 hoặc Linux x64.",
     "pickKindFirst": "Hãy chọn loại mô hình này trước.",
     "added": "Đã thêm {{name}} vào Studio",
-    "openStudio": "Mở Studio"
+    "openStudio": "Mở Studio",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "Studio",
