@@ -35,11 +35,57 @@ export function listedEntryCapabilities(entry: unknown): string[] | null {
       ? (arch as Record<string, unknown>).input_modalities
       : undefined
   )
-  if (params.length === 0 && modalities.length === 0) return null
+  // Requesty (and gateways shaped like it) put one boolean per ability on the
+  // entry instead: `supports_tool_calling`, `supports_vision`,
+  // `supports_image_generation`. A flag that is absent says nothing; a flag
+  // that is `false` says no.
+  const flags = ['supports_tool_calling', 'supports_vision', 'supports_image_generation']
+  const flagged = flags.some((f) => typeof e[f] === 'boolean')
+  if (params.length === 0 && modalities.length === 0 && !flagged) return null
   const out: string[] = []
-  if (params.includes('tools') || params.includes('tool_choice')) out.push('tools')
-  if (modalities.includes('image')) out.push('vision')
+  if (params.includes('tools') || params.includes('tool_choice') || e.supports_tool_calling === true) {
+    out.push('tools')
+  }
+  if (modalities.includes('image') || e.supports_vision === true) out.push('vision')
+  // A chat model that can also draw: it keeps chatting, so say so explicitly
+  // (see `initialModelCapabilities`, which drops chat for picture-only models).
+  if (e.supports_image_generation === true) out.push('image_generation', 'completion')
   return out
+}
+
+/** The capabilities of a model a gateway lists only as a picture model. */
+export const IMAGE_ONLY_CAPABILITIES: readonly string[] = ['image_generation']
+
+/**
+ * Remember the models a gateway's picture list named (Requesty's
+ * `/models/image`). They make pictures and do not chat.
+ */
+export function recordListedImageModels(
+  baseUrl: string | null | undefined,
+  payload: unknown
+): string[] {
+  if (!baseUrl || !payload || typeof payload !== 'object') return []
+  const record = payload as Record<string, unknown>
+  const list = Array.isArray(payload) ? payload : record.data
+  if (!Array.isArray(list)) return []
+  const ids: string[] = []
+  for (const entry of list) {
+    const id =
+      typeof entry === 'string'
+        ? entry
+        : entry && typeof entry === 'object'
+          ? ((entry as Record<string, unknown>).id as unknown)
+          : undefined
+    if (typeof id !== 'string' || !id.trim()) continue
+    ids.push(id.trim())
+    // A model also in the chat list with image support already says it can chat.
+    const known = table.get(keyOf(baseUrl, id.trim()))
+    table.set(
+      keyOf(baseUrl, id.trim()),
+      known?.includes('completion') ? known : [...IMAGE_ONLY_CAPABILITIES]
+    )
+  }
+  return [...new Set(ids)]
 }
 
 /** Remember the capabilities a `/models` payload named. */

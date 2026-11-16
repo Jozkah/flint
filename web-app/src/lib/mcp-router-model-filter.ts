@@ -1,4 +1,5 @@
 import { isLocalProvider } from '@/lib/utils'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 
 /**
  * Models that are a poor fit for cheap structured routing (short generateObject calls).
@@ -61,6 +62,7 @@ export function isRouterModelSelectable(
   provider: ModelProvider,
   model: Model
 ): boolean {
+  if (isImageOnlyModel(model)) return false
   if (!isLikelyLightweightRouterModel(model)) return false
   if (isLocalProvider(provider.provider)) return true
   return !!provider.api_key?.length

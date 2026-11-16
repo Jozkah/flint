@@ -65,6 +65,8 @@ export const localStorageKey = {
   onboardingGuide: 'onboarding-guide',
   /** Split conversations: open or closed, the second pane's thread, width share. */
   splitConversation: 'split-conversation',
+  /** The hosted picture model last used in Studio, for the chat picture tools. */
+  lastHostedImageModel: 'last-hosted-image-model',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

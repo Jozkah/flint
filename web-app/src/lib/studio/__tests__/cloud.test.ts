@@ -21,12 +21,18 @@ import {
   cloudKey,
   cloudTargets,
   customCloudTargets,
+  buildCloudEditBody,
   describeCloudFailure,
+  editsUrl,
   fitCloudSize,
   generateCloudImages,
+  hostedImageTargets,
   imagesUrl,
+  isPictureModel,
   isPublicHttpsUrl,
   nearestAspectRatio,
+  nearestFixedSize,
+  pickHostedTarget,
   readCloudAnswer,
   targetFor,
 } from '../cloud'
@@ -38,7 +44,12 @@ describe('cloud targets', () => {
   it('offers only the providers that are set up, as provider/model keys', () => {
     expect(cloudTargets(new Set()).length).toBe(0)
     const keys = cloudTargets(new Set(['openai'])).map((t) => t.key)
-    expect(keys).toEqual(['openai/gpt-image-2.5-flare', 'openai/gpt-image-2.5-sunburst'])
+    expect(keys).toEqual([
+      'openai/gpt-image-2.5-flare',
+      'openai/gpt-image-2.5-sunburst',
+      'openai/gpt-image-2.6-flare',
+      'openai/gpt-image-2.6-sunburst',
+    ])
     expect(targetFor(cloudKey('xai', 'grok-imagine-image-2.0'), new Set(['xai']))?.provider.label).toBe('xAI')
     expect(targetFor('openai/gpt-image-2.5-flare', new Set(['xai']))).toBeUndefined()
   })

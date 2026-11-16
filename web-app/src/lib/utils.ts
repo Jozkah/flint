@@ -138,6 +138,8 @@ export const getDefaultProviderTitle = (provider: string) => {
       return 'NVIDIA NIM'
     case 'litellm':
       return 'LiteLLM'
+    case 'requesty':
+      return 'Requesty'
     case 'claude-cli':
       return 'Claude (subscription)'
     case 'codex-cli':

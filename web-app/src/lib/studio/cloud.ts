@@ -10,7 +10,8 @@
  */
 import { providerFetch } from '@/lib/providerFetch'
 import { applyCustomHeaders } from '@/lib/customHeaders'
-import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import { isRequestyProvider } from '@/lib/requesty'
 import { snapSide } from '@/lib/studio/helpers'
 import { studioApi, type Generated } from '@/lib/studio/studio'
 
@@ -31,6 +32,16 @@ export type CloudImageProvider = {
   format: Record<string, string>
   /** A server the user runs themselves, which may need no API key. */
   keyless?: boolean
+  /**
+   * The only sizes the provider accepts (a gateway in front of models with
+   * fixed shapes). A request is snapped to the nearest shape in the list.
+   */
+  sizes?: Array<[number, number]>
+  /**
+   * Takes `POST {base}/images/edits` as JSON with the pictures as base64 data
+   * URLs. Providers without it generate only.
+   */
+  jsonEdits?: boolean
 }
 
 export const CLOUD_IMAGE_PROVIDERS: CloudImageProvider[] = [
@@ -40,6 +51,8 @@ export const CLOUD_IMAGE_PROVIDERS: CloudImageProvider[] = [
     models: [
       { id: 'gpt-image-2.5-flare', name: 'GPT Image 2.5 Flare' },
       { id: 'gpt-image-2.5-sunburst', name: 'GPT Image 2.5 Sunburst' },
+      { id: 'gpt-image-2.6-flare', name: 'GPT Image 2.6 Flare' },
+      { id: 'gpt-image-2.6-sunburst', name: 'GPT Image 2.6 Sunburst' },
     ],
     maxCount: 4,
     size: 'pixels',
@@ -99,6 +112,28 @@ export function cloudTargets(configured: ReadonlySet<string>): CloudTarget[] {
 /** Model ids a self-hosted OpenAI-compatible server uses for a picture model. */
 const IMAGE_MODEL_ID = /image|flux|diffusion|sdxl|dall-?e|imagen|(?:^|[^a-z])wan(?:[^a-z]|$)/i
 
+/** The shapes every GPT Image model behind Requesty takes: square, landscape, portrait. */
+const REQUESTY_SIZES: Array<[number, number]> = [
+  [1024, 1024],
+  [1536, 1024],
+  [1024, 1536],
+]
+
+/**
+ * A model that makes pictures: the provider's list tagged it for image
+ * generation (Requesty does), or its name says so.
+ */
+export function isPictureModel(model: {
+  id: string
+  name?: string
+  capabilities?: readonly string[]
+}): boolean {
+  return (
+    !!model.capabilities?.includes('image_generation') ||
+    IMAGE_MODEL_ID.test(`${model.id} ${model.name ?? ''}`)
+  )
+}
+
 /**
  * Picture models on the user's own OpenAI-compatible providers (a server they
  * run, not one of the four hosted services above). Offered when the provider
@@ -115,6 +150,9 @@ export function customCloudTargets(
   return providers
     .filter((p) => p.active && p.base_url?.trim() && p.api_type !== 'anthropic' && !hosted.has(p.provider))
     .flatMap((p) => {
+      // Requesty routes to models with fixed picture shapes, answers with a
+      // link unless asked otherwise, and takes edits as JSON.
+      const requesty = isRequestyProvider(p)
       const provider: CloudImageProvider = {
         provider: p.provider,
         label: p.displayName || p.provider,
@@ -122,11 +160,12 @@ export function customCloudTargets(
         maxCount: 4,
         size: 'pixels',
         limits: { maxEdge: 2048, minArea: 0, maxArea: 2048 * 2048 },
-        format: { response_format: 'b64_json' },
-        keyless: true,
+        format: requesty ? {} : { response_format: 'b64_json' },
+        keyless: !requesty,
+        ...(requesty ? { sizes: REQUESTY_SIZES, jsonEdits: true } : {}),
       }
       return (p.models ?? [])
-        .filter((m) => !m.embedding && IMAGE_MODEL_ID.test(`${m.id} ${m.name ?? ''}`))
+        .filter((m) => !m.embedding && isPictureModel(m))
         .map((m) => ({
           key: cloudKey(p.provider, m.id),
           provider,
@@ -140,6 +179,69 @@ export function targetFor(key: string, configured: ReadonlySet<string>): CloudTa
 }
 
 /**
+ * Every hosted picture model usable now: the built-in providers with an API
+ * key, and picture models on the user's own or gateway providers. Studio and
+ * the chat picture tools share this, so they offer the same list.
+ */
+export function hostedImageTargets(
+  providers: ReadonlyArray<
+    Pick<
+      ProviderObject,
+      'active' | 'provider' | 'displayName' | 'base_url' | 'api_type' | 'models' | 'api_key' | 'api_key_fallbacks'
+    >
+  >
+): CloudTarget[] {
+  const configured = new Set(
+    providers.filter((p) => p.active && providerHasRemoteApiKeys(p)).map((p) => p.provider)
+  )
+  return [...cloudTargets(configured), ...customCloudTargets(providers)]
+}
+
+/** The most choices an error lists, so a long catalogue stays readable. */
+const MAX_LISTED_CHOICES = 8
+
+/**
+ * Which hosted picture model a tool call uses when no local picture model is
+ * loaded: the one last used in Studio if it is still offered, the only one
+ * when there is exactly one, otherwise the reason and the choices.
+ */
+export function pickHostedTarget(
+  targets: readonly CloudTarget[],
+  preferredKey?: string
+): { target: CloudTarget } | { error: string } {
+  if (targets.length === 0) {
+    return {
+      error:
+        'No image model is loaded in Studio and no hosted image model is set up. Ask the user to load one in Studio, or add an API key for an image provider in Providers.',
+    }
+  }
+  const preferred = preferredKey ? targets.find((t) => t.key === preferredKey) : undefined
+  if (preferred) return { target: preferred }
+  if (targets.length === 1) return { target: targets[0] }
+  const listed = targets.slice(0, MAX_LISTED_CHOICES).map((t) => t.key)
+  const more = targets.length > listed.length ? ` and ${targets.length - listed.length} more` : ''
+  return {
+    error: `No image model is loaded in Studio, and several hosted ones are available with none chosen: ${listed.join(', ')}${more}. Ask the user to make one picture with the model they want in Studio, then try again.`,
+  }
+}
+
+/** The listed size whose shape is nearest to the one asked for (ties go to the earlier). */
+export function nearestFixedSize(
+  sizes: ReadonlyArray<readonly [number, number]>,
+  width: number,
+  height: number
+): { width: number; height: number } {
+  const target = Math.log(Math.max(width, 1) / Math.max(height, 1))
+  let best = sizes[0]
+  for (const size of sizes) {
+    if (Math.abs(Math.log(size[0] / size[1]) - target) < Math.abs(Math.log(best[0] / best[1]) - target)) {
+      best = size
+    }
+  }
+  return { width: best[0], height: best[1] }
+}
+
+/**
  * The size nearest to what was asked for that the provider accepts: sides in
  * multiples of 16, the longest side and the picture area inside its limits,
  * the shape kept.
@@ -149,6 +251,7 @@ export function fitCloudSize(
   width: number,
   height: number
 ): { width: number; height: number } {
+  if (provider.sizes?.length) return nearestFixedSize(provider.sizes, width, height)
   const { maxEdge, minArea, maxArea } = provider.limits
   let w = width
   let h = height
@@ -222,6 +325,31 @@ export function buildCloudBody(
 export function imagesUrl(baseUrl: string | undefined): string | null {
   const base = baseUrl?.trim().replace(/\/+$/, '')
   return base ? `${base}/images/generations` : null
+}
+
+/** The URL edits are sent to: the provider's base plus `/images/edits`. */
+export function editsUrl(baseUrl: string | undefined): string | null {
+  const base = baseUrl?.trim().replace(/\/+$/, '')
+  return base ? `${base}/images/edits` : null
+}
+
+/**
+ * The JSON body for an edit: the pictures to change or follow as base64 data
+ * URLs. No `response_format`: edit endpoints take none and answer as they do.
+ */
+export function buildCloudEditBody(
+  provider: CloudImageProvider,
+  model: CloudImageModel,
+  params: CloudParams & { sourceImages: string[] }
+): Record<string, unknown> {
+  const { width, height } = fitCloudSize(provider, params.width, params.height)
+  return {
+    model: model.id,
+    prompt: params.prompt,
+    n: Math.min(Math.max(1, params.count), provider.maxCount),
+    size: `${width}x${height}`,
+    image: params.sourceImages.map((image_url) => ({ image_url })),
+  }
 }
 
 /** The most a downloaded picture may weigh. */
@@ -380,12 +508,16 @@ async function downloadPicture(
 export async function generateCloudImages(
   target: CloudTarget,
   settings: Pick<ProviderObject, 'base_url' | 'api_key' | 'api_key_fallbacks' | 'custom_header'>,
-  params: CloudParams,
+  params: CloudParams & { sourceImages?: string[] },
   signal: AbortSignal,
   fetchImpl: Fetch = providerFetch
 ): Promise<Generated> {
   const started = Date.now()
-  const url = imagesUrl(settings.base_url)
+  const editing = (params.sourceImages?.length ?? 0) > 0
+  if (editing && !target.provider.jsonEdits) {
+    throw new Error(`${target.provider.label} cannot edit pictures from here yet. Generate a new one instead.`)
+  }
+  const url = editing ? editsUrl(settings.base_url) : imagesUrl(settings.base_url)
   const key = providerRemoteApiKeyChain(settings)[0]
   if (!url) throw new Error(`${target.provider.label} has no endpoint set. Check it in Providers.`)
   if (!key && !target.provider.keyless) {
@@ -399,7 +531,14 @@ export async function generateCloudImages(
   const response = await fetchImpl(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify(buildCloudBody(target.provider, target.model, params)),
+    body: JSON.stringify(
+      editing
+        ? buildCloudEditBody(target.provider, target.model, {
+            ...params,
+            sourceImages: params.sourceImages as string[],
+          })
+        : buildCloudBody(target.provider, target.model, params)
+    ),
     signal,
   })
   const text = await response.text()

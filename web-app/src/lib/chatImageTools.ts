@@ -1,4 +1,12 @@
 import { studioApi } from '@/lib/studio/studio'
+import {
+  generateCloudImages,
+  hostedImageTargets,
+  pickHostedTarget,
+  type CloudTarget,
+} from '@/lib/studio/cloud'
+import { readLastHostedImageModel } from '@/lib/studio/lastHostedImage'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import type { ToolImage } from '@/lib/toolOutputImages'
 import {
   addChatImages,
@@ -123,6 +131,78 @@ async function make(
   }
 }
 
+/** The longest a hosted picture request may run before it is given up on. */
+const HOSTED_TIMEOUT_MS = 5 * 60 * 1000
+
+const DEFAULT_HOSTED_SIDE = 1024
+
+/**
+ * Make or edit pictures with a hosted model, for when no local picture model
+ * is loaded. Goes through the same request Studio uses, so the pictures land
+ * in the gallery and are named img_N like local ones.
+ */
+async function makeHosted(
+  threadId: string,
+  target: CloudTarget,
+  prompt: string,
+  args: Record<string, unknown>,
+  sourceGalleryIds: string[]
+): Promise<Result> {
+  const count = args.count === undefined ? 1 : whole(args.count)
+  if (!count || count > MAX_COUNT) {
+    return { error: `count must be a whole number from 1 to ${MAX_COUNT}.` }
+  }
+  const settings = useModelProvider
+    .getState()
+    .providers.find((p) => p.provider === target.provider.provider)
+  if (!settings) return { error: `${target.provider.label} is not set up. Check it in Providers.` }
+
+  const sourceImages = await Promise.all(
+    sourceGalleryIds.map((id) => studioApi.media('image', id))
+  )
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), HOSTED_TIMEOUT_MS)
+  let generated: Awaited<ReturnType<typeof generateCloudImages>>
+  try {
+    generated = await generateCloudImages(
+      target,
+      settings,
+      {
+        prompt,
+        width: whole(args.width) ?? DEFAULT_HOSTED_SIDE,
+        height: whole(args.height) ?? DEFAULT_HOSTED_SIDE,
+        count,
+        sourceImages: sourceImages.length ? sourceImages : undefined,
+      },
+      abort.signal
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+  const named = addChatImages(
+    threadId,
+    generated.ids.map((galleryId) => ({ galleryId, prompt }))
+  )
+  return {
+    content: JSON.stringify({
+      status: 'done',
+      model: target.key,
+      images: named.map((n) => n.id),
+      message:
+        'Shown to the user. Refer to a picture by its name; use image_view to look at it.',
+    }),
+    images: await pictures(named),
+  }
+}
+
+/** The hosted picture models set up now, with the one Studio last used. */
+function hostedChoices(): { targets: CloudTarget[]; preferred: string | undefined } {
+  return {
+    targets: hostedImageTargets(useModelProvider.getState().providers),
+    preferred: readLastHostedImageModel(),
+  }
+}
+
 async function runGen(
   args: Record<string, unknown>,
   threadId: string
@@ -130,8 +210,13 @@ async function runGen(
   const prompt = text(args.prompt)
   if (!prompt) return { error: `${IMAGE_GEN_TOOL} needs a prompt.` }
   const resident = await residentImageModel()
-  if ('error' in resident) return resident
-  return make(threadId, prompt, {}, args, resident.modelId)
+  if (!('error' in resident)) return make(threadId, prompt, {}, args, resident.modelId)
+  // No local picture model: a hosted one, if the user has set one up.
+  const { targets, preferred } = hostedChoices()
+  if (targets.length === 0) return resident
+  const picked = pickHostedTarget(targets, preferred)
+  if ('error' in picked) return picked
+  return makeHosted(threadId, picked.target, prompt, args, [])
 }
 
 async function runEdit(
@@ -169,7 +254,27 @@ async function runEdit(
   }
 
   const resident = await residentImageModel()
-  if ('error' in resident) return resident
+  if ('error' in resident) {
+    // No local picture model: a hosted one that takes edits, if set up.
+    const { targets, preferred } = hostedChoices()
+    if (targets.length === 0) return resident
+    const editors = targets.filter((t) => t.provider.jsonEdits)
+    if (editors.length === 0) {
+      return {
+        error:
+          'Editing a picture needs an image model loaded in Studio: the hosted image models set up here cannot edit pictures yet. Generate a new picture instead, or ask the user to load a local one.',
+      }
+    }
+    const picked = pickHostedTarget(editors, preferred)
+    if ('error' in picked) return picked
+    return makeHosted(
+      threadId,
+      picked.target,
+      prompt,
+      args,
+      [startPicture, ...references].filter((p): p is ChatImage => !!p).map((p) => p.galleryId)
+    )
+  }
   return make(
     threadId,
     prompt,

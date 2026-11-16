@@ -85,7 +85,17 @@ export const initialModelCapabilities = (
   listed: readonly string[] | null
 ): string[] => {
   const base = getModelCapabilities(providerName, modelId)
-  if (listed) return [...new Set([...base, ...listed])]
+  if (listed) {
+    // A picture-only model (the gateway listed it as one and never as a chat
+    // model) does not chat, so it must not start with Completion.
+    const pictureOnly =
+      listed.includes(ModelCapabilities.IMAGE_GENERATION) &&
+      !listed.includes(ModelCapabilities.COMPLETION)
+    const start = pictureOnly
+      ? base.filter((c) => c !== ModelCapabilities.COMPLETION)
+      : base
+    return [...new Set([...start, ...listed])]
+  }
   const custom =
     !NOT_CUSTOM.has(providerName) &&
     !predefinedProviders.some((p) => p.provider === providerName)

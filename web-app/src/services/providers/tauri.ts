@@ -30,7 +30,11 @@ import {
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
 import { buildProviderListRequest } from '@/lib/providerListRequest'
 import { recordListedWindows } from '@/lib/listedWindows'
-import { recordListedCapabilities } from '@/lib/listedCapabilities'
+import {
+  recordListedCapabilities,
+  recordListedImageModels,
+} from '@/lib/listedCapabilities'
+import { imageModelsUrl, isRequestyProvider } from '@/lib/requesty'
 import { findModelEntry } from '@/lib/detectContextWindow'
 
 type ToolSupportEngine = {
@@ -304,6 +308,26 @@ export class TauriProvidersService extends DefaultProvidersService {
         recordListedWindows(provider.base_url, data)
         // Tools and vision, where the provider's list says (OpenRouter does).
         recordListedCapabilities(provider.base_url, data)
+        // A gateway that lists its picture models apart from the chat ones.
+        // Extra, so a failure here never fails the list.
+        if (isRequestyProvider(provider)) {
+          const imageUrl = imageModelsUrl(provider.base_url)
+          try {
+            const imageResponse = imageUrl
+              ? await fetchTauri(imageUrl, { method: 'GET', headers })
+              : null
+            if (imageResponse?.ok) {
+              for (const id of recordListedImageModels(
+                provider.base_url,
+                await imageResponse.json()
+              )) {
+                if (!ids.includes(id)) ids.push(id)
+              }
+            }
+          } catch {
+            // Keep the chat models.
+          }
+        }
         if (ids.length === 0) {
           console.warn('Provider listed no models at /models:', data)
         }

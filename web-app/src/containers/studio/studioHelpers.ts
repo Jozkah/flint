@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
-import { cloudTargets, customCloudTargets, type CloudTarget } from '@/lib/studio/cloud'
+import { hostedImageTargets, type CloudTarget } from '@/lib/studio/cloud'
 import { IMAGE_SIZES, VIDEO_SIZES, customSize } from '@/lib/studio/helpers'
 import { type StudioKind, type StudioModel } from '@/lib/studio/studio'
 import { CUSTOM, Form, T } from '@/containers/studio/studioTypes'
@@ -23,12 +22,7 @@ export function useCloudTargets(kind: StudioKind): CloudTarget[] {
   const providers = useModelProvider((s) => s.providers)
   return useMemo(() => {
     if (kind !== 'image') return []
-    const configured = new Set(
-      providers
-        .filter((p) => p.active && providerHasRemoteApiKeys(p))
-        .map((p) => p.provider)
-    )
-    return [...cloudTargets(configured), ...customCloudTargets(providers)]
+    return hostedImageTargets(providers)
   }, [providers, kind])
 }
 

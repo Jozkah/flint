@@ -161,6 +161,7 @@
     "openaiDescription": "Verwende einen Proxy oder ein Gateway, das die OpenAI-API spricht. Standard ist https://api.openai.com/v1.",
     "azureDescription": "Dein Azure-OpenAI-Endpunkt. Ersetze YOUR-RESOURCE-NAME durch den Namen deiner Azure-Ressource.",
     "litellmDescription": "Die Adresse deines LiteLLM-Proxys, einschließlich /v1. Standard ist http://localhost:4000/v1.",
+    "requestyDescription": "Die Adresse des Requesty-Routers, einschließlich /v1. Für den EU-Endpunkt verwende https://router.eu.requesty.ai/v1. Standard ist https://router.requesty.ai/v1.",
     "qwenDescription": "Dein Model-Studio-Endpunkt. Ein Schlüssel funktioniert nur in der Region, in der er erstellt wurde: Verwende https://dashscope-intl.aliyuncs.com/compatible-mode/v1 für Singapur oder https://dashscope.aliyuncs.com/compatible-mode/v1 für das chinesische Festland.",
     "bedrockDescription": "Der Amazon-Bedrock-Runtime-Endpunkt deiner Region, zum Beispiel https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
