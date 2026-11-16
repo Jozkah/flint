@@ -12,6 +12,7 @@ import { providerIsUnreachable } from '@/lib/modelAvailability'
 import { offersModels } from '@/lib/providerOffers'
 import { sortModels } from '@/lib/modelSort'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 
 export interface SearchableModel {
   provider: ModelProvider
@@ -79,6 +80,8 @@ export function buildSearchableItems(
         return
       // Skip embedding models - they can't be used for chat
       if (modelItem.embedding) return
+      // Nor can picture-only models; Studio and the picture tools use those.
+      if (isImageOnlyModel(modelItem)) return
       // The dictation model transcribes speech; it is not for chatting.
       if (modelItem.id === VOICE_MODEL_ID) return
 

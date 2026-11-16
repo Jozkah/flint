@@ -4,6 +4,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn, getProviderTitle } from '@/lib/utils'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
@@ -41,7 +42,9 @@ export function JevModelRoutingCard() {
         .map((p) => ({
           provider: p.provider,
           title: p.displayName || getProviderTitle(p.provider),
-          models: (p.models ?? []).filter((m) => !m.embedding),
+          models: (p.models ?? []).filter(
+            (m) => !m.embedding && !isImageOnlyModel(m)
+          ),
         }))
         .filter((p) => p.models.length > 0),
     [providers]

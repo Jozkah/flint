@@ -8,6 +8,7 @@ import { getProviderTitle } from '@/lib/utils'
 import { PickerDropdown, type PickerGroup } from './PickerDropdown'
 import { ModelAvatar } from '@/containers/ModelAvatar'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterToggle } from '@/containers/ModelFilterButton'
 import { usePickerModelMeta } from '@/hooks/usePickerModelMeta'
@@ -81,6 +82,7 @@ export function RoomModelSelect({
         models: p.models.filter(
           (m) =>
             !m.embedding &&
+            !isImageOnlyModel(m) &&
             m.id !== VOICE_MODEL_ID &&
             // The filter never hides the model already chosen.
             (!filteredOut ||

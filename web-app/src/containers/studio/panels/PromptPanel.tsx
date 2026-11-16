@@ -17,6 +17,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useFitContext } from '@/hooks/useFitContext'
 import { cn } from '@/lib/utils'
 import { generateCloudImages, type CloudTarget } from '@/lib/studio/cloud'
+import { writeLastHostedImageModel } from '@/lib/studio/lastHostedImage'
 import { formatEta } from '@/lib/downloadSpeed'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { EXAMPLE_PROMPTS, framesForSeconds, parseSeed, videoMemoryWarning } from '@/lib/studio/helpers'
@@ -133,7 +134,10 @@ export function PromptPanel({
           ),
         { label: hosted.provider.label, abort }
       )
-      if (ok) toast.success(t('studio:prompt.imageReady'))
+      if (ok) {
+        writeLastHostedImageModel(hosted.key)
+        toast.success(t('studio:prompt.imageReady'))
+      }
       return
     }
     const common = {

@@ -2,6 +2,7 @@ import { predefinedProviders } from '@/constants/providers'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import { localStorageKey } from '@/constants/localStorage'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 
 type ModelLike = {
   id: string
@@ -41,6 +42,7 @@ export function isChatCapable(model: ModelLike): boolean {
   // The speech model transcribes; chatting with it would only produce transcripts.
   return (
     !model.embedding &&
+    !isImageOnlyModel(model) &&
     !model.capabilities?.includes('embeddings') &&
     model.id !== VOICE_MODEL_ID
   )

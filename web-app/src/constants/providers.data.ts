@@ -800,6 +800,29 @@ export const predefinedProviders = [
   {
     active: false,
     api_key: '',
+    base_url: 'https://router.requesty.ai/v1',
+    explore_models_url: 'https://docs.requesty.ai',
+    provider: 'requesty',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          'Requesty authenticates requests with an API key. Create one in the [Requesty dashboard](https://app.requesty.ai) and paste it here. One key reaches chat, image and other models from many vendors.',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: false,
+    api_key: '',
     base_url: 'http://127.0.0.1:17642/claude-cli/v1',
     explore_models_url: 'https://claude.ai',
     provider: 'claude-cli',

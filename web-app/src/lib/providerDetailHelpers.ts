@@ -74,6 +74,10 @@ export const EDITABLE_ENDPOINT: Record<string, { description: string; placeholde
     description: 'providers:baseUrl.litellmDescription',
     placeholder: 'http://localhost:4000/v1',
   },
+  requesty: {
+    description: 'providers:baseUrl.requestyDescription',
+    placeholder: 'https://router.requesty.ai/v1',
+  },
   qwen: {
     description: 'providers:baseUrl.qwenDescription',
     placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
