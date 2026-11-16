@@ -46,8 +46,11 @@ echo "stage-engine: staged flint-llama-worker$EXE"
 
 # Newest match only, so a stale artefact from an earlier variant is never
 # picked.
+# Cargo lays a build script's output out as build/<pkg>-<hash>/out (older) or
+# build/<pkg>/<hash>/out (newer, the default from Rust 1.100), so the prefix
+# sits 3 or 4 levels down. 5 leaves room for either.
 newest() {
-  find "$TARGET_DIR/build" -maxdepth 3 "$@" -print0 2>/dev/null \
+  find "$TARGET_DIR/build" -maxdepth 5 "$@" -print0 2>/dev/null \
     | xargs -0 -r ls -dt 2>/dev/null | head -1 || true
 }
 
