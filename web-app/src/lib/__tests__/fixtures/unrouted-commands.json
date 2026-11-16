@@ -981,6 +981,18 @@
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
+  "diffusion_add_local_model": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chat/transport/toolRefresh.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
   "diffusion_cancel": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
     "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
@@ -1200,7 +1212,6 @@
   "export_save_file": [
     "web-app/src/containers/rooms/CompareRunPanel.tsx",
     "web-app/src/containers/rooms/RoomControls.tsx (via CompareRunPanel)",
-    "web-app/src/lib/exportAction.ts (via exportDocument)",
     "web-app/src/lib/exportFile.ts",
     "web-app/src/lib/exportImage.ts"
   ],
@@ -1945,6 +1956,7 @@
   ],
   "plugin:agent-tools|secrets_redact": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via secretsRedact)",
     "web-app/src/lib/redactToolOutput.ts (via secretsRedact)"
   ],
   "plugin:agent-tools|session_workspace_delete": [
