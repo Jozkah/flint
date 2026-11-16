@@ -106,6 +106,26 @@ describe('image_gen with no local picture model', () => {
     expect(r.error).toMatch(/did not accept the API key/)
   })
 
+  it('says it gave up waiting when the hosted model takes too long', async () => {
+    vi.useFakeTimers()
+    try {
+      setProviders([requesty([GPT_IMAGE])])
+      cloudGenerate.mockImplementation(
+        (_t: unknown, _s: unknown, _p: unknown, signal: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new Error('The request was aborted.')))
+          })
+      )
+      const pending = runImageTool('image_gen', { prompt: 'a cat' }, thread())
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1)
+      const r = await pending
+      expect(r.error).toMatch(/Requesty did not return a picture within 5 minutes/)
+      expect(r.error).not.toMatch(/was aborted/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('still prefers the local picture model when one is loaded', async () => {
     status.mockResolvedValue(loaded)
     setProviders([requesty([GPT_IMAGE])])

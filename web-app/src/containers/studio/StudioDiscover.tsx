@@ -29,6 +29,7 @@ import {
 } from '@/lib/huggingface'
 import { studioApi, type StudioFamily } from '@/lib/studio/studio'
 import { useStudio } from '@/hooks/useStudio'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { pickLicense, weightsFiles } from '@/lib/studio/discover'
 import { Select } from '@/components/ui/select'
 
@@ -70,6 +71,9 @@ export function StudioDiscover({
   const [files, setFiles] = useState<Record<string, HuggingFaceFile[]>>({})
   const [family, setFamily] = useState<Record<string, string>>({})
   const [adding, setAdding] = useState<string | null>(null)
+  const serviceHub = useServiceHub()
+  const [localFamily, setLocalFamily] = useState('')
+  const [addingLocal, setAddingLocal] = useState(false)
 
   const loadFamilies = useCallback(() => {
     setFamiliesError(null)
@@ -197,6 +201,40 @@ export function StudioDiscover({
     }
   }
 
+  const addLocal = async () => {
+    if (!status?.supported) {
+      toast.error(t('studio:discover.unsupportedToast'))
+      return
+    }
+    setAddingLocal(true)
+    try {
+      const path = await serviceHub.dialog().open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: t('studio:discover.localFilter'), extensions: ['gguf', 'safetensors'] }],
+      })
+      if (typeof path !== 'string') return
+      const name = path.split(/[\\/]/).pop() ?? path
+      const chosen = localFamily || (await studioApi.guessFamily('', name).catch(() => null)) || ''
+      if (!chosen) {
+        toast.error(t('studio:discover.pickKindFirst'))
+        return
+      }
+      const added = await studioApi.addLocalModel({ path, family: chosen })
+      await refresh()
+      toast.success(t('studio:discover.localAdded', { name: added.display_name }), {
+        action: {
+          label: t('studio:discover.openStudio'),
+          onClick: () => navigate({ to: route.studio }),
+        },
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAddingLocal(false)
+    }
+  }
+
   return (
     <main className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
@@ -208,6 +246,37 @@ export function StudioDiscover({
         <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
           {t('studio:discover.intro')}
         </p>
+
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground"
+          data-testid="studio-add-local"
+        >
+          <span className="mr-auto text-secondary-foreground">{t('studio:discover.localIntro')}</span>
+          <label htmlFor="studio-local-family">{t('studio:discover.whatKind')}</label>
+          <Select
+            id="studio-local-family"
+            className={SELECT}
+            value={localFamily}
+            onChange={(e) => setLocalFamily(e.target.value)}
+          >
+            <option value="">{t('studio:discover.localAuto')}</option>
+            {families.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={addingLocal}
+            data-testid="studio-add-local-button"
+            onClick={() => void addLocal()}
+          >
+            <Plus className="size-3.5" />
+            {t('studio:discover.localButton')}
+          </Button>
+        </div>
 
         {familiesError && (
           <div

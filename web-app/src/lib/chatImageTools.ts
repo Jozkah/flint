@@ -176,6 +176,13 @@ async function makeHosted(
       },
       abort.signal
     )
+  } catch (e) {
+    if (abort.signal.aborted) {
+      return {
+        error: `${target.provider.label} did not return a picture within ${HOSTED_TIMEOUT_MS / 60000} minutes, so Flint gave up waiting. The model may still be rendering on their side; try a smaller size or a faster model.`,
+      }
+    }
+    throw e
   } finally {
     clearTimeout(timer)
   }

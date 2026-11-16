@@ -21,7 +21,12 @@
     "unsupportedToast": "Yerel görsel üretimi Windows x64 veya Linux x64 gerektirir.",
     "pickKindFirst": "Önce bunun ne tür bir model olduğunu seçin.",
     "added": "{{name}} Studio'ya eklendi",
-    "openStudio": "Studio'yu aç"
+    "openStudio": "Studio'yu aç",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "Stüdyo",

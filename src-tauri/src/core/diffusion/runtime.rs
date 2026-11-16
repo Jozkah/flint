@@ -156,6 +156,9 @@ pub fn model_file_path<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file: &catalog::FileDef,
 ) -> PathBuf {
+    if let Some(path) = super::custom::local_path(file.repo) {
+        return path;
+    }
     crate::core::app::commands::get_jan_data_folder_path(app.clone())
         .join(crate::core::huggingface::relative_download_path(file.repo, file.filename))
 }

@@ -21,7 +21,12 @@
     "unsupportedToast": "Lokale Bilderzeugung erfordert Windows x64 oder Linux x64.",
     "pickKindFirst": "Wählen Sie zuerst die Art des Modells aus.",
     "added": "{{name}} zu Studio hinzugefügt",
-    "openStudio": "Studio öffnen"
+    "openStudio": "Studio öffnen",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "Studio",

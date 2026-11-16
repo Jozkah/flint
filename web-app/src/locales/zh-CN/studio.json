@@ -21,7 +21,12 @@
     "unsupportedToast": "本地图像生成需要 Windows x64 或 Linux x64。",
     "pickKindFirst": "请先选择这是哪种类型的模型。",
     "added": "{{name}} 已添加到 Studio",
-    "openStudio": "打开 Studio"
+    "openStudio": "打开 Studio",
+    "localIntro": "Already have a picture model on this computer? Add its weights file (.gguf or .safetensors); it is used where it is, nothing is copied.",
+    "localAuto": "Detect from the file name",
+    "localButton": "Add from a file…",
+    "localFilter": "Model weights",
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
   },
   "page": {
     "title": "工作室",
