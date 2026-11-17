@@ -2573,6 +2573,9 @@ fn advertise_local_tools(
                 .any(|t| t["function"]["name"].as_str() == Some("bash"));
             if local_tools::project_tool_gate_open(gate, planning, subject, bash_offered)
                 && permitted(named)
+                // `lsp` is only worth a slot in the tool list when a server it
+                // can start exists here; otherwise every call is a refusal.
+                && (named != "lsp" || project_root.is_some_and(crate::core::agent::lsp::worth_offering))
             {
                 openai_tools.push(schema);
             }
