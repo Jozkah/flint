@@ -178,7 +178,7 @@ import { usableContextValue } from '@/lib/modelCapabilities'
 import { mergeRequestParams } from '@/lib/chat/transport/requestParams'
 import { recordGeneration } from '@/stores/engine-activity-store'
 import { canRecoverFromOverflow, sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
-import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
+import { isValidToolName, normalizeToolInputSchema, normalizeToolSet } from '@/lib/chat/transport/toolSchema'
 import {
   BUILTIN_WEB_TOOLS,
   recordMcpSet,
@@ -2208,7 +2208,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // Hosted providers keep the SDK's two backoff retries for transient
       // 429/5xx; local servers fail at once (see isLocalChatServer).
       maxRetries: isLocalChatServer(providerId, provider.base_url) ? 0 : 2,
-      tools: shouldEnableTools ? this.tools : undefined,
+      tools: shouldEnableTools ? normalizeToolSet(this.tools) : undefined,
       toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
       system: requestSystem,
       ...(maxOutputTokens !== undefined && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
