@@ -7,7 +7,7 @@ vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
-import { StartCampaignDialog } from '../StartCampaignDialog'
+import { StartCampaignDialog, campaignModel } from '../StartCampaignDialog'
 import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import type { StartDeps } from '@/lib/campaignStart'
 
@@ -72,5 +72,33 @@ describe('StartCampaignDialog', () => {
     expect(screen.getByTestId('campaign-start-error')).toBeInTheDocument()
     expect(deps.createSession).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
+  })
+})
+
+describe('campaignModel', () => {
+  const providers = [
+    {
+      provider: 'local',
+      active: true,
+      models: [
+        { id: 'tools-model', capabilities: ['tools'] },
+        { id: 'plain-model', capabilities: [] },
+      ],
+    },
+  ]
+  it("uses the open Cowork session's model, not the global picker's", () => {
+    const picker = { selectedProvider: 'local', selectedModel: { id: 'plain-model' }, providers }
+    expect(campaignModel({ provider: 'local', id: 'tools-model' }, picker)).toEqual({
+      provider: 'local',
+      id: 'tools-model',
+    })
+  })
+  it('falls back to the picker when the session has no model', () => {
+    const picker = { selectedProvider: 'local', selectedModel: { id: 'tools-model' }, providers }
+    expect(campaignModel(null, picker)?.id).toBe('tools-model')
+  })
+  it('refuses a model that cannot call tools', () => {
+    const picker = { selectedProvider: 'local', selectedModel: { id: 'tools-model' }, providers }
+    expect(campaignModel({ provider: 'local', id: 'plain-model' }, picker)).toBeNull()
   })
 })
