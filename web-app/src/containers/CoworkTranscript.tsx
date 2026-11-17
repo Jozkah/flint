@@ -30,6 +30,7 @@ import { startPaneSessionParked, useCoworkSessions } from '@/hooks/useCoworkSess
 import { type CoworkRail } from '@/hooks/useCoworkView'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { useRestoredMadePictures } from '@/lib/restoreMadePictures'
 import { askedFromParts } from '@/lib/askedSessions'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { type VerifyReport } from '@/lib/browserVerify'
@@ -147,7 +148,7 @@ export function CoworkTranscript({
   session,
   earlierPages,
   messageWeights,
-  uiMessages,
+  uiMessages: savedMessages,
   activity,
   running,
   handleRegenerate,
@@ -193,6 +194,8 @@ export function CoworkTranscript({
   coworkPane,
 }: CoworkTranscriptProps) {
   const { t } = useTranslation()
+  // A reopened session keeps no pixels; the made pictures come back from the gallery.
+  const uiMessages = useRestoredMadePictures(savedMessages, session?.id)
   return (
     <div
         ref={transcriptRef}
