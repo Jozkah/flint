@@ -2391,6 +2391,8 @@ fn main() {
     // A panic inside has already printed; exiting non-zero keeps a caller from
     // reading a crash as success.
     if worker.join().is_err() {
+        let raw: Vec<String> = std::env::args().skip(1).collect();
+        app_lib::core::cli::emit_crash_envelope(&raw);
         std::process::exit(70);
     }
 }

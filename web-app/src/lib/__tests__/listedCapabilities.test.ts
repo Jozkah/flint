@@ -4,6 +4,7 @@ import {
   recordListedCapabilities,
   resetListedCapabilities,
 } from '../listedCapabilities'
+import { isImageOnlyModel } from '../imageOnlyModel'
 
 const BASE = 'https://openrouter.ai/api/v1'
 
@@ -33,5 +34,20 @@ describe('listedCapabilities', () => {
     recordListedCapabilities(BASE, { data: [{ id: 'x' }, 'y', null] })
     expect(listedCapabilities(BASE, 'x')).toBeNull()
     expect(listedCapabilities(BASE, 'missing')).toBeNull()
+  })
+
+  it('marks a model whose listed task is a picture task as picture-only', () => {
+    const url = 'http://localhost:8000/v1'
+    recordListedCapabilities(url, {
+      data: [
+        { id: 'klein', task: 'text-to-image' },
+        { id: 'qwen-image-2.1', task: 'image-generation' },
+        { id: 'llama', task: 'text-generation' },
+      ],
+    })
+    expect(listedCapabilities(url, 'klein')).toEqual(['image_generation'])
+    expect(listedCapabilities(url, 'qwen-image-2.1')).toEqual(['image_generation'])
+    expect(isImageOnlyModel({ capabilities: listedCapabilities(url, 'klein') ?? [] })).toBe(true)
+    expect(listedCapabilities(url, 'llama')).toBeNull()
   })
 })

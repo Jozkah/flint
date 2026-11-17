@@ -22,20 +22,34 @@ import {
   startCampaign,
   useCampaignLaunch,
   type StartDeps,
+  type StartModel,
 } from '@/lib/campaignStart'
+import type { ThreadModel } from '@/lib/parseThreadModel'
+
+/**
+ * The model a campaign starts on: the one the Cowork composer is using (the
+ * open session's own choice, else the picker's), held to what a Cowork run
+ * needs: it has to resolve among the active providers and call tools.
+ */
+export function campaignModel(
+  sessionModel: ThreadModel | null | undefined,
+  picker: Parameters<typeof resolveCoworkModel>[1]
+): StartModel | null {
+  const picked = resolveCoworkModel(sessionModel, picker)
+  if (!picked.choice || !picked.model) return null
+  const caps = (picked.model as { capabilities?: string[] }).capabilities
+  if (!caps?.includes('tools')) return null
+  return picked.choice
+}
 
 const liveDeps = (): StartDeps => {
   const store = useCoworkSessions.getState()
   return {
-    // The model in the picker, held to what a Cowork run needs: it has to
-    // resolve among the active providers and call tools.
-    resolveModel: () => {
-      const picked = resolveCoworkModel(null, useModelProvider.getState())
-      if (!picked.choice || !picked.model) return null
-      const caps = (picked.model as { capabilities?: string[] }).capabilities
-      if (!caps?.includes('tools')) return null
-      return picked.choice
-    },
+    resolveModel: () =>
+      campaignModel(
+        store.sessions.find((x) => x.id === store.currentId)?.model,
+        useModelProvider.getState()
+      ),
     createSession: () => store.createSession(),
     setFolder: (id, folder) => store.setFolder(id, folder),
     setTitle: (id, title) => store.setTitle(id, title),

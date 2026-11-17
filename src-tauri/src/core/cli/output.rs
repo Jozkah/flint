@@ -454,7 +454,50 @@ pub(super) async fn prompt_permission(
 /// puts there. `json` pretty-prints it -- those are read by people at least as
 /// often as by programs, and `jq` does not care either way -- while
 /// `stream-json` must keep it to the one line its contract promises.
+static ENVELOPE_PRINTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The output format a raw `agent run` command line asked for, when it is a
+/// machine one. `None` for anything that is not `agent run`.
+fn machine_format_of(args: &[String]) -> Option<OutputFormat> {
+    let args: Vec<&str> = args.iter().map(String::as_str).take_while(|a| *a != "--").collect();
+    if !(args.contains(&"agent") && args.contains(&"run")) {
+        return None;
+    }
+    let mut value = None;
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        if *arg == "--output-format" {
+            value = it.next().copied();
+        } else if let Some(v) = arg.strip_prefix("--output-format=") {
+            value = Some(v);
+        }
+    }
+    match value? {
+        "json" => Some(OutputFormat::Json),
+        "stream-json" => Some(OutputFormat::StreamJson),
+        _ => None,
+    }
+}
+
+/// Last resort for `flint agent run --output-format json|stream-json`: when the
+/// process is going down on a panic and no result record was printed, print an
+/// error one, so a program reading stdout is never left with nothing and no
+/// reason. Does nothing when the record was already printed.
+pub fn emit_crash_envelope(args: &[String]) {
+    let Some(format) = machine_format_of(args) else { return };
+    if ENVELOPE_PRINTED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let mut report = run_report::RunReport::default();
+    report.observe(&StreamEvent::Error {
+        code: "internal_error".to_string(),
+        message: "the agent run ended abnormally (an internal error); details are on stderr".to_string(),
+    });
+    print_report(format, report.finish(None, "", 0, None));
+}
+
 pub(super) fn print_report(format: OutputFormat, report: run_report::RunResult) {
+    ENVELOPE_PRINTED.store(true, std::sync::atomic::Ordering::SeqCst);
     if format.is_stream_json() {
         print_json_line(&report);
     } else {
@@ -574,4 +617,25 @@ pub fn stream_events_to(
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod crash_envelope_tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn only_a_machine_format_agent_run_gets_a_crash_envelope() {
+        let json = args(&["cli", "agent", "run", "--output-format", "json", "--", "do it"]);
+        assert_eq!(machine_format_of(&json), Some(OutputFormat::Json));
+        let stream = args(&["agent", "run", "--output-format=stream-json"]);
+        assert_eq!(machine_format_of(&stream), Some(OutputFormat::StreamJson));
+        assert_eq!(machine_format_of(&args(&["agent", "run"])), None);
+        assert_eq!(machine_format_of(&args(&["agent", "serve", "--output-format", "json"])), None);
+        // A task text after `--` is never read as a flag.
+        assert_eq!(machine_format_of(&args(&["agent", "run", "--", "--output-format", "json"])), None);
+    }
 }

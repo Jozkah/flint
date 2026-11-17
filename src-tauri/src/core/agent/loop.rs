@@ -2573,6 +2573,9 @@ fn advertise_local_tools(
                 .any(|t| t["function"]["name"].as_str() == Some("bash"));
             if local_tools::project_tool_gate_open(gate, planning, subject, bash_offered)
                 && permitted(named)
+                // `lsp` is only worth a slot in the tool list when a server it
+                // can start exists here; otherwise every call is a refusal.
+                && (named != "lsp" || project_root.is_some_and(crate::core::agent::lsp::worth_offering))
             {
                 openai_tools.push(schema);
             }
@@ -6052,8 +6055,7 @@ Address it and continue."
                 .iter()
                 .filter(|o| {
                     let name = tool_names.get(o.id.as_str()).copied().unwrap_or("");
-                    tauri_plugin_agent_tools::harness_error::classify_tool(name, &o.content)
-                        .is_some()
+                    stuck::counts_toward_stuck(name, &o.content)
                         || (name == "bash"
                             && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(
                                 &o.content,

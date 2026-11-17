@@ -219,6 +219,36 @@ fn compile(patterns: &[String]) -> Vec<ResourceRule> {
         .collect()
 }
 
+/// Tools whose effect an unconfined host shell can reproduce.
+const SHELL_REACHABLE_TOOLS: &[&str] = &["clipboard", "computer", "docker"];
+/// The host shells that run outside the sandbox and can do the same things.
+const HOST_SHELLS: &[&str] = &["host_powershell", "host_wsl"];
+
+/// Denying `clipboard`, `computer` or `docker` outright also denies the host
+/// shells, which can do the same thing with a one-liner. Otherwise the model
+/// never sees the denied tool, never sees a refusal, and reaches the same
+/// effect through `host_powershell`. A resource-qualified rule, or a rule for
+/// another tool, adds nothing; the subject qualifier is carried over.
+fn with_implied_denies(deny: &[String]) -> Vec<String> {
+    let mut out = deny.to_vec();
+    for rule in deny {
+        let rule = rule.trim();
+        let (prefix, tool) = match rule.split_once('/') {
+            Some((subject, tool)) => (format!("{subject}/"), tool.trim()),
+            None => (String::new(), rule),
+        };
+        if SHELL_REACHABLE_TOOLS.contains(&tool) {
+            for shell in HOST_SHELLS {
+                let implied = format!("{prefix}{shell}");
+                if !out.contains(&implied) {
+                    out.push(implied);
+                }
+            }
+        }
+    }
+    out
+}
+
 impl ToolPermissions {
     pub fn new(
         default: PermissionDefault,
@@ -229,7 +259,7 @@ impl ToolPermissions {
         Self {
             default,
             allow: compile(allow),
-            deny: compile(deny),
+            deny: compile(&with_implied_denies(deny)),
             allow_write: compile(allow_write),
             ask: Vec::new(),
             warnings: [
@@ -609,6 +639,27 @@ mod subject_rules {
     }
 
     /// An unqualified rule keeps meaning what it always meant.
+    #[test]
+    fn denying_clipboard_computer_or_docker_also_denies_the_host_shells() {
+        for denied in ["clipboard", "computer", "docker"] {
+            let perms =
+                ToolPermissions::new(PermissionDefault::Allow, &[], &[denied.to_string()], &[]);
+            assert!(perms.is_denied("host_powershell", &Subject::MainAgent), "{denied}");
+            assert!(perms.is_denied("host_wsl", &Subject::MainAgent), "{denied}");
+            assert!(!perms.is_denied("read", &Subject::MainAgent));
+        }
+        let scoped = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &[],
+            &["agent:reviewer/clipboard".to_string()],
+            &[],
+        );
+        assert!(scoped.is_denied("host_powershell", &reviewer()));
+        assert!(!scoped.is_denied("host_powershell", &Subject::MainAgent));
+        let other = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".to_string()], &[]);
+        assert!(!other.is_denied("host_powershell", &Subject::MainAgent));
+    }
+
     #[test]
     fn an_unqualified_deny_still_binds_every_subject() {
         let perms =

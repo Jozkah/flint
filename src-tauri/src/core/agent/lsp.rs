@@ -176,6 +176,51 @@ pub fn enabled(project_root: &Path) -> bool {
     doc.get("tools").and_then(|t| t.get("lsp")).and_then(toml::Value::as_bool).unwrap_or(true)
 }
 
+/// Whether `lsp` is worth offering the model for this project: language servers
+/// are not turned off, a server this build knows is on PATH, and the project
+/// holds a file that server covers. Without all three every call would be a
+/// refusal the model cannot do anything about.
+pub fn worth_offering(project_root: &Path) -> bool {
+    worth_offering_with(project_root, SERVERS, |program| {
+        tauri_plugin_agent_tools::tools::owned::find_on_path(program).is_some()
+    })
+}
+
+fn worth_offering_with(project_root: &Path, servers: &'static [ServerSpec], on_path: impl Fn(&str) -> bool) -> bool {
+    if !enabled(project_root) {
+        return false;
+    }
+    let usable: Vec<&ServerSpec> = servers.iter().filter(|s| on_path(s.program)).collect();
+    !usable.is_empty() && has_covered_file(project_root, &usable, 4, &mut 2000)
+}
+
+/// A bounded, shallow walk: a file whose extension one of `servers` covers.
+fn has_covered_file(dir: &Path, servers: &[&ServerSpec], depth: u32, budget: &mut u32) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else { return false };
+    let mut subdirs = Vec::new();
+    for entry in entries.flatten() {
+        if *budget == 0 {
+            return false;
+        }
+        *budget -= 1;
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_dir() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !name.starts_with('.') && !matches!(name.as_ref(), "node_modules" | "target" | "vendor" | "dist") {
+                subdirs.push(path);
+            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let ext = ext.to_ascii_lowercase();
+            if servers.iter().any(|s| s.extensions.contains(&ext.as_str())) {
+                return true;
+            }
+        }
+    }
+    depth > 0 && subdirs.iter().any(|d| has_covered_file(d, servers, depth - 1, budget))
+}
+
 /// The server that covers `path`, if any.
 pub fn server_for(servers: &'static [ServerSpec], path: &Path) -> Option<&'static ServerSpec> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
@@ -1084,6 +1129,24 @@ fn hover_text(result: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `lsp` is offered only when a server this build knows is installed and
+    /// the project holds a file it covers.
+    #[test]
+    fn lsp_is_offered_only_where_a_server_can_answer() {
+        let root = std::env::temp_dir().join(format!("jan-lsp-offer-{}", std::process::id()));
+        let ts_only = root.join("ts");
+        std::fs::create_dir_all(ts_only.join("src")).unwrap();
+        std::fs::write(ts_only.join("src").join("a.ts"), "x").unwrap();
+        let go = root.join("go");
+        std::fs::create_dir_all(go.join("pkg")).unwrap();
+        std::fs::write(go.join("pkg").join("a.go"), "package a").unwrap();
+
+        assert!(!worth_offering_with(&ts_only, SERVERS, |_| true), "no .go file, no offer");
+        assert!(!worth_offering_with(&go, SERVERS, |_| false), "server not installed, no offer");
+        assert!(worth_offering_with(&go, SERVERS, |_| true));
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     /// A result location is read only inside the project and within the size
     /// bound the queried file has (#153).
