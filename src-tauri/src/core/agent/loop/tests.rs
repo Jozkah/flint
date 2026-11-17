@@ -8407,6 +8407,23 @@ fn stuck_detector_flags_identical_calls_and_error_streaks() {
     );
 }
 
+/// A final refusal (unsupported, not available, denied) cannot be retried, so a
+/// turn made of them must not count toward the "every call failed" abort; a
+/// plain failure still does.
+#[test]
+fn final_refusals_do_not_count_toward_the_failed_turns_abort() {
+    use super::stuck::counts_toward_stuck;
+    assert!(!counts_toward_stuck(
+        "lsp",
+        "ERROR [unsupported]: no language server this build knows covers a.ts (known: .go via gopls)"
+    ));
+    assert!(!counts_toward_stuck("clipboard", "ERROR [permission_denied]: tool 'clipboard' denied by project policy"));
+    assert!(!counts_toward_stuck("x", "ERROR [tool_unavailable]: not connected"));
+    assert!(counts_toward_stuck("read", "ERROR [tool_failed]: boom"));
+    assert!(counts_toward_stuck("read", "ERROR: something odd"));
+    assert!(!counts_toward_stuck("read", "fine"));
+}
+
 /// Without an interactive UI a run that repeats the same call is stopped
 /// with an error rather than looping.
 #[tokio::test]
