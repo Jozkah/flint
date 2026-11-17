@@ -23,6 +23,7 @@ import {
 } from '@/lib/toolPresentation'
 import { cn } from '@/lib/utils'
 import { isToolPart, type MessagePartLike } from './types'
+import { isMadePictureTool } from './madePictures'
 import {
   countOutputImages,
   imagesOfOutput,
@@ -327,7 +328,11 @@ export const ToolCallCard = memo(
               className="max-h-72 w-full rounded-md border border-border bg-muted object-contain"
             />
           )}
-          <ToolImages images={cardImages} />
+          {/* A made picture is the answer: the message shows it under the
+              steps (see `madePictures`), not only in this folded card. */}
+          {isMadePictureTool(toolName) ? null : (
+            <ToolImages images={cardImages} />
+          )}
           {awaitingApproval ? null : bar ? (
             <ToolResult
               bar={bar}

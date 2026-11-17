@@ -29,6 +29,8 @@ import {
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
+import { ToolImages } from './toolCallCardParts'
+import { madePictures } from './madePictures'
 
 /** The diff a file call made, so the summary counts what the card shows. */
 const diffOfCall = (callId: string): string | undefined =>
@@ -453,7 +455,10 @@ export const ChainOfThoughtGroup = memo(
         )
       })
 
+    const made = madePictures(entries.map((e) => e.part))
+
     return (
+      <>
       <ChainOfThought
         className="mb-2.5 w-full text-muted-foreground"
         isStreaming={groupIsStreaming}
@@ -523,6 +528,12 @@ export const ChainOfThoughtGroup = memo(
               : renderCondensed()}
         </ChainOfThoughtContent>
       </ChainOfThought>
+      {made.length > 0 && (
+        <div className="mb-2.5 w-full" data-testid="made-pictures">
+          <ToolImages images={made} large />
+        </div>
+      )}
+      </>
     )
   }
 )
