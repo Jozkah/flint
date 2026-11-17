@@ -14,6 +14,7 @@ import {
   isProviderUsable,
   hasUsableProvider,
   isSetupCompleted,
+  providerNeedsCredential,
 } from '../providerReadiness'
 
 const provider = (over: Record<string, unknown> = {}) =>
@@ -178,5 +179,14 @@ describe('isSetupCompleted', () => {
         },
       })
     ).toBe(false)
+  })
+})
+
+describe('providerNeedsCredential', () => {
+  it('is true for a hosted provider and false for local or custom ones', () => {
+    expect(providerNeedsCredential(provider())).toBe(true)
+    expect(providerNeedsCredential(provider({ provider: 'llamacpp' }))).toBe(false)
+    expect(providerNeedsCredential(provider({ provider: 'local8099', base_url: 'http://127.0.0.1:8099/v1' }))).toBe(false)
+    expect(providerNeedsCredential(provider({ provider: 'hosted', base_url: 'https://api.example.com/v1' }))).toBe(true)
   })
 })

@@ -1,5 +1,6 @@
 import { predefinedProviders } from '@/constants/providers'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import { localStorageKey } from '@/constants/localStorage'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 import { isImageOnlyModel } from '@/lib/imageOnlyModel'
@@ -15,6 +16,7 @@ type ProviderLike = {
   models?: ModelLike[]
   api_key?: string
   api_key_fallbacks?: string[]
+  base_url?: string
 }
 
 /**
@@ -70,6 +72,19 @@ export function isProviderUsable(provider: ProviderLike): boolean {
     providerHasRemoteApiKeys(provider) ||
     (KEYLESS_PREDEFINED_PROVIDERS.includes(provider.provider) && hasModels)
   )
+}
+
+/**
+ * Whether this provider can only be used with a credential. A local engine, a
+ * LiteLLM proxy and a custom endpoint on this machine or network need none, so
+ * when they cannot be used it is because no model is installed, not a key.
+ */
+export function providerNeedsCredential(provider: ProviderLike): boolean {
+  if (provider.provider === 'bedrock') return true
+  if (predefinedProviders.some((p) => p.provider === provider.provider)) {
+    return !KEYLESS_PREDEFINED_PROVIDERS.includes(provider.provider)
+  }
+  return classifyModelLocation({ baseUrl: provider.base_url }) === 'remote'
 }
 
 /**
