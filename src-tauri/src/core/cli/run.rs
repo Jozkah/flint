@@ -685,18 +685,15 @@ pub(super) async fn run_agent_loop(
         std::path::Path::new(project),
         args.profile.as_deref(),
     )
-    .map_err(|e| {
-        tauri_plugin_agent_tools::harness_error::HarnessError::new(
-            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-            e,
-        )
-        .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
-    })?;
-    let notify = crate::core::agent::notify::check(&run_cfg.notify)?;
+    .map_err(|e| setup_failure(format, started, e))?;
+    // Like every refusal above, these still answer a machine consumer with the
+    // one result record, not an empty stdout.
+    let notify = crate::core::agent::notify::check(&run_cfg.notify).map_err(|e| setup_failure(format, started, e.message().to_string()))?;
     // Resolved with the other config refusals, before the init record, the
     // stdin reader or the checkpoint exist, so a bad `[output].density` has
     // nothing to unwind (P2C-022).
-    let density = resolve_density(asked_density, run_cfg.output.density.as_deref())?;
+    let density = resolve_density(asked_density, run_cfg.output.density.as_deref())
+        .map_err(|e| setup_failure(format, started, e.message().to_string()))?;
     let notify_root = std::path::PathBuf::from(project);
     let notify_session = args.session_id.clone().unwrap_or_default();
     // The session this run saves under, decided here rather than at save time

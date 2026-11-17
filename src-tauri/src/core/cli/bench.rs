@@ -675,9 +675,13 @@ impl Runner for ProcessRunner {
             out
         });
         let deadline = Instant::now() + timeout;
+        let mut exit = None;
         let stop = loop {
             match child.try_wait() {
-                Ok(Some(_)) => break None,
+                Ok(Some(status)) => {
+                    exit = Some(status);
+                    break None;
+                }
                 Ok(None) => {}
                 Err(e) => break Some(RunnerOutcome::CouldNotRun(format!("the agent could not be waited on: {e}"))),
             }
@@ -707,8 +711,23 @@ impl Runner for ProcessRunner {
                 }
                 RunnerOutcome::Finished(result)
             }
-            Err(_) => RunnerOutcome::CouldNotRun(format!("the agent printed no result envelope: {}", truncate(out.trim()))),
+            Err(_) => RunnerOutcome::CouldNotRun(no_envelope_reason(out.trim(), exit)),
         }
+    }
+}
+
+/// Why a run left no readable result record: what it printed, if anything,
+/// and how the process ended, so an empty stdout is never an empty reason.
+fn no_envelope_reason(out: &str, exit: Option<std::process::ExitStatus>) -> String {
+    let ended = match exit.map(|s| s.code()) {
+        Some(Some(code)) => format!("the process exited with status {code}"),
+        Some(None) => "the process was terminated by a signal".to_string(),
+        None => "the process status is unknown".to_string(),
+    };
+    if out.is_empty() {
+        format!("the agent printed no result envelope (empty stdout; {ended})")
+    } else {
+        format!("the agent printed no result envelope ({ended}): {}", truncate(out))
     }
 }
 
@@ -716,6 +735,13 @@ impl Runner for ProcessRunner {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn an_empty_stdout_still_gets_a_reason() {
+        let reason = no_envelope_reason("", None);
+        assert!(reason.contains("empty stdout") && reason.contains("status is unknown"), "{reason}");
+        assert!(no_envelope_reason("oops", None).contains("oops"));
+    }
 
     fn write(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
