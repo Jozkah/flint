@@ -88,6 +88,18 @@ describe('ArchivePanel', () => {
     expect(screen.queryByText('archive:none')).toBeNull()
   })
 
+  it('shows a loading line, not the empty state, until the list arrives', async () => {
+    const { act } = await import('@testing-library/react')
+    let release: (v: unknown[]) => void = () => {}
+    h.list.mockImplementationOnce(() => new Promise<unknown[]>((r) => (release = r)))
+    render(<ArchivePanel />)
+    expect(screen.getByTestId('archive-loading')).toBeTruthy()
+    expect(screen.queryByText('archive:none')).toBeNull()
+    await act(async () => release([]))
+    expect(await screen.findByText('archive:none')).toBeTruthy()
+    expect(screen.queryByTestId('archive-loading')).toBeNull()
+  })
+
   it('filters by kind', async () => {
     render(<ArchivePanel />)
     await screen.findByText('A thread')
