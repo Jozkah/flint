@@ -960,6 +960,14 @@ pub fn list_attachments(
     conn: &Connection,
     limit: Option<usize>,
 ) -> Result<Vec<AttachmentFileInfo>, VectorDBError> {
+    // A collection that was opened but never indexed has no files table yet:
+    // that is an empty list, not an error.
+    let has_files = conn
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'files'")?
+        .exists([])?;
+    if !has_files {
+        return Ok(Vec::new());
+    }
     // A database made before the mtime column existed is read as-is: listing
     // never migrates, and its rows report no mtime.
     let has_mtime = conn
@@ -1492,6 +1500,12 @@ mod tests {
         let listed = list_attachments(&conn, None).unwrap();
         assert_eq!(listed[0].mtime, created.mtime);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn list_attachments_on_a_fresh_collection_is_empty() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(list_attachments(&conn, None).unwrap().is_empty());
     }
 
     #[test]
