@@ -163,7 +163,8 @@
     "litellmDescription": "你的 LiteLLM 代理地址，包含 /v1。默认为 http://localhost:4000/v1。",
     "requestyDescription": "Requesty 路由器地址，包含 /v1。欧盟端点请使用 https://router.eu.requesty.ai/v1。默认为 https://router.requesty.ai/v1。",
     "qwenDescription": "你的 Model Studio 端点。密钥只在其创建的区域内有效：新加坡请使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中国大陆请使用 https://dashscope.aliyuncs.com/compatible-mode/v1。",
-    "bedrockDescription": "你所在区域的 Amazon Bedrock 运行时端点，例如 https://bedrock-runtime.eu-west-1.amazonaws.com。"
+    "bedrockDescription": "你所在区域的 Amazon Bedrock 运行时端点，例如 https://bedrock-runtime.eu-west-1.amazonaws.com。",
+    "invalid": "Enter a full address that starts with http:// or https://. Nothing was saved."
   },
   "apiKeys": {
     "title": "API 密钥",

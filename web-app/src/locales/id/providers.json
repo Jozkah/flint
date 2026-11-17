@@ -163,7 +163,8 @@
     "litellmDescription": "Alamat proxy LiteLLM Anda, termasuk /v1. Bawaannya adalah http://localhost:4000/v1.",
     "requestyDescription": "Alamat router Requesty, termasuk /v1. Gunakan https://router.eu.requesty.ai/v1 untuk endpoint UE. Bawaannya adalah https://router.requesty.ai/v1.",
     "qwenDescription": "Endpoint Model Studio Anda. Kunci hanya berfungsi di wilayah tempat kunci dibuat: gunakan https://dashscope-intl.aliyuncs.com/compatible-mode/v1 untuk Singapura atau https://dashscope.aliyuncs.com/compatible-mode/v1 untuk Tiongkok daratan.",
-    "bedrockDescription": "Endpoint runtime Amazon Bedrock di region Anda, misalnya https://bedrock-runtime.eu-west-1.amazonaws.com."
+    "bedrockDescription": "Endpoint runtime Amazon Bedrock di region Anda, misalnya https://bedrock-runtime.eu-west-1.amazonaws.com.",
+    "invalid": "Enter a full address that starts with http:// or https://. Nothing was saved."
   },
   "apiKeys": {
     "title": "Kunci API",

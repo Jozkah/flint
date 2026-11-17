@@ -163,7 +163,8 @@
     "litellmDescription": "LiteLLM プロキシのアドレス（/v1 を含む）。デフォルトは http://localhost:4000/v1 です。",
     "requestyDescription": "Requesty ルーターのアドレス（/v1 を含む）。EU エンドポイントには https://router.eu.requesty.ai/v1 を使います。デフォルトは https://router.requesty.ai/v1 です。",
     "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。",
-    "bedrockDescription": "お使いのリージョンの Amazon Bedrock ランタイムエンドポイント(例: https://bedrock-runtime.eu-west-1.amazonaws.com)。"
+    "bedrockDescription": "お使いのリージョンの Amazon Bedrock ランタイムエンドポイント(例: https://bedrock-runtime.eu-west-1.amazonaws.com)。",
+    "invalid": "Enter a full address that starts with http:// or https://. Nothing was saved."
   },
   "apiKeys": {
     "title": "APIキー",

@@ -163,7 +163,8 @@
     "litellmDescription": "L'adresse de votre proxy LiteLLM, /v1 inclus. La valeur par défaut est http://localhost:4000/v1.",
     "requestyDescription": "L'adresse du routeur Requesty, /v1 inclus. Utilisez https://router.eu.requesty.ai/v1 pour le point de terminaison de l'UE. La valeur par défaut est https://router.requesty.ai/v1.",
     "qwenDescription": "Votre point de terminaison Model Studio. Une clé ne fonctionne que dans la région où elle a été créée : utilisez https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pour Singapour ou https://dashscope.aliyuncs.com/compatible-mode/v1 pour la Chine continentale.",
-    "bedrockDescription": "Le point de terminaison runtime d'Amazon Bedrock de votre région, par exemple https://bedrock-runtime.eu-west-1.amazonaws.com."
+    "bedrockDescription": "Le point de terminaison runtime d'Amazon Bedrock de votre région, par exemple https://bedrock-runtime.eu-west-1.amazonaws.com.",
+    "invalid": "Enter a full address that starts with http:// or https://. Nothing was saved."
   },
   "apiKeys": {
     "title": "Clés API",

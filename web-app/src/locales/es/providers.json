@@ -163,7 +163,8 @@
     "litellmDescription": "La dirección de tu proxy LiteLLM, incluyendo /v1. El valor por defecto es http://localhost:4000/v1.",
     "requestyDescription": "La dirección del enrutador de Requesty, incluyendo /v1. Usa https://router.eu.requesty.ai/v1 para el punto de conexión de la UE. El valor por defecto es https://router.requesty.ai/v1.",
     "qwenDescription": "Tu endpoint de Model Studio. Una clave solo funciona en la región donde se creó: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 para China continental.",
-    "bedrockDescription": "El endpoint de ejecución de Amazon Bedrock de tu región, por ejemplo https://bedrock-runtime.eu-west-1.amazonaws.com."
+    "bedrockDescription": "El endpoint de ejecución de Amazon Bedrock de tu región, por ejemplo https://bedrock-runtime.eu-west-1.amazonaws.com.",
+    "invalid": "Enter a full address that starts with http:// or https://. Nothing was saved."
   },
   "apiKeys": {
     "title": "Claves de API",
