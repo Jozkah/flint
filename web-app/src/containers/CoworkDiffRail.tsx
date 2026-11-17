@@ -199,10 +199,10 @@ export function CoworkDiffRail({
         // explicit per-file step that brings one file into the folder.
         // The primary and every extra folder the session holds.
         isSandboxPath={(path) =>
-          landedInSandbox(workspacePath, path, resolveToolPath(path).kind)
+          landedInSandbox(workspacePath, path, resolveToolPath(path)?.kind ?? 'unresolved')
         }
         applyPlanFor={(path) =>
-          landedInSandbox(workspacePath, path, resolveToolPath(path).kind)
+          landedInSandbox(workspacePath, path, resolveToolPath(path)?.kind ?? 'unresolved')
             ? planSandboxApply(workspacePath, applyFolders, path)
             : null
         }
