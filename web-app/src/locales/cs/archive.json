@@ -69,5 +69,6 @@
   "previewLastTurns": "Poslední výměny",
   "previewShown": "Zobrazeno {{shown}} z {{total}}",
   "previewNoMessages": "Žádné textové zprávy",
-  "previewThumbnail": "Náhledový obrázek"
+  "previewThumbnail": "Náhledový obrázek",
+  "loading": "Loading the archive..."
 }

@@ -22,6 +22,7 @@
     "studio": "Studio"
   },
   "empty": "Empty archive",
+  "loading": "Loading the archive...",
   "none": "Nothing in the archive",
   "noneDesc": "Things you delete show up here.",
   "untitled": "Untitled",

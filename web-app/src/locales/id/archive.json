@@ -69,5 +69,6 @@
   "previewLastTurns": "Giliran terakhir",
   "previewShown": "Menampilkan {{shown}} dari {{total}}",
   "previewNoMessages": "Tidak ada pesan teks",
-  "previewThumbnail": "Gambar pratinjau"
+  "previewThumbnail": "Gambar pratinjau",
+  "loading": "Loading the archive..."
 }

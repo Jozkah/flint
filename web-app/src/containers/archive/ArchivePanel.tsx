@@ -268,7 +268,15 @@ export function ArchivePanel() {
             />
           </div>
         </div>
-        {items !== null && visible.length === 0 ? (
+        {items === null ? (
+          <p
+            role="status"
+            data-testid="archive-loading"
+            className="px-3 py-8 text-center text-sm text-muted-foreground"
+          >
+            {t('archive:loading')}
+          </p>
+        ) : visible.length === 0 ? (
           <EmptyState
             icon={<Icon name="x-disk" />}
             title={t('archive:none')}

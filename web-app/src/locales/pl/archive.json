@@ -69,5 +69,6 @@
   "previewLastTurns": "Ostatnie wymiany",
   "previewShown": "Pokazano {{shown}} z {{total}}",
   "previewNoMessages": "Brak wiadomości tekstowych",
-  "previewThumbnail": "Obraz podglądu"
+  "previewThumbnail": "Obraz podglądu",
+  "loading": "Loading the archive..."
 }
