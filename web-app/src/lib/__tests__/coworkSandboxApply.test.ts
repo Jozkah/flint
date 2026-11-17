@@ -6,6 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...
 import {
   applySandboxFile,
   isFlintInternalPath,
+  landedInSandbox,
   planSandboxApply,
   sandboxCopyOfProjectFile,
   sandboxRelativePath,
@@ -109,5 +110,19 @@ describe('sandboxCopyOfProjectFile', () => {
     expect(sandboxCopyOfProjectFile(paths, planFor, '/work/proj', 'notes.md')?.path).toBe('notes.md')
     expect(sandboxCopyOfProjectFile(paths, planFor, '/work/proj', 'other.ts')).toBeNull()
     expect(sandboxCopyOfProjectFile(paths, planFor, '/elsewhere', 'notes.md')).toBeNull()
+  })
+})
+
+describe('landedInSandbox', () => {
+  const sandbox = 'C:/data/s1'
+  it('does not call a relative path sandbox output when the grant put it in the folder', () => {
+    expect(landedInSandbox(sandbox, 'calc.py', 'project')).toBe(false)
+  })
+  it('keeps a relative path the tools put in the sandbox', () => {
+    expect(landedInSandbox(sandbox, 'calc.py', 'sandbox')).toBe(true)
+    expect(landedInSandbox(sandbox, 'C:/data/s1/a.png', 'unresolved')).toBe(true)
+  })
+  it('never counts a file outside the sandbox', () => {
+    expect(landedInSandbox(sandbox, 'D:/proj/a.py', 'unresolved')).toBe(false)
   })
 })

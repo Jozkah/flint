@@ -50,7 +50,7 @@ const base = {
   applyFolders: [],
   sandboxApply: undefined,
   displayToolPath: (p: string) => p,
-  resolveToolPath: vi.fn(),
+  resolveToolPath: vi.fn((p: string) => ({ kind: 'sandbox', rel: p })),
   pathLinkRoots: ['/proj'],
   origins: undefined,
   focusPath: undefined,
