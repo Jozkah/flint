@@ -69,5 +69,6 @@
   "previewLastTurns": "Derniers échanges",
   "previewShown": "{{shown}} affichés sur {{total}}",
   "previewNoMessages": "Aucun message texte",
-  "previewThumbnail": "Image d'aperçu"
+  "previewThumbnail": "Image d'aperçu",
+  "loading": "Loading the archive..."
 }

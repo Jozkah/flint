@@ -69,5 +69,6 @@
   "previewLastTurns": "Последние обмены",
   "previewShown": "Показано {{shown}} из {{total}}",
   "previewNoMessages": "Нет текстовых сообщений",
-  "previewThumbnail": "Превью"
+  "previewThumbnail": "Превью",
+  "loading": "Loading the archive..."
 }

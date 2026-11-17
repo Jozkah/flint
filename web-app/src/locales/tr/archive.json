@@ -69,5 +69,6 @@
   "previewLastTurns": "Son turlar",
   "previewShown": "{{total}} içinden {{shown}} gösteriliyor",
   "previewNoMessages": "Metin mesajı yok",
-  "previewThumbnail": "Önizleme resmi"
+  "previewThumbnail": "Önizleme resmi",
+  "loading": "Loading the archive..."
 }

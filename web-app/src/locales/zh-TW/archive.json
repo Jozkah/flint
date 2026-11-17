@@ -69,5 +69,6 @@
   "previewLastTurns": "最近幾輪",
   "previewShown": "顯示 {{shown}} / {{total}}",
   "previewNoMessages": "沒有文字訊息",
-  "previewThumbnail": "預覽圖"
+  "previewThumbnail": "預覽圖",
+  "loading": "Loading the archive..."
 }

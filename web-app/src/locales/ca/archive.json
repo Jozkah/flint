@@ -69,5 +69,6 @@
   "previewLastTurns": "Darrers torns",
   "previewShown": "Es mostren {{shown}} de {{total}}",
   "previewNoMessages": "Cap missatge de text",
-  "previewThumbnail": "Imatge de previsualització"
+  "previewThumbnail": "Imatge de previsualització",
+  "loading": "Loading the archive..."
 }

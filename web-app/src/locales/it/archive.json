@@ -69,5 +69,6 @@
   "previewLastTurns": "Ultimi turni",
   "previewShown": "Mostrati {{shown}} di {{total}}",
   "previewNoMessages": "Nessun messaggio di testo",
-  "previewThumbnail": "Immagine di anteprima"
+  "previewThumbnail": "Immagine di anteprima",
+  "loading": "Loading the archive..."
 }

@@ -69,5 +69,6 @@
   "previewLastTurns": "直近のやり取り",
   "previewShown": "{{total}} 件中 {{shown}} 件を表示",
   "previewNoMessages": "テキストメッセージはありません",
-  "previewThumbnail": "プレビュー画像"
+  "previewThumbnail": "プレビュー画像",
+  "loading": "Loading the archive..."
 }

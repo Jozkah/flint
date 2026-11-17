@@ -69,5 +69,6 @@
   "previewLastTurns": "Lượt gần nhất",
   "previewShown": "Hiển thị {{shown}} trên {{total}}",
   "previewNoMessages": "Không có tin nhắn văn bản",
-  "previewThumbnail": "Ảnh xem trước"
+  "previewThumbnail": "Ảnh xem trước",
+  "loading": "Loading the archive..."
 }
