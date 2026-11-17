@@ -1,4 +1,4 @@
-import { EDITABLE_ENDPOINT } from '@/lib/providerDetailHelpers'
+import { EDITABLE_ENDPOINT, isHttpUrl } from '@/lib/providerDetailHelpers'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useState } from 'react'
@@ -26,12 +26,14 @@ export function useApiKeyDrafts({
 }) {
   const [apiKeysDraft, setApiKeysDraft] = useState('')
   const [baseUrlDraft, setBaseUrlDraft] = useState('')
+  const [baseUrlError, setBaseUrlError] = useState(false)
   const [apiVersionDraft, setApiVersionDraft] = useState('')
   const [showAdvancedApiKeys, setShowAdvancedApiKeys] = useState(false)
 
   useEffect(() => {
     if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
     setBaseUrlDraft(provider.base_url ?? '')
+    setBaseUrlError(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.base_url])
 
@@ -136,7 +138,17 @@ export function useApiKeyDrafts({
   const commitBaseUrlDraft = useCallback(() => {
     if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
     const next = baseUrlDraft.trim()
-    if (next === (provider.base_url ?? '')) return
+    if (next === (provider.base_url ?? '')) {
+      setBaseUrlError(false)
+      return
+    }
+    // A value that is not an http(s) address is kept in the box, flagged, and
+    // never stored: saving it would break every request to the provider.
+    if (next !== '' && !isHttpUrl(next)) {
+      setBaseUrlError(true)
+      return
+    }
+    setBaseUrlError(false)
     updateProvider(providerName, { ...provider, base_url: next })
   }, [baseUrlDraft, provider, providerName, updateProvider])
 
@@ -169,6 +181,7 @@ export function useApiKeyDrafts({
     setApiKeysDraft,
     baseUrlDraft,
     setBaseUrlDraft,
+    baseUrlError,
     apiVersionDraft,
     setApiVersionDraft,
     showAdvancedApiKeys,

@@ -57,6 +57,16 @@ export function isMemorySetting(key: string): boolean {
  * editable: OpenAI for proxies and gateways that speak its API, Azure on the
  * resource name, Alibaba Qwen on the region its keys were created in.
  */
+/** True for an absolute http or https address. */
+export const isHttpUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
   openai: {
     description: 'providers:baseUrl.openaiDescription',
