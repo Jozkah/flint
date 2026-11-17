@@ -116,6 +116,7 @@ export type ProviderFramesArgs = {
   setModelLimit: Dispatch<SetStateAction<number>>
   importingModel: string | null
   baseUrlDraft: string
+  baseUrlError?: boolean
   setBaseUrlDraft: Dispatch<SetStateAction<string>>
   commitBaseUrlDraft: () => void
   apiVersionDraft: string
@@ -175,6 +176,7 @@ export function useProviderFrames({
   setModelLimit,
   importingModel,
   baseUrlDraft,
+  baseUrlError,
   setBaseUrlDraft,
   commitBaseUrlDraft,
   apiVersionDraft,
@@ -775,6 +777,7 @@ export function useProviderFrames({
     <ProviderApiFrame
   provider={provider}
   baseUrlDraft={baseUrlDraft}
+  baseUrlError={baseUrlError}
   setBaseUrlDraft={setBaseUrlDraft}
   commitBaseUrlDraft={commitBaseUrlDraft}
   apiVersionDraft={apiVersionDraft}

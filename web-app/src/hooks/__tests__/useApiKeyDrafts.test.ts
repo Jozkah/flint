@@ -100,4 +100,17 @@ describe('useApiKeyDrafts', () => {
       'https://proxy.example/v1'
     )
   })
+
+  it('refuses a base URL that is not an address and flags it', () => {
+    const { hook, updateProvider } = setup()
+    act(() => hook.result.current.setBaseUrlDraft('not a url'))
+    act(() => hook.result.current.commitBaseUrlDraft())
+    expect(updateProvider).not.toHaveBeenCalled()
+    expect(hook.result.current.baseUrlError).toBe(true)
+    expect(hook.result.current.baseUrlDraft).toBe('not a url')
+    act(() => hook.result.current.setBaseUrlDraft('https://proxy.example/v1'))
+    act(() => hook.result.current.commitBaseUrlDraft())
+    expect(hook.result.current.baseUrlError).toBe(false)
+    expect(updateProvider).toHaveBeenCalledTimes(1)
+  })
 })

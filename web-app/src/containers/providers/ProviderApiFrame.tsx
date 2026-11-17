@@ -14,6 +14,7 @@ import type { Dispatch, SetStateAction } from 'react'
 type ProviderApiFrameProps = {
   provider: ProviderObject
   baseUrlDraft: string
+  baseUrlError?: boolean
   setBaseUrlDraft: Dispatch<SetStateAction<string>>
   commitBaseUrlDraft: () => void
   apiVersionDraft: string
@@ -37,6 +38,7 @@ type ProviderApiFrameProps = {
 export function ProviderApiFrame({
   provider,
   baseUrlDraft,
+  baseUrlError,
   setBaseUrlDraft,
   commitBaseUrlDraft,
   apiVersionDraft,
@@ -79,7 +81,18 @@ export function ProviderApiFrame({
               onBlur={() => commitBaseUrlDraft()}
               spellCheck={false}
               autoComplete="off"
+              aria-invalid={baseUrlError || undefined}
+              aria-describedby={baseUrlError ? 'provider-base-url-error' : undefined}
             />
+            {baseUrlError && (
+              <p
+                id="provider-base-url-error"
+                role="alert"
+                className="text-xs text-destructive"
+              >
+                {t('providers:baseUrl.invalid')}
+              </p>
+            )}
           </div>
         )}
         {provider.provider === 'azure' && (
