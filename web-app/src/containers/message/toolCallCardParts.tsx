@@ -133,8 +133,11 @@ export const ToolResult = ({
 /** Images a call returned for the model. Display only. */
 export const ToolImages = ({
   images,
+  large,
 }: {
   images: ReturnType<typeof imagesOfOutput>
+  /** The picture is the answer (a generated image), not a thumbnail of a step. */
+  large?: boolean
 }) => {
   const { t } = useTranslation()
   return images.length ? (
@@ -146,7 +149,11 @@ export const ToolImages = ({
             alt={img.name}
             title={img.name}
             src={img.dataUrl}
-            className="max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain"
+            className={
+              large
+                ? 'max-h-96 max-w-full rounded-md border border-border bg-muted object-contain'
+                : 'max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain'
+            }
           />
           {canSaveToolImage(img) && (
             <button
