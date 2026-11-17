@@ -15,6 +15,7 @@ The release after 1.0.1. It covers everything merged since, including a long rou
 - Chat gains standing rules, read-aloud, PDF pages as images, Zen and hidden-tool-call views, MCP prompts in the `/` menu, and a choice of how full the context gets before compacting.
 - Settings are reorganized into Chat, Data and Integrations pages with tabs, plus backup and restore of threads, assistants and settings, and a diagnostic bundle you can save from the app.
 - Headless and CLI: `flint serve` guest links for one thread, scheduled tasks that run from an inbound webhook, `--safe-mode`, `agent run --json-schema`, and `/review`.
+- Hosted providers and pictures: Requesty is a provider, a chat can make pictures through a hosted image model, and a picture model can be added from a local file. A hosted image that times out now says so clearly, and generated pictures show in the message itself instead of only inside the folded tool card.
 
 ## Behavior changes
 
