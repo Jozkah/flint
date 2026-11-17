@@ -2,7 +2,7 @@
 // `custom-chat-transport.ts` unchanged; the transport re-exports the two
 // public functions.
 
-
+import { jsonSchema, type Tool } from 'ai'
 
 const SCHEMA_PRIMITIVE_TYPES = new Set([
   'string',
@@ -138,6 +138,31 @@ export function normalizeToolInputSchema(
   schema: ToolInputSchema
 ): ToolInputSchema {
   return normalizeToolInputSchemaValue(schema) as ToolInputSchema
+}
+
+/**
+ * The tool set as it goes on the wire, every JSON-schema input run through
+ * `normalizeToolInputSchema`. Built-in Cowork tools declare their schemas
+ * inline (`maxLength: 8000` on a campaign message, `maxItems` on lists); only
+ * MCP tools were normalised, so llama.cpp compiled `char{0,8000}` and refused
+ * the whole grammar ("number of repetitions exceeds sane defaults"). Doing it
+ * once at the send point covers every source. Idempotent; tools whose input is
+ * not a plain JSON schema (a validator library's) pass through untouched.
+ */
+export function normalizeToolSet<T extends Record<string, Tool>>(tools: T): T {
+  const out: Record<string, Tool> = {}
+  for (const [name, tool] of Object.entries(tools)) {
+    const raw = (tool as { inputSchema?: { jsonSchema?: unknown } }).inputSchema
+    const schema = raw?.jsonSchema
+    out[name] =
+      schema && typeof schema === 'object'
+        ? ({
+            ...tool,
+            inputSchema: jsonSchema(normalizeToolInputSchema(schema as ToolInputSchema)),
+          } as Tool)
+        : tool
+  }
+  return out as T
 }
 
 /** Provider tool names must be non-empty strings; reject malformed discovery data. */
