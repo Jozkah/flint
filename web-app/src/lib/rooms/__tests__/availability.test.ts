@@ -13,6 +13,8 @@ const lookup = providerLookup([
   makeProvider('provider-b', ['model-2']),
   // A predefined remote provider with no credential.
   makeProvider('openai', ['model-9']),
+  // A keyless custom provider whose only model was deleted.
+  makeProvider('local8099', []),
 ])
 
 describe('availability preflight', () => {
@@ -20,6 +22,8 @@ describe('availability preflight', () => {
     expect(checkModel({ provider: 'nope', id: 'm' }, lookup)?.reason).toBe('provider-missing')
     expect(checkModel({ provider: 'openai', id: 'model-9' }, lookup)?.reason).toBe('provider-not-configured')
     expect(checkModel({ provider: 'provider-b', id: 'gone' }, lookup)?.reason).toBe('model-missing')
+    // No key is wrong for a provider that never needs one: the model is what is gone.
+    expect(checkModel({ provider: 'local8099', id: 'qwen3-4b' }, lookup)?.reason).toBe('model-missing')
     expect(
       checkModel({ provider: 'provider-b', id: 'model-2' }, lookup, { minimumTokens: 4000, contextWindow: 2048 })?.reason
     ).toBe('context-too-small')

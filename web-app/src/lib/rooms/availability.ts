@@ -4,7 +4,7 @@
  */
 import { rt } from './text'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { isProviderUsable } from '@/lib/providerReadiness'
+import { isProviderUsable, providerNeedsCredential } from '@/lib/providerReadiness'
 import { knownContextWindow } from '@/lib/knownContextWindow'
 import { FALLBACK_CONTEXT_WINDOW } from './context'
 import type {
@@ -97,7 +97,9 @@ export function checkModel(
       message: rt('providerMissing', { provider: ref.provider }),
     }
   }
-  if (!isProviderUsable(provider)) {
+  // A keyless provider that is unusable has lost its model, not its key: that is
+  // reported below as the model being gone.
+  if (!isProviderUsable(provider) && providerNeedsCredential(provider)) {
     return {
       reason: 'provider-not-configured',
       message: rt('providerNotReady', { provider: ref.provider }),
