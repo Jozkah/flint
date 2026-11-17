@@ -24,6 +24,14 @@ function strings(value: unknown): string[] {
     : []
 }
 
+/** `task` values (`text-to-image`, `image-generation`, ...) of a picture model. */
+function isPictureTask(task: unknown): boolean {
+  return (
+    typeof task === 'string' &&
+    /(?:text|image)[-_ ]?to[-_ ]?image|image[-_ ]?generation/i.test(task.trim())
+  )
+}
+
 /** `tools` and `vision` for one `/models` entry, or null when it says nothing. */
 export function listedEntryCapabilities(entry: unknown): string[] | null {
   if (!entry || typeof entry !== 'object') return null
@@ -39,6 +47,9 @@ export function listedEntryCapabilities(entry: unknown): string[] | null {
   // entry instead: `supports_tool_calling`, `supports_vision`,
   // `supports_image_generation`. A flag that is absent says nothing; a flag
   // that is `false` says no.
+  // A server that names the model's task says what it is for: a picture task
+  // means a picture-only model, which the chat pickers leave out.
+  if (isPictureTask(e.task ?? e.pipeline_tag)) return [...IMAGE_ONLY_CAPABILITIES]
   const flags = ['supports_tool_calling', 'supports_vision', 'supports_image_generation']
   const flagged = flags.some((f) => typeof e[f] === 'boolean')
   if (params.length === 0 && modalities.length === 0 && !flagged) return null
