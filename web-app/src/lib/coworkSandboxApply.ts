@@ -30,6 +30,19 @@ export function sandboxRelativePath(
   return absolute ? null : path.replace(/\\/g, '/').replace(/^\.\//, '')
 }
 
+/**
+ * Whether a changed file's write landed in the session sandbox. A relative path
+ * counts only when the tools put it there: with a live write grant they rebase
+ * it into the folder instead, and `resolvedKind` says which happened.
+ */
+export function landedInSandbox(
+  sandboxRoot: string | null,
+  path: string,
+  resolvedKind: 'project' | 'sandbox' | 'unresolved'
+): boolean {
+  return sandboxRelativePath(sandboxRoot, path) !== null && resolvedKind !== 'project'
+}
+
 /** Where one sandbox file would be copied, as shown to the user first. */
 export type SandboxApplyPlan = {
   /** The file's path inside the sandbox. */

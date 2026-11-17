@@ -12,7 +12,7 @@ import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { absoluteChangePath } from '@/lib/codePathResolve'
 import { basenameOf } from '@/lib/coworkPreview'
-import { planSandboxApply, sandboxRelativePath } from '@/lib/coworkSandboxApply'
+import { landedInSandbox, planSandboxApply } from '@/lib/coworkSandboxApply'
 import { errorText } from '@/lib/errorText'
 import { toast } from 'sonner'
 
@@ -199,10 +199,12 @@ export function CoworkDiffRail({
         // explicit per-file step that brings one file into the folder.
         // The primary and every extra folder the session holds.
         isSandboxPath={(path) =>
-          sandboxRelativePath(workspacePath, path) !== null
+          landedInSandbox(workspacePath, path, resolveToolPath(path).kind)
         }
         applyPlanFor={(path) =>
-          planSandboxApply(workspacePath, applyFolders, path)
+          landedInSandbox(workspacePath, path, resolveToolPath(path).kind)
+            ? planSandboxApply(workspacePath, applyFolders, path)
+            : null
         }
         onApplyFile={sandboxApply?.apply}
         applyActions={sandboxApply}
