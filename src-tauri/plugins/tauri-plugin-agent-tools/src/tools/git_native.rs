@@ -432,6 +432,15 @@ fn op_args(op: &str) -> Option<Vec<&'static str>> {
     })
 }
 
+/// Whether `input` is a filesystem path rather than a URL or `owner/repo`:
+/// `.`, `..`, a relative or absolute path, `~`, or a Windows drive path.
+fn looks_like_local_path(input: &str) -> bool {
+    let b = input.as_bytes();
+    input == "." || input == ".." || input.starts_with(['.', '/', '\\', '~'])
+        || input.contains('\\')
+        || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && !input.contains("://"))
+}
+
 /// The `git_inspect` tool. Finds the attached clone that matches the given
 /// GitHub URL/repo and runs a read-only Git operation on it natively -- or,
 /// when zero or several match, returns structured guidance so the model asks
@@ -445,6 +454,11 @@ pub async fn git_inspect(args: &Value, read_roots: &[PathBuf]) -> String {
     else {
         return "ERROR: git_inspect requires a 'url' string (a GitHub repository URL or owner/repo).".to_string();
     };
+    if looks_like_local_path(url) {
+        return format!(
+            "ERROR: git_inspect only reads GitHub repositories by URL or owner/repo; '{url}' is a local path. For a repository on this machine use the `git` tool instead (for example args [\"status\"] or [\"log\", \"-n\", \"5\"]), or the read/ls/grep tools."
+        );
+    }
     let Some(target) = parse_github_repo(url) else {
         return format!("ERROR: git_inspect 'url' is not a GitHub repository: {url}");
     };
@@ -888,6 +902,18 @@ pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> Str
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[tokio::test]
+    async fn a_local_path_is_pointed_at_the_git_tool() {
+        for p in [".", "./repo", "F:/work/repo", r"C:\work\repo", "../x", "/srv/repo", "~/code"] {
+            let out = git_inspect(&json!({ "url": p }), &[]).await;
+            assert!(out.starts_with("ERROR:") && out.contains("`git` tool"), "{p}: {out}");
+        }
+        let out = git_inspect(&json!({ "url": "https://example.com/a/b" }), &[]).await;
+        assert!(out.contains("not a GitHub repository") && !out.contains("local path"), "{out}");
+        assert!(!looks_like_local_path("owner/repo"));
+        assert!(!looks_like_local_path("https://github.com/o/r"));
+    }
 
     #[test]
     fn parse_github_repo_rejects_userinfo_spoofed_hosts() {

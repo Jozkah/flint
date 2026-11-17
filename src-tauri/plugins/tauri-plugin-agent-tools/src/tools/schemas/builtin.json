@@ -743,13 +743,13 @@
     "type": "function",
     "function": {
       "name": "git_inspect",
-      "description": "Inspect a GitHub repository's LOCAL clone with native Git, including private repositories a web fetch cannot read. Give it the repository URL or `owner/repo`; it finds the matching attached folder among your read roots and runs a read-only Git operation directly (no shell, no `gh` needed) — so it works even when the sandboxed `bash` has no `git`. Prefer this over web access and over `bash git ...` for GitHub repository data (branches, remotes, status, log, files). If exactly one attached folder matches, it returns that clone's info and you continue the task from it (read files with read/ls/grep, this folder is attached). If none match, it returns the choices to offer the user (attach/select a clone, use authenticated git, install/auth gh, another source, cancel) — never conclude the repo is unreachable. If several match, it lists them so you ask the user which to use.",
+      "description": "Inspect a GitHub repository's LOCAL clone with native Git (GitHub repositories only, by URL or `owner/repo`; NOT a local folder path -- for a repository on this machine use the `git` tool), including private repositories a web fetch cannot read. Give it the repository URL or `owner/repo`; it finds the matching attached folder among your read roots and runs a read-only Git operation directly (no shell, no `gh` needed) — so it works even when the sandboxed `bash` has no `git`. Prefer this over web access and over `bash git ...` for GitHub repository data (branches, remotes, status, log, files). If exactly one attached folder matches, it returns that clone's info and you continue the task from it (read files with read/ls/grep, this folder is attached). If none match, it returns the choices to offer the user (attach/select a clone, use authenticated git, install/auth gh, another source, cancel) — never conclude the repo is unreachable. If several match, it lists them so you ask the user which to use.",
       "parameters": {
         "type": "object",
         "properties": {
           "url": {
             "type": "string",
-            "description": "The GitHub repository URL (e.g. https://github.com/owner/repo) or `owner/repo`. Required."
+            "description": "The GitHub repository URL (e.g. https://github.com/owner/repo) or `owner/repo`. Never a local path like `.` or `F:/x`. Required."
           },
           "op": {
             "type": "string",
