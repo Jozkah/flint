@@ -6055,8 +6055,7 @@ Address it and continue."
                 .iter()
                 .filter(|o| {
                     let name = tool_names.get(o.id.as_str()).copied().unwrap_or("");
-                    tauri_plugin_agent_tools::harness_error::classify_tool(name, &o.content)
-                        .is_some()
+                    stuck::counts_toward_stuck(name, &o.content)
                         || (name == "bash"
                             && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(
                                 &o.content,

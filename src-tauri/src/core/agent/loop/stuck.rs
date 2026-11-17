@@ -132,6 +132,27 @@ impl StuckDetector {
     }
 }
 
+/// Whether a tool result is a failure that counts toward the "every call failed
+/// N turns in a row" abort. A final refusal -- unsupported, not available,
+/// denied -- does not: retrying it cannot help and the model's right move is to
+/// report it, so aborting the run before it can would throw its answer away.
+/// Identical repeated calls are still caught by the repeat guard.
+pub(super) fn counts_toward_stuck(tool: &str, content: &str) -> bool {
+    use tauri_plugin_agent_tools::harness_error::{classify_tool, ErrorKind};
+    match classify_tool(tool, content) {
+        None => false,
+        Some(err) => !matches!(
+            err.kind(),
+            ErrorKind::Unsupported
+                | ErrorKind::ToolUnavailable
+                | ErrorKind::PermissionDenied
+                | ErrorKind::ApprovalRefused
+                | ErrorKind::SandboxDenied
+                | ErrorKind::PolicyViolation
+        ),
+    }
+}
+
 /// JSON text with object keys sorted at every level, so two argument objects
 /// that differ only in key order compare equal.
 pub(super) fn canonical_json(v: &serde_json::Value) -> String {
