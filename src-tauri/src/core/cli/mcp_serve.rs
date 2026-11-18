@@ -80,7 +80,7 @@ pub async fn cli_mcp_serve(
     let unknown = unknown_tool_names(&flags.only);
     if !unknown.is_empty() {
         eprintln!(
-            "jan mcp serve: warning: unknown --tool name(s): {}. Nothing is served for them.",
+            "flint mcp serve: warning: unknown --tool name(s): {}. Nothing is served for them.",
             unknown.join(", ")
         );
     }
@@ -89,7 +89,7 @@ pub async fn cli_mcp_serve(
             // stdout is the JSON-RPC stream from here on; the startup notice
             // goes to stderr like every other log this binary writes.
             eprintln!(
-                "jan mcp serve: stdio, project {}",
+                "flint mcp serve: stdio, project {}",
                 opts.project_root.display()
             );
             stdio::serve(opts).await

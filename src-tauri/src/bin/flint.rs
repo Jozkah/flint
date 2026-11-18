@@ -2986,7 +2986,7 @@ fn handle_bug_report(
     for line in preview.summary() {
         println!("{line}");
     }
-    println!("Review a member with: jan bug-report --show <member>");
+    println!("Review a member with: flint bug-report --show <member>");
 
     let confirmed = if yes {
         true

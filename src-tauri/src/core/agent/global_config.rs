@@ -221,6 +221,32 @@ pub(crate) fn global_config_path() -> Result<PathBuf, String> {
     Ok(global_jan_dir()?.join("config.toml"))
 }
 
+/// Read `config.toml` as text. `Ok(None)` only when the file does not exist;
+/// any other failure (invalid UTF-8, permissions, a directory) is an error that
+/// names the path, so a damaged file is never mistaken for an empty one.
+fn read_config_text(path: &std::path::Path) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => Ok(Some(raw)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!(
+            "Failed to read {}: {e} (the file is not valid UTF-8 text; it was left untouched)",
+            path.display()
+        )),
+    }
+}
+
+/// Print `message` to stderr once per distinct text per process.
+fn warn_once(message: &str) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Ok(mut seen) = seen.lock() {
+        if seen.insert(message.to_string()) {
+            eprintln!("warning: {message}");
+        }
+    }
+}
+
 /// Load provider configs from `~/.jan/config.toml`. Missing file -> empty map
 /// (standalone-with-no-global-config is valid); malformed file -> error.
 pub(crate) fn load_global_config() -> Result<HashMap<String, ProviderConfig>, String> {
@@ -228,9 +254,15 @@ pub(crate) fn load_global_config() -> Result<HashMap<String, ProviderConfig>, St
         Ok(p) => p,
         Err(_) => return Ok(HashMap::new()),
     };
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(_) => return Ok(HashMap::new()),
+    let raw = match read_config_text(&path) {
+        Ok(Some(raw)) => raw,
+        Ok(None) => return Ok(HashMap::new()),
+        Err(message) => {
+            // Not an error for callers (the app must still start), but never
+            // silent: the user's providers look gone, and they should know why.
+            warn_once(&format!("{message}; no providers were loaded from it"));
+            return Ok(HashMap::new());
+        }
     };
     let parsed: GlobalConfigToml =
         toml::from_str(&raw).map_err(|e| parse_error(&path, &e, e.message()))?;
@@ -562,9 +594,8 @@ fn parse_error(path: &std::path::Path, err: &impl std::fmt::Display, message: &s
 /// unparseable file's contents.
 fn load_raw() -> Result<GlobalConfigToml, String> {
     let path = global_config_path()?;
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(_) => return Ok(GlobalConfigToml::default()),
+    let Some(raw) = read_config_text(&path)? else {
+        return Ok(GlobalConfigToml::default());
     };
     toml::from_str(&raw).map_err(|e| parse_error(&path, &e, e.message()))
 }
@@ -591,6 +622,14 @@ fn edit_doc<R>(
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| parse_error(&path, &e, e.message()))?;
     let out = f(&mut doc)?;
+    // Keep the previous file next to the new one: a rewrite is the one moment a
+    // user's providers and keys can be lost, and the copy costs nothing.
+    if !raw.is_empty() {
+        let bak = path.with_file_name("config.toml.bak");
+        if let Err(e) = tauri_plugin_agent_tools::atomic_file::write_atomic_private(&bak, raw.as_bytes()) {
+            warn_once(&format!("could not write {}: {e}", bak.display()));
+        }
+    }
     // Temp file plus rename (Jozkah/jan#36): a crash mid-write must not leave
     // a truncated file that then fails to parse and blocks every later write.
     tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, doc.to_string().as_bytes())
@@ -642,6 +681,23 @@ fn restrict_permissions(path: &std::path::Path) {
 #[cfg(not(unix))]
 fn restrict_permissions(_path: &std::path::Path) {}
 
+/// The web app's provider base-URL rule (`isHttpUrl` in providerDetailHelpers):
+/// empty clears the override, anything else must be an absolute http(s) URL.
+/// A value that is not one is never stored, because saving it breaks every
+/// request to the provider.
+pub(crate) fn validate_base_url(value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(());
+    }
+    match url::Url::parse(value) {
+        Ok(u) if (u.scheme() == "http" || u.scheme() == "https") && u.host_str().is_some() => Ok(()),
+        _ => Err(format!(
+            "invalid base URL '{value}': it must be an absolute http:// or https:// address, e.g. https://api.openai.com/v1"
+        )),
+    }
+}
+
 /// Create or update a provider entry in `~/.jan/config.toml`, merging with any
 /// existing entry (see [`ProviderUpdate`]). Returns the config path. This is the
 /// headless write path that lets a standalone Flint Agent set credentials with no
@@ -649,6 +705,9 @@ fn restrict_permissions(_path: &std::path::Path) {}
 pub(crate) fn set_provider(name: &str, update: ProviderUpdate) -> Result<PathBuf, String> {
     if name.trim().is_empty() {
         return Err("provider name must not be empty".to_string());
+    }
+    if let Some(base_url) = update.base_url.as_deref() {
+        validate_base_url(base_url)?;
     }
     edit_doc(|doc| {
         let entry = provider_table(doc, name)?;
@@ -1772,6 +1831,54 @@ models = ["gpt-4o"]
             assert!(!configs.contains_key("a"));
             assert_eq!(configs.get("b").unwrap().api_key.as_deref(), Some("kb"));
             assert!(body.contains("extra"), "{body}");
+        });
+    }
+
+    #[test]
+    fn set_provider_rejects_a_base_url_that_is_not_http() {
+        with_temp_home(|_| {
+            for bad in ["not a url", "ftp://example.com", "api.openai.com/v1", "http://"] {
+                let err = set_provider(
+                    "bad",
+                    ProviderUpdate { base_url: Some(bad.into()), ..Default::default() },
+                )
+                .unwrap_err();
+                assert!(err.contains("invalid base URL"), "{bad}: {err}");
+            }
+            assert!(load_global_config().unwrap().is_empty(), "nothing was stored");
+            for ok in ["https://api.openai.com/v1", "http://localhost:1337/v1", ""] {
+                set_provider("good", ProviderUpdate { base_url: Some(ok.into()), ..Default::default() })
+                    .unwrap_or_else(|e| panic!("{ok}: {e}"));
+            }
+        });
+    }
+
+    #[test]
+    fn a_non_utf8_config_is_reported_and_never_overwritten() {
+        with_temp_home(|_| {
+            let path = global_config_path().unwrap();
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let junk: Vec<u8> = vec![0xff, 0xfe, 0x00, 0x9c, 0x80, 0xc3, 0x28];
+            std::fs::write(&path, &junk).unwrap();
+            assert!(read_config_text(&path).unwrap_err().contains(&path.display().to_string()));
+            assert!(load_global_config().unwrap().is_empty());
+            assert!(load_raw().is_err());
+            assert!(set_provider("openai", ProviderUpdate { api_key: Some("sk".into()), ..Default::default() }).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), junk, "the damaged file was overwritten");
+        });
+    }
+
+    #[test]
+    fn a_rewrite_keeps_the_previous_file_as_a_bak() {
+        with_temp_home(|_| {
+            let path = global_config_path().unwrap();
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let before = "default_model = \"m1\"
+";
+            std::fs::write(&path, before).unwrap();
+            set_provider("openai", ProviderUpdate { api_key: Some("sk".into()), ..Default::default() }).unwrap();
+            let bak = path.with_file_name("config.toml.bak");
+            assert_eq!(std::fs::read_to_string(bak).unwrap(), before);
         });
     }
 
