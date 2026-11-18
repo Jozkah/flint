@@ -32,6 +32,7 @@ import {
   FolderPlus,
   MessageSquarePlus,
   MoreHorizontal,
+  Link2,
   Pencil,
   Pin,
   Plus,
@@ -164,6 +165,12 @@ const ChatGroupSection = memo(function ChatGroupSection({
   // The group's menu opens from the "..." button or by right-click, where the pointer is.
   const cursor = useCursorAnchor()
   const [menuOpen, setMenuOpen] = useState(false)
+  // Cowork groups linked to this chat group (the link lives on their side).
+  const coworkGroups = useConversationGroups((s) => s.state.surfaces.cowork.groups)
+  const linkedCowork = useMemo(
+    () => (g.folder ? coworkGroups.filter((c) => c.linkedGroupId === g.folder!.id) : []),
+    [coworkGroups, g.folder]
+  )
   // A page is counted in top-level rows: a fork listed under its chat comes
   // with it, never cut off from it by "Show more".
   const roots = useMemo(
@@ -212,6 +219,15 @@ const ChatGroupSection = memo(function ChatGroupSection({
           className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
+          {linkedCowork.length > 0 && (
+            <Link2
+              data-testid="chat-group-linked-icon"
+              aria-label={t('common:groups.chatLinkedToCowork', {
+                names: linkedCowork.map((c) => c.name).join(', '),
+              })}
+              className="size-3 shrink-0"
+            />
+          )}
           <FadeText>{g.name}</FadeText>
           <span className="text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-subtle-foreground tabular-nums">
             {g.threads.length}
@@ -272,6 +288,18 @@ const ChatGroupSection = memo(function ChatGroupSection({
                   <Folders />
                   <span>{t('common:groups.folders')}</span>
                 </DropdownMenuItem>
+                {linkedCowork.length > 0 && (
+                  <DropdownMenuItem
+                    data-testid="chat-group-unlink-cowork"
+                    onSelect={() => {
+                      for (const c of linkedCowork)
+                        void useConversationGroups.getState().setLink('cowork', c.id, null)
+                    }}
+                  >
+                    <Link2 />
+                    <span>{t('common:groups.chatUnlinkCowork')}</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onSelect={() => onDelete(g.folder!)}>
                   <Trash2 />

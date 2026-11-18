@@ -76,7 +76,8 @@
       "update": "Impossible de mettre à jour les groupes",
       "import": "Impossible d'importer les groupes",
       "unreadable": "{{failure}} : les groupes enregistrés sont illisibles",
-      "restored": "{{failure}}. Votre ordre précédent a été rétabli."
+      "restored": "{{failure}}. Votre ordre précédent a été rétabli.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Groupe {{name}} créé",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Les dossiers de l'élément ont été ajoutés au groupe"
     },
     "untitled": "Groupe sans titre",
-    "folderNotInspected": "Le dossier n’a pas pu être inspecté"
+    "folderNotInspected": "Le dossier n’a pas pu être inspecté",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Code",

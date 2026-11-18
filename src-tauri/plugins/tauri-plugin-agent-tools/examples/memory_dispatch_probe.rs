@@ -93,6 +93,7 @@ fn main() {
                 &retrieve::RetrievalContext {
                     session_id: session.as_deref(),
                     project_id: None,
+                    shared_project_ids: &[],
                     now: now(),
                     budget_chars: retrieve::DEFAULT_BUDGET_CHARS,
                     temporary: args.get(2).map(String::as_str) == Some("temporary"),

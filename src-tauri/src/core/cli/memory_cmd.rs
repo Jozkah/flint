@@ -51,6 +51,7 @@ fn access(project: &str, session: Option<&str>) -> (Access, PathBuf) {
         Access {
             session_id: session.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string),
             project_id,
+            shared_project_ids: Vec::new(),
             project_store,
             permanent_store: Some(permanent),
             project_refused: refused,

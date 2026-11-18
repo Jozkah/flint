@@ -31,6 +31,8 @@ vi.mock('@/hooks/useServiceHub', async (orig) => ({
 }))
 
 import { CoworkChatTransport } from '../coworkTransport'
+import { configureGroups, useConversationGroups } from '../groups/store'
+import { createGroup, emptyGroupsState, moveItem, setGroupLink } from '../groups/domain'
 
 const BLOCK =
   '# Remembered\n\nFacts recorded from earlier work.\n\n- [mem-1] (project) Deploys go through make ship.'
@@ -89,6 +91,30 @@ describe('memory in a Cowork run', () => {
       expect.objectContaining({ temporary: false })
     )
     expect(JSON.stringify(memoryRetrieve.mock.calls[0])).not.toContain('/sandbox/')
+  })
+
+  it('adds the linked chat group beside the folder, and drops it when unlinked', async () => {
+    configureGroups({ port: { load: async () => null, save: async () => {} } })
+    let state = emptyGroupsState()
+    state = createGroup(state, 'home', { id: 'h1', name: 'Chat A', now: 1 })
+    state = createGroup(state, 'cowork', { id: 'c1', name: 'Work A', now: 1 })
+    state = setGroupLink(state, 'cowork', 'c1', 'h1', 2)
+    state = moveItem(state, 'cowork', 's1', 'c1')
+    useConversationGroups.setState({ state })
+    const t = new CoworkChatTransport('s1', config())
+    await internals(t).refreshMemory()
+    // The folder stays the project; the linked group rides alongside it.
+    expect(memoryRetrieve).toHaveBeenLastCalledWith(
+      { dataFolder: '/data', projectRoot: '/work/api', linkedJanProjectId: 'h1', sessionId: 's1' },
+      expect.objectContaining({ temporary: false })
+    )
+    useConversationGroups.setState({ state: setGroupLink(state, 'cowork', 'c1', null, 3) })
+    await internals(t).refreshMemory()
+    expect(memoryRetrieve).toHaveBeenLastCalledWith(
+      { dataFolder: '/data', projectRoot: '/work/api', sessionId: 's1' },
+      expect.objectContaining({ temporary: false })
+    )
+    useConversationGroups.setState({ state: emptyGroupsState() })
   })
 
   it('has no project when no folder is attached', async () => {

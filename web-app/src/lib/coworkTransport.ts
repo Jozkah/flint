@@ -2,6 +2,8 @@ import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import type { ParentPersona } from '@/lib/subagentChoice'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
+import { useConversationGroups } from '@/lib/groups/store'
+import { linkedHomeGroupOfSession } from '@/lib/groups/links'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { AGENT_TOOL_NAMES, sandboxEnforces } from '@/lib/agentTools'
 import { applyWebSearchToTools, buildCoworkTools, coworkToolSignature } from '@/lib/coworkTools'
@@ -288,6 +290,11 @@ export class CoworkChatTransport extends CustomChatTransport {
   protected override syncMemoryBinding(): void {
     this.setMemoryBinding({
       projectRoot: this.config.readOnlyFolder ?? undefined,
+      // Read at send time, so linking or unlinking applies to the next request.
+      linkedJanProjectId: linkedHomeGroupOfSession(
+        useConversationGroups.getState().state,
+        this.threadId
+      )?.id,
       temporary: false,
     })
   }

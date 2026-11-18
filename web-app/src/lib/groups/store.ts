@@ -71,6 +71,8 @@ type GroupsStore = {
   /** Nests a group under another (or null for top level); false when refused. */
   setGroupParent: (surface: GroupSurface, groupId: string, parentId: string | null) => Promise<boolean>
   setCollapsed: (surface: GroupSurface, groupId: string, collapsed: boolean) => Promise<boolean>
+  /** Links a Cowork group to a Home group, or unlinks (null). */
+  setLink: (surface: GroupSurface, groupId: string, linkedGroupId: string | null) => Promise<boolean>
   reorderGroup: (surface: GroupSurface, groupId: string, toIndex: number) => Promise<boolean>
   moveItem: (
     surface: GroupSurface,
@@ -209,6 +211,13 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
         surface,
         (s) => domain.setGroupParent(s, surface, groupId, parentId, env.now()),
         t('failed.moveFolder')
+      ),
+
+    setLink: (surface, groupId, linkedGroupId) =>
+      commit(
+        surface,
+        (s) => domain.setGroupLink(s, surface, groupId, linkedGroupId, env.now()),
+        t('failed.link')
       ),
 
     setCollapsed: async (surface, groupId, collapsed) => {

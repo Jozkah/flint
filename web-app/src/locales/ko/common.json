@@ -76,7 +76,8 @@
       "update": "그룹을 업데이트할 수 없습니다",
       "import": "그룹을 가져올 수 없습니다",
       "unreadable": "{{failure}}: 저장된 그룹을 읽을 수 없습니다",
-      "restored": "{{failure}}. 이전 순서로 복원했습니다."
+      "restored": "{{failure}}. 이전 순서로 복원했습니다.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "그룹 {{name}} 생성됨",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. 항목 폴더를 그룹에 추가했습니다"
     },
     "untitled": "제목 없는 그룹",
-    "folderNotInspected": "폴더를 검사할 수 없습니다"
+    "folderNotInspected": "폴더를 검사할 수 없습니다",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "코드",

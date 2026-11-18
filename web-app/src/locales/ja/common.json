@@ -76,7 +76,8 @@
       "update": "グループを更新できませんでした",
       "import": "グループをインポートできませんでした",
       "unreadable": "{{failure}}: 保存されたグループを読み込めませんでした",
-      "restored": "{{failure}}。以前の並び順に戻しました。"
+      "restored": "{{failure}}。以前の並び順に戻しました。",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "グループ「{{name}}」を作成しました",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}。項目のフォルダーをグループに追加しました"
     },
     "untitled": "無題のグループ",
-    "folderNotInspected": "フォルダーを検査できませんでした"
+    "folderNotInspected": "フォルダーを検査できませんでした",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "コード",

@@ -76,7 +76,8 @@
       "update": "No s'han pogut actualitzar els grups",
       "import": "No s'han pogut importar els grups",
       "unreadable": "{{failure}}: no s'han pogut llegir els grups desats",
-      "restored": "{{failure}}. S'ha restaurat l'ordre anterior."
+      "restored": "{{failure}}. S'ha restaurat l'ordre anterior.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Grup {{name}} creat",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. S'han afegit les carpetes de l'element al grup"
     },
     "untitled": "Grup sense títol",
-    "folderNotInspected": "No s'ha pogut inspeccionar la carpeta"
+    "folderNotInspected": "No s'ha pogut inspeccionar la carpeta",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Codi",

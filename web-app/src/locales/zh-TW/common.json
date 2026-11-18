@@ -76,7 +76,8 @@
       "update": "無法更新群組",
       "import": "無法匯入群組",
       "unreadable": "{{failure}}：無法讀取已儲存的群組",
-      "restored": "{{failure}}。已還原先前的順序。"
+      "restored": "{{failure}}。已還原先前的順序。",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "已建立群組 {{name}}",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}。已將項目資料夾加入群組"
     },
     "untitled": "未命名群組",
-    "folderNotInspected": "無法檢查資料夾"
+    "folderNotInspected": "無法檢查資料夾",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "程式碼",

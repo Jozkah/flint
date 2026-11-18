@@ -21,6 +21,10 @@ use super::record::{
 pub struct RetrievalContext<'a> {
     pub session_id: Option<&'a str>,
     pub project_id: Option<&'a str>,
+    /// Further project identities whose memories are also visible (read), such
+    /// as the Home group a Cowork group is linked to. Never replaces
+    /// `project_id`: a folder's own memories still load.
+    pub shared_project_ids: &'a [String],
     /// Unix seconds; expiry is judged against this rather than the clock, so
     /// the decision is reproducible in a test and in a replayed run.
     pub now: i64,
@@ -155,7 +159,7 @@ pub fn select(records: &[MemoryRecord], ctx: &RetrievalContext<'_>) -> Selection
     //    never conflict with, deduplicate against, or displace one that does.
     let mut candidates: Vec<MemoryRecord> = records
         .iter()
-        .filter(|r| r.applies_to(ctx.session_id, ctx.project_id))
+        .filter(|r| r.applies_to_shared(ctx.session_id, ctx.project_id, ctx.shared_project_ids))
         .filter(|r| r.is_usable(ctx.now))
         .cloned()
         .collect();
@@ -311,6 +315,7 @@ mod tests {
         RetrievalContext {
             session_id: session,
             project_id: project,
+            shared_project_ids: &[],
             now: 1_000,
             budget_chars: 10_000,
             temporary: false,

@@ -197,6 +197,31 @@ export function setGroupParent(
   return patchGroup(state, surface, groupId, (x) => ({ ...x, parentId, updatedAt: now }))
 }
 
+/**
+ * Links a Cowork group to a Home group (or unlinks with null). Only the Cowork
+ * surface carries the link; the Home side reads it back through
+ * `coworkGroupsLinkedTo`, so the surfaces stay separate and no write ever
+ * touches two of them.
+ */
+export function setGroupLink(
+  state: GroupsState,
+  surface: GroupSurface,
+  groupId: string,
+  linkedGroupId: string | null,
+  now: number
+): GroupsState {
+  if (surface !== 'cowork') throw new GroupError('notFound')
+  if (linkedGroupId !== null) requireGroup(state.surfaces.home, linkedGroupId)
+  const current = requireGroup(state.surfaces[surface], groupId).linkedGroupId ?? null
+  if (current === linkedGroupId) return state
+  return patchGroup(state, surface, groupId, (g) => {
+    const next = { ...g, updatedAt: now }
+    if (linkedGroupId === null) delete next.linkedGroupId
+    else next.linkedGroupId = linkedGroupId
+    return next
+  })
+}
+
 export function setGroupCollapsed(
   state: GroupsState,
   surface: GroupSurface,
@@ -475,6 +500,9 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
           .map(sanitizeBinding)
           .filter((b): b is GroupFolderBinding => b !== null)
       ),
+      ...(surface === 'cowork' && typeof g.linkedGroupId === 'string' && g.linkedGroupId
+        ? { linkedGroupId: g.linkedGroupId }
+        : {}),
       createdAt: typeof g.createdAt === 'number' ? g.createdAt : 0,
       updatedAt: typeof g.updatedAt === 'number' ? g.updatedAt : 0,
     })

@@ -76,7 +76,8 @@
       "update": "Tidak dapat memperbarui grup",
       "import": "Tidak dapat mengimpor grup",
       "unreadable": "{{failure}}: grup yang tersimpan tidak dapat dibaca",
-      "restored": "{{failure}}. Urutan sebelumnya telah dipulihkan."
+      "restored": "{{failure}}. Urutan sebelumnya telah dipulihkan.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Grup {{name}} dibuat",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Folder item ditambahkan ke grup"
     },
     "untitled": "Grup tanpa judul",
-    "folderNotInspected": "Folder tidak dapat diperiksa"
+    "folderNotInspected": "Folder tidak dapat diperiksa",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Kode",

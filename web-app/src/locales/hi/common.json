@@ -76,7 +76,8 @@
       "update": "समूह अपडेट नहीं किए जा सके",
       "import": "समूह आयात नहीं किए जा सके",
       "unreadable": "{{failure}}: सहेजे गए समूह पढ़े नहीं जा सके",
-      "restored": "{{failure}}। आपका पिछला क्रम बहाल कर दिया गया।"
+      "restored": "{{failure}}। आपका पिछला क्रम बहाल कर दिया गया।",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "समूह {{name}} बनाया गया",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}। आइटम के फ़ोल्डर समूह में जोड़े गए"
     },
     "untitled": "बिना शीर्षक का समूह",
-    "folderNotInspected": "फ़ोल्डर की जाँच नहीं की जा सकी"
+    "folderNotInspected": "फ़ोल्डर की जाँच नहीं की जा सकी",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "कोड",

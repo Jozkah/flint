@@ -34,6 +34,10 @@ use super::store;
 pub struct Access {
     pub session_id: Option<String>,
     pub project_id: Option<String>,
+    /// Extra project identities this caller may read (a linked Home group's
+    /// `jan-project:<id>`). Their records live in the permanent store. Read
+    /// only: writes always go to `project_id`.
+    pub shared_project_ids: Vec<String>,
     /// The project's own store, when a project is open.
     pub project_store: Option<PathBuf>,
     /// The permanent store holding user and session records.
@@ -62,7 +66,8 @@ impl Access {
         match record.scope {
             Scope::User => true,
             Scope::Project => match (&record.project_id, &self.project_id) {
-                (Some(mine), Some(theirs)) => mine == theirs,
+                (Some(mine), Some(theirs)) if mine == theirs => true,
+                (Some(mine), _) => self.shared_project_ids.iter().any(|s| s == mine),
                 _ => false,
             },
             Scope::Session => match (&record.session_id, &self.session_id) {
@@ -564,6 +569,7 @@ mod tests {
             Access {
                 session_id: Some("s1".into()),
                 project_id: Some("p1".into()),
+                shared_project_ids: Vec::new(),
                 project_store: Some(project.clone()),
                 permanent_store: Some(permanent.clone()),
                 project_refused: None,

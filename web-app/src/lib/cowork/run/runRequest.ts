@@ -156,6 +156,8 @@ import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
 
+import { useConversationGroups } from '@/lib/groups/store'
+import { linkedHomeGroupOfSession } from '@/lib/groups/links'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
 export type RunRequestArgs = [
@@ -922,6 +924,7 @@ export async function runCoworkRequest(
   // a session with no folder has no project memory at all. Never temporary.
   transport.setMemoryBinding({
     projectRoot: current?.folder ?? undefined,
+    linkedJanProjectId: linkedHomeGroupOfSession(useConversationGroups.getState().state, sid)?.id,
     temporary: false,
   })
   if ((await prepared(transport.refreshTools())) === STOPPED) return

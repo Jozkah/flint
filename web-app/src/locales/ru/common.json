@@ -76,7 +76,8 @@
       "update": "Не удалось обновить группы",
       "import": "Не удалось импортировать группы",
       "unreadable": "{{failure}}: не удалось прочитать сохранённые группы",
-      "restored": "{{failure}}. Прежний порядок восстановлен."
+      "restored": "{{failure}}. Прежний порядок восстановлен.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Группа {{name}} создана",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Папки элемента добавлены в группу"
     },
     "untitled": "Группа без названия",
-    "folderNotInspected": "Не удалось проверить папку"
+    "folderNotInspected": "Не удалось проверить папку",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Код",

@@ -525,6 +525,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   protected janProjectId?: string
   protected janProjectName?: string
+  /** Cowork: the linked Home group's id (see `MemoryBinding.linkedJanProjectId`). */
+  protected linkedJanProjectId?: string
   /**
    * A temporary chat neither reads nor records memory.
    *
@@ -708,10 +710,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     projectRoot?: string
     janProjectId?: string
     janProjectName?: string
+    linkedJanProjectId?: string
     temporary?: boolean
   }): void {
     this.projectRoot = binding.projectRoot
     this.janProjectId = binding.janProjectId
+    this.linkedJanProjectId = binding.linkedJanProjectId
     this.janProjectName = binding.janProjectName
     // Defaulting to "not temporary" would let a caller that forgot the flag
     // read memory into the temporary chat.
@@ -740,6 +744,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       projectRoot: this.projectRoot,
       janProjectId: this.janProjectId,
       janProjectName: this.janProjectName,
+      linkedJanProjectId: this.linkedJanProjectId,
       temporary: this.temporary,
     }
   }
@@ -1043,6 +1048,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       projectRoot: this.projectRoot,
       janProjectId: this.janProjectId,
       janProjectName: this.janProjectName,
+      linkedJanProjectId: this.linkedJanProjectId,
       temporary: this.temporary,
     }
     this.memoryBindingUsed = binding
@@ -2226,6 +2232,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           projectRoot: this.projectRoot,
           janProjectId: this.janProjectId,
           janProjectName: this.janProjectName,
+          linkedJanProjectId: this.linkedJanProjectId,
           temporary: this.temporary,
         },
         tools: shouldEnableTools ? Object.keys(this.tools) : [],
@@ -2463,6 +2470,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               sessionId: this.threadId,
               projectRoot: this.projectRoot,
               janProjectId: this.janProjectId,
+              linkedJanProjectId: this.linkedJanProjectId,
               memory: {
                 injectedIds: this.memorySelection.injectedIds,
                 conflictIds: this.memorySelection.conflictIds,
