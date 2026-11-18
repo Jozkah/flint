@@ -177,6 +177,33 @@ pub(super) fn with_project_hint(out: String, ctx: &ToolContext<'_>, args: &serde
     }
 }
 
+/// The "file not found" error. A relative path says where it resolved. An
+/// absolute path that reached the tool already passed the folder gate (outside
+/// a granted folder it is refused with a request_access message instead), so a
+/// miss means that exact file is absent: say so, and name the deepest folder on
+/// the way that exists, so the model checks the spelling rather than
+/// re-requesting access or hunting elsewhere.
+pub(super) fn not_found_message(path: &str, root: &Path, target: &Path) -> String {
+    if !Path::new(path).is_absolute() {
+        return format!(
+            "ERROR: File not found: {path}. Relative paths resolve against your workspace ({}).",
+            root.display()
+        );
+    }
+    match target.ancestors().skip(1).find(|a| a.is_dir()) {
+        Some(dir) => format!(
+            "ERROR: File not found: {path}. The path is inside a folder you can read, but that \
+             file does not exist there; the nearest existing folder is {}. Check the spelling \
+             with ls.",
+            crate::tools::sandbox::plain_display(dir)
+        ),
+        None => format!(
+            "ERROR: File not found: {path}. No folder on that path exists (is the drive or \
+             mount present?)."
+        ),
+    }
+}
+
 pub(super) async fn read(
     args: &serde_json::Value,
     root: &Path,
@@ -213,14 +240,7 @@ pub(super) async fn read(
     // A missing file is said plainly, with where relative paths resolve --
     // the raw "os error 2" sent the model hunting through other directories.
     if !target.exists() {
-        return (
-            format!(
-                "ERROR: File not found: {path}. Relative paths resolve against your \
-                 workspace ({}).",
-                root.display()
-            ),
-            None,
-        );
+        return (not_found_message(path, root, &target), None);
     }
     if let Err(e) = readable_file_with(&target, allow_large).await {
         return (format!("ERROR: {path}: {e}"), None);
@@ -228,14 +248,7 @@ pub(super) async fn read(
     let bytes = match tokio::fs::read(&target).await {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return (
-                format!(
-                    "ERROR: File not found: {path}. Relative paths resolve against your \
-                     workspace ({}).",
-                    root.display()
-                ),
-                None,
-            )
+            return (not_found_message(path, root, &target), None)
         }
         Err(e) => return (format!("ERROR: {e}"), None),
     };

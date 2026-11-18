@@ -143,3 +143,19 @@ fn only_missing_path_errors_are_recognised() {
     assert!(!is_missing_path_error("ERROR: a is a directory; use ls."));
     assert!(!is_missing_path_error("fine, file not found in the text"));
 }
+
+#[tokio::test]
+async fn an_absolute_miss_in_a_granted_folder_names_the_nearest_existing_folder() {
+    let workspace = dir("ws");
+    let project = dir("granted");
+    std::fs::create_dir_all(project.join("docs")).unwrap();
+    let store = dir("store");
+    let reads = [project.clone()];
+    let ctx = ToolContext::new(&workspace, &store, &[]).with_read_roots(&reads);
+    let missing = project.join("docs").join("feature-request-prompt.md");
+    let (out, _) = read_or_list(&json!({"path": missing.to_string_lossy()}), &ctx).await;
+    assert!(out.starts_with("ERROR: File not found:"), "{out}");
+    assert!(!out.contains("Relative paths resolve"), "{out}");
+    assert!(out.contains("nearest existing folder"), "{out}");
+    assert!(out.contains("docs"), "{out}");
+}

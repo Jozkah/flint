@@ -643,6 +643,8 @@ fn scripted_bash_completion(command: &str) -> serde_json::Value {
 
 /// How many times `run-end` hooks may send a run back to work.
 const MAX_RUN_END_BLOCKS: usize = 8;
+/// Times a model is asked for an answer after a reply with no text and no tool call.
+const MAX_EMPTY_REPLY_RETRIES: u8 = 2;
 
 /// The answer to a spend pause (`[budget] pause_at_usd`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4976,7 +4978,7 @@ async fn run_turn_cycle(
     let mut todo_reminders = crate::core::agent::todo::TodoReminderState::default();
     // janhq/jan#8712: one corrective retry per cycle for a reply with neither
     // an answer nor a tool call, so an empty turn is not reported as finished.
-    let mut empty_retried = false;
+    let mut empty_retries: u8 = 0;
 
     // jan#8976: proactive compaction before dispatch. The thresholds are
     // resolved upstream from the model window and carried on the body; absent
@@ -5536,8 +5538,10 @@ async fn run_turn_cycle(
             // nothing to show while reporting success (janhq/jan#8712). Ask
             // once more, saying why; a second empty reply ends the turn rather
             // than asking again until a budget runs out.
-            if final_text.trim().is_empty() && !empty_retried {
-                empty_retried = true;
+            // Twice, not once: a model whose tool call was just denied is
+            // often silent on the first nudge too.
+            if final_text.trim().is_empty() && empty_retries < MAX_EMPTY_REPLY_RETRIES {
+                empty_retries += 1;
                 crate::core::agent::reminder::attach(
                     &mut conversation_messages,
                     "Your last reply had no answer text and no tool call, so the user saw \

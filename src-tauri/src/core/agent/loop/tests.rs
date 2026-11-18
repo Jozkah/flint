@@ -1242,13 +1242,14 @@ async fn a_reasoning_only_reply_is_retried_rather_than_accepted() {
     assert!(retried.contains("no answer"), "{retried}");
 }
 
-/// The retry is bounded: a second empty reply ends the turn rather than
-/// asking again until the budget or the turn limit runs out.
+/// The retry is bounded: two retries are allowed, and a third empty reply ends
+/// the turn rather than asking again until the budget or the turn limit runs out.
 #[tokio::test]
-async fn a_second_empty_reply_ends_the_turn_instead_of_looping() {
+async fn a_third_empty_reply_ends_the_turn_instead_of_looping() {
     let (tx, _rx) = mpsc::unbounded_channel();
     let model = MockModel::new(vec![
         tool_call_completion(),
+        reasoning_only_completion(),
         reasoning_only_completion(),
         reasoning_only_completion(),
         json!({ "choices": [{ "message": { "content": "never sent" }, "finish_reason": "stop" }] }),
@@ -1276,7 +1277,8 @@ async fn a_second_empty_reply_ends_the_turn_instead_of_looping() {
     .await
     .unwrap();
 
-    assert_eq!(model.requests.lock().unwrap().len(), 3);
+    // The tool call, the empty reply, and one request per retry.
+    assert_eq!(model.requests.lock().unwrap().len(), 4);
     assert!(result["choices"][0]["message"]["content"].is_null());
 }
 
