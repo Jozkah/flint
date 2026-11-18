@@ -13,6 +13,7 @@ import {
 } from '@/lib/assistantReply'
 import { redactText } from '@/lib/redactToolOutput'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
+import { CHECKPOINT_MARK } from '@/lib/replyCheckpoint'
 
 /** Error text saved on a tool call the app closed before it returned. */
 export const INTERRUPTED_TOOL_ERROR = 'interrupted by app exit'
@@ -49,6 +50,7 @@ export const wasPersistedOnQuit = (messageId: string): boolean =>
 export const resetInterruptedReplies = () => {
   contexts.clear()
   persisted.clear()
+  stopReplyCheckpoints()
 }
 
 const isToolPart = (p: { type?: unknown }) =>
@@ -181,4 +183,97 @@ export async function persistInterruptedReplies(
       console.error('Failed to stop chat session', e)
     }
   }
+}
+
+/** How often a streaming reply is saved, so a killed app loses seconds, not the reply. */
+export const REPLY_CHECKPOINT_MS = 4000
+
+/** What each checkpoint last wrote, so an unchanged reply is not written again. */
+const checkpointed = new Map<string, string>()
+
+async function checkpointOne(threadId: string, chatMessages: UIMessage[]) {
+  const last = chatMessages[chatMessages.length - 1]
+  if (!last || last.role !== 'assistant') return
+  if (!uiMessageHasMeaningfulContent(last)) return
+  if (persisted.has(last.id)) return
+  const ctx = contexts.get(threadId)?.()
+  // A continuation replaces the partial it continues when it finishes; a
+  // second copy of that text saved now would outlive a crash as a duplicate.
+  if (ctx?.continueReplaceId) return
+
+  const message = await settleToolParts(last)
+  const saved = useMessages.getState().getMessages(threadId)
+  const activeRootId = (
+    useThreads.getState().threads[threadId]?.metadata as
+      | Record<string, unknown>
+      | undefined
+  )?.activeRootId as string | undefined
+  const existing = saved.find((m) => m.id === message.id)
+  const parentId =
+    (existing ? getParentId(existing) : null) ??
+    planContinuation(
+      saved,
+      message.id,
+      undefined,
+      ctx?.parentId ?? resolveAssistantParentIn(saved, activeRootId, undefined)
+    ).parentId
+
+  const built = buildAssistantThreadMessage({
+    message,
+    threadId,
+    existing,
+    metadata: {
+      ...((message.metadata || {}) as Record<string, unknown>),
+      interrupted: CHECKPOINT_MARK,
+    },
+    parentId,
+  })
+  const signature = JSON.stringify(built.content)
+  if (checkpointed.get(message.id) === signature) return
+  checkpointed.set(message.id, signature)
+  // A reply finished or saved on quit while this ran is already complete.
+  if (persisted.has(message.id)) return
+
+  // Same path onFinish takes, so its final save replaces this one in place.
+  if (existing) useMessages.getState().updateMessage(built)
+  else await useMessages.getState().addMessage(built)
+}
+
+/**
+ * Save every reply still streaming as it is now. The app can be killed (a
+ * crash, End Task, power loss) without running the quit path above, and the
+ * reply typed so far would be gone with the user's message left alone.
+ * Never rejects.
+ */
+export async function checkpointStreamingReplies(): Promise<void> {
+  const sessions = Object.entries(useChatSessions.getState().sessions).filter(
+    ([threadId, session]) =>
+      threadId !== TEMPORARY_CHAT_ID &&
+      isSessionBusy(session) &&
+      !!useThreads.getState().threads[threadId]
+  )
+  await Promise.all(
+    sessions.map(([threadId, session]) =>
+      checkpointOne(threadId, session.chat.messages).catch((e) =>
+        console.error(`checkpointing reply in ${threadId} failed:`, e)
+      )
+    )
+  )
+}
+
+let checkpointTimer: ReturnType<typeof setInterval> | undefined
+
+/** Start the periodic checkpoint. Once; the interval does nothing while idle. */
+export function startReplyCheckpoints(): void {
+  if (checkpointTimer !== undefined) return
+  checkpointTimer = setInterval(() => {
+    void checkpointStreamingReplies()
+  }, REPLY_CHECKPOINT_MS)
+}
+
+/** Test helper. */
+export function stopReplyCheckpoints(): void {
+  if (checkpointTimer !== undefined) clearInterval(checkpointTimer)
+  checkpointTimer = undefined
+  checkpointed.clear()
 }

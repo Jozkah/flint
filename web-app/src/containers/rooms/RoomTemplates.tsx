@@ -2,18 +2,29 @@ import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon, type IconName } from '@/components/ui/icon'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
-/** Starting points for the create dialog: a title and an objective to edit. */
-const TEMPLATES: Array<{ id: string; icon: IconName }> = [
+/** What a template fills into the create dialog. */
+export type RoomPreset = {
+  title: string
+  objective: string
+  /** Names of the participants the room starts with, on the selected model. */
+  participants?: string[]
+}
+
+/**
+ * Starting points for the create dialog: a title and an objective to edit,
+ * and for some the sides that argue it (one participant per key).
+ */
+const TEMPLATES: Array<{ id: string; icon: IconName; participantKeys?: string[] }> = [
   { id: 'review', icon: 'x-cube' },
   { id: 'naming', icon: 'x-feather' },
   { id: 'crosscheck', icon: 'target' },
-  { id: 'debate', icon: 'comment' },
+  { id: 'debate', icon: 'comment', participantKeys: ['pro', 'con'] },
 ]
 
 export function RoomTemplates({
   onPick,
 }: {
-  onPick: (preset: { title: string; objective: string }) => void
+  onPick: (preset: RoomPreset) => void
 }) {
   const { t } = useTranslation()
   return (
@@ -29,6 +40,9 @@ export function RoomTemplates({
               onPick({
                 title: t(`rooms:templates.${tpl.id}.name`),
                 objective: t(`rooms:templates.${tpl.id}.objective`),
+                participants: tpl.participantKeys?.map((k) =>
+                  t(`rooms:templates.${tpl.id}.${k}`)
+                ),
               })
             }
             className="group/tpl flex min-w-0 cursor-pointer items-start gap-3 rounded-[10px] p-3 text-left outline-hidden transition-[background-color,transform] duration-200 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985]"

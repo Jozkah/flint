@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   navigate: vi.fn(),
   params: { roomId: 'r1' },
   search: {} as Record<string, unknown>,
+  selected: { provider: 'llamacpp', model: null as { id: string } | null },
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -38,7 +39,14 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('@/containers/rooms/__tests__/roomsTestUtils')
-  return { useModelProvider: (sel: any) => sel({ providers: u.testProviders }) }
+  return {
+    useModelProvider: (sel: any) =>
+      sel({
+        providers: u.testProviders,
+        selectedProvider: h.selected.provider,
+        selectedModel: h.selected.model,
+      }),
+  }
 })
 
 import { Route as ListRoute } from '../rooms/index'
@@ -118,6 +126,26 @@ describe('rooms list route', () => {
     await waitFor(() =>
       expect(h.navigate).toHaveBeenCalledWith({ to: '/rooms/$roomId', params: { roomId: 'new1' } })
     )
+  })
+
+  it('the Debate template seeds Pro and Con on the active model, of any provider', async () => {
+    h.selected = { provider: 'my-remote', model: { id: 'big-model' } }
+    try {
+      const user = userEvent.setup()
+      const { api } = createFakeApi()
+      renderWithApi(<List />, api)
+      await user.click((await screen.findAllByTestId('room-template'))[3])
+      const dialog = screen.getByRole('dialog', { name: 'New room' })
+      await user.click(within(dialog).getByRole('button', { name: 'Create room' }))
+      expect(api.createRoom).toHaveBeenCalledTimes(1)
+      const input = (api.createRoom as any).mock.calls[0][0]
+      expect(input.participants).toEqual([
+        { name: 'Pro', role: 'Pro', model: { provider: 'my-remote', id: 'big-model' } },
+        { name: 'Con', role: 'Con', model: { provider: 'my-remote', id: 'big-model' } },
+      ])
+    } finally {
+      h.selected = { provider: 'llamacpp', model: null }
+    }
   })
 
   it('deletes a room only after confirmation', async () => {

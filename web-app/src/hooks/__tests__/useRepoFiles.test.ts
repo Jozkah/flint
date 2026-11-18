@@ -4,6 +4,8 @@ import { renderHook, act } from '@testing-library/react'
 const getFiles = vi.fn()
 vi.mock('@/lib/huggingface', () => ({
   getHuggingFaceFiles: (...args: unknown[]) => getFiles(...args),
+  filesHaveSizes: (files: Array<{ size?: number | null }>) =>
+    files.some((f) => (f.size ?? 0) > 0),
 }))
 
 import { useRepoFiles } from '../useRepoFiles'
@@ -31,6 +33,22 @@ describe('useRepoFiles', () => {
     })
     expect(result.current.filesByRepo['a/b']).toEqual([file('m.gguf')])
     expect(result.current.loadingFiles['a/b']).toBe(false)
+  })
+
+  it('fetches again when the seeded list from a search has no sizes', async () => {
+    getFiles.mockResolvedValue([file('m.gguf')])
+    const { result } = renderHook(() => useRepoFiles('t'))
+    act(() => {
+      result.current.seedFiles([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'a/b', files: [{ name: 'm.gguf' }] } as any,
+      ])
+    })
+    await act(async () => {
+      await result.current.loadFiles('a/b')
+    })
+    expect(getFiles).toHaveBeenCalledTimes(1)
+    expect(result.current.filesByRepo['a/b']).toEqual([file('m.gguf')])
   })
 
   it('keeps a per-repo error and clears it on a successful retry', async () => {

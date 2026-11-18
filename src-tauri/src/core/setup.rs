@@ -107,8 +107,8 @@ pub(crate) fn remove_default_exa(config: &mut serde_json::Value) -> bool {
     }
 }
 
-/// Key the shipped `browsermcp` entry now carries, so it reads as unfinished.
-const BROWSER_MCP_WIP_NAME: &str = "Browser MCP (WIP)";
+/// Key the shipped `browsermcp` entry carries.
+const BROWSER_MCP_NAME: &str = "Browser MCP";
 
 /// Whether `name` is still the shipped entry: the same `npx` command line and
 /// not switched on. An entry the user enabled or edited is theirs.
@@ -128,7 +128,7 @@ fn is_untouched_default(
 
 /// `Jan Browser MCP` needs Jan's own browser extension, which Flint does not
 /// ship, so an untouched copy is dropped. The community `browsermcp` entry is
-/// kept, renamed to say it is unfinished. Returns whether the config changed.
+/// kept under a plain name. Returns whether the config changed.
 pub(crate) fn migrate_default_browser_servers(config: &mut serde_json::Value) -> bool {
     let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) else {
         return false;
@@ -138,11 +138,11 @@ pub(crate) fn migrate_default_browser_servers(config: &mut serde_json::Value) ->
         servers.remove("Jan Browser MCP");
         changed = true;
     }
-    if !servers.contains_key(BROWSER_MCP_WIP_NAME)
+    if !servers.contains_key(BROWSER_MCP_NAME)
         && is_untouched_default(servers, "browsermcp", &["@browsermcp/mcp"])
     {
         if let Some(entry) = servers.remove("browsermcp") {
-            servers.insert(BROWSER_MCP_WIP_NAME.to_string(), entry);
+            servers.insert(BROWSER_MCP_NAME.to_string(), entry);
             changed = true;
         }
     }
@@ -892,7 +892,7 @@ mod browser_migration_tests {
         assert!(migrate_default_browser_servers(&mut c));
         assert!(c["mcpServers"].get("Jan Browser MCP").is_none());
         assert!(c["mcpServers"].get("browsermcp").is_none());
-        assert_eq!(c["mcpServers"]["Browser MCP (WIP)"], browsermcp());
+        assert_eq!(c["mcpServers"]["Browser MCP"], browsermcp());
         assert!(c["mcpServers"].get("other").is_some());
     }
 

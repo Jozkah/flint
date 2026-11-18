@@ -6,7 +6,7 @@ import { useWebPreview } from '@/hooks/useWebPreview'
 import { useDialogOpen } from '@/hooks/useDialogOpen'
 import {
   NARROW_TOAST_PX,
-  composerClearanceFor,
+  composerAwareClearance,
   getDialogToastPlacement,
   getNarrowToastPlacement,
   getToastOffsetAvoidingPane,
@@ -41,12 +41,33 @@ export function ToasterProvider() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // Where the composer is now, so a corner toast never covers its controls.
+  const [clearance, setClearance] = useState(() =>
+    composerAwareClearance(null, viewport)
+  )
+  useEffect(() => {
+    const measure = () => {
+      const el = document.querySelector('[data-composer]')
+      const rect = el ? el.getBoundingClientRect() : null
+      const next = composerAwareClearance(rect, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+      setClearance((prev) => (prev === next ? prev : next))
+    }
+    measure()
+    // The composer mounts, grows and moves with the route and its text, and
+    // none of that raises an event here: a cheap poll tracks it.
+    const timer = window.setInterval(measure, 500)
+    return () => window.clearInterval(timer)
+  }, [viewport])
+
   // Keep toasts clear of the open Web preview pane and its toolbar.
   const offset = getToastOffsetAvoidingPane(
     notificationPosition,
     open && paneRect ? { surface, rect: paneRect } : null,
     viewport,
-    composerClearanceFor()
+    clearance
   )
 
   // A modal's header and close button sit where a top toast lands.

@@ -461,7 +461,9 @@
     "debate": {
       "name": "Debat",
       "hint": "Dua pihak beradu argumen, lalu Anda memanggil pemungutan suara.",
-      "objective": "Berargumen mendukung dan menentang usulan, lalu nyatakan posisi akhir."
+      "objective": "Berargumen mendukung dan menentang usulan, lalu nyatakan posisi akhir.",
+      "pro": "Pro",
+      "con": "Kontra"
     }
   },
   "page": {

@@ -56,6 +56,7 @@
   "pairExpired": "Bu kodun süresi doldu.",
   "pairNew": "Yeni kod",
   "pairOff": "Önce uzaktan erişimi açın.",
+  "pairLocalhost": "Telefonlar \"Yalnızca bu bilgisayar\" seçeneğine ulaşamaz. Yukarıdan Ev Wi-Fi'si veya Tailscale'i seçin.",
   "pairDone": "{{name}} eşleştirildi.",
   "close": "Kapat",
   "confirmTitle": "\"{{name}}\" eşleştirilsin mi?",

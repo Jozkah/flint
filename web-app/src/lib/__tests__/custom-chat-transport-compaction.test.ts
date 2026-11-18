@@ -360,4 +360,18 @@ describe('auto-compact with no window to plan against', () => {
     notice('thread-notice', 'another-model')
     expect(warning).toHaveBeenCalledTimes(2)
   })
+
+  it('stays quiet across transports: one is built per send', () => {
+    const warning = vi.mocked(toast.warning)
+    warning.mockClear()
+    const pick = (t: Harness) =>
+      (
+        t as unknown as {
+          noticeUnknownWindow: (thread: string, model: string) => void
+        }
+      ).noticeUnknownWindow.bind(t)
+    pick(new Harness('sys', 'thread-shared'))('thread-shared', 'm')
+    pick(new Harness('sys', 'thread-shared'))('thread-shared', 'm')
+    expect(warning).toHaveBeenCalledTimes(1)
+  })
 })

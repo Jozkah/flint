@@ -1702,7 +1702,11 @@
   "largePaste": {
     "attached": "Büyük yapıştırma {{name}} olarak eklendi",
     "hint": "Metin olarak yapıştırmak için Ctrl/Cmd+Shift+V tuşlarına basın.",
-    "undo": "Geri al"
+    "undo": "Geri al",
+    "heavy": "Yapıştırılan metin yaklaşık {{tokens}} token",
+    "heavyHint": "Olduğu gibi gönderilirse modelin bağlamını doldurabilir veya sağlayıcı tarafından reddedilebilir.",
+    "heavyTrim": "İlk {{tokens}} kısmını tut",
+    "heavyRemove": "Yapıştırmayı kaldır"
   },
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",

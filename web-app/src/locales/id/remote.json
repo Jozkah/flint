@@ -56,6 +56,7 @@
   "pairExpired": "Kode ini sudah kedaluwarsa.",
   "pairNew": "Kode baru",
   "pairOff": "Aktifkan akses jarak jauh terlebih dahulu.",
+  "pairLocalhost": "Ponsel tidak dapat menjangkau \"Hanya komputer ini\". Pilih Wi-Fi rumah atau Tailscale di atas.",
   "pairDone": "{{name}} dipasangkan.",
   "close": "Tutup",
   "confirmTitle": "Pasangkan \"{{name}}\"?",

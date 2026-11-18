@@ -56,6 +56,7 @@
   "pairExpired": "此代码已过期。",
   "pairNew": "新代码",
   "pairOff": "请先开启远程访问。",
+  "pairLocalhost": "手机无法连接“仅此电脑”。请在上方选择家庭 Wi-Fi 或 Tailscale。",
   "pairDone": "{{name}} 已配对。",
   "close": "关闭",
   "confirmTitle": "配对“{{name}}”？",

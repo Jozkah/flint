@@ -56,6 +56,7 @@
   "pairExpired": "このコードは失効しました。",
   "pairNew": "新しいコード",
   "pairOff": "先にリモートアクセスをオンにしてください。",
+  "pairLocalhost": "スマートフォンは「このコンピューターのみ」には接続できません。上で自宅 Wi-Fi か Tailscale を選んでください。",
   "pairDone": "{{name}} をペアリングしました。",
   "close": "閉じる",
   "confirmTitle": "「{{name}}」をペアリングしますか?",

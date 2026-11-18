@@ -1704,7 +1704,11 @@
   "largePaste": {
     "attached": "大段粘贴内容已作为 {{name}} 附加",
     "hint": "按 Ctrl/Cmd+Shift+V 可作为文本粘贴。",
-    "undo": "撤销"
+    "undo": "撤销",
+    "heavy": "这次粘贴约有 {{tokens}} 个 token",
+    "heavyHint": "原样发送可能会占满模型的上下文，或被服务商拒绝。",
+    "heavyTrim": "只保留前 {{tokens}}",
+    "heavyRemove": "移除粘贴内容"
   },
   "drop": {
     "openInCode": "拖放以打开 — 只读",

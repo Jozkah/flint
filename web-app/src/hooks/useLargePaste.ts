@@ -5,6 +5,9 @@ import { readFileAsText } from '@/lib/fileSafety'
 import { DEFAULT_ATTACHMENT_LIMITS } from '@/lib/attachmentSupport'
 import {
   LARGE_PASTE_MAX_BYTES,
+  LARGE_PASTE_TRIM_CHARS,
+  LARGE_PASTE_WARN_CHARS,
+  estimatePasteTokens,
   isLargePaste,
   nextPastedTextName,
 } from '@/lib/largePaste'
@@ -114,6 +117,40 @@ export function useLargePaste(options: Options) {
         return
       }
       await latest.current.attach(file)
+      if (text.length > LARGE_PASTE_WARN_CHARS) {
+        // Before it is sent: this much text may fill the model's context or be
+        // refused, and with an unknown context window nothing else says so.
+        const { t, attach, detach } = latest.current
+        toastId.current = toast.warning(
+          t('common:largePaste.heavy', {
+            tokens: estimatePasteTokens(text.length).toLocaleString(),
+          }),
+          {
+            description: t('common:largePaste.heavyHint'),
+            duration: 30_000,
+            closeButton: true,
+            position: 'top-center',
+            action: {
+              label: t('common:largePaste.heavyTrim', {
+                tokens: estimatePasteTokens(LARGE_PASTE_TRIM_CHARS).toLocaleString(),
+              }),
+              onClick: () => {
+                detach(file.name)
+                void attach(
+                  new File([text.slice(0, LARGE_PASTE_TRIM_CHARS)], file.name, {
+                    type: 'text/plain',
+                  })
+                )
+              },
+            },
+            cancel: {
+              label: t('common:largePaste.heavyRemove'),
+              onClick: () => detach(file.name),
+            },
+          }
+        )
+        return
+      }
       if (announced) return
       announced = true
       const { t, insertText, detach } = latest.current

@@ -64,6 +64,7 @@ import {
   explainQuantization,
   formatModelBytes,
   groupHuggingFaceFiles,
+  filesHaveSizes,
   inferArchitecture,
   inferModalities,
   inferParameterCount,
@@ -71,6 +72,7 @@ import {
   repoLooksMlx,
   type HuggingFaceFormat,
   type HuggingFaceModel,
+  repoSizeState,
 } from '@/lib/huggingface'
 import {
   bestGroup,
@@ -312,6 +314,36 @@ function ModelDiscoverRoute() {
     overscan: 6,
     measureElement: (element) => element.getBoundingClientRect().height,
   })
+
+  // File sizes are what the fit verdict is made from. A search result lacks
+  // them, so the cards on screen fetch their own; until then they show a
+  // skeleton rather than "Unknown size" and "Fit unknown".
+  const sizesRequested = useRef(new Set<string>())
+  const [sizesTried, setSizesTried] = useState<Record<string, true>>({})
+  const wantSizes = rowVirtualizer
+    .getVirtualItems()
+    .map((item) => visible[item.index])
+    .filter(
+      (m) =>
+        m &&
+        !repoLooksMlx(m) &&
+        !filesHaveSizes(filesByRepo[m.id] ?? m.files ?? [])
+    )
+    .map((m) => m.id)
+    .join('\n')
+  useEffect(() => {
+    let started = 0
+    for (const id of wantSizes.split('\n')) {
+      if (!id || started >= 8) continue
+      const key = `${token ?? ''}|${id}`
+      if (sizesRequested.current.has(key)) continue
+      sizesRequested.current.add(key)
+      started += 1
+      void loadFiles(id).finally(() =>
+        setSizesTried((state) => ({ ...state, [id]: true }))
+      )
+    }
+  }, [wantSizes, loadFiles, token])
 
   const openModel = (model: HuggingFaceModel) => {
     const repo = cleanHuggingFaceRepo(model.id)
@@ -590,6 +622,13 @@ function ModelDiscoverRoute() {
                   files,
                   fitContext
                 )
+                const sizeState = isMlx
+                  ? 'known'
+                  : repoSizeState(files, {
+                      loading: Boolean(loadingFiles[model.id]),
+                      tried: Boolean(sizesTried[model.id]),
+                      failed: Boolean(fileErrors[model.id]),
+                    })
                 const modalities = inferModalities(model, files)
                 const opened = Boolean(expanded[model.id])
                 const installed = repoInstalled(model)
@@ -716,7 +755,22 @@ function ModelDiscoverRoute() {
                         </div>
                       </div>
 
-                      {recommendedFit && !opened && (isMlx || recommended) && (
+                      {sizeState === 'pending' && !opened && !isMlx && recommended && (
+                        <div
+                          aria-busy="true"
+                          data-testid="hub-fit-pending"
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-muted/40 px-4 py-2"
+                        >
+                          <Skeleton className="h-3.5 w-28" />
+                          <Skeleton className="h-3.5 w-14" />
+                          <Skeleton className="h-5 w-20 rounded-full" />
+                        </div>
+                      )}
+
+                      {recommendedFit &&
+                        recommendedFit.verdict !== 'unknown' &&
+                        !opened &&
+                        (isMlx || recommended) && (
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-muted/40 px-4 py-2 text-xs text-secondary-foreground">
                           <span className="inline-flex items-center gap-1.5 font-medium text-acc-text">
                             <Sparkles className="size-3.5" />{' '}
@@ -792,23 +846,35 @@ function ModelDiscoverRoute() {
                                             <Sparkles /> {t('sweep:hub.recommendedHere')}
                                           </Chip>
                                         )}
-                                        <span className="text-xs text-muted-foreground tabular-nums">
-                                          {fit.sizeEstimated ? '≈ ' : ''}
-                                          {formatModelBytes(
-                                            group.totalSize ??
-                                              fit.required.weights
-                                          )}
-                                        </span>
+                                        {fit.verdict === 'unknown' && !group.totalSize ? (
+                                          sizeState === 'pending' && (
+                                            <Skeleton className="h-3.5 w-14" />
+                                          )
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground tabular-nums">
+                                            {fit.sizeEstimated ? '≈ ' : ''}
+                                            {formatModelBytes(
+                                              group.totalSize ??
+                                                fit.required.weights
+                                            )}
+                                          </span>
+                                        )}
                                         {group.multipart && (
                                           <Chip>{t('sweep:hub.shards', { count: group.files.length })}</Chip>
                                         )}
-                                        <Chip
-                                          tone={fitTone(fit.verdict)}
-                                          dot
-                                          title={fitBasis(fit)}
-                                        >
-                                          {fitLabel(fit.verdict, t)}
-                                        </Chip>
+                                        {fit.verdict === 'unknown' ? (
+                                          sizeState === 'pending' && (
+                                            <Skeleton className="h-5 w-20 rounded-full" />
+                                          )
+                                        ) : (
+                                          <Chip
+                                            tone={fitTone(fit.verdict)}
+                                            dot
+                                            title={fitBasis(fit)}
+                                          >
+                                            {fitLabel(fit.verdict, t)}
+                                          </Chip>
+                                        )}
                                       </div>
                                       <div className="mt-1 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                                         {explainQuantization(group.quantization)}

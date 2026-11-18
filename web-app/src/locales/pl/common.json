@@ -1768,7 +1768,11 @@
   "largePaste": {
     "attached": "Duże wklejenie dołączono jako {{name}}",
     "hint": "Naciśnij Ctrl/Cmd+Shift+V, aby wkleić jako tekst.",
-    "undo": "Cofnij"
+    "undo": "Cofnij",
+    "heavy": "Wklejony tekst ma około {{tokens}} tokenów",
+    "heavyHint": "Wysłany w całości może wypełnić kontekst modelu lub zostać odrzucony przez dostawcę.",
+    "heavyTrim": "Zostaw pierwsze {{tokens}}",
+    "heavyRemove": "Usuń wklejony tekst"
   },
   "drop": {
     "openInCode": "Upuść, aby otworzyć — tylko do odczytu",

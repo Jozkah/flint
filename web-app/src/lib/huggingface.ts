@@ -466,6 +466,26 @@ export function inferModalities(model: HuggingFaceModel, files: HuggingFaceFile[
   return [...out]
 }
 
+/** Whether a repo's file list says how big its files are (a search result often does not). */
+export function filesHaveSizes(files: HuggingFaceFile[]): boolean {
+  return files.some((file) => (file.size ?? 0) > 0)
+}
+
+/**
+ * What a Hub card may show for a repo's size and fit: `known`, `pending` while
+ * sizes are still being fetched (a skeleton, never "Unknown size"), or
+ * `unavailable` once they could not be had (nothing is shown rather than a
+ * "Fit unknown" verdict).
+ */
+export function repoSizeState(
+  files: HuggingFaceFile[],
+  status: { loading: boolean; tried: boolean; failed: boolean }
+): 'known' | 'pending' | 'unavailable' {
+  if (filesHaveSizes(files)) return 'known'
+  if (status.loading || (!status.tried && !status.failed)) return 'pending'
+  return 'unavailable'
+}
+
 export function formatModelBytes(value?: number | null): string {
   if (!value || value <= 0)
     return i18n.t('uiLeftovers:unknownSize', { defaultValue: 'Unknown size' })

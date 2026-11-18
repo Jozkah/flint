@@ -1731,7 +1731,11 @@
   "largePaste": {
     "attached": "Long collage joint en tant que {{name}}",
     "hint": "Appuyez sur Ctrl/Cmd+Maj+V pour le coller comme texte.",
-    "undo": "Annuler"
+    "undo": "Annuler",
+    "heavy": "Ce collage fait environ {{tokens}} jetons",
+    "heavyHint": "Envoyé tel quel, il peut remplir le contexte du modèle ou être refusé par le fournisseur.",
+    "heavyTrim": "Garder les {{tokens}} premiers",
+    "heavyRemove": "Retirer le collage"
   },
   "drop": {
     "openInCode": "Déposez pour ouvrir — lecture seule",

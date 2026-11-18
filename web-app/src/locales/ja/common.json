@@ -1702,7 +1702,11 @@
   "largePaste": {
     "attached": "長いテキストの貼り付けを {{name}} として添付しました",
     "hint": "Ctrl/Cmd+Shift+V でテキストとして貼り付けられます。",
-    "undo": "元に戻す"
+    "undo": "元に戻す",
+    "heavy": "この貼り付けは約 {{tokens}} トークンです",
+    "heavyHint": "そのまま送信すると、モデルのコンテキストがいっぱいになるか、プロバイダーに拒否される可能性があります。",
+    "heavyTrim": "最初の {{tokens}} だけ残す",
+    "heavyRemove": "貼り付けを削除"
   },
   "drop": {
     "openInCode": "ドロップして開く — 読み取り専用",

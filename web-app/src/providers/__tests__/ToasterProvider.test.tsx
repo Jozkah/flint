@@ -60,7 +60,7 @@ describe('ToasterProvider with a modal open', () => {
     render(<ToasterProvider />)
     expect(String(last().position)).toMatch(/^bottom-/)
     const dlg = await openModal('dialog', 'dialog-content')
-    await waitFor(() => expect(String(last().position)).toMatch(/^bottom-/))
+    await waitFor(() => expect(String(last().position)).toBe('bottom-left'))
     await act(async () => {
       dlg.setAttribute('data-state', 'closed')
       await new Promise((r) => setTimeout(r, 40))

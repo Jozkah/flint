@@ -5,6 +5,22 @@
 export const LARGE_PASTE_MAX_LINES = 20
 export const LARGE_PASTE_MAX_CHARS = 8000
 
+/**
+ * A paste past this many characters (about 60K tokens) is worth a warning
+ * before it is sent, whatever the model's context window is: with an unknown
+ * window nothing else would say it may fill the context or be refused.
+ */
+export const LARGE_PASTE_WARN_CHARS = 200_000
+/** What "keep the first part" keeps (about 30K tokens). */
+export const LARGE_PASTE_TRIM_CHARS = 100_000
+/** Rough characters per token for English text, for the size shown in the warning. */
+const CHARS_PER_TOKEN = 3.4
+
+/** A token count for the warning: an estimate, rounded to the nearest thousand. */
+export function estimatePasteTokens(chars: number): number {
+  return Math.max(1000, Math.round(chars / CHARS_PER_TOKEN / 1000) * 1000)
+}
+
 /** The composer's attach pipeline refuses files larger than this. */
 export const LARGE_PASTE_MAX_BYTES = 10 * 1024 * 1024
 

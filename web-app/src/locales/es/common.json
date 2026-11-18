@@ -1734,7 +1734,11 @@
   "largePaste": {
     "attached": "Pegado grande adjuntado como {{name}}",
     "hint": "Pulsa Ctrl/Cmd+Mayús+V para pegarlo como texto.",
-    "undo": "Deshacer"
+    "undo": "Deshacer",
+    "heavy": "Este texto pegado tiene unos {{tokens}} tokens",
+    "heavyHint": "Enviado tal cual, puede llenar el contexto del modelo o ser rechazado por el proveedor.",
+    "heavyTrim": "Conservar los primeros {{tokens}}",
+    "heavyRemove": "Quitar lo pegado"
   },
   "drop": {
     "openInCode": "Suelta para abrir: solo lectura",

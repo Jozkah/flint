@@ -470,7 +470,9 @@
     "debate": {
       "name": "Débat",
       "hint": "Deux camps s'affrontent, puis vous lancez le vote.",
-      "objective": "Argumenter pour et contre la proposition, puis énoncer les positions finales."
+      "objective": "Argumenter pour et contre la proposition, puis énoncer les positions finales.",
+      "pro": "Pour",
+      "con": "Contre"
     }
   },
   "page": {

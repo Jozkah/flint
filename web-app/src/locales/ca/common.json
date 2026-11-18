@@ -1735,7 +1735,11 @@
   "largePaste": {
     "attached": "Enganxat gran adjuntat com a {{name}}",
     "hint": "Prem Ctrl/Cmd+Maj+V per enganxar-lo com a text.",
-    "undo": "Desfés"
+    "undo": "Desfés",
+    "heavy": "Aquest text enganxat té uns {{tokens}} tokens",
+    "heavyHint": "Enviat tal qual, pot omplir el context del model o ser rebutjat pel proveïdor.",
+    "heavyTrim": "Conserva els primers {{tokens}}",
+    "heavyRemove": "Treu el text enganxat"
   },
   "drop": {
     "openInCode": "Deixa anar per obrir: només lectura",

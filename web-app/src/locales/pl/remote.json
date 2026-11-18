@@ -56,6 +56,7 @@
   "pairExpired": "Ten kod wygasł.",
   "pairNew": "Nowy kod",
   "pairOff": "Najpierw włącz dostęp zdalny.",
+  "pairLocalhost": "Telefony nie mają dostępu do opcji „Tylko ten komputer”. Wybierz powyżej Wi-Fi domowe lub Tailscale.",
   "pairDone": "{{name}} jest sparowany.",
   "close": "Zamknij",
   "confirmTitle": "Sparować „{{name}}”?",

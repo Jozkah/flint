@@ -56,6 +56,7 @@
   "pairExpired": "Mã này đã hết hạn.",
   "pairNew": "Mã mới",
   "pairOff": "Hãy bật truy cập từ xa trước.",
+  "pairLocalhost": "Điện thoại không thể kết nối khi chọn \"Chỉ máy tính này\". Hãy chọn Wi-Fi nhà hoặc Tailscale ở trên.",
   "pairDone": "{{name}} đã được ghép nối.",
   "close": "Đóng",
   "confirmTitle": "Ghép nối \"{{name}}\"?",

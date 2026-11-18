@@ -337,6 +337,13 @@ function abandonModelLoad(modelId: string): void {
   })()
 }
 
+/**
+ * Threads and models already told that auto-compact has no window to use.
+ * Shared by every transport: a transport is built per send, so a per-instance
+ * set repeated the notice on every message.
+ */
+const unknownWindowNoticedShared = new Set<string>()
+
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
@@ -401,7 +408,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   private overflowRetry: { learnedWindow: number | null } | null = null
   /** Threads and models already told that auto-compact has no window to use. */
-  private unknownWindowNoticed = new Set<string>()
+  private get unknownWindowNoticed(): Set<string> {
+    return unknownWindowNoticedShared
+  }
 
   /** Tell the user, once per chat and model, that auto-compact needs a context size. */
   private noticeUnknownWindow(threadId: string, modelId: string): void {

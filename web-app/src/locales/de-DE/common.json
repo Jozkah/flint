@@ -1704,7 +1704,11 @@
   "largePaste": {
     "attached": "Großer Einfügetext als {{name}} angehängt",
     "hint": "Mit Strg/Cmd+Umschalt+V fügen Sie stattdessen als Text ein.",
-    "undo": "Rückgängig"
+    "undo": "Rückgängig",
+    "heavy": "Dieser Einfügetext hat etwa {{tokens}} Tokens",
+    "heavyHint": "So gesendet, kann er den Kontext des Modells füllen oder vom Anbieter abgelehnt werden.",
+    "heavyTrim": "Nur die ersten {{tokens}} behalten",
+    "heavyRemove": "Einfügung entfernen"
   },
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",

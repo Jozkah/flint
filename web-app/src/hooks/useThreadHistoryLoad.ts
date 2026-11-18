@@ -7,6 +7,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useMessageErrors } from '@/stores/message-errors'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
+import { settleCrashedCheckpoints } from '@/lib/replyCheckpoint'
 import {
   convertThreadMessagesToUIMessages,
   threadMessageIsEmpty,
@@ -138,6 +139,15 @@ export function useThreadHistoryLoad({
             const byId = new Map(reattached.map((m) => [m.id, m]))
             messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
             for (const m of reattached) updateMessage(m)
+          }
+
+          // A reply the app was killed in the middle of (saved as a checkpoint
+          // while it streamed) is a stopped reply now: offer Continue.
+          const crashed = settleCrashedCheckpoints(messagesToSet)
+          if (crashed.length > 0) {
+            const byId = new Map(crashed.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of crashed) updateMessage(m)
           }
 
           setMessages(threadId, messagesToSet)

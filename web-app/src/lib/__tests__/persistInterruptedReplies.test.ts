@@ -33,6 +33,7 @@ vi.mock('@/stores/chat-session-store', () => ({
 }))
 
 import {
+  checkpointStreamingReplies,
   persistInterruptedReplies,
   registerReplyContext,
   resetInterruptedReplies,
@@ -40,6 +41,8 @@ import {
   INTERRUPTED_TOOL_ERROR,
 } from '@/lib/persistInterruptedReplies'
 import { useMessages } from '@/hooks/useMessages'
+import { settleCrashedCheckpoints } from '@/lib/replyCheckpoint'
+import { cancelPendingMessageWrites } from '@/lib/messageWriteQueue'
 
 type Session = {
   isStreaming: boolean
@@ -70,6 +73,8 @@ const created = () =>
   h.createMessage.mock.calls.map((c) => c[0] as unknown as ThreadMessage)
 
 beforeEach(() => {
+  // A debounced write from the previous test must not land in this one.
+  cancelPendingMessageWrites('t')
   vi.clearAllMocks()
   resetInterruptedReplies()
   for (const k of Object.keys(sessions())) delete sessions()[k]
@@ -173,5 +178,85 @@ describe('persistInterruptedReplies', () => {
     await persistInterruptedReplies(20)
 
     expect(s.chat.stop).toHaveBeenCalled()
+  })
+})
+
+describe('checkpointStreamingReplies', () => {
+  it('saves the partial reply while it streams, without marking it stopped', async () => {
+    h.threads.t = {}
+    useMessages.setState({ messages: { t: [user('u-t', 't')] } })
+    stream('t', { id: 'a', role: 'assistant', parts: [{ type: 'text', text: 'Half an es' }] })
+
+    await checkpointStreamingReplies()
+
+    expect(created().map((m) => m.id)).toEqual(['a'])
+    const m = created()[0]
+    expect(m.metadata).toMatchObject({ interrupted: 'checkpoint', parentId: 'u-t' })
+    expect(m.metadata).not.toHaveProperty('stopped')
+    expect(m.content[0].text?.value).toBe('Half an es')
+    expect(useMessages.getState().getMessages('t').map((x) => x.id)).toEqual(['u-t', 'a'])
+  })
+
+  it('writes again only when the reply grew, updating the same message', async () => {
+    h.threads.t = {}
+    useMessages.setState({ messages: { t: [user('u-t', 't')] } })
+    const s = stream('t', { id: 'a', role: 'assistant', parts: [{ type: 'text', text: 'one' }] })
+
+    await checkpointStreamingReplies()
+    await checkpointStreamingReplies()
+    expect(h.createMessage).toHaveBeenCalledTimes(1)
+
+    s.chat.messages[1] = { id: 'a', role: 'assistant', parts: [{ type: 'text', text: 'one two' }] }
+    await checkpointStreamingReplies()
+    expect(h.createMessage).toHaveBeenCalledTimes(1)
+    const saved = useMessages.getState().getMessages('t').filter((x) => x.id === 'a')
+    expect(saved).toHaveLength(1)
+    expect(saved[0].content[0].text?.value).toBe('one two')
+  })
+
+  it('leaves a continuation, idle sessions and the temporary chat alone', async () => {
+    h.threads.t = {}
+    h.threads.idle = {}
+    h.threads['temporary-chat'] = {}
+    registerReplyContext('t', () => ({ continueReplaceId: 'p', parentId: null }))
+    stream('t', { id: 'c', role: 'assistant', parts: [{ type: 'text', text: 'partial + more' }] })
+    stream('idle', { id: 'y', role: 'assistant', parts: [{ type: 'text', text: 'y' }] }, false)
+    stream('temporary-chat', { id: 'x', role: 'assistant', parts: [{ type: 'text', text: 'x' }] })
+
+    await checkpointStreamingReplies()
+
+    expect(h.createMessage).not.toHaveBeenCalled()
+  })
+
+  it('the quit save later updates the checkpoint instead of adding a second copy', async () => {
+    h.threads.t = {}
+    useMessages.setState({ messages: { t: [user('u-t', 't')] } })
+    stream('t', { id: 'a', role: 'assistant', parts: [{ type: 'text', text: 'partial' }] })
+
+    await checkpointStreamingReplies()
+    await persistInterruptedReplies()
+
+    expect(h.createMessage).toHaveBeenCalledTimes(1)
+    expect(h.modifyMessage).toHaveBeenCalledTimes(1)
+    expect(useMessages.getState().getMessages('t').filter((x) => x.id === 'a')).toHaveLength(1)
+  })
+})
+
+describe('settleCrashedCheckpoints', () => {
+  it('turns a checkpoint a dead app left into a stopped, interrupted reply', () => {
+    const checkpoint = {
+      ...user('a', 't'),
+      role: 'assistant',
+      metadata: { parentId: 'u', interrupted: 'checkpoint' },
+    } as unknown as ThreadMessage
+    const done = { ...user('b', 't'), role: 'assistant', metadata: {} } as unknown as ThreadMessage
+    const out = settleCrashedCheckpoints([user('u', 't'), checkpoint, done])
+    expect(out).toHaveLength(1)
+    expect(out[0].id).toBe('a')
+    expect(out[0].metadata).toMatchObject({ parentId: 'u', stopped: true, interrupted: 'crash' })
+  })
+
+  it('changes nothing when no reply was cut off', () => {
+    expect(settleCrashedCheckpoints([user('u', 't')])).toEqual([])
   })
 })

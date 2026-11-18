@@ -465,7 +465,9 @@
     "debate": {
       "name": "Münazara",
       "hint": "İki taraf tartışır, ardından oylamayı siz çağırırsınız.",
-      "objective": "Öneri lehinde ve aleyhinde tartışın, ardından nihai görüşleri belirtin."
+      "objective": "Öneri lehinde ve aleyhinde tartışın, ardından nihai görüşleri belirtin.",
+      "pro": "Lehte",
+      "con": "Aleyhte"
     }
   },
   "page": {
