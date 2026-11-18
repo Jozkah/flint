@@ -1081,6 +1081,7 @@ async fn attempt_with_key(
     // also counts 5xx and connect errors, which are not timeouts.
     let mut timeouts: u32 = 0;
     let mut unreachable: u32 = 0;
+    let mut send_errors: u32 = 0;
     for attempt in 0..MAX_ATTEMPTS {
         let mut progressed = false;
         match run_once(
@@ -1166,7 +1167,25 @@ async fn attempt_with_key(
                                 state.last_err
                             )));
                         }
-                        if is_unreachable_text(&described) {
+                        // genai keeps only "error sending request for url (..)"
+                        // for a refused connection, so the text alone cannot
+                        // say so. A send failure that repeats is asked of the
+                        // endpoint with one quick TCP connect. The first one is
+                        // not probed: a single dropped connection is the case
+                        // a retry exists for, and the probe is a connection too.
+                        let mut refused = is_unreachable_text(&described);
+                        if !refused && !timed_out && is_send_error_text(&described) {
+                            send_errors += 1;
+                            if send_errors >= MAX_UNREACHABLE_ATTEMPTS
+                                && endpoint_refuses_connections(upstream_url).await
+                            {
+                                refused = true;
+                                // Two failed sends plus a refused connect is
+                                // the answer; no third attempt to confirm it.
+                                unreachable = MAX_UNREACHABLE_ATTEMPTS - 1;
+                            }
+                        }
+                        if refused {
                             unreachable += 1;
                             if unreachable >= MAX_UNREACHABLE_ATTEMPTS {
                                 return KeyOutcome::Done(Err(format!(
@@ -1322,6 +1341,29 @@ fn is_unreachable_text(described: &str) -> bool {
     ]
     .iter()
     .any(|needle| d.contains(needle))
+}
+
+/// Whether a transport error is the bare send failure `genai` leaves behind
+/// once it has dropped the connect error underneath.
+fn is_send_error_text(described: &str) -> bool {
+    described.to_ascii_lowercase().contains("error sending request")
+}
+
+/// Whether a plain TCP connect to the endpoint's host and port fails right
+/// now (refused, unroutable, or not resolvable). A bounded probe; any
+/// parse problem answers `false`, so the normal backoff still applies.
+async fn endpoint_refuses_connections(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    let (Some(host), Some(port)) = (parsed.host_str(), parsed.port_or_known_default()) else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    matches!(
+        tokio::time::timeout(Duration::from_secs(3), tokio::net::TcpStream::connect((host, port))).await,
+        Ok(Err(_))
+    )
 }
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
@@ -1612,6 +1654,47 @@ mod tests {
         }
         assert_eq!(MAX_UNREACHABLE_ATTEMPTS, 2, "one quick retry at most");
     }
+    #[tokio::test]
+    async fn refused_local_port_is_detected_through_the_real_send_error() {
+        // A port nothing listens on: bind, note it, release it.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+        let err = reqwest13::Client::new().get(&url).send().await.unwrap_err();
+        // The shape genai keeps: no connect error text, just the send failure.
+        let described = err.to_string();
+        assert!(is_send_error_text(&described), "{described}");
+        assert!(!is_unreachable_text(&described), "{described}");
+        assert!(endpoint_refuses_connections(&url).await);
+    }
+
+    #[tokio::test]
+    async fn a_dead_local_endpoint_fails_fast_not_after_ten_attempts() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+        let (tx, _rx) = sink();
+        let started = std::time::Instant::now();
+        let err = run(&url, &[], &tx).await.expect_err("nothing is listening");
+        assert!(err.contains("unreachable after 2 attempts"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn listening_port_and_bad_urls_are_not_refused() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(!endpoint_refuses_connections(&format!("http://127.0.0.1:{port}/v1")).await);
+        assert!(!endpoint_refuses_connections("not a url").await);
+        assert!(!is_send_error_text("Upstream returned HTTP 503"));
+    }
+
     use genai::chat::{Binary, BinarySource};
     use serde_json::json;
 

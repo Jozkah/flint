@@ -2,6 +2,9 @@ import { Toaster } from '@/components/ui/sonner'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { useRouterState } from '@tanstack/react-router'
+import { UNKNOWN_WINDOW_TOAST_ID } from '@/lib/toastIds'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import { useDialogOpen } from '@/hooks/useDialogOpen'
 import {
@@ -21,6 +24,13 @@ export function ToasterProvider() {
     (s) => s.notificationPosition
   )
   const isPhone = useMediaQuery(`(max-width: ${NARROW_TOAST_PX}px)`)
+
+  // The context-size notice belongs to the chat that raised it: it must not
+  // follow the user onto another page and sit over that page's controls.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  useEffect(() => {
+    toast.dismiss(UNKNOWN_WINDOW_TOAST_ID)
+  }, [pathname])
 
   // A toast raised before this mounted is shown again now.
   useEffect(() => {

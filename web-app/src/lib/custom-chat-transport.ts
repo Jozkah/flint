@@ -212,6 +212,7 @@ import {
   stripRetryErrorWrapper,
 } from '@/lib/chat/transport/transportErrors'
 import { isLocalChatServer } from '@/lib/chat/transport/localServer'
+import { UNKNOWN_WINDOW_TOAST_ID } from '@/lib/toastIds'
 
 export {
   effectiveContextWindow,
@@ -344,6 +345,32 @@ function abandonModelLoad(modelId: string): void {
  */
 const unknownWindowNoticedShared = new Set<string>()
 
+
+
+const NOTICED_WINDOW_STORAGE_KEY = 'flint.autoCompactWindowNoticed'
+
+function readNoticedWindowKeys(): Set<string> {
+  try {
+    const raw = localStorage.getItem(NOTICED_WINDOW_STORAGE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((k): k is string => typeof k === 'string')
+        : []
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+function writeNoticedWindowKeys(keys: Set<string>): void {
+  try {
+    localStorage.setItem(NOTICED_WINDOW_STORAGE_KEY, JSON.stringify([...keys]))
+  } catch {
+    // Storage blocked: the in-memory set still holds for this window.
+  }
+}
+
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
@@ -416,11 +443,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private noticeUnknownWindow(threadId: string, modelId: string): void {
     const key = `${threadId}|${modelId}`
     if (this.unknownWindowNoticed.has(key)) return
+    // Remembered across reloads too: a window that was reloaded forgot the
+    // in-memory set and told the user again on its next send.
+    const stored = readNoticedWindowKeys()
+    if (stored.has(key)) {
+      this.unknownWindowNoticed.add(key)
+      return
+    }
     // Bounded: a notice repeated after 100 distinct chats/models is harmless,
     // a set that grows for the window's whole life is not.
     if (this.unknownWindowNoticed.size >= 100) this.unknownWindowNoticed.clear()
     this.unknownWindowNoticed.add(key)
-    toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }))
+    if (stored.size >= 100) stored.clear()
+    stored.add(key)
+    writeNoticedWindowKeys(stored)
+    // A fixed id and a finite life: the notice never stacks with itself and
+    // never lingers over another page's controls (ToasterProvider drops it
+    // on navigation).
+    toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }), {
+      id: UNKNOWN_WINDOW_TOAST_ID,
+      duration: 8000,
+    })
   }
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null

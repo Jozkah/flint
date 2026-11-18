@@ -269,7 +269,7 @@ export function RoomComposer({ room }: { room: Room }) {
   return (
     // The fade lets the transcript dissolve into the composer instead of
     // stopping at a hard edge; the composer itself sits above it.
-    <div className="relative shrink-0 px-3 pt-2 pb-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:h-9 before:bg-gradient-to-b before:from-transparent before:to-card">
+    <div data-composer className="relative shrink-0 px-3 pt-2 pb-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:h-9 before:bg-gradient-to-b before:from-transparent before:to-card">
       <ClearRoomDialog
         open={clearOpen}
         running={room.status === 'running'}

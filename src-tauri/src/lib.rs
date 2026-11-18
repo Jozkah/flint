@@ -1441,11 +1441,11 @@ pub fn build_app() -> tauri::App {
 fn startup_failure_message(error: &str) -> String {
     let mut message = format!("Flint could not start: {error}");
     if error.contains("unknown path") {
-        message.push_str(
-            "
-
-A per-user folder could not be resolved. Check that the user profile              (USERPROFILE on Windows, HOME elsewhere) points at a real folder, or set              JAN_DATA_FOLDER / APPDATA / LOCALAPPDATA for an isolated run.",
-        );
+        message.push_str(concat!(
+            "\n\nA per-user folder could not be resolved. Check that the user profile ",
+            "(USERPROFILE on Windows, HOME elsewhere) points at a real folder, or set ",
+            "JAN_DATA_FOLDER / APPDATA / LOCALAPPDATA for an isolated run.",
+        ));
     }
     message
 }
@@ -1477,6 +1477,7 @@ mod startup_failure_tests {
         let m = startup_failure_message("error while initializing plugin `http`: unknown path");
         assert!(m.starts_with("Flint could not start:"), "{m}");
         assert!(m.contains("USERPROFILE"), "{m}");
+        assert!(!m.contains("  "), "no runs of spaces: {m:?}");
     }
 
     #[test]
