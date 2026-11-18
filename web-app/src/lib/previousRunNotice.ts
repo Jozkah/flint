@@ -3,6 +3,9 @@ import { toast } from 'sonner'
 import i18n from '@/i18n'
 import { onToasterMounted } from '@/lib/settingsRecoveryNotice'
 
+/** Long enough to read and reach the export button, short enough not to cover a dialog's footer. */
+export const PREVIOUS_RUN_NOTICE_MS = 15_000
+
 interface PreviousRunNotice {
   unclean: boolean
   reportPresent: boolean
@@ -22,7 +25,7 @@ export async function showPreviousRunNotice(): Promise<void> {
     const show = () =>
       toast.warning(i18n.t('common:previousRunNotice.title'), {
         description: i18n.t('common:previousRunNotice.description'),
-        duration: Infinity,
+        duration: PREVIOUS_RUN_NOTICE_MS,
         closeButton: true,
         action: {
           label: i18n.t('common:previousRunNotice.export'),

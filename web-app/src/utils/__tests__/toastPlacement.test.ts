@@ -85,8 +85,8 @@ describe('toastPlacement', () => {
 })
 
 describe('getDialogToastPlacement', () => {
-  it('uses bottom-right on wide screens', () => {
-    expect(getDialogToastPlacement(1100).position).toBe('bottom-right')
+  it('uses bottom-left on wide screens so the dialog footer actions stay clear', () => {
+    expect(getDialogToastPlacement(1100).position).toBe('bottom-left')
   })
   it('uses full-width bottom-center above the composer when narrow', () => {
     const p = getDialogToastPlacement(480)
@@ -108,5 +108,28 @@ describe('composerClearanceFor', () => {
     expect(composerClearanceFor()).toBe(16)
     expect(composerClearanceFor()).toBe(16)
     expect(composerClearanceFor()).toBe(16)
+  })
+})
+
+describe('composerAwareClearance', () => {
+  const vp = { width: 1000, height: 690 }
+  it('keeps the corner free with no composer', async () => {
+    const { composerAwareClearance } = await import('../toastPlacement')
+    expect(composerAwareClearance(null, vp)).toBe(16)
+  })
+  it('lifts toasts above a composer that reaches the toast column', async () => {
+    const { composerAwareClearance } = await import('../toastPlacement')
+    const rect = { left: 280, right: 980, top: 560, bottom: 670 }
+    expect(composerAwareClearance(rect, vp)).toBe(690 - 560 + 12)
+  })
+  it('keeps the corner when the composer ends before the toast column', async () => {
+    const { composerAwareClearance } = await import('../toastPlacement')
+    const rect = { left: 100, right: 500, top: 560, bottom: 670 }
+    expect(composerAwareClearance(rect, vp)).toBe(16)
+  })
+  it('never lifts past half the window', async () => {
+    const { composerAwareClearance } = await import('../toastPlacement')
+    const rect = { left: 0, right: 1000, top: 100, bottom: 680 }
+    expect(composerAwareClearance(rect, vp)).toBe(345)
   })
 })

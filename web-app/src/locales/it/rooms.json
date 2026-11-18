@@ -470,7 +470,9 @@
     "debate": {
       "name": "Dibattito",
       "hint": "Due schieramenti si confrontano, poi indici tu la votazione.",
-      "objective": "Argomentare a favore e contro la proposta, poi dichiarare le posizioni finali."
+      "objective": "Argomentare a favore e contro la proposta, poi dichiarare le posizioni finali.",
+      "pro": "Pro",
+      "con": "Contro"
     }
   },
   "page": {

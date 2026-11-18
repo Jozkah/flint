@@ -1677,7 +1677,11 @@
   "largePaste": {
     "attached": "Tempelan besar dilampirkan sebagai {{name}}",
     "hint": "Tekan Ctrl/Cmd+Shift+V untuk menempel sebagai teks.",
-    "undo": "Urungkan"
+    "undo": "Urungkan",
+    "heavy": "Teks yang ditempel ini sekitar {{tokens}} token",
+    "heavyHint": "Jika dikirim apa adanya, teks ini bisa memenuhi konteks model atau ditolak penyedia.",
+    "heavyTrim": "Simpan {{tokens}} pertama",
+    "heavyRemove": "Hapus tempelan"
   },
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",

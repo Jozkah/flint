@@ -27,7 +27,9 @@ import {
 } from '@/containers/rooms/roomsBindings'
 import { activeParticipants, messagesOf } from '@/containers/rooms/roomUi'
 import { RoomCard } from '@/containers/rooms/RoomCard'
-import { RoomTemplates } from '@/containers/rooms/RoomTemplates'
+import { RoomTemplates, type RoomPreset } from '@/containers/rooms/RoomTemplates'
+import { templateParticipants } from '@/lib/rooms/templateParticipants'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { useRoomDetails } from '@/containers/rooms/useRoomDetails'
 import {
   CreateRoomDialog,
@@ -78,6 +80,10 @@ function RoomsList() {
   const [createGroup, setCreateGroup] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [objective, setObjective] = useState('')
+  // Participants the picked template starts the room with, by name.
+  const [presetNames, setPresetNames] = useState<readonly string[]>([])
+  const selectedProvider = useModelProvider((s) => s.selectedProvider)
+  const selectedModel = useModelProvider((s) => s.selectedModel)
   const [titleError, setTitleError] = useState(false)
   const [creating, setCreating] = useState(false)
   const [toDelete, setToDelete] = useState<RoomSummary | null>(null)
@@ -90,8 +96,9 @@ function RoomsList() {
 
   const details = useRoomDetails(api, summaries)
 
-  const openCreate = (preset?: { title: string; objective: string }) => {
+  const openCreate = (preset?: RoomPreset) => {
     createdRoomRef.current = null
+    setPresetNames(preset?.participants ?? [])
     setTitle(preset?.title ?? '')
     setObjective(preset?.objective ?? '')
     setTitleError(false)
@@ -117,11 +124,20 @@ function RoomsList() {
     }
     setCreating(true)
     setError(null)
+    // The template's sides, on the model the user has selected.
+    const seeded = templateParticipants(
+      presetNames,
+      selectedModel ? { provider: selectedProvider, id: selectedModel.id } : null
+    )
     try {
       // A retry after the group step failed reuses the room already made.
       const room =
         createdRoomRef.current ??
-        (await api.createRoom({ title: title.trim(), objective: objective.trim() }))
+        (await api.createRoom({
+          title: title.trim(),
+          objective: objective.trim(),
+          ...(seeded.length > 0 ? { participants: seeded } : {}),
+        }))
       createdRoomRef.current = room
       if (createGroup)
         await addNewItemToGroup('rooms', room.id, createGroup, roomFolderAdapter(api))

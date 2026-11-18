@@ -470,7 +470,9 @@
     "debate": {
       "name": "Tranh luận",
       "hint": "Hai phía tranh luận, sau đó bạn gọi bỏ phiếu.",
-      "objective": "Tranh luận ủng hộ và phản đối đề xuất, rồi nêu quan điểm cuối cùng."
+      "objective": "Tranh luận ủng hộ và phản đối đề xuất, rồi nêu quan điểm cuối cùng.",
+      "pro": "Ủng hộ",
+      "con": "Phản đối"
     }
   },
   "page": {

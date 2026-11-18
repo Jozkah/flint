@@ -1734,7 +1734,11 @@
   "largePaste": {
     "attached": "Incolla di grandi dimensioni allegato come {{name}}",
     "hint": "Premi Ctrl/Cmd+Maiusc+V per incollarlo come testo.",
-    "undo": "Annulla"
+    "undo": "Annulla",
+    "heavy": "Questo testo incollato è di circa {{tokens}} token",
+    "heavyHint": "Inviato così com'è, può riempire il contesto del modello o essere rifiutato dal provider.",
+    "heavyTrim": "Tieni i primi {{tokens}}",
+    "heavyRemove": "Rimuovi il testo incollato"
   },
   "drop": {
     "openInCode": "Rilascia per aprire — sola lettura",

@@ -470,7 +470,9 @@
     "debate": {
       "name": "Debate",
       "hint": "Dois lados argumentam e depois você convoca a votação.",
-      "objective": "Argumentar a favor e contra a proposta e depois declarar as posições finais."
+      "objective": "Argumentar a favor e contra a proposta e depois declarar as posições finais.",
+      "pro": "A favor",
+      "con": "Contra"
     }
   },
   "page": {

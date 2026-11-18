@@ -465,7 +465,9 @@
     "debate": {
       "name": "Debate",
       "hint": "Two sides argue it out, then you call the vote.",
-      "objective": "Argue for and against the proposal, then state final positions."
+      "objective": "Argue for and against the proposal, then state final positions.",
+      "pro": "Pro",
+      "con": "Con"
     }
   },
   "page": {

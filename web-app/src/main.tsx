@@ -179,6 +179,10 @@ const boot = async () => {
         <RouterProvider router={router} />
       </StrictMode>
     )
+    // A reply being typed is saved as it goes, so a killed app keeps it.
+    void import('@/lib/persistInterruptedReplies').then((m) =>
+      m.startReplyCheckpoints()
+    )
     // After the Toaster has mounted, so the toast is not dropped.
     window.setTimeout(() => {
       void import('@/lib/settingsRecoveryNotice').then((m) =>

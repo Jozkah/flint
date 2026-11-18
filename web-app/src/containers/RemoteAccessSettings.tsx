@@ -99,6 +99,17 @@ export function RemoteAccessSettings({
   const serving = status.serving
   const detected = detectedFor(status, cfg.interface)
 
+  // Why "Pair a phone" is off, said next to the button instead of leaving it dead.
+  const pairBlockedReason = status.running
+    ? null
+    : !cfg.enabled
+      ? t('remote:pairOff')
+      : cfg.interface === 'localhost'
+        ? t('remote:pairLocalhost')
+        : status.error
+          ? t('remote:startError', { error: status.error })
+          : t('remote:notRunning')
+
   const connectionText = !serving
     ? t('remote:notRunning')
     : serving.https
@@ -277,15 +288,27 @@ export function RemoteAccessSettings({
       <Card
         title={t('remote:cardDevices')}
         aside={
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="remote-pair"
-            disabled={!status.running}
-            onClick={() => setPairOpen(true)}
-          >
-            {t('remote:pair')}
-          </Button>
+          <>
+            {pairBlockedReason && (
+              <span
+                id="remote-pair-reason"
+                data-testid="remote-pair-reason"
+                className="max-w-[28ch] text-right text-xs leading-snug text-muted-foreground"
+              >
+                {pairBlockedReason}
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="remote-pair"
+              disabled={!status.running}
+              aria-describedby={pairBlockedReason ? 'remote-pair-reason' : undefined}
+              onClick={() => setPairOpen(true)}
+            >
+              {t('remote:pair')}
+            </Button>
+          </>
         }
       >
         <CardItem

@@ -82,6 +82,30 @@ export function composerClearanceFor(): number {
   return BASE_MARGIN * 2
 }
 
+/** A toast is 356px wide plus its side margin (sonner's default width). */
+const TOAST_ZONE_PX = 356 + 16
+const COMPOSER_GAP = 12
+
+/**
+ * Bottom clearance for corner toasts so they never sit over the composer's
+ * Send/Stop/model controls. The corner stays free when the composer ends
+ * before the toast's column starts (wide windows); when the two overlap the
+ * toasts stack from above the composer instead. `composer` is the composer
+ * block's bounding rect, or null when the page has none.
+ */
+export function composerAwareClearance(
+  composer: { left: number; right: number; top: number; bottom: number } | null,
+  viewport: { width: number; height: number }
+): number {
+  const corner = composerClearanceFor()
+  if (!composer || composer.right <= composer.left) return corner
+  if (composer.bottom <= 0 || composer.top >= viewport.height) return corner
+  if (composer.right <= viewport.width - TOAST_ZONE_PX) return corner
+  // Never lift past half the window: a toast stack must stay on screen.
+  const lift = Math.round(viewport.height - composer.top + COMPOSER_GAP)
+  return Math.max(corner, Math.min(lift, Math.round(viewport.height / 2)))
+}
+
 export function getToastOffset(
   position: NotificationPosition,
   bottomClearance: number = COMPOSER_CLEARANCE_PX
@@ -121,16 +145,17 @@ export type ToasterPlacement = {
 }
 
 /**
- * While a modal dialog or sheet is open its header and close button sit where
- * a top toast lands, so toasts move to the bottom edge instead (still above
- * the dialog layer, so an approval toast stays reachable). Narrow screens get
- * full-width bottom toasts lifted above the composer.
+ * While a modal dialog or sheet is open toasts go to the bottom-left corner:
+ * a dialog's Save / Cancel sit at the right of its footer, and the top edge is
+ * where its header and close button are. The toast stays above the dialog layer
+ * so an approval toast is still reachable. Narrow screens get full-width bottom
+ * toasts lifted above the composer.
  */
 export function getDialogToastPlacement(viewportWidth: number): ToasterPlacement {
   if (viewportWidth <= NARROW_TOAST_PX) return getNarrowToastPlacement()
   return {
-    position: 'bottom-right',
-    offset: { bottom: bottomClear(24), right: '24px' },
+    position: 'bottom-left',
+    offset: { bottom: bottomClear(24), left: '24px' },
     mobileOffset: { bottom: NARROW_BOTTOM_OFFSET },
   }
 }

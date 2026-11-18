@@ -56,6 +56,7 @@
   "pairExpired": "이 코드가 만료되었습니다.",
   "pairNew": "새 코드",
   "pairOff": "먼저 원격 접근을 켜세요.",
+  "pairLocalhost": "휴대전화는 \"이 컴퓨터만\"에는 연결할 수 없습니다. 위에서 집 Wi-Fi 또는 Tailscale을 선택하세요.",
   "pairDone": "{{name}}이(가) 페어링되었습니다.",
   "close": "닫기",
   "confirmTitle": "\"{{name}}\"을(를) 페어링할까요?",

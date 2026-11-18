@@ -475,7 +475,9 @@
     "debate": {
       "name": "Debata",
       "hint": "Dvě strany se přou, poté vyhlásíte hlasování.",
-      "objective": "Argumentujte pro i proti návrhu a poté uveďte konečná stanoviska."
+      "objective": "Argumentujte pro i proti návrhu a poté uveďte konečná stanoviska.",
+      "pro": "Pro",
+      "con": "Proti"
     }
   },
   "page": {

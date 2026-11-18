@@ -470,7 +470,9 @@
     "debate": {
       "name": "Debat",
       "hint": "Dos bàndols ho discuteixen, i després tu convoques la votació.",
-      "objective": "Argumenta a favor i en contra de la proposta, i després exposa les posicions finals."
+      "objective": "Argumenta a favor i en contra de la proposta, i després exposa les posicions finals.",
+      "pro": "A favor",
+      "con": "En contra"
     }
   },
   "page": {

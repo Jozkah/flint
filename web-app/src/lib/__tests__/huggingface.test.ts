@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   chooseDraft,
   chooseMmproj,
+  filesHaveSizes,
+  repoSizeState,
   cleanHuggingFaceRepo,
   groupHuggingFaceFiles,
   mlxWeightsBytes,
@@ -152,5 +154,23 @@ describe('stripReadmeFrontmatter', () => {
 
   it('leaves a README without frontmatter alone', () => {
     expect(stripReadmeFrontmatter('# Title\n---\nrule')).toBe('# Title\n---\nrule')
+  })
+})
+
+describe('repoSizeState', () => {
+  const none = { loading: false, tried: false, failed: false }
+  it('is known once any file has a size', () => {
+    expect(filesHaveSizes([{ name: 'a.gguf', size: 5 }])).toBe(true)
+    expect(repoSizeState([{ name: 'a.gguf', size: 5 }], none)).toBe('known')
+  })
+  it('is pending, not unknown, until the sizes were asked for', () => {
+    const files = [{ name: 'a.gguf' }]
+    expect(repoSizeState(files, none)).toBe('pending')
+    expect(repoSizeState(files, { ...none, loading: true, tried: true })).toBe('pending')
+  })
+  it('is unavailable only after a fetch that came back without sizes or failed', () => {
+    const files = [{ name: 'a.gguf', size: null }]
+    expect(repoSizeState(files, { ...none, tried: true })).toBe('unavailable')
+    expect(repoSizeState(files, { ...none, failed: true })).toBe('unavailable')
   })
 })

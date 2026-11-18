@@ -86,6 +86,26 @@ describe('RemoteAccessSettings', () => {
     expect(screen.getByTestId('remote-pair')).toBeDisabled()
   })
 
+  it('says why "Pair a phone" is off', async () => {
+    const off = makeApi(status({}, { enabled: false }))
+    const { unmount } = render(<RemoteAccessSettings api={off} />)
+    expect(await screen.findByTestId('remote-pair-reason')).toHaveTextContent('remote:pairOff')
+    expect(screen.getByTestId('remote-pair')).toHaveAttribute('aria-describedby', 'remote-pair-reason')
+    unmount()
+    act(() => useRemoteAccess.setState({ status: null }))
+
+    const local = makeApi(status({}, { enabled: true, interface: 'localhost' }))
+    const second = render(<RemoteAccessSettings api={local} />)
+    expect(await screen.findByTestId('remote-pair-reason')).toHaveTextContent('remote:pairLocalhost')
+    second.unmount()
+    act(() => useRemoteAccess.setState({ status: null }))
+
+    const running = makeApi(status({ running: true }, { enabled: true }))
+    render(<RemoteAccessSettings api={running} />)
+    await screen.findByTestId('remote-pair')
+    expect(screen.queryByTestId('remote-pair-reason')).toBeNull()
+  })
+
   it('turns remote access on through the backend', async () => {
     const api = makeApi(status())
     render(<RemoteAccessSettings api={api} />)

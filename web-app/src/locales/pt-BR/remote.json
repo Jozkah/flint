@@ -56,6 +56,7 @@
   "pairExpired": "Este código expirou.",
   "pairNew": "Novo código",
   "pairOff": "Ative o acesso remoto primeiro.",
+  "pairLocalhost": "Telefones não conseguem acessar \"Somente este computador\". Escolha Wi-Fi de casa ou Tailscale acima.",
   "pairDone": "{{name}} está pareado.",
   "close": "Fechar",
   "confirmTitle": "Parear \"{{name}}\"?",

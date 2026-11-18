@@ -1704,7 +1704,11 @@
   "largePaste": {
     "attached": "大段貼上內容已作為 {{name}} 附加",
     "hint": "按 Ctrl/Cmd+Shift+V 可作為文字貼上。",
-    "undo": "復原"
+    "undo": "復原",
+    "heavy": "這次貼上約有 {{tokens}} 個 token",
+    "heavyHint": "原樣傳送可能會佔滿模型的上下文，或被服務供應商拒絕。",
+    "heavyTrim": "只保留前 {{tokens}}",
+    "heavyRemove": "移除貼上內容"
   },
   "drop": {
     "openInCode": "拖放以開啟 — 唯讀",

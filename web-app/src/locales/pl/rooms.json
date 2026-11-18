@@ -475,7 +475,9 @@
     "debate": {
       "name": "Debata",
       "hint": "Dwie strony spierają się, a potem Ty zarządzasz głosowanie.",
-      "objective": "Argumentuj za propozycją i przeciw niej, a następnie przedstaw stanowiska końcowe."
+      "objective": "Argumentuj za propozycją i przeciw niej, a następnie przedstaw stanowiska końcowe.",
+      "pro": "Za",
+      "con": "Przeciw"
     }
   },
   "page": {

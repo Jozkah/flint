@@ -25,6 +25,7 @@ describe('showPreviousRunNotice', () => {
     h.invoke.mockResolvedValue(null)
     await showPreviousRunNotice()
     expect(h.warning).toHaveBeenCalledTimes(1)
+    expect(h.warning.mock.calls[0][1].duration).toBe(15_000)
     h.warning.mock.calls[0][1].action.onClick()
     expect(h.invoke).toHaveBeenCalledWith('export_redacted_logs')
   })

@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-const { showUndoToast, dismiss } = vi.hoisted(() => ({
+const { showUndoToast, dismiss, warning } = vi.hoisted(() => ({
   showUndoToast: vi.fn(() => 'toast-1'),
   dismiss: vi.fn(),
+  warning: vi.fn(() => 'toast-2'),
 }))
 vi.mock('@/lib/toastUndo', () => ({ showUndoToast }))
-vi.mock('sonner', () => ({ toast: { dismiss } }))
+vi.mock('sonner', () => ({ toast: { dismiss, warning } }))
 
 import { useLargePaste, resetLargePasteAnnouncement } from '../useLargePaste'
 
@@ -54,6 +55,7 @@ describe('useLargePaste', () => {
   beforeEach(() => {
     showUndoToast.mockClear()
     dismiss.mockClear()
+    warning.mockClear()
     resetLargePasteAnnouncement()
   })
 
@@ -78,6 +80,43 @@ describe('useLargePaste', () => {
     ).toBe(true)
     await flush()
     expect(attach).toHaveBeenCalledTimes(1)
+  })
+
+  it('warns before sending a very large paste, whatever the context window is', async () => {
+    const { result, attach, detach } = setup()
+    const text = 'x'.repeat(200_001)
+    result.current.handlePaste(pasteEvent({ text }))
+    await flush()
+    expect(attach).toHaveBeenCalledTimes(1)
+    expect(warning).toHaveBeenCalledTimes(1)
+    expect(showUndoToast).not.toHaveBeenCalled()
+    const [title, opts] = warning.mock.calls[0] as unknown as [
+      string,
+      {
+        action: { onClick: () => void }
+        cancel: { onClick: () => void }
+      },
+    ]
+    expect(title).toBe('common:largePaste.heavy')
+    // Trim swaps the attachment for its first part.
+    opts.action.onClick()
+    expect(detach).toHaveBeenCalledWith('pasted-text-1.txt')
+    expect(attach).toHaveBeenCalledTimes(2)
+    const trimmed = attach.mock.calls[1][0] as File
+    expect(trimmed.name).toBe('pasted-text-1.txt')
+    expect(trimmed.size).toBe(100_000)
+    // Remove takes the attachment back off.
+    detach.mockClear()
+    opts.cancel.onClick()
+    expect(detach).toHaveBeenCalledWith('pasted-text-1.txt')
+  })
+
+  it('does not warn about an ordinary large paste', async () => {
+    const { result } = setup()
+    result.current.handlePaste(pasteEvent({ text: big }))
+    await flush()
+    expect(warning).not.toHaveBeenCalled()
+    expect(showUndoToast).toHaveBeenCalledTimes(1)
   })
 
   it('numbers the file after those already attached', async () => {

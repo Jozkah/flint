@@ -470,7 +470,9 @@
     "debate": {
       "name": "Debate",
       "hint": "Dos bandos lo discuten y luego convocas la votación.",
-      "objective": "Argumentar a favor y en contra de la propuesta y luego exponer las posiciones finales."
+      "objective": "Argumentar a favor y en contra de la propuesta y luego exponer las posiciones finales.",
+      "pro": "A favor",
+      "con": "En contra"
     }
   },
   "page": {

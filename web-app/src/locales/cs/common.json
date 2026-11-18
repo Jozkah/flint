@@ -1767,7 +1767,11 @@
   "largePaste": {
     "attached": "Velké vložení přiloženo jako {{name}}",
     "hint": "Stisknutím Ctrl/Cmd+Shift+V vložíte text přímo.",
-    "undo": "Zpět"
+    "undo": "Zpět",
+    "heavy": "Tento vložený text má asi {{tokens}} tokenů",
+    "heavyHint": "Odeslaný tak, jak je, může zaplnit kontext modelu nebo ho poskytovatel odmítne.",
+    "heavyTrim": "Ponechat prvních {{tokens}}",
+    "heavyRemove": "Odebrat vložený text"
   },
   "drop": {
     "openInCode": "Pusťte pro otevření — jen pro čtení",

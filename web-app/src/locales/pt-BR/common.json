@@ -1735,7 +1735,11 @@
   "largePaste": {
     "attached": "Colagem grande anexada como {{name}}",
     "hint": "Pressione Ctrl/Cmd+Shift+V para colar como texto.",
-    "undo": "Desfazer"
+    "undo": "Desfazer",
+    "heavy": "Este texto colado tem cerca de {{tokens}} tokens",
+    "heavyHint": "Enviado como está, pode encher o contexto do modelo ou ser recusado pelo provedor.",
+    "heavyTrim": "Manter os primeiros {{tokens}}",
+    "heavyRemove": "Remover o texto colado"
   },
   "drop": {
     "openInCode": "Solte para abrir — somente leitura",

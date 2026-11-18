@@ -56,6 +56,7 @@
   "pairExpired": "此代碼已到期。",
   "pairNew": "新代碼",
   "pairOff": "請先開啟遠端存取。",
+  "pairLocalhost": "手機無法連線到「僅此電腦」。請在上方選擇家用 Wi-Fi 或 Tailscale。",
   "pairDone": "{{name}} 已配對。",
   "close": "關閉",
   "confirmTitle": "配對「{{name}}」？",

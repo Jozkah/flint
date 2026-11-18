@@ -465,7 +465,9 @@
     "debate": {
       "name": "Debatte",
       "hint": "Zwei Seiten tragen es aus, dann setzt du die Abstimmung an.",
-      "objective": "Argumentiert für und gegen den Vorschlag und nennt dann die Schlusspositionen."
+      "objective": "Argumentiert für und gegen den Vorschlag und nennt dann die Schlusspositionen.",
+      "pro": "Dafür",
+      "con": "Dagegen"
     }
   },
   "page": {

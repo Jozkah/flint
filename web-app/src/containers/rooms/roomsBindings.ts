@@ -48,7 +48,12 @@ export type RoomsUiState = {
   lastError: RoomsUiError | null
 }
 
-export type CreateRoomInput = { title: string; objective: string }
+export type CreateRoomInput = {
+  title: string
+  objective: string
+  /** Who starts in the room (a template's sides), on a model the user chose. */
+  participants?: NewParticipantInput[]
+}
 
 export type NewParticipantInput = Pick<Participant, 'name' | 'role' | 'model' | 'pricing'> &
   // Optional: omitted, the controller defaults it (read-only for a tool-capable model).

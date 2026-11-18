@@ -1794,7 +1794,11 @@
   "largePaste": {
     "attached": "Large paste attached as {{name}}",
     "hint": "Press Ctrl/Cmd+Shift+V to paste as text instead.",
-    "undo": "Undo"
+    "undo": "Undo",
+    "heavy": "This paste is about {{tokens}} tokens",
+    "heavyHint": "Sent as it is, it may fill the model's context or be refused by the provider.",
+    "heavyTrim": "Keep the first {{tokens}}",
+    "heavyRemove": "Remove paste"
   },
   "drop": {
     "openInCode": "Drop to open — read-only",

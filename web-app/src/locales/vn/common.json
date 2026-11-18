@@ -1736,7 +1736,11 @@
   "largePaste": {
     "attached": "Đã đính kèm nội dung dán lớn dưới dạng {{name}}",
     "hint": "Nhấn Ctrl/Cmd+Shift+V để dán dưới dạng văn bản.",
-    "undo": "Hoàn tác"
+    "undo": "Hoàn tác",
+    "heavy": "Đoạn văn bản dán này khoảng {{tokens}} token",
+    "heavyHint": "Nếu gửi nguyên vẹn, nó có thể lấp đầy ngữ cảnh của mô hình hoặc bị nhà cung cấp từ chối.",
+    "heavyTrim": "Giữ {{tokens}} đầu tiên",
+    "heavyRemove": "Xóa đoạn dán"
   },
   "drop": {
     "openInCode": "Thả để mở — chỉ đọc",

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  filesHaveSizes,
   getHuggingFaceFiles,
   type HuggingFaceFile,
   type HuggingFaceModel,
@@ -45,7 +46,8 @@ export function useRepoFiles(token: string | undefined) {
   const loadFiles = useCallback(
     async (repo: string): Promise<HuggingFaceFile[]> => {
       const cached = cache.current[repo]
-      if (cached?.length) return cached
+      // A search result lists files without sizes: that is not an answer.
+      if (cached?.length && filesHaveSizes(cached)) return cached
       if (inFlight.current.has(repo)) return []
       const mine = epoch.current
       inFlight.current.add(repo)

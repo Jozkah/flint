@@ -1702,7 +1702,11 @@
   "largePaste": {
     "attached": "긴 붙여넣기를 {{name}}(으)로 첨부했습니다",
     "hint": "Ctrl/Cmd+Shift+V를 누르면 텍스트로 붙여넣습니다.",
-    "undo": "실행 취소"
+    "undo": "실행 취소",
+    "heavy": "붙여넣은 내용이 약 {{tokens}} 토큰입니다",
+    "heavyHint": "그대로 보내면 모델의 컨텍스트가 가득 차거나 제공업체가 거부할 수 있습니다.",
+    "heavyTrim": "처음 {{tokens}}만 유지",
+    "heavyRemove": "붙여넣기 제거"
   },
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
