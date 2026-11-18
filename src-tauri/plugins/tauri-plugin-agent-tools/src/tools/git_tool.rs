@@ -402,6 +402,44 @@ fn check_diff_paths(rest: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse to stage a file that looks like it holds secrets (`.env*`, `*.pem`,
+/// `id_*`, `credentials*`): named outright, or swept up by `add -A` / `add .` /
+/// `commit -a`. `git add -f -- <file>` is the explicit override.
+pub async fn check_secret_staging(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
+    if let Some(why) = crate::tools::command_guards::secret_staging_refusal(&plan.args) {
+        return Err(why);
+    }
+    let Some(with_untracked) = crate::tools::command_guards::broad_staging(&plan.args) else {
+        return Ok(());
+    };
+    let Some(git) = crate::tools::git_native::discover_git() else {
+        return Ok(());
+    };
+    let mut cmd = tokio::process::Command::new(&git);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
+    cmd.args(["ls-files", "-z", "-m"]);
+    if with_untracked {
+        cmd.args(["-o", "--exclude-standard"]);
+    }
+    cmd.current_dir(cwd)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    if let Ok(Ok(out)) = crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(30)).await {
+        if out.status.success() {
+            if let Some(why) = crate::tools::command_guards::secret_in_listing(&out.stdout) {
+                return Err(why);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `git diff` in a folder that is not a work tree runs in `--no-index` mode
 /// for plain paths. Refuse it there.
 pub async fn check_diff_in_work_tree(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
@@ -2578,6 +2616,16 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
     }
     if let Err(e) = check_diff_in_work_tree(&plan, &cwd).await {
         return format!("ERROR: git: {e}");
+    }
+    if plan.program == Program::Git {
+        if let Some(worktree) = crate::tools::command_guards::isolated_worktree(ctx) {
+            if let Some(why) = crate::tools::command_guards::git_worktree_refusal(&plan.args, &worktree) {
+                return format!("ERROR: git: {why}");
+            }
+        }
+        if let Err(e) = check_secret_staging(&plan, &cwd).await {
+            return format!("ERROR: git: {e}");
+        }
     }
     // A tree-changing command while another live session shares this folder.
     if let Some(held) = crate::shared_folder::tools::guard_git_tool(

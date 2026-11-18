@@ -668,7 +668,7 @@ function reasonForReading(
     // The plain reading already parsed this, so a failure only here means a
     // Windows path ending in `\` inside quotes: not a reason to ask.
     if (posixEscapes) return null
-    return `could not be parsed (${(error as Error).message}), so it cannot be checked`
+    return `could not be parsed (${(error as Error).message}), so it cannot be checked; resend it in plain shell syntax (balanced quotes, no inline code or eval)`
   }
   for (const body of parsed.substitutions) {
     const reason = reasonAtDepth(body, workspace, depth + 1)
