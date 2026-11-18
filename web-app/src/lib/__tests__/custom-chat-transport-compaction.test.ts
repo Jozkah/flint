@@ -345,6 +345,27 @@ describe('compact once and resend when the provider refuses for length', () => {
 })
 
 describe('auto-compact with no window to plan against', () => {
+  it('remembers across a reload and shows with a fixed id and a finite life', () => {
+    const warning = vi.mocked(toast.warning)
+    warning.mockClear()
+    localStorage.removeItem('flint.autoCompactWindowNoticed')
+    const t = new Harness('sys', 'thread-reload')
+    const notice = (
+      t as unknown as {
+        noticeUnknownWindow: (thread: string, model: string) => void
+      }
+    ).noticeUnknownWindow.bind(t)
+    notice('thread-reload', 'reload-model')
+    expect(warning).toHaveBeenCalledTimes(1)
+    expect(warning.mock.calls[0][1]).toMatchObject({
+      id: 'auto-compact-unknown-window',
+      duration: 8000,
+    })
+    // A reloaded window has an empty in-memory set but the same storage.
+    const stored = JSON.parse(localStorage.getItem('flint.autoCompactWindowNoticed') ?? '[]')
+    expect(stored).toContain('thread-reload|reload-model')
+  })
+
   it('says so once per chat and model, not on every request', () => {
     const warning = vi.mocked(toast.warning)
     warning.mockClear()

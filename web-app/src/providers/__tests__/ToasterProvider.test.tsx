@@ -13,7 +13,11 @@ vi.mock('@/lib/settingsRecoveryNotice', () => ({
 }))
 let phone = false
 let pathname = '/'
+const dismiss = vi.fn()
+vi.mock('sonner', () => ({ toast: { dismiss: (id: string) => dismiss(id) } }))
 vi.mock('@tanstack/react-router', () => ({
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname } }),
   useLocation: ({ select }: { select: (l: { pathname: string }) => string }) => select({ pathname }),
 }))
 vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => phone }))
@@ -78,5 +82,19 @@ describe('ToasterProvider with a modal open', () => {
     render(<ToasterProvider />)
     await openModal('alertdialog')
     await waitFor(() => expect(String(last().position)).toMatch(/^bottom-/))
+  })
+})
+
+describe('ToasterProvider and the context-size notice', () => {
+  it('drops that notice when the page changes, so it never covers another page', async () => {
+    dismiss.mockClear()
+    pathname = '/threads/a'
+    const { rerender } = render(<ToasterProvider />)
+    expect(dismiss).toHaveBeenCalledWith('auto-compact-unknown-window')
+    dismiss.mockClear()
+    pathname = '/settings/general'
+    rerender(<ToasterProvider />)
+    await waitFor(() => expect(dismiss).toHaveBeenCalledWith('auto-compact-unknown-window'))
+    pathname = '/'
   })
 })
