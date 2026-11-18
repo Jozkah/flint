@@ -112,7 +112,6 @@
     "steps_other": "{{count}} etapas",
     "steps_many": "{{count}} etapas",
     "working": "Trabalhando",
-
     "workingEllipsis": "Working…",
     "failed": "Falhou:",
     "failedToRun": "Falha ao executar",
@@ -304,7 +303,8 @@
     "emptyReply": "O modelo retornou uma resposta vazia. Tente novamente ou troque de modelo.",
     "thinkingOnly": "O modelo terminou de pensar sem dar uma resposta. Continue ou gere novamente para tentar de novo.",
     "noReply": "A execução terminou sem resposta.",
-    "noReplyToolError": "A execução terminou sem resposta. Último erro de ferramenta ({{tool}}): {{error}}"
+    "noReplyToolError": "A execução terminou sem resposta. Último erro de ferramenta ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Chat importado",

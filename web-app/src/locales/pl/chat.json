@@ -113,7 +113,6 @@
     "steps_few": "{{count}} kroki",
     "steps_many": "{{count}} kroków",
     "working": "Pracuję",
-
     "workingEllipsis": "Working…",
     "failed": "Niepowodzenie:",
     "failedToRun": "Nie udało się uruchomić",
@@ -318,7 +317,8 @@
     "emptyReply": "Model zwrócił pustą odpowiedź. Spróbuj ponownie lub zmień model.",
     "thinkingOnly": "Model zakończył myślenie bez udzielenia odpowiedzi. Kontynuuj lub wygeneruj odpowiedź ponownie.",
     "noReply": "Uruchomienie zakończyło się bez odpowiedzi.",
-    "noReplyToolError": "Uruchomienie zakończyło się bez odpowiedzi. Ostatni błąd narzędzia ({{tool}}): {{error}}"
+    "noReplyToolError": "Uruchomienie zakończyło się bez odpowiedzi. Ostatni błąd narzędzia ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Zaimportowany czat",

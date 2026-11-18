@@ -110,7 +110,6 @@
   "transcriptView": {
     "steps_other": "{{count}} langkah",
     "working": "Bekerja",
-
     "workingEllipsis": "Working…",
     "failed": "Gagal:",
     "failedToRun": "Gagal dijalankan",
@@ -276,7 +275,8 @@
     "emptyReply": "Model mengembalikan balasan kosong. Coba lagi atau ganti model.",
     "thinkingOnly": "Model selesai berpikir tanpa memberikan jawaban. Lanjutkan atau buat ulang untuk mencoba lagi.",
     "noReply": "Proses berakhir tanpa balasan.",
-    "noReplyToolError": "Proses berakhir tanpa balasan. Kesalahan alat terakhir ({{tool}}): {{error}}"
+    "noReplyToolError": "Proses berakhir tanpa balasan. Kesalahan alat terakhir ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Obrolan yang diimpor",

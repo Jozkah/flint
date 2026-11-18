@@ -111,7 +111,6 @@
     "steps_one": "{{count}} 步",
     "steps_other": "{{count}} 个步骤",
     "working": "处理中",
-
     "workingEllipsis": "Working…",
     "failed": "失败：",
     "failedToRun": "运行失败",
@@ -285,7 +284,8 @@
     "emptyReply": "模型返回了空回复。请重试或切换模型。",
     "thinkingOnly": "模型完成了思考，但没有给出答案。请继续或重新生成以再试一次。",
     "noReply": "运行结束，但没有回复。",
-    "noReplyToolError": "运行结束，但没有回复。最后一次工具错误（{{tool}}）：{{error}}"
+    "noReplyToolError": "运行结束，但没有回复。最后一次工具错误（{{tool}}）：{{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "已导入的对话",

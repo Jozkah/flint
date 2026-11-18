@@ -58,6 +58,17 @@ describe('emptyRunFallback', () => {
     )
   })
 
+  it('reports how the last step ended when the model answered nothing', () => {
+    const parts = [tool({ state: 'output-available', output: { ok: 1 } })]
+    expect(
+      emptyRunFallback(parts, { stepEnd: { finishReason: 'stop', outputTokens: 0 } })
+    ).toBe(
+      'The run ended without a reply. The model\'s last step ended with "stop" after 0 output tokens.'
+    )
+    expect(emptyRunFallback(parts, { stepEnd: { finishReason: 'length' } })).toContain('after ? output tokens')
+    expect(emptyRunFallback(parts, { stepEnd: {} })).toBe('The run ended without a reply.')
+  })
+
   it('is null when text follows the tools', () => {
     expect(
       emptyRunFallback([tool({ state: 'output-error', errorText: 'x' }), { type: 'text', text: 'Done.' }])
