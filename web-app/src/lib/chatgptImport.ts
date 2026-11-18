@@ -48,28 +48,40 @@ type ExportConversation = {
 const asSeconds = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
+/** Kinds that are never part of the visible chat. */
+const SKIPPED_CONTENT = /^(thoughts|reasoning_recap|tether_|system_error|execution_output|user_editable_context|model_editable_context|computer_output|sonic_webpage)/
+
+/** The text in one `parts` entry: a string, or an object carrying `text`. */
+function partText(part: unknown): string {
+  if (typeof part === 'string') return part
+  if (part && typeof part === 'object') {
+    const text = (part as { text?: unknown }).text
+    if (typeof text === 'string') return text
+  }
+  return ''
+}
+
 /** The readable text of one message, or '' for kinds Flint does not show. */
 function messageText(content: ExportMessage['content']): string {
   if (!content) return ''
-  switch (content.content_type) {
-    case 'text':
-    case 'multimodal_text':
-      // Uploaded images are objects in `parts`; only the strings are text.
-      return (content.parts ?? [])
-        .filter((part): part is string => typeof part === 'string')
-        .join('\n')
-        .trim()
-    case 'code': {
-      const code = content.text?.trim()
-      if (!code) return ''
-      const language =
-        content.language && content.language !== 'unknown' ? content.language : ''
-      return '```' + language + '\n' + code + '\n```'
-    }
-    default:
-      // Reasoning recaps, browsing and tool output are not part of the chat.
-      return ''
+  const type = content.content_type ?? ''
+  if (SKIPPED_CONTENT.test(type)) return ''
+  if (type === 'code') {
+    const code = content.text?.trim()
+    if (!code) return ''
+    const language =
+      content.language && content.language !== 'unknown' ? content.language : ''
+    return '```' + language + '\n' + code + '\n```'
   }
+  // text, multimodal_text, and kinds added since: uploaded images are objects
+  // without `text`, so only real text survives.
+  const fromParts = (content.parts ?? [])
+    .map(partText)
+    .filter((t) => t.trim())
+    .join('\n')
+    .trim()
+  if (fromParts) return fromParts
+  return typeof content.text === 'string' ? content.text.trim() : ''
 }
 
 /** Node ids from the root to the conversation's last visible message. */
@@ -87,13 +99,22 @@ function mainBranch(conversation: ExportConversation): string[] {
     }
     return chain.reverse()
   }
-  // No current_node: follow the newest child down from the root.
-  let node = Object.values(mapping).find((n) => !n.parent || !mapping[n.parent])
+  return newestPath(conversation)
+}
+
+/** From the root, follow the newest child down to a leaf. */
+function newestPath(conversation: ExportConversation): string[] {
+  const mapping = conversation.mapping ?? {}
+  const chain: string[] = []
+  const seen = new Set<string>()
+  let node = Object.entries(mapping)
+    .map(([key, n]) => ({ ...n, id: n.id ?? key }))
+    .find((n) => !n.parent || !mapping[n.parent])
   while (node?.id && !seen.has(node.id)) {
     seen.add(node.id)
     chain.push(node.id)
     const next: string | undefined = node.children?.[node.children.length - 1]
-    node = next ? mapping[next] : undefined
+    node = next && mapping[next] ? { ...mapping[next], id: mapping[next].id ?? next } : undefined
   }
   return chain
 }
@@ -105,28 +126,54 @@ function mainBranch(conversation: ExportConversation): string[] {
  * with no visible turns is left out. Throws when the text is not an export.
  */
 export function parseChatGptExport(json: string): ImportedConversation[] {
+  return parseChatGptExportCounted(json).conversations
+}
+
+/** Like {@link parseChatGptExport}, also saying how many conversations the file held. */
+export function parseChatGptExportCounted(json: string): {
+  conversations: ImportedConversation[]
+  total: number
+} {
   let data: unknown
   try {
     data = JSON.parse(json)
   } catch {
     throw new Error('Not valid JSON')
   }
+  if (
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    Array.isArray((data as { conversations?: unknown }).conversations)
+  ) {
+    data = (data as { conversations: unknown[] }).conversations
+  }
   if (!Array.isArray(data)) {
     throw new Error('Not a ChatGPT export: expected a list of conversations')
   }
   const out: ImportedConversation[] = []
+  let total = 0
   for (const raw of data as ExportConversation[]) {
     if (!raw || typeof raw !== 'object' || !raw.mapping) continue
-    const messages: ImportedMessage[] = []
-    for (const id of mainBranch(raw)) {
-      const message = raw.mapping[id]?.message
-      const role = message?.author?.role
-      if (!message || (role !== 'user' && role !== 'assistant')) continue
-      if (message.metadata?.is_visually_hidden_from_conversation) continue
-      const text = messageText(message.content)
-      if (!text) continue
-      messages.push({ role, text, createdAt: asSeconds(message.create_time) })
+    total++
+    const mapping = raw.mapping
+    const visible = (ids: string[]): ImportedMessage[] => {
+      const found: ImportedMessage[] = []
+      for (const id of ids) {
+        const message = mapping[id]?.message
+        const role = message?.author?.role
+        if (!message || (role !== 'user' && role !== 'assistant')) continue
+        if (message.metadata?.is_visually_hidden_from_conversation) continue
+        const text = messageText(message.content)
+        if (!text) continue
+        found.push({ role, text, createdAt: asSeconds(message.create_time) })
+      }
+      return found
     }
+    let messages = visible(mainBranch(raw))
+    // current_node can point at a branch with nothing to show; try the path
+    // down the newest children from the root before giving up.
+    if (messages.length === 0) messages = visible(newestPath(raw))
     if (messages.length === 0) continue
     out.push({
       title: raw.title?.trim() || i18n.t('chat:importedChatTitle'),
@@ -135,7 +182,7 @@ export function parseChatGptExport(json: string): ImportedConversation[] {
       messages,
     })
   }
-  return out
+  return { conversations: out, total }
 }
 
 type ImportDeps = {
