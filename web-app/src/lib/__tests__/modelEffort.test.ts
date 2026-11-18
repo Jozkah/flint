@@ -74,6 +74,16 @@ describe('which levels a provider actually honours', () => {
       recommended: 'high',
       canDisable: false,
     })
+    expect(effortProfile('google', model('gemini-4-carbon'))).toEqual({
+      levels: ['low', 'medium', 'high'],
+      recommended: 'medium',
+      canDisable: false,
+    })
+    expect(effortProfile('gemini', model('gemini-4-hydrogen'))).toEqual({
+      levels: EFFORT_LEVELS,
+      recommended: 'high',
+      canDisable: false,
+    })
   })
 
   // Per-family default table: what the control names while nothing is chosen.
