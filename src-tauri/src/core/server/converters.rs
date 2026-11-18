@@ -1618,7 +1618,12 @@ fn anthropic_rejects_sampling(model: &str) -> bool {
 
 /// Claude models that reject forced `tool_choice` (`any` / named `tool`).
 fn anthropic_rejects_forced_tool_choice(model: &str) -> bool {
-    const PREFIXES: &[&str] = &["claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"];
+    const PREFIXES: &[&str] = &[
+        "claude-opus-5-5",
+        "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-1",
+    ];
     PREFIXES.iter().any(|p| model.starts_with(p))
 }
 

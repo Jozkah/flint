@@ -72,6 +72,7 @@ impl Backend {
         let list: &[&str] = match self {
             Backend::Claude => &[
                 "claude-opus-5-5",
+                "claude-fable-5-2",
                 "claude-fable-5-1",
                 "claude-sonnet-5-5",
                 "claude-haiku-5-5",
@@ -84,7 +85,14 @@ impl Backend {
                 "claude-opus-4-6",
                 "claude-sonnet-4-6",
             ],
-            Backend::Codex => &["gpt-6.1-sol"],
+            Backend::Codex => &[
+                "gpt-6.2-sol",
+                "gpt-6.2-astra",
+                "gpt-6.1-terra",
+                "gpt-6-luna",
+                "gpt-6.1-sol",
+                "gpt-6-astra",
+            ],
             // From the model constants in gemini-cli 0.66.0.
             Backend::Gemini => &[
                 "gemini-3.1-pro-preview",

@@ -20,9 +20,9 @@ export const JAN_V2_VL_QUANTIZATIONS = ['q4_k_m', 'q4_k_s', 'q4_0', 'q3_k_m']
  * of truth; a provider with a live `/models` endpoint can still refresh the
  * list from the Providers settings.
  */
-const ANTHROPIC_MODELS = ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-4-5', 'claude-opus-4-8', 'claude-sonnet-4-6']
-const OPENAI_MODELS = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna', 'gpt-5', 'gpt-5-mini']
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
+const ANTHROPIC_MODELS = ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-haiku-5-5', 'claude-fable-5-1', 'claude-haiku-4-5', 'claude-opus-4-8', 'claude-sonnet-4-6']
+const OPENAI_MODELS = ['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-5', 'gpt-5-mini']
+const GEMINI_MODELS = ['gemini-4-argon', 'gemini-4-carbon', 'gemini-4-hydrogen', 'gemini-4-neon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
 
 /**
  * Provider model capabilities - copied from token.js package
@@ -83,12 +83,12 @@ export const providerModels = {
     supportsN: true,
   },
   mistral: {
-    models: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
+    models: ['mistral-large-4', 'mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
     supportsCompletion: true,
-    supportsStreaming: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
-    supportsJSON: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'codestral-2508'],
-    supportsImages: ['mistral-medium-3-5-26-04', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'mistral-medium-latest', 'mistral-small-latest'],
-    supportsToolCalls: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
+    supportsStreaming: ['mistral-large-4', 'mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
+    supportsJSON: ['mistral-large-4', 'mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'codestral-2508'],
+    supportsImages: ['mistral-large-4', 'mistral-medium-3-5-26-04', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'mistral-medium-latest', 'mistral-small-latest'],
+    supportsToolCalls: ['mistral-large-4', 'mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
     supportsN: true,
   },
   groq: {
@@ -167,11 +167,11 @@ export const providerModels = {
     supportsN: true,
   },
   moonshot: {
-    models: ['kimi-k3', 'kimi-k2.6'],
+    models: ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed', 'kimi-k3', 'kimi-k2.6'],
     supportsCompletion: true,
     supportsStreaming: true,
     supportsJSON: true,
-    supportsImages: ['kimi-k3', 'kimi-k2.6'],
+    supportsImages: ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed', 'kimi-k3', 'kimi-k2.6'],
     supportsToolCalls: true,
     supportsN: true,
   },
@@ -221,11 +221,11 @@ export const providerModels = {
     supportsN: true,
   },
   qwen: {
-    models: ['qwen3.8-max', 'qwen-plus', 'qwen-turbo'],
+    models: ['qwen4-max', 'qwen3.7-plus', 'qwen3.8-flash', 'qwen3.8-max', 'qwen-plus', 'qwen-turbo'],
     supportsCompletion: true,
     supportsStreaming: true,
     supportsJSON: true,
-    supportsImages: ['qwen3.8-max', 'qwen-plus'],
+    supportsImages: ['qwen4-max', 'qwen3.7-plus', 'qwen3.8-max', 'qwen-plus'],
     supportsToolCalls: true,
     supportsN: true,
   },
