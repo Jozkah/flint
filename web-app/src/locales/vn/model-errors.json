@@ -44,5 +44,6 @@
   "emptyReply": "Mô hình đã kết thúc mà không trả về phản hồi. Hãy thử tạo lại hoặc kiểm tra cài đặt nhà cung cấp.",
   "gpuCrashCpuFallbackTitle": "Trình điều khiển GPU bị lỗi",
   "gpuCrashCpuFallbackQuestion": "Trình điều khiển GPU bị lỗi khi tải mô hình này. Tải trên CPU thay thế? Sẽ chạy chậm hơn.",
-  "gpuCrashCpuFallbackConfirm": "Tải trên CPU"
+  "gpuCrashCpuFallbackConfirm": "Tải trên CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

@@ -132,7 +132,8 @@
       "createdNone_other": "{{count}} 件のファイルを作成できませんでした",
       "editedNone_one": "{{count}} 件のファイルを編集できませんでした",
       "editedNone_other": "{{count}} 件のファイルを編集できませんでした"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "ウィジェット",
@@ -285,7 +286,8 @@
     "thinkingOnly": "モデルは回答を出さずに思考を終えました。続行するか再生成してもう一度お試しください。",
     "noReply": "実行は返信なしで終了しました。",
     "noReplyToolError": "実行は返信なしで終了しました。最後のツールエラー({{tool}}):{{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "インポートしたチャット",

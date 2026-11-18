@@ -235,14 +235,17 @@ export function ArchivePanel() {
         title={t('archive:itemsTitle')}
         aside={
           <span className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground" data-testid="archive-usage">
-              {t('archive:usage', { size: formatBytes(usage) })}
-            </span>
+            {/* Not before the first load: a 0 B reading would be a guess. */}
+            {items !== null && (
+              <span className="text-xs text-muted-foreground" data-testid="archive-usage">
+                {t('archive:usage', { size: formatBytes(usage) })}
+              </span>
+            )}
             {/* Apart from the filters: it deletes everything, whatever the filter. */}
             <Button
               size="sm"
               variant="destructive"
-              disabled={busy || visible.length === 0}
+              disabled={busy || items === null || visible.length === 0}
               onClick={() => setConfirm({ type: 'all' })}
             >
               {t('archive:empty')}

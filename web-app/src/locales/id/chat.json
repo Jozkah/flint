@@ -123,7 +123,8 @@
       "tools_other": "memakai {{count}} alat",
       "createdNone_other": "gagal membuat {{count}} berkas",
       "editedNone_other": "gagal mengedit {{count}} berkas"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "Widget",
@@ -276,7 +277,8 @@
     "thinkingOnly": "Model selesai berpikir tanpa memberikan jawaban. Lanjutkan atau buat ulang untuk mencoba lagi.",
     "noReply": "Proses berakhir tanpa balasan.",
     "noReplyToolError": "Proses berakhir tanpa balasan. Kesalahan alat terakhir ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Obrolan yang diimpor",

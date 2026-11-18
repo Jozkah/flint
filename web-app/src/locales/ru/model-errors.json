@@ -44,5 +44,6 @@
   "emptyReply": "Модель завершила работу без ответа. Попробуйте сгенерировать его заново или проверьте настройки провайдера.",
   "gpuCrashCpuFallbackTitle": "Драйвер GPU аварийно завершился",
   "gpuCrashCpuFallbackQuestion": "Драйвер GPU аварийно завершился при загрузке этой модели. Загрузить её на CPU? Работа будет медленнее.",
-  "gpuCrashCpuFallbackConfirm": "Загрузить на CPU"
+  "gpuCrashCpuFallbackConfirm": "Загрузить на CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

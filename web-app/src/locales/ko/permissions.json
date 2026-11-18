@@ -343,7 +343,13 @@
     "runsOnServerAt": "서버에서 실행됩니다: {{where}}"
   },
   "childApprovals": {
-    "label": "승인을 기다리는 변경 사항"
+    "label": "승인을 기다리는 변경 사항",
+    "attachFolder": {
+      "title": "This run needs a project folder",
+      "body": "The run reached for files outside its sandbox, and no project folder is attached. Choose a folder so it can continue, or say no and it works from the sandbox.",
+      "choose": "Choose folder",
+      "decline": "Not now"
+    }
   },
   "secretWrite": {
     "title": "이 쓰기에는 비밀 정보가 포함된 것 같습니다",

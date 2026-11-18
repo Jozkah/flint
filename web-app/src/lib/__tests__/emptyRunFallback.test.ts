@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { emptyRunFallback, toolPartError } from '@/lib/emptyRunFallback'
+import {
+  emptyRunFallback,
+  isEmptyReplyBanner,
+  toolPartError,
+} from '@/lib/emptyRunFallback'
+import { i18n } from '@/i18n/react-i18next-compat'
 import type { MessagePartLike } from '@/containers/message/types'
 
 const EMPTY_REPLY_FALLBACK =
@@ -91,6 +96,32 @@ describe('emptyRunFallback', () => {
     expect(
       emptyRunFallback([{ type: 'reasoning', text: 'thinking' }])
     ).toBe(THINKING_ONLY_FALLBACK)
+  })
+})
+
+describe('empty reply with no tool calls, step end detail (D13)', () => {
+  it('names the finish reason and tokens when the model said how it ended', () => {
+    expect(
+      emptyRunFallback([], { stepEnd: { finishReason: 'stop', outputTokens: 0 } })
+    ).toBe(
+      'The model returned an empty reply (finish reason "stop", 0 output tokens). Try again or switch model.'
+    )
+  })
+
+  it('shows ? for tokens the provider did not report, and the plain line without a reason', () => {
+    expect(emptyRunFallback([], { stepEnd: { finishReason: 'stop' } })).toContain('? output tokens')
+    expect(emptyRunFallback([], { stepEnd: {} })).toBe(EMPTY_REPLY_FALLBACK)
+  })
+
+  it('recognizes its own banner text, plain and detailed, and nothing else', () => {
+    expect(isEmptyReplyBanner(i18n.t('model-errors:emptyReply'))).toBe(true)
+    expect(
+      isEmptyReplyBanner(
+        i18n.t('model-errors:emptyReplyDetail', { reason: 'stop', tokens: 0 })
+      )
+    ).toBe(true)
+    expect(isEmptyReplyBanner('401 Unauthorized')).toBe(false)
+    expect(isEmptyReplyBanner(undefined)).toBe(false)
   })
 })
 

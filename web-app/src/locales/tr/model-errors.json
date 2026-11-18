@@ -44,5 +44,6 @@
   "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin.",
   "gpuCrashCpuFallbackTitle": "GPU sürücüsü çöktü",
   "gpuCrashCpuFallbackQuestion": "Bu model yüklenirken GPU sürücüsü çöktü. Bunun yerine CPU'da yüklensin mi? Daha yavaş çalışır.",
-  "gpuCrashCpuFallbackConfirm": "CPU'da yükle"
+  "gpuCrashCpuFallbackConfirm": "CPU'da yükle",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

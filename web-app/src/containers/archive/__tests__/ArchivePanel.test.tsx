@@ -95,7 +95,10 @@ describe('ArchivePanel', () => {
     render(<ArchivePanel />)
     expect(screen.getByTestId('archive-loading')).toBeTruthy()
     expect(screen.queryByText('archive:none')).toBeNull()
+    // No 0 B reading before the first load.
+    expect(screen.queryByTestId('archive-usage')).toBeNull()
     await act(async () => release([]))
+    expect(await screen.findByTestId('archive-usage')).toBeTruthy()
     expect(await screen.findByText('archive:none')).toBeTruthy()
     expect(screen.queryByTestId('archive-loading')).toBeNull()
   })

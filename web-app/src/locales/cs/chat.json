@@ -150,7 +150,8 @@
       "editedNone_few": "nepodařilo se upravit {{count}} soubory",
       "editedNone_many": "nepodařilo se upravit {{count}} souboru",
       "editedNone_other": "nepodařilo se upravit {{count}} souborů"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "Widget",
@@ -318,7 +319,8 @@
     "thinkingOnly": "Model dokončil přemýšlení, ale nedal odpověď. Pokračujte nebo odpověď vygenerujte znovu.",
     "noReply": "Běh skončil bez odpovědi.",
     "noReplyToolError": "Běh skončil bez odpovědi. Poslední chyba nástroje ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Importovaný chat",

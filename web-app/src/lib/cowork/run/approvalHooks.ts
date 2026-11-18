@@ -58,6 +58,9 @@ export function createApprovalHooks(ctx: ApprovalHooksContext): Pick<
           undefined,
           {
             input: {},
+            // Not a tool card's call: an origin puts it in the transcript's
+            // own approval list, where it can be answered.
+            origin: 'run',
             alwaysAsk: true,
             taskContext:
               'This run needs files outside its sandbox, but no project folder is attached. Attach one so the run can continue?',

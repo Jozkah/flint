@@ -47,7 +47,11 @@ import {
 } from './message/types'
 import { thoughtSecondsFromMetadata } from '@/lib/reasoningClock'
 import { docFromUIMessage } from '@/lib/exportDoc'
-import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
+import {
+  calledUnavailableTool,
+  emptyRunFallback,
+  isEmptyReplyBanner,
+} from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -187,6 +191,13 @@ export const MessageItem = memo(
     const transcriptView = useInterfaceSettings((s) => s.transcriptView)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
+    // The empty-reply banner sits on the user turn this stub answers; the
+    // stub's own empty-reply line would say the same thing again.
+    const emptyReplyBannerShown = useMessageErrors(
+      (s) =>
+        isLastMessage &&
+        Object.values(s.errors).some((e) => isEmptyReplyBanner(e))
+    )
     // The stored time. A message that has none yet (a reply whose first part
     // has not arrived) shows no time: "now" was re-read on every render, so
     // reopening a conversation made every such message read as just sent.
@@ -448,7 +459,10 @@ export const MessageItem = memo(
           (runParts ?? parts) as MessagePartLike[],
           {
             // A failed request shows its own error below instead.
-            failed: typeof messageError === 'string' && messageError.length > 0,
+            failed:
+              (typeof messageError === 'string' && messageError.length > 0) ||
+              (emptyReplyBannerShown &&
+                !parts.some((p) => p.type.startsWith('tool-'))),
             stepEnd: {
               finishReason: metadata?.finishReason,
               outputTokens: (metadata?.usage as { outputTokens?: number } | undefined)

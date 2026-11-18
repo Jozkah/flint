@@ -44,5 +44,6 @@
   "emptyReply": "Das Modell hat keine Antwort geliefert. Versuche es neu zu generieren oder prüfe die Anbieter-Einstellungen.",
   "gpuCrashCpuFallbackTitle": "Der GPU-Treiber ist abgestürzt",
   "gpuCrashCpuFallbackQuestion": "Der GPU-Treiber ist beim Laden dieses Modells abgestürzt. Stattdessen auf der CPU laden? Es läuft dann langsamer.",
-  "gpuCrashCpuFallbackConfirm": "Auf CPU laden"
+  "gpuCrashCpuFallbackConfirm": "Auf CPU laden",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

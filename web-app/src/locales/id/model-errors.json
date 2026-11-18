@@ -44,5 +44,6 @@
   "emptyReply": "Model selesai tanpa memberikan balasan. Coba buat ulang, atau periksa pengaturan penyedia.",
   "gpuCrashCpuFallbackTitle": "Driver GPU mengalami crash",
   "gpuCrashCpuFallbackQuestion": "Driver GPU crash saat memuat model ini. Muat di CPU saja? Akan berjalan lebih lambat.",
-  "gpuCrashCpuFallbackConfirm": "Muat di CPU"
+  "gpuCrashCpuFallbackConfirm": "Muat di CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

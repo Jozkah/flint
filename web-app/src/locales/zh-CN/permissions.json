@@ -343,7 +343,13 @@
     "runsOnServerAt": "在服务器上运行：{{where}}。"
   },
   "childApprovals": {
-    "label": "等待你批准的更改"
+    "label": "等待你批准的更改",
+    "attachFolder": {
+      "title": "This run needs a project folder",
+      "body": "The run reached for files outside its sandbox, and no project folder is attached. Choose a folder so it can continue, or say no and it works from the sandbox.",
+      "choose": "Choose folder",
+      "decline": "Not now"
+    }
   },
   "secretWrite": {
     "title": "此次写入似乎包含机密信息",

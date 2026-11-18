@@ -39,6 +39,42 @@ describe('CoworkChildApprovals', () => {
     expect(screen.queryByTestId('child-approval')).toBeNull()
   })
 
+  it('shows the attach-folder question with answers, and Not now refuses it (D1)', async () => {
+    render(<CoworkChildApprovals sessionId="s1" />)
+    let answer!: Promise<boolean>
+    act(() => {
+      answer = useToolApprovalRequests
+        .getState()
+        .requestApproval('r1:attach-folder', 'attach_folder', 's1', undefined, {
+          input: {},
+          origin: 'run',
+          alwaysAsk: true,
+        })
+    })
+    const card = await screen.findByTestId('attach-folder-approval')
+    expect(within(card).getByRole('button', { name: /attachFolder.choose/ })).toBeTruthy()
+    await userEvent.click(within(card).getByRole('button', { name: /attachFolder.decline/ }))
+    expect(await answer).toBe(false)
+    expect(screen.queryByTestId('attach-folder-approval')).toBeNull()
+  })
+
+  it('Choose folder answers the attach-folder question yes', async () => {
+    render(<CoworkChildApprovals sessionId="s1" compact />)
+    let answer!: Promise<boolean>
+    act(() => {
+      answer = useToolApprovalRequests
+        .getState()
+        .requestApproval('r2:attach-folder', 'attach_folder', 's1', undefined, {
+          input: {},
+          origin: 'run',
+          alwaysAsk: true,
+        })
+    })
+    const card = await screen.findByTestId('attach-folder-approval')
+    await userEvent.click(within(card).getByRole('button', { name: /attachFolder.choose/ }))
+    expect(await answer).toBe(true)
+  })
+
   it('shows a child’s flagged write with its file, line and rule, and "Write anyway" answers once', async () => {
     render(<CoworkChildApprovals sessionId="s1" />)
     let answer!: Promise<boolean>
