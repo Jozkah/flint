@@ -13,10 +13,17 @@ fn main() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     // Compositing mode on WebKitGTK (Wayland, NVIDIA especially) can stall and
-    // leave the window flat grey. Same rule: off by default, user value wins.
+    // leave the window flat grey, so it is off by default. The cost is that
+    // WebKit then paints every layer on the CPU, which can make typing and
+    // scrolling slow where the GPU stack works. FLINT_WEBKIT_COMPOSITING=hardware
+    // leaves it on (see docs/LINUX_TROUBLESHOOTING.md). A
+    // WEBKIT_DISABLE_COMPOSITING_MODE the user set always wins.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    if let Some(value) = compositing_default(
+        std::env::var("FLINT_WEBKIT_COMPOSITING").ok().as_deref(),
+        std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_some(),
+    ) {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", value);
     }
 
     // Fedora 43's AT-SPI D-Bus stack is incompatible with GTK's accessibility
@@ -87,6 +94,20 @@ fn is_fedora() -> bool {
         .unwrap_or(false)
 }
 
+/// The value to give WEBKIT_DISABLE_COMPOSITING_MODE, or None to leave it
+/// alone. `choice` is FLINT_WEBKIT_COMPOSITING: "hardware" keeps WebKit's
+/// accelerated compositing on; anything else keeps the safe software default.
+#[cfg(any(target_os = "linux", test))]
+fn compositing_default(choice: Option<&str>, user_set: bool) -> Option<&'static str> {
+    if user_set {
+        return None;
+    }
+    match choice.map(|c| c.trim().to_ascii_lowercase()).as_deref() {
+        Some("hardware") => None,
+        _ => Some("1"),
+    }
+}
+
 #[cfg(any(target_os = "linux", test))]
 fn os_release_is_fedora(content: &str) -> bool {
     content
@@ -96,7 +117,19 @@ fn os_release_is_fedora(content: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::os_release_is_fedora;
+    use super::{compositing_default, os_release_is_fedora};
+
+    #[test]
+    fn compositing_defaults_to_software_unless_asked_or_set() {
+        assert_eq!(compositing_default(None, false), Some("1"));
+        assert_eq!(compositing_default(Some("software"), false), Some("1"));
+        assert_eq!(compositing_default(Some("nonsense"), false), Some("1"));
+        assert_eq!(compositing_default(Some("hardware"), false), None);
+        assert_eq!(compositing_default(Some(" Hardware "), false), None);
+        // A value the user set is never touched, whatever the choice.
+        assert_eq!(compositing_default(None, true), None);
+        assert_eq!(compositing_default(Some("software"), true), None);
+    }
 
     #[test]
     fn detects_fedora_only() {

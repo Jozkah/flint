@@ -81,13 +81,21 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
         }),
       []
     )
+    // The Markdown this editor last handed to `onChange`. When `value` comes
+    // back equal to it the document already matches, so the per-keystroke
+    // re-serialization below can be skipped.
+    const emitted = useRef<string | null>(null)
     const editor = useEditor({
       extensions: [StarterKit, Markdown, pills],
       content: value,
       contentType: 'markdown',
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
-      onUpdate: ({ editor }) => onChange(editor.getMarkdown()),
+      onUpdate: ({ editor }) => {
+        const markdown = editor.getMarkdown()
+        emitted.current = markdown
+        onChange(markdown)
+      },
       editorProps: {
         // A function, so the label follows a live language switch.
         attributes: () => ({
@@ -122,11 +130,18 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
       },
     })
 
+    const labelSignature = useRef<{ editor: unknown; sig: string }>({ editor: null, sig: '[]' })
     // Titles arrive after a lookup; the pills redraw with them.
     useEffect(() => {
       if (!editor || editor.isDestroyed) return
       const tokens = (value.match(/@(?:chat|session|room):[A-Za-z0-9][A-Za-z0-9_.-]*(?:#summary)?/g) ?? []).map((m) => m.slice(1))
-      setMentionLabels(editor.view, pillLabels(tokens, mentions ?? []))
+      const labels = pillLabels(tokens, mentions ?? [])
+      // A dispatch rebuilds the pill decorations over the whole document, so
+      // only send one when what the pills show has changed (not per keystroke).
+      const signature = JSON.stringify([...labels])
+      if (labelSignature.current.editor === editor && labelSignature.current.sig === signature) return
+      labelSignature.current = { editor, sig: signature }
+      setMentionLabels(editor.view, labels)
     }, [editor, mentions, value])
 
     // A pill that went away takes its card with it.
@@ -169,7 +184,11 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
     // Drafts can change outside this editor (queue edit, slash command, send).
     // Do not replace the document while it already matches: that loses caret.
     useEffect(() => {
-      if (editor && editor.getMarkdown() !== value) {
+      if (!editor || value === emitted.current) return
+      // The draft moved on without this editor: forget what it last sent, so
+      // a later value equal to that is compared against the document again.
+      emitted.current = null
+      if (editor.getMarkdown() !== value) {
         editor.commands.setContent(value, { contentType: 'markdown', emitUpdate: false })
       }
     }, [editor, value])
