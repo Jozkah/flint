@@ -112,7 +112,6 @@
     "steps_many": "{{count}} de passos",
     "steps_other": "{{count}} passos",
     "working": "Treballant",
-
     "workingEllipsis": "Working…",
     "failed": "Ha fallat:",
     "failedToRun": "No s'ha pogut executar",
@@ -304,7 +303,8 @@
     "emptyReply": "El model ha retornat una resposta buida. Torna-ho a provar o canvia de model.",
     "thinkingOnly": "El model ha acabat de raonar sense donar cap resposta. Continua o regenera per tornar-ho a provar.",
     "noReply": "L'execució ha acabat sense cap resposta.",
-    "noReplyToolError": "L'execució ha acabat sense cap resposta. Últim error de l'eina ({{tool}}): {{error}}"
+    "noReplyToolError": "L'execució ha acabat sense cap resposta. Últim error de l'eina ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Xat importat",

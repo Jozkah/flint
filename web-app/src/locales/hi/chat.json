@@ -111,7 +111,6 @@
     "steps_one": "{{count}} चरण",
     "steps_other": "{{count}} चरण",
     "working": "काम जारी",
-
     "workingEllipsis": "Working…",
     "failed": "विफल:",
     "failedToRun": "चलाने में विफल",
@@ -290,7 +289,8 @@
     "emptyReply": "मॉडल ने खाली उत्तर लौटाया। फिर कोशिश करें या मॉडल बदलें।",
     "thinkingOnly": "मॉडल ने बिना उत्तर दिए सोचना पूरा कर लिया। फिर कोशिश करने के लिए जारी रखें या दोबारा जनरेट करें।",
     "noReply": "रन बिना उत्तर के समाप्त हो गया।",
-    "noReplyToolError": "रन बिना उत्तर के समाप्त हो गया। अंतिम टूल त्रुटि ({{tool}}): {{error}}"
+    "noReplyToolError": "रन बिना उत्तर के समाप्त हो गया। अंतिम टूल त्रुटि ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "इम्पोर्ट की गई चैट",

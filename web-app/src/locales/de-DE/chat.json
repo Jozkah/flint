@@ -111,7 +111,6 @@
     "steps_one": "{{count}} Schritt",
     "steps_other": "{{count}} Schritte",
     "working": "Arbeitet",
-
     "workingEllipsis": "Working…",
     "failed": "Fehlgeschlagen:",
     "failedToRun": "Ausführung fehlgeschlagen",
@@ -290,7 +289,8 @@
     "emptyReply": "Das Modell hat eine leere Antwort geliefert. Versuchen Sie es erneut oder wechseln Sie das Modell.",
     "thinkingOnly": "Das Modell hat das Nachdenken beendet, ohne eine Antwort zu geben. Fahren Sie fort oder generieren Sie neu, um es erneut zu versuchen.",
     "noReply": "Der Lauf wurde ohne Antwort beendet.",
-    "noReplyToolError": "Der Lauf wurde ohne Antwort beendet. Letzter Tool-Fehler ({{tool}}): {{error}}"
+    "noReplyToolError": "Der Lauf wurde ohne Antwort beendet. Letzter Tool-Fehler ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Importierter Chat",

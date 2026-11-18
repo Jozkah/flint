@@ -91,7 +91,10 @@ function clip(s: string): string {
  */
 export function emptyRunFallback(
   parts: readonly MessagePartLike[],
-  { failed = false }: { failed?: boolean } = {}
+  {
+    failed = false,
+    stepEnd,
+  }: { failed?: boolean; stepEnd?: { finishReason?: unknown; outputTokens?: unknown } } = {}
 ): string | null {
   if (failed) return null
   let lastTool = -1
@@ -134,6 +137,15 @@ export function emptyRunFallback(
       break
     }
   }
-  if (!lastError) return i18n.t('chat:emptyRun.noReply')
+  if (!lastError) {
+    // No tool failed, so the model itself answered nothing: say how its last
+    // step ended (finish reason, tokens) so the cause can be told from the UI.
+    const reason =
+      typeof stepEnd?.finishReason === 'string' ? stepEnd.finishReason : ''
+    if (!reason) return i18n.t('chat:emptyRun.noReply')
+    const tokens =
+      typeof stepEnd?.outputTokens === 'number' ? stepEnd.outputTokens : '?'
+    return i18n.t('chat:emptyRun.noReplyDetail', { reason, tokens })
+  }
   return i18n.t('chat:emptyRun.noReplyToolError', { tool: toolName, error: clip(lastError) })
 }

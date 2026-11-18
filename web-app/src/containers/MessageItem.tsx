@@ -446,8 +446,15 @@ export const MessageItem = memo(
       ) {
         const fallback = emptyRunFallback(
           (runParts ?? parts) as MessagePartLike[],
-          // A failed request shows its own error below instead.
-          { failed: typeof messageError === 'string' && messageError.length > 0 }
+          {
+            // A failed request shows its own error below instead.
+            failed: typeof messageError === 'string' && messageError.length > 0,
+            stepEnd: {
+              finishReason: metadata?.finishReason,
+              outputTokens: (metadata?.usage as { outputTokens?: number } | undefined)
+                ?.outputTokens,
+            },
+          }
         )
         if (fallback) {
           elements.push(

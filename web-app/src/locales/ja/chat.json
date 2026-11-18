@@ -111,7 +111,6 @@
     "steps_one": "{{count}} ステップ",
     "steps_other": "{{count}} ステップ",
     "working": "作業中",
-
     "workingEllipsis": "Working…",
     "failed": "失敗:",
     "failedToRun": "実行に失敗しました",
@@ -285,7 +284,8 @@
     "emptyReply": "モデルが空の返信を返しました。もう一度試すか、モデルを切り替えてください。",
     "thinkingOnly": "モデルは回答を出さずに思考を終えました。続行するか再生成してもう一度お試しください。",
     "noReply": "実行は返信なしで終了しました。",
-    "noReplyToolError": "実行は返信なしで終了しました。最後のツールエラー({{tool}}):{{error}}"
+    "noReplyToolError": "実行は返信なしで終了しました。最後のツールエラー({{tool}}):{{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "インポートしたチャット",

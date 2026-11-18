@@ -111,7 +111,6 @@
     "steps_one": "{{count}} adım",
     "steps_other": "{{count}} adım",
     "working": "Çalışıyor",
-
     "workingEllipsis": "Working…",
     "failed": "Başarısız:",
     "failedToRun": "Çalıştırılamadı",
@@ -290,7 +289,8 @@
     "emptyReply": "Model boş bir yanıt döndürdü. Tekrar deneyin veya modeli değiştirin.",
     "thinkingOnly": "Model yanıt vermeden düşünmeyi bitirdi. Tekrar denemek için devam edin veya yeniden oluşturun.",
     "noReply": "Çalıştırma yanıt vermeden sona erdi.",
-    "noReplyToolError": "Çalıştırma yanıt vermeden sona erdi. Son araç hatası ({{tool}}): {{error}}"
+    "noReplyToolError": "Çalıştırma yanıt vermeden sona erdi. Son araç hatası ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "İçe aktarılan sohbet",

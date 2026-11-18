@@ -113,7 +113,6 @@
     "steps_many": "{{count}} kroku",
     "steps_other": "{{count}} kroků",
     "working": "Pracuji",
-
     "workingEllipsis": "Working…",
     "failed": "Selhalo:",
     "failedToRun": "Spuštění selhalo",
@@ -318,7 +317,8 @@
     "emptyReply": "Model vrátil prázdnou odpověď. Zkuste to znovu nebo přepněte model.",
     "thinkingOnly": "Model dokončil přemýšlení, ale nedal odpověď. Pokračujte nebo odpověď vygenerujte znovu.",
     "noReply": "Běh skončil bez odpovědi.",
-    "noReplyToolError": "Běh skončil bez odpovědi. Poslední chyba nástroje ({{tool}}): {{error}}"
+    "noReplyToolError": "Běh skončil bez odpovědi. Poslední chyba nástroje ({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Importovaný chat",

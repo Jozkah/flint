@@ -111,7 +111,6 @@
     "steps_one": "{{count}}단계",
     "steps_other": "{{count}}단계",
     "working": "작업 중",
-
     "workingEllipsis": "Working…",
     "failed": "실패:",
     "failedToRun": "실행하지 못함",
@@ -285,7 +284,8 @@
     "emptyReply": "모델이 빈 응답을 반환했습니다. 다시 시도하거나 모델을 전환하세요.",
     "thinkingOnly": "모델이 답변 없이 생각을 마쳤습니다. 계속하거나 다시 생성해 보세요.",
     "noReply": "응답 없이 실행이 종료되었습니다.",
-    "noReplyToolError": "응답 없이 실행이 종료되었습니다. 마지막 도구 오류({{tool}}): {{error}}"
+    "noReplyToolError": "응답 없이 실행이 종료되었습니다. 마지막 도구 오류({{tool}}): {{error}}",
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "가져온 채팅",
