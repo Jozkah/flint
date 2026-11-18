@@ -64,13 +64,16 @@ fn is_version(id: &str, base: &str) -> bool {
 /// Look up the catalog window for a bare model id (provider qualifier already
 /// stripped). `None` means the id matches no known family -> fallback.
 fn catalog_window(model_id: &str) -> Option<u64> {
-    // Claude family: the two newest releases get 1M, everything else claude 200K.
+    // Claude family: 4.6 and newer get 1M (Claude 5 included), everything else
+    // claude 200K.
     if model_id.starts_with("claude-") {
         // Dotted ids (`claude-sonnet-4.6`) name the same models as `4-6`.
         let model_id = model_id.replace('.', "-");
-        let is_new = ["haiku", "sonnet", "opus"].iter().any(|family| {
+        let is_new = ["haiku", "sonnet", "opus", "fable"].iter().any(|family| {
             is_version(&model_id, &format!("claude-{family}-4-6"))
                 || is_version(&model_id, &format!("claude-{family}-4-7"))
+                || is_version(&model_id, &format!("claude-{family}-4-8"))
+                || (5..=9).any(|major| is_version(&model_id, &format!("claude-{family}-{major}")))
         });
         return Some(if is_new { 1_000_000 } else { 200_000 });
     }
@@ -104,7 +107,14 @@ fn catalog_window(model_id: &str) -> Option<u64> {
         return Some(128_000);
     }
 
-    if model_id.starts_with("gemini-2.5-") || model_id.starts_with("gemini-3-") {
+    // GPT-6 family (sol, astra, terra, luna): 1.05M window per OpenAI's model page.
+    if model_id.starts_with("gpt-6") {
+        return Some(1_050_000);
+    }
+    if model_id.starts_with("gemini-2.5-")
+        || model_id.starts_with("gemini-3-")
+        || model_id.starts_with("gemini-4-")
+    {
         return Some(1_000_000);
     }
     if model_id.starts_with("tokamak-") {
@@ -151,6 +161,7 @@ pub(crate) fn accepts_images(model_id: &str) -> bool {
     let id = strip_provider_qualifier(model_id);
     id.starts_with("claude-")
         || id.starts_with("gemini-")
+        || id.starts_with("gpt-6")
         || ["gpt-4o", "gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5", "o3", "o4-mini"]
             .iter()
             .any(|b| is_version(id, b))
@@ -173,6 +184,19 @@ mod tests {
         assert_ne!(r.tokens, 7);
         assert!(!matches!(r.source, ContextWindowSource::Configured));
         assert_eq!(resolve_context_window("gpt-4o", Some(128)).tokens, 128);
+    }
+
+    #[test]
+    fn current_provider_families_resolve_from_the_catalog() {
+        for id in ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2", "claude-haiku-5-5"] {
+            assert_eq!(resolve_context_window(id, None).tokens, 1_000_000, "{id}");
+        }
+        assert_eq!(resolve_context_window("claude-sonnet-4-60", None).tokens, 200_000);
+        for id in ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-luna"] {
+            assert_eq!(resolve_context_window(id, None).tokens, 1_050_000, "{id}");
+            assert!(accepts_images(id), "{id}");
+        }
+        assert_eq!(resolve_context_window("gemini-4-carbon", None).tokens, 1_000_000);
     }
 
     #[test]
