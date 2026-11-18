@@ -44,5 +44,6 @@
   "emptyReply": "Model zakończył bez zwrócenia odpowiedzi. Spróbuj wygenerować ją ponownie lub sprawdź ustawienia dostawcy.",
   "gpuCrashCpuFallbackTitle": "Sterownik GPU uległ awarii",
   "gpuCrashCpuFallbackQuestion": "Sterownik GPU uległ awarii podczas ładowania tego modelu. Załadować go na CPU? Będzie działać wolniej.",
-  "gpuCrashCpuFallbackConfirm": "Załaduj na CPU"
+  "gpuCrashCpuFallbackConfirm": "Załaduj na CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

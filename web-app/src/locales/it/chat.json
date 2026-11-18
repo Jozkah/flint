@@ -141,7 +141,8 @@
       "editedNone_other": "impossibile modificare {{count}} file",
       "editedNone_many": "impossibile modificare {{count}} file"
     },
-    "steps_many": "{{count}} di passaggi"
+    "steps_many": "{{count}} di passaggi",
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "Widget",
@@ -304,7 +305,8 @@
     "thinkingOnly": "Il modello ha finito di ragionare senza dare una risposta. Continua o rigenera per riprovare.",
     "noReply": "L'esecuzione è terminata senza una risposta.",
     "noReplyToolError": "L'esecuzione è terminata senza una risposta. Ultimo errore dello strumento ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Chat importata",

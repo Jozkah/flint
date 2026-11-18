@@ -89,7 +89,16 @@ export function CoworkChildApprovals({
         data-testid="child-approvals"
         data-compact="true"
       >
-        {mine.map((entry, index) => (
+        {mine.map((entry, index) =>
+          entry.toolName === ATTACH_FOLDER_TOOL ? (
+            <AttachFolderApproval
+              key={entry.requestId}
+              entry={entry}
+              armed={armed}
+              denyRef={index === 0 ? firstDeny : undefined}
+              onAnswer={(answer) => resolveApproval(entry.toolCallId, answer, entry.requestId)}
+            />
+          ) : (
           <CompactApproval
             key={entry.requestId}
             entry={entry}
@@ -97,7 +106,8 @@ export function CoworkChildApprovals({
             denyRef={index === 0 ? firstDeny : undefined}
             onAnswer={(answer) => resolveApproval(entry.toolCallId, answer, entry.requestId)}
           />
-        ))}
+          )
+        )}
       </section>
     )
   }
@@ -107,7 +117,16 @@ export function CoworkChildApprovals({
       aria-label={t('permissions:childApprovals.label')}
       data-testid="child-approvals"
     >
-      {mine.map((entry, index) => (
+      {mine.map((entry, index) =>
+        entry.toolName === ATTACH_FOLDER_TOOL ? (
+          <AttachFolderApproval
+            key={entry.requestId}
+            entry={entry}
+            armed={armed}
+            denyRef={index === 0 ? firstDeny : undefined}
+            onAnswer={(answer) => resolveApproval(entry.toolCallId, answer, entry.requestId)}
+          />
+        ) : (
         <div
           key={entry.requestId}
           // A separate object that waits on a person: a bordered card whose
@@ -254,8 +273,62 @@ export function CoworkChildApprovals({
             </div>
           </div>
         </div>
-      ))}
+        )
+      )}
     </section>
+  )
+}
+
+/** The run's own question: attach a project folder so it can reach files outside its sandbox. */
+export const ATTACH_FOLDER_TOOL = 'attach_folder'
+
+function AttachFolderApproval({
+  entry,
+  armed,
+  denyRef,
+  onAnswer,
+}: {
+  entry: Entry
+  armed: boolean
+  denyRef?: React.Ref<HTMLButtonElement>
+  onAnswer: (answer: 'deny' | 'allow-once') => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div
+      data-testid="attach-folder-approval"
+      data-approval-request={entry.requestId}
+      data-tool={entry.toolName}
+      className="overflow-hidden rounded-xl border-[0.8px] border-warning/40 bg-card text-xs shadow-lift motion-safe:animate-rise-in"
+    >
+      <div className="flex items-start gap-2 border-b border-dashed border-warning/30 bg-warning-tint px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+        <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+        <span className="min-w-0">{t('permissions:childApprovals.attachFolder.title')}</span>
+      </div>
+      <div className="space-y-3 p-3">
+        <p className="text-foreground">{t('permissions:childApprovals.attachFolder.body')}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            ref={denyRef}
+            size="sm"
+            variant="outline"
+            className="pointer-coarse:h-11"
+            disabled={!armed}
+            onClick={() => onAnswer('deny')}
+          >
+            {t('permissions:childApprovals.attachFolder.decline')}
+          </Button>
+          <Button
+            size="sm"
+            className="pointer-coarse:h-11"
+            disabled={!armed}
+            onClick={() => onAnswer('allow-once')}
+          >
+            {t('permissions:childApprovals.attachFolder.choose')}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

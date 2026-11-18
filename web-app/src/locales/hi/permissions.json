@@ -344,7 +344,13 @@
     "runsOnServerAt": "सर्वर पर चलता है: {{where}}।"
   },
   "childApprovals": {
-    "label": "आपकी स्वीकृति की प्रतीक्षा में बदलाव"
+    "label": "आपकी स्वीकृति की प्रतीक्षा में बदलाव",
+    "attachFolder": {
+      "title": "This run needs a project folder",
+      "body": "The run reached for files outside its sandbox, and no project folder is attached. Choose a folder so it can continue, or say no and it works from the sandbox.",
+      "choose": "Choose folder",
+      "decline": "Not now"
+    }
   },
   "secretWrite": {
     "title": "इस लिखने में कोई गुप्त जानकारी लगती है",

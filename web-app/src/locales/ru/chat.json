@@ -150,7 +150,8 @@
       "editedNone_few": "не удалось изменить {{count}} файла",
       "editedNone_many": "не удалось изменить {{count}} файлов",
       "editedNone_other": "не удалось изменить {{count}} файла"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "Виджет",
@@ -318,7 +319,8 @@
     "thinkingOnly": "Модель закончила размышлять, но не дала ответа. Продолжите или сгенерируйте ответ заново.",
     "noReply": "Запуск завершился без ответа.",
     "noReplyToolError": "Запуск завершился без ответа. Последняя ошибка инструмента ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Импортированный чат",

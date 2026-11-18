@@ -32,6 +32,7 @@ import {
 import { requestToolApproval } from '@/lib/chat/requestToolApproval'
 import { runChatToolLoop, type ChatToolOutput } from '@/lib/chat/chatToolLoop'
 import { maybeAutoTitleChat } from '@/lib/chat/chatAutoTitle'
+import { stepEndDetail } from '@/lib/emptyRunFallback'
 
 /*
  * What a Chat conversation does when a reply finishes (`onFinish`) and when
@@ -209,9 +210,21 @@ export function createChatFinishHandler(deps: ChatFinishDeps) {
         pendingAssistantParentId.current ?? resolveAssistantParent(undefined)
       pendingAssistantParentId.current = null
       if (userTurnId) {
+        // Say how the step ended (finish reason, tokens) when the provider
+        // reported it, so an empty `stop` can be told from a cut-off.
+        const detail = stepEndDetail({
+          finishReason,
+          outputTokens: (msgMeta?.usage as { outputTokens?: unknown } | undefined)
+            ?.outputTokens,
+        })
         useMessageErrors
           .getState()
-          .setError(userTurnId, i18n.t('model-errors:emptyReply'))
+          .setError(
+            userTurnId,
+            detail
+              ? i18n.t('model-errors:emptyReplyDetail', detail)
+              : i18n.t('model-errors:emptyReply')
+          )
       }
     }
 

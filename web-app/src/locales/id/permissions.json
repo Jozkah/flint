@@ -343,7 +343,13 @@
     "runsOnServerAt": "Berjalan di server: {{where}}."
   },
   "childApprovals": {
-    "label": "Perubahan menunggu persetujuan Anda"
+    "label": "Perubahan menunggu persetujuan Anda",
+    "attachFolder": {
+      "title": "This run needs a project folder",
+      "body": "The run reached for files outside its sandbox, and no project folder is attached. Choose a folder so it can continue, or say no and it works from the sandbox.",
+      "choose": "Choose folder",
+      "decline": "Not now"
+    }
   },
   "secretWrite": {
     "title": "Penulisan ini tampaknya berisi rahasia",

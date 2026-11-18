@@ -132,7 +132,8 @@
       "createdNone_other": "파일 {{count}}개를 만들지 못했습니다",
       "editedNone_one": "파일 {{count}}개를 편집하지 못했습니다",
       "editedNone_other": "파일 {{count}}개를 편집하지 못했습니다"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "위젯",
@@ -285,7 +286,8 @@
     "thinkingOnly": "모델이 답변 없이 생각을 마쳤습니다. 계속하거나 다시 생성해 보세요.",
     "noReply": "응답 없이 실행이 종료되었습니다.",
     "noReplyToolError": "응답 없이 실행이 종료되었습니다. 마지막 도구 오류({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "가져온 채팅",

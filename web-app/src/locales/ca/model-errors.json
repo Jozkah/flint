@@ -44,5 +44,6 @@
   "emptyReply": "El model ha acabat sense retornar cap resposta. Prova de regenerar-la o revisa la configuració del proveïdor.",
   "gpuCrashCpuFallbackTitle": "El controlador de la GPU ha fallat",
   "gpuCrashCpuFallbackQuestion": "El controlador de la GPU ha fallat mentre carregava aquest model. Voleu carregar-lo a la CPU? Anirà més lent.",
-  "gpuCrashCpuFallbackConfirm": "Carrega a la CPU"
+  "gpuCrashCpuFallbackConfirm": "Carrega a la CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

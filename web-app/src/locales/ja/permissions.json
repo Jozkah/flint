@@ -343,7 +343,13 @@
     "runsOnServerAt": "サーバー上で実行されます: {{where}}"
   },
   "childApprovals": {
-    "label": "承認待ちの変更"
+    "label": "承認待ちの変更",
+    "attachFolder": {
+      "title": "This run needs a project folder",
+      "body": "The run reached for files outside its sandbox, and no project folder is attached. Choose a folder so it can continue, or say no and it works from the sandbox.",
+      "choose": "Choose folder",
+      "decline": "Not now"
+    }
   },
   "secretWrite": {
     "title": "この書き込みには機密情報が含まれているようです",

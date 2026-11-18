@@ -132,7 +132,8 @@
       "createdNone_other": "{{count}} फ़ाइलें नहीं बनाई जा सकीं",
       "editedNone_one": "{{count}} फ़ाइल संपादित नहीं हो सकी",
       "editedNone_other": "{{count}} फ़ाइलें संपादित नहीं हो सकीं"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "विजेट",
@@ -290,7 +291,8 @@
     "thinkingOnly": "मॉडल ने बिना उत्तर दिए सोचना पूरा कर लिया। फिर कोशिश करने के लिए जारी रखें या दोबारा जनरेट करें।",
     "noReply": "रन बिना उत्तर के समाप्त हो गया।",
     "noReplyToolError": "रन बिना उत्तर के समाप्त हो गया। अंतिम टूल त्रुटि ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "इम्पोर्ट की गई चैट",

@@ -132,7 +132,8 @@
       "createdNone_other": "无法创建 {{count}} 个文件",
       "editedNone_one": "无法编辑 {{count}} 个文件",
       "editedNone_other": "无法编辑 {{count}} 个文件"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "小组件",
@@ -285,7 +286,8 @@
     "thinkingOnly": "模型完成了思考，但没有给出答案。请继续或重新生成以再试一次。",
     "noReply": "运行结束，但没有回复。",
     "noReplyToolError": "运行结束，但没有回复。最后一次工具错误（{{tool}}）：{{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "已导入的对话",

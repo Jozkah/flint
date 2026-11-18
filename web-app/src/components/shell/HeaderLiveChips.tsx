@@ -26,6 +26,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { isBrowserTool } from '@/lib/browserAgent'
+import { ATTACH_FOLDER_TOOL } from '@/containers/CoworkChildApprovals'
 
 /** One row of a pill's card, in the sidebar chat hover card's style. */
 function CardRow({
@@ -228,7 +229,7 @@ export function HeaderLiveChips() {
                     time={row.waitingMs === undefined ? undefined : formatWait(row.waitingMs, t)}
                     onOpen={() => openApproval(row)}
                     actions={
-                      entry && isBrowserTool(row.tool) ? (
+                      entry && (isBrowserTool(row.tool) || row.tool === ATTACH_FOLDER_TOOL) ? (
                         <div className="flex gap-1.5 px-2 pb-1.5" data-testid="header-approval-actions">
                           <Button
                             variant="outline"
@@ -236,14 +237,18 @@ export function HeaderLiveChips() {
                             data-testid="header-approval-deny"
                             onClick={() => answer('deny')}
                           >
-                            {t('tools:toolApproval.deny')}
+                            {row.tool === ATTACH_FOLDER_TOOL
+                              ? t('permissions:childApprovals.attachFolder.decline')
+                              : t('tools:toolApproval.deny')}
                           </Button>
                           <Button
                             size="xs"
                             data-testid="header-approval-allow"
                             onClick={() => answer('allow-once')}
                           >
-                            {t('tools:toolApproval.allowOnce')}
+                            {row.tool === ATTACH_FOLDER_TOOL
+                              ? t('permissions:childApprovals.attachFolder.choose')
+                              : t('tools:toolApproval.allowOnce')}
                           </Button>
                         </div>
                       ) : undefined

@@ -132,7 +132,8 @@
       "createdNone_other": "無法建立 {{count}} 個檔案",
       "editedNone_one": "無法編輯 {{count}} 個檔案",
       "editedNone_other": "無法編輯 {{count}} 個檔案"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "小工具",
@@ -285,7 +286,8 @@
     "thinkingOnly": "模型完成了思考，但沒有給出答案。請繼續或重新產生以再試一次。",
     "noReply": "執行結束，但沒有回覆。",
     "noReplyToolError": "執行結束，但沒有回覆。最後一次工具錯誤（{{tool}}）：{{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "已匯入的對話",

@@ -44,5 +44,6 @@
   "emptyReply": "O modelo terminou sem retornar uma resposta. Tente gerar novamente ou verifique as configurações do provedor.",
   "gpuCrashCpuFallbackTitle": "O driver da GPU travou",
   "gpuCrashCpuFallbackQuestion": "O driver da GPU travou ao carregar este modelo. Carregar na CPU? Vai rodar mais devagar.",
-  "gpuCrashCpuFallbackConfirm": "Carregar na CPU"
+  "gpuCrashCpuFallbackConfirm": "Carregar na CPU",
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
 }

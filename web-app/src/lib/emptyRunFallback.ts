@@ -15,8 +15,47 @@ import { i18n } from '@/i18n/react-i18next-compat'
 
 const MAX_ERROR_CHARS = 300
 
+type StepEnd = { finishReason?: unknown; outputTokens?: unknown }
+
+/** How the model's last step ended, when it said: `{ reason, tokens }`. */
+export function stepEndDetail(
+  stepEnd?: StepEnd
+): { reason: string; tokens: number | string } | null {
+  const reason =
+    typeof stepEnd?.finishReason === 'string' ? stepEnd.finishReason : ''
+  if (!reason) return null
+  const tokens =
+    typeof stepEnd?.outputTokens === 'number' ? stepEnd.outputTokens : '?'
+  return { reason, tokens }
+}
+
 /** Shown for a finished turn with no text and no tool calls. */
-const emptyReplyFallback = () => i18n.t('chat:emptyRun.emptyReply')
+const emptyReplyFallback = (stepEnd?: StepEnd) => {
+  const detail = stepEndDetail(stepEnd)
+  return detail
+    ? i18n.t('chat:emptyRun.emptyReplyDetail', detail)
+    : i18n.t('chat:emptyRun.emptyReply')
+}
+
+/**
+ * Whether a message error is the "finished without a reply" banner the chat
+ * stamps on a turn whose reply came back empty. That banner already says it,
+ * so the empty-reply line under the assistant stub would repeat it.
+ */
+export function isEmptyReplyBanner(error: unknown): boolean {
+  if (typeof error !== 'string' || !error) return false
+  if (error === i18n.t('model-errors:emptyReply')) return true
+  const template = i18n.t('model-errors:emptyReplyDetail', {
+    reason: '\u0001',
+    tokens: '\u0002',
+    interpolation: { escapeValue: false },
+  })
+  const pattern = template
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace('\u0001', '.*')
+    .replace('\u0002', '.*')
+  return new RegExp(`^${pattern}$`, 's').test(error)
+}
 
 /** Shown when the model reasoned but produced no answer and no tool calls. */
 const thinkingOnlyFallback = () => i18n.t('chat:emptyRun.thinkingOnly')
@@ -94,7 +133,7 @@ export function emptyRunFallback(
   {
     failed = false,
     stepEnd,
-  }: { failed?: boolean; stepEnd?: { finishReason?: unknown; outputTokens?: unknown } } = {}
+  }: { failed?: boolean; stepEnd?: StepEnd } = {}
 ): string | null {
   if (failed) return null
   let lastTool = -1
@@ -112,7 +151,7 @@ export function emptyRunFallback(
     const reasoned = parts.some(
       (p) => p.type === 'reasoning' && !!(p.text ?? '').trim()
     )
-    return reasoned ? thinkingOnlyFallback() : emptyReplyFallback()
+    return reasoned ? thinkingOnlyFallback() : emptyReplyFallback(stepEnd)
   }
   const answered = parts
     .slice(lastTool + 1)
@@ -140,12 +179,9 @@ export function emptyRunFallback(
   if (!lastError) {
     // No tool failed, so the model itself answered nothing: say how its last
     // step ended (finish reason, tokens) so the cause can be told from the UI.
-    const reason =
-      typeof stepEnd?.finishReason === 'string' ? stepEnd.finishReason : ''
-    if (!reason) return i18n.t('chat:emptyRun.noReply')
-    const tokens =
-      typeof stepEnd?.outputTokens === 'number' ? stepEnd.outputTokens : '?'
-    return i18n.t('chat:emptyRun.noReplyDetail', { reason, tokens })
+    const detail = stepEndDetail(stepEnd)
+    if (!detail) return i18n.t('chat:emptyRun.noReply')
+    return i18n.t('chat:emptyRun.noReplyDetail', detail)
   }
   return i18n.t('chat:emptyRun.noReplyToolError', { tool: toolName, error: clip(lastError) })
 }

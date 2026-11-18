@@ -141,7 +141,8 @@
       "editedNone_one": "no s'ha pogut editar {{count}} fitxer",
       "editedNone_many": "no s'han pogut editar {{count}} fitxers",
       "editedNone_other": "no s'han pogut editar {{count}} fitxers"
-    }
+    },
+    "waitingApproval": "Waiting for your approval…"
   },
   "widget": {
     "label": "Giny",
@@ -304,7 +305,8 @@
     "thinkingOnly": "El model ha acabat de raonar sense donar cap resposta. Continua o regenera per tornar-ho a provar.",
     "noReply": "L'execució ha acabat sense cap resposta.",
     "noReplyToolError": "L'execució ha acabat sense cap resposta. Últim error de l'eina ({{tool}}): {{error}}",
-    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens."
+    "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
   "importedChatTitle": "Xat importat",
