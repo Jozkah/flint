@@ -79,7 +79,7 @@ describe('defaultModel', () => {
 
   it('returns first model for known providers', () => {
     expect(defaultModel('anthropic')).toBe('claude-sonnet-5-5')
-    expect(defaultModel('mistral')).toBe('mistral-medium-3-5-26-04')
+    expect(defaultModel('mistral')).toBe('mistral-large-4')
   })
 
   it('handles empty string provider', () => {
@@ -475,7 +475,18 @@ describe('built-in model lists', () => {
   it('carry no retired Claude 3.x models and list the current ones', () => {
     const claude = providerModels.anthropic.models as readonly string[]
     expect(claude.some((m) => m.startsWith('claude-3'))).toBe(false)
-    expect(claude).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-4-5']))
+    expect(claude).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-haiku-5-5', 'claude-fable-5-1', 'claude-haiku-4-5']))
+  })
+
+  it('lead each flagship provider with its current models and keep saved ids', () => {
+    const first = (p: keyof typeof providerModels) => (providerModels[p].models as readonly string[])[0]
+    expect(first('openai')).toBe('gpt-6.2-sol')
+    expect(first('gemini')).toBe('gemini-4-argon')
+    expect(first('moonshot')).toBe('kimi-k3.1-pro')
+    expect(first('qwen')).toBe('qwen4-max')
+    expect(providerModels.openai.models).toEqual(expect.arrayContaining(['gpt-6.1-sol', 'gpt-5']))
+    expect(providerModels.gemini.models).toEqual(expect.arrayContaining(['gemini-3.8-flash', 'gemini-2.5-pro']))
+    expect(providerModels.mistral.models).toContain('mistral-large-4')
   })
 
   it('give every listed model a capability answer', () => {
