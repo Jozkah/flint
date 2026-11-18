@@ -28,6 +28,8 @@ pub enum Event {
     Text(String),
     Usage { input: u64, output: u64 },
     Failed(String),
+    /// The model hit its output limit mid-reply (`max_tokens`).
+    Truncated,
 }
 
 /// Silence this long means the CLI hung.
@@ -272,6 +274,11 @@ fn parse_claude(value: &Value) -> Vec<Event> {
     match value.get("type").and_then(Value::as_str) {
         Some("stream_event") => {
             let delta = &value["event"]["delta"];
+            if value["event"]["type"].as_str() == Some("message_delta")
+                && delta["stop_reason"].as_str() == Some("max_tokens")
+            {
+                return vec![Event::Truncated];
+            }
             match (delta["type"].as_str(), delta["text"].as_str()) {
                 (Some("text_delta"), Some(text)) if !text.is_empty() => {
                     vec![Event::Text(text.to_string())]
@@ -285,13 +292,19 @@ fn parse_claude(value: &Value) -> Vec<Event> {
                 return vec![Event::Failed(message.to_string())];
             }
             let usage = &value["usage"];
+            let cut = value["stop_reason"].as_str() == Some("max_tokens");
             let input = usage["input_tokens"].as_u64().unwrap_or(0)
                 + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
                 + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-            vec![Event::Usage {
+            let mut events = Vec::new();
+            if cut {
+                events.push(Event::Truncated);
+            }
+            events.push(Event::Usage {
                 input,
                 output: usage["output_tokens"].as_u64().unwrap_or(0),
-            }]
+            });
+            events
         }
         _ => Vec::new(),
     }
@@ -541,6 +554,7 @@ pub async fn run(
     });
     let mut lines = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut failed = false;
+    let mut finished = false;
     loop {
         match tokio::time::timeout(IDLE_TIMEOUT, lines.next_line()).await {
             Err(_) => {
@@ -555,8 +569,11 @@ pub async fn run(
                     // then finishes the turn; a completed turn wins over it.
                     match event {
                         Event::Failed(_) => failed = true,
-                        Event::Usage { .. } => failed = false,
-                        Event::Text(_) => {}
+                        Event::Usage { .. } => {
+                            failed = false;
+                            finished = true;
+                        }
+                        Event::Text(_) | Event::Truncated => {}
                     }
                     if events.send(event).await.is_err() {
                         return; // caller went away; kill_on_drop ends the CLI
@@ -567,6 +584,16 @@ pub async fn run(
         }
     }
     let status = child.wait().await;
+    // The CLI closed its output without ever reporting a finished turn: it was
+    // killed or crashed mid-reply. Without this the partial text reads as a
+    // complete answer.
+    if ended_early(finished, failed, status.as_ref().is_ok_and(|status| status.success())) {
+        log::warn!("cli_bridge: provider={} cli={} output ended without a result", backend.id(), backend.binary());
+        let _ = events
+            .send(Event::Failed(format!("{} ended before it finished its answer", backend.binary())))
+            .await;
+        return;
+    }
     if !failed && !status.as_ref().is_ok_and(|status| status.success()) {
         let detail = stderr_task.await.unwrap_or_default();
         let detail = detail.trim();
@@ -585,6 +612,11 @@ pub async fn run(
             }))
             .await;
     }
+}
+
+/// A clean exit with no result event and no reported error: the stream was cut.
+fn ended_early(finished: bool, failed: bool, exited_cleanly: bool) -> bool {
+    !finished && !failed && exited_cleanly
 }
 
 /// Make CLI output safe for the app log: mask anything resembling a key,
@@ -643,6 +675,27 @@ limit", 300), "plain usage limit");
         let error = r#"{"type":"result","is_error":true,"result":"rate limited"}"#;
         assert_eq!(Backend::Claude.parse_line(error), vec![Event::Failed("rate limited".into())]);
         assert!(Backend::Claude.parse_line("not json").is_empty());
+    }
+
+    #[test]
+    fn claude_max_tokens_is_a_truncation_not_a_finish() {
+        let delta = r#"{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"max_tokens"}}}"#;
+        assert_eq!(Backend::Claude.parse_line(delta), vec![Event::Truncated]);
+        let end = r#"{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"}}}"#;
+        assert!(Backend::Claude.parse_line(end).is_empty());
+        let result = r#"{"type":"result","is_error":false,"stop_reason":"max_tokens","usage":{"input_tokens":1,"output_tokens":2}}"#;
+        assert_eq!(
+            Backend::Claude.parse_line(result),
+            vec![Event::Truncated, Event::Usage { input: 1, output: 2 }]
+        );
+    }
+
+    #[test]
+    fn output_closed_without_a_result_is_an_early_end() {
+        assert!(ended_early(false, false, true));
+        assert!(!ended_early(true, false, true));
+        assert!(!ended_early(false, true, true));
+        assert!(!ended_early(false, false, false));
     }
 
     #[test]
