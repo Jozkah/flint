@@ -105,15 +105,50 @@ fn text_of(message: &serde_json::Value) -> String {
     if let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
         for call in calls {
             let function = call.get("function");
-            for key in ["name", "arguments"] {
-                if let Some(s) = function.and_then(|f| f.get(key)).and_then(|v| v.as_str()) {
-                    text.push(' ');
-                    text.push_str(s);
-                }
+            if let Some(s) = function.and_then(|f| f.get("name")).and_then(|v| v.as_str()) {
+                text.push(' ');
+                text.push_str(s);
+            }
+            if let Some(args) = function.and_then(|f| f.get("arguments")) {
+                text.push('\n');
+                text.push_str(&arguments_text(args));
             }
         }
     }
     text
+}
+
+/// What a tool call's arguments say, as the text a person would search for.
+///
+/// Arguments arrive as a JSON string, so an `edit`'s `new_string` or a
+/// `write`'s `content` was stored with its newlines and quotes escaped
+/// (`\n`, `\"`) and a search for a line of the code that was written never
+/// matched. The string leaves are pulled out of the parsed arguments instead,
+/// one per line, keys left out; arguments that are not JSON are searched as
+/// they are.
+fn arguments_text(args: &serde_json::Value) -> String {
+    fn leaves(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::String(s) => out.push(s.clone()),
+            serde_json::Value::Array(items) => items.iter().for_each(|i| leaves(i, out)),
+            serde_json::Value::Object(map) => map.values().for_each(|i| leaves(i, out)),
+            _ => {}
+        }
+    }
+    let parsed;
+    let value = match args {
+        serde_json::Value::String(raw) => match serde_json::from_str::<serde_json::Value>(raw) {
+            Ok(v @ (serde_json::Value::Object(_) | serde_json::Value::Array(_))) => {
+                parsed = v;
+                &parsed
+            }
+            _ => return raw.clone(),
+        },
+        other => other,
+    };
+    let mut out = Vec::new();
+    leaves(value, &mut out);
+    out.join("\n")
 }
 
 fn content_text(message: &serde_json::Value) -> String {
@@ -513,6 +548,23 @@ mod tests {
 
     /// The search is narrowed the way a person narrows it: one session, one
     /// role, a bounded number of answers.
+    #[test]
+    fn text_written_or_edited_by_a_tool_call_is_searchable() {
+        let message = serde_json::json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": "edit", "arguments": "{\"path\":\"src/a.rs\",\"old_string\":\"let x = 1;\",\"new_string\":\"let frobnicate = \\\"yes\\\";\\nlet y = 2;\"}"}},
+                {"function": {"name": "write", "arguments": {"path": "notes.md", "content": "first line\nsecond marker line"}}}
+            ]
+        });
+        let body = text_of(&message);
+        assert!(body.contains("let frobnicate = \"yes\";\nlet y = 2;"), "{body}");
+        assert!(body.contains("second marker line") && body.contains("src/a.rs"), "{body}");
+        let plain = serde_json::json!({"role": "assistant", "tool_calls": [{"function": {"name": "bash", "arguments": "ls -la"}}]});
+        assert!(text_of(&plain).contains("ls -la"));
+    }
+
     #[test]
     fn a_search_can_be_narrowed_by_session_role_and_count() {
         let root = temp_root("narrow");
