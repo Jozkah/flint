@@ -286,6 +286,7 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
         let mut failure: Option<String> = None;
         let mut usage = (0u64, 0u64);
         let mut retried = false;
+        let mut truncated = false;
         // The role chunk goes out with the first real output, so a CLI that
         // fails before answering still gets a proper HTTP status (see below).
         let mut opened = false;
@@ -318,12 +319,22 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
                         failure = None;
                     }
                     Event::Failed(message) => failure = Some(message),
+                    Event::Truncated => truncated = true,
                 }
             }
             // A model that wrote its own tool syntax gets one corrected retry,
             // provided nothing has reached the caller yet.
-            if has_tools && !retried && failure.is_none() && filter.unusable_foreign_reply() && collected.trim().is_empty() {
+            // A reply cut off inside its tool call is retried too, unless text
+            // already streamed to the caller (a retry would repeat it).
+            let cut_call = filter.truncated_call() && !(streaming && opened);
+            if has_tools
+                && !retried
+                && failure.is_none()
+                && ((filter.unusable_foreign_reply() && collected.trim().is_empty()) || cut_call)
+            {
                 retried = true;
+                truncated = false;
+                collected.clear();
                 filter = ToolStream::default();
                 let fixed = match stdin_text.strip_suffix("[assistant]
 ") {
@@ -341,6 +352,9 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
             }
             break;
         }
+        if failure.is_none() && has_tools && filter.truncated_call() {
+            failure = Some("the model's reply ended inside a tool call".to_string());
+        }
         let (tail, calls) = if has_tools { filter.finish() } else { (String::new(), Vec::new()) };
         collected.push_str(&tail);
         if let Some(message) = failure {
@@ -351,7 +365,13 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
             return;
         }
         let tool_calls: Vec<Value> = calls.iter().enumerate().map(|(i, call)| tool_call_json(i, call, &id)).collect();
-        let finish = if tool_calls.is_empty() { "stop" } else { "tool_calls" };
+        let finish = if !tool_calls.is_empty() {
+            "tool_calls"
+        } else if truncated {
+            "length"
+        } else {
+            "stop"
+        };
         if streaming {
             if !opened {
                 let _ = out_tx

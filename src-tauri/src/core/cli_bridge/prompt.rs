@@ -304,6 +304,12 @@ impl ToolStream {
         self.foreign && self.parse_held().is_empty()
     }
 
+    /// True when a `<tool_call>` opened but nothing in it parses: the reply was
+    /// cut off inside the call, and `finish` would drop it silently.
+    pub fn truncated_call(&self) -> bool {
+        self.in_call && !self.foreign && self.parse_held().is_empty()
+    }
+
     /// End of output: the last releasable text and every parsed tool call.
     pub fn finish(self) -> (String, Vec<ToolCall>) {
         if !self.in_call {
@@ -359,6 +365,19 @@ mod tests {
         let (tail, calls) = stream.finish();
         text.push_str(&tail);
         assert!(calls.is_empty() && text.contains("<invoke_tool>"));
+    }
+
+    #[test]
+    fn a_reply_cut_off_inside_a_tool_call_is_flagged() {
+        let mut stream = ToolStream::default();
+        stream.push("Opening the PR. <tool_call>{\"name\":\"gh\",\"argum");
+        assert!(stream.truncated_call());
+        let mut whole = ToolStream::default();
+        whole.push("<tool_call>{\"name\":\"gh\",\"arguments\":{}}</tool_call>");
+        assert!(!whole.truncated_call());
+        let mut plain = ToolStream::default();
+        plain.push("just text");
+        assert!(!plain.truncated_call());
     }
 
     #[test]
