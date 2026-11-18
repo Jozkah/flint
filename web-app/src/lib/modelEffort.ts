@@ -227,6 +227,18 @@ export const EFFORT_RULES: EffortRule[] = [
     match: ANTHROPIC_EFFORT,
     profile: { levels: THREE_LEVELS, recommended: 'high', canDisable: false },
   },
+  // Gemini 4 uses codenames, not pro/flash. Carbon and Argon stop at `high`
+  // (default medium); Neon and Hydrogen also take `xhigh` (default high).
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-4-(carbon|argon)/,
+    profile: { levels: THREE_LEVELS, recommended: 'medium', canDisable: false },
+  },
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-4-(neon|hydrogen)/,
+    profile: { levels: EFFORT_LEVELS, recommended: 'high', canDisable: false },
+  },
   {
     providers: ['google', 'gemini'],
     match: /gemini-([3-9]|\d{2,})[.\d]*-pro/,
