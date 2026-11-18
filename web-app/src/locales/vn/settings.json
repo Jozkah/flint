@@ -197,13 +197,9 @@
     "resetCodeBlockSuccessDesc": "Kiểu khối mã đã được khôi phục về mặc định.",
     "transcriptView": "Chế độ xem bản ghi",
     "transcriptViewDesc": "Trò chuyện, Cowork và Phòng hiển thị bao nhiêu của mỗi lượt. Phê duyệt, câu hỏi và lỗi luôn hiển thị.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Bình thường",
     "transcriptViewNormalDesc": "Câu trả lời và những gì cần bạn xử lý. Các lệnh gọi công cụ được gộp vào một hàng bước.",
@@ -657,7 +653,8 @@
       "timedOutDesc": "Yêu cầu xác thực đã hết thời gian chờ. Vui lòng kiểm tra kết nối mạng và thử lại.",
       "failed": "Xác thực thất bại",
       "failedDesc": "Đã xảy ra lỗi mạng khi xác thực token. Vui lòng kiểm tra kết nối internet."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Tiện ích mở rộng"

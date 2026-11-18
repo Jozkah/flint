@@ -198,13 +198,9 @@
     "resetCodeBlockSuccessDesc": "Стиль блока кода восстановлен по умолчанию.",
     "transcriptView": "Вид расшифровки",
     "transcriptViewDesc": "Сколько из каждого хода показывают Чат, Cowork и Комнаты. Подтверждения, вопросы и ошибки видны всегда.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Обычный",
     "transcriptViewNormalDesc": "Ответ и то, что требует вашего участия. Вызовы инструментов свёрнуты в одну строку шагов.",
@@ -659,7 +655,8 @@
       "timedOutDesc": "Время ожидания запроса проверки истекло. Проверьте подключение к сети и повторите попытку.",
       "failed": "Проверка не удалась",
       "failedDesc": "При проверке токена произошла сетевая ошибка. Проверьте подключение к интернету."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Расширения"

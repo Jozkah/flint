@@ -196,13 +196,9 @@
     "resetCodeBlockSuccessDesc": "Kod bloğu stili varsayılanına geri yüklendi.",
     "transcriptView": "Döküm görünümü",
     "transcriptViewDesc": "Sohbet, Cowork ve Odalar her turun ne kadarını gösterir. Onaylar, sorular ve hatalar her zaman görünür.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Yanıt ve sizi bekleyen her şey. Araç çağrıları tek bir adım satırına katlanır.",
@@ -655,7 +651,8 @@
       "timedOutDesc": "Doğrulama isteği zaman aşımına uğradı. Lütfen ağ bağlantınızı kontrol edip tekrar deneyin.",
       "failed": "Doğrulama başarısız oldu",
       "failedDesc": "Token doğrulanırken bir ağ hatası oluştu. Lütfen internet bağlantınızı kontrol edin."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Uzantılar"

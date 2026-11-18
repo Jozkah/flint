@@ -195,13 +195,9 @@
     "resetCodeBlockSuccessDesc": "Gaya blok kode telah dikembalikan ke default.",
     "transcriptView": "Tampilan transkrip",
     "transcriptViewDesc": "Seberapa banyak tiap giliran yang ditampilkan Chat, Cowork, dan Rooms. Persetujuan, pertanyaan, dan galat selalu tampil.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Jawaban dan hal yang memerlukan Anda. Panggilan alat dilipat menjadi satu baris langkah.",
@@ -653,7 +649,8 @@
       "timedOutDesc": "Permintaan validasi habis waktu. Periksa koneksi jaringan Anda dan coba lagi.",
       "failed": "Validasi gagal",
       "failedDesc": "Terjadi kesalahan jaringan saat memvalidasi token. Periksa koneksi internet Anda."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Ekstensi"

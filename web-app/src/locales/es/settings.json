@@ -197,13 +197,9 @@
     "resetCodeBlockSuccessDesc": "El estilo de bloques de código ha sido restaurado a los valores predeterminados.",
     "transcriptView": "Vista de la transcripción",
     "transcriptViewDesc": "Cuánto de cada turno muestran Chat, Cowork y Salas. Las aprobaciones, preguntas y errores siempre se muestran.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La respuesta y lo que requiere tu acción. Las llamadas a herramientas se agrupan en una fila de pasos.",
@@ -657,7 +653,8 @@
       "timedOutDesc": "La solicitud de validación agotó el tiempo. Compruebe su conexión de red e inténtelo de nuevo.",
       "failed": "Error de validación",
       "failedDesc": "Se produjo un error de red al validar el token. Compruebe su conexión a internet."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Extensiones"
