@@ -630,6 +630,10 @@ const RETRY_WALL_BUDGET: Duration = Duration::from_secs(180);
 /// A request that timed out is tried this many times in all. A timeout is
 /// seldom transient the way a dropped connection is, and each one is long.
 const MAX_TIMEOUT_ATTEMPTS: u32 = 2;
+/// Attempts at a host that refuses connections or does not resolve: the first
+/// plus one quick retry. Nothing is listening; ten backed-off attempts only
+/// make the user wait a minute for the same answer.
+const MAX_UNREACHABLE_ATTEMPTS: u32 = 2;
 
 /// Operator override for [`MAX_RETRY_DELAY`], in milliseconds.
 const RETRY_MAX_DELAY_ENV: &str = "FLINT_RETRY_MAX_DELAY_MS";
@@ -1076,6 +1080,7 @@ async fn attempt_with_key(
     // Timeouts on this key, counted apart from other failures: `attempt`
     // also counts 5xx and connect errors, which are not timeouts.
     let mut timeouts: u32 = 0;
+    let mut unreachable: u32 = 0;
     for attempt in 0..MAX_ATTEMPTS {
         let mut progressed = false;
         match run_once(
@@ -1160,6 +1165,15 @@ async fn attempt_with_key(
                                 "{} (timed out {timeouts} times; not retried again)",
                                 state.last_err
                             )));
+                        }
+                        if is_unreachable_text(&described) {
+                            unreachable += 1;
+                            if unreachable >= MAX_UNREACHABLE_ATTEMPTS {
+                                return KeyOutcome::Done(Err(format!(
+                                    "{} (provider unreachable after {unreachable} attempts; not retried again)",
+                                    state.last_err
+                                )));
+                            }
                         }
                         Disposition::Retry
                     }
@@ -1286,6 +1300,28 @@ fn upstream_failure_message(status: Option<u16>, described: &str) -> String {
 fn is_timeout_text(described: &str) -> bool {
     let d = described.to_ascii_lowercase();
     d.contains(STALL_MESSAGE_START) || d.contains("timed out") || d.contains("timeout")
+}
+
+/// Whether a transport error means nothing is reachable at the endpoint: the
+/// connection was refused or the host name does not resolve. Neither changes
+/// within a backoff window, unlike a 429/5xx or a dropped stream.
+fn is_unreachable_text(described: &str) -> bool {
+    let d = described.to_ascii_lowercase();
+    [
+        "connection refused",
+        "actively refused",
+        "os error 10061",
+        "os error 111",
+        "dns error",
+        "failed to lookup address",
+        "name or service not known",
+        "no such host",
+        "nodename nor servname",
+        "no address associated",
+        "os error 11001",
+    ]
+    .iter()
+    .any(|needle| d.contains(needle))
 }
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
@@ -1559,6 +1595,22 @@ mod tests {
         ] {
             assert_eq!(is_timeout_text(text), expected, "{text}");
         }
+    }
+
+    #[test]
+    fn refused_and_unresolvable_hosts_are_unreachable_not_transient() {
+        for text in [
+            "error sending request: tcp connect error: Connection refused (os error 111)",
+            "No connection could be made because the target machine actively refused it. (os error 10061)",
+            "dns error: failed to lookup address information: Name or service not known",
+            "dns error: No such host is known. (os error 11001)",
+        ] {
+            assert!(is_unreachable_text(text), "{text}");
+        }
+        for text in ["operation timed out", "HTTP 503 Service Unavailable", "stream ended early"] {
+            assert!(!is_unreachable_text(text), "{text}");
+        }
+        assert_eq!(MAX_UNREACHABLE_ATTEMPTS, 2, "one quick retry at most");
     }
     use genai::chat::{Binary, BinarySource};
     use serde_json::json;

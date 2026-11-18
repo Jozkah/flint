@@ -1430,7 +1430,60 @@ pub fn build_app() -> tauri::App {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running tauri application")
+        .unwrap_or_else(|e| fatal_startup(&e.to_string()))
+}
+
+/// What the user is told when the app cannot even be built. A plugin that
+/// cannot resolve a per-user folder reports `unknown path`, which is what an
+/// empty or missing profile directory (a scripted launch with `USERPROFILE` or
+/// `HOME` pointed nowhere) looks like.
+#[cfg(not(feature = "cli"))]
+fn startup_failure_message(error: &str) -> String {
+    let mut message = format!("Flint could not start: {error}");
+    if error.contains("unknown path") {
+        message.push_str(
+            "
+
+A per-user folder could not be resolved. Check that the user profile              (USERPROFILE on Windows, HOME elsewhere) points at a real folder, or set              JAN_DATA_FOLDER / APPDATA / LOCALAPPDATA for an isolated run.",
+        );
+    }
+    message
+}
+
+/// Report a startup failure on stderr and, where there is a screen, in a
+/// dialog, then exit nonzero. Replaces a bare panic nobody can read.
+#[cfg(not(feature = "cli"))]
+fn fatal_startup(error: &str) -> ! {
+    let message = startup_failure_message(error);
+    eprintln!("{message}");
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("Flint could not start")
+            .set_description(message.as_str())
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+    std::process::exit(1)
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod startup_failure_tests {
+    use super::startup_failure_message;
+
+    #[test]
+    fn an_unresolvable_folder_names_the_profile_variables() {
+        let m = startup_failure_message("error while initializing plugin `http`: unknown path");
+        assert!(m.starts_with("Flint could not start:"), "{m}");
+        assert!(m.contains("USERPROFILE"), "{m}");
+    }
+
+    #[test]
+    fn any_other_failure_is_passed_through_plainly() {
+        let m = startup_failure_message("webview missing");
+        assert_eq!(m, "Flint could not start: webview missing");
+    }
 }
 #[cfg(not(feature = "cli"))]
 #[cfg_attr(

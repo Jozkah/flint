@@ -73,7 +73,7 @@ pub enum UsageError {
 impl std::fmt::Display for UsageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotSignedIn => write!(f, "not signed in to Tokamak - run `jan login`"),
+            Self::NotSignedIn => write!(f, "not signed in to Tokamak - run `flint login`"),
             Self::NotFound => write!(
                 f,
                 "no such record for this credential (a foreign execution reads as not found)"
