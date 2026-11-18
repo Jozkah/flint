@@ -115,6 +115,17 @@ describe('afterStep', () => {
     expect(st.autoContinued).toBe(true)
   })
 
+  it('nudges an empty reply twice, even after an earlier auto-continue, then stops', async () => {
+    const st = state({ autoContinued: true })
+    const empty = step({ text: '' })
+    expect(await afterStep(st, deps(), live, empty, new Map())).toEqual({ kind: 'continue' })
+    expect(await afterStep(st, deps(), live, empty, new Map())).toEqual({ kind: 'continue' })
+    expect(await afterStep(st, deps(), live, empty, new Map())).toMatchObject({ kind: 'finish' })
+    expect(st.emptyNudges).toBe(2)
+    const nudge = JSON.stringify(st.messages[0])
+    expect(nudge).toContain('denied or failed')
+  })
+
   it('stops as aborted when the step was aborted', async () => {
     expect(await afterStep(state(), deps(), live, step({ aborted: true }), new Map())).toMatchObject({
       kind: 'finish',

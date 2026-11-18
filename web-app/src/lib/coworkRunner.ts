@@ -417,6 +417,9 @@ type RunTurnOptions = {
   seenCallIds?: Set<string>
 }
 
+/** Nudges a run gives a model that replied with nothing. */
+const MAX_EMPTY_NUDGES = 2
+
 /** What one run carries from step to step. */
 type RunState = {
   messages: UIMessage[]
@@ -435,6 +438,10 @@ type RunState = {
   // dropped stream, or an empty reply, is continued once without the user
   // having to type "continue". Once, so it can never loop.
   autoContinued: boolean
+  // Empty replies (no text, no tool call) nudged so far. Separate from
+  // `autoContinued` and allowed twice: a model whose tool call was just denied
+  // is often silent on the first nudge too, and the run then ended with nothing.
+  emptyNudges?: number
   // Likewise for a step that stalled past its retries: resumed once.
   timeoutResumed: boolean
   // Calls the last step skipped because steering was pending; told to the model
@@ -1024,12 +1031,13 @@ async function afterStep(
     )
     return CONTINUE
   }
-  if (!st.autoContinued && !result.text.trim()) {
+  if (!result.text.trim() && (st.emptyNudges ?? 0) < MAX_EMPTY_NUDGES) {
     st.autoContinued = true
+    st.emptyNudges = (st.emptyNudges ?? 0) + 1
     st.messages.push(
       nudgeFor(
         deps,
-        'Your last reply had no text and no tool call. Answer the request, or call a tool to continue the work.'
+        'Your last reply had no text and no tool call. If a tool call was denied or failed, that is not the end of the task: say what you could not do and answer with what you have, or call a different tool. Otherwise answer the request, or call a tool to continue the work.'
       )
     )
     return CONTINUE
