@@ -598,6 +598,18 @@ pub(crate) fn all_records(data_folder: &Path) -> Vec<ChildRecord> {
         .collect()
 }
 
+/// Task ids of children this app process is still running in the worktree at
+/// `worktree_path`. A record left `running` by an earlier process is not
+/// counted: that child is interrupted, not going.
+pub fn running_in(data_folder: &Path, worktree_path: &str) -> Vec<String> {
+    all_records(data_folder)
+        .into_iter()
+        .filter(|r| state_of(r) == ChildState::Running)
+        .filter(|r| r.worktree_path == worktree_path || same_dir(Path::new(&r.worktree_path), Path::new(worktree_path)))
+        .map(|r| r.task_id)
+        .collect()
+}
+
 /// Run `f` holding the lock every record read-modify-write takes, the one a
 /// child starting takes before it records itself as running.
 pub(crate) fn with_records_locked<T>(f: impl FnOnce() -> T) -> T {

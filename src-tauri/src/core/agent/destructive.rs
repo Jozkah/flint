@@ -167,7 +167,7 @@ fn reason_for_reading(
         Err(_) if posix_escapes => return None,
         Err(why) => {
             return Some(format!(
-                "could not be parsed ({why}), so it cannot be checked"
+                "could not be parsed ({why}), so it cannot be checked; resend it in plain shell syntax (balanced quotes, no inline code or eval)"
             ))
         }
     };

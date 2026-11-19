@@ -1977,6 +1977,21 @@ pub(crate) fn child_body(
     forked: Option<&[serde_json::Value]>,
     max_turns: Option<u32>,
 ) -> serde_json::Value {
+    child_body_resuming(resolved, description, parent, forked, max_turns, None)
+}
+
+/// [`child_body`] for a child that may be a continuation: `resume_model` is the
+/// model the subagent started on. It ranks as an explicit choice, so a changed
+/// session or global model does not move a resumed child, while the
+/// `FLINT_SUBAGENT_MODEL` pin still sits above it.
+pub(crate) fn child_body_resuming(
+    resolved: &ResolvedDispatch,
+    description: &str,
+    parent: &ParentRun,
+    forked: Option<&[serde_json::Value]>,
+    max_turns: Option<u32>,
+    resume_model: Option<&str>,
+) -> serde_json::Value {
     // AH-194: a rule written about this subagent by name outranks both the
     // definition's model and the parent's -- that rule is the more specific
     // statement, and it is the one somebody wrote down on purpose.
@@ -1996,7 +2011,7 @@ pub(crate) fn child_body(
     let pinned = pinned_model_from(std::env::var(SUBAGENT_MODEL_ENV).ok().as_deref());
     let (model, model_source) = choose_child_model_with_source(
         pinned.as_deref(),
-        None,
+        resume_model,
         rule.as_deref(),
         parent.model_settings.roles.get(&resolved.definition.name).map(String::as_str),
         resolved.definition.model.as_deref(),
@@ -2087,9 +2102,8 @@ async fn run_subagent(
     max_turns: Option<u32>,
     record: TranscriptMeta,
 ) -> Result<String, SubagentError> {
+    let mut record = record;
     use crate::core::agent::events::StreamEvent;
-    use crate::core::agent::r#loop::run_orchestration_streamed;
-
     let name = resolved.definition.name.clone();
     // Host tools are the client's to execute, and a client answers only a
     // `tool_request` it can see at the top level. A child's own events reach
@@ -2115,13 +2129,15 @@ async fn run_subagent(
         child_args.host_tool_route = Some((events.clone(), run_id.clone()));
     }
 
-    let body = child_body(
+    let body = child_body_resuming(
         &resolved,
         &description,
         &parent,
         parent.conversation.as_deref(),
         max_turns,
+        record.model.as_deref(),
     );
+    record.model = body["model"].as_str().map(str::to_string);
 
     let _ = events.send(StreamEvent::SubagentStart {
         run_id: run_id.clone(),
@@ -2129,44 +2145,12 @@ async fn run_subagent(
         task: Some(description.clone()),
     });
 
-    let (child_tx, mut child_rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
-    let parent_events = events.clone();
-    let fwd_run_id = run_id.clone();
-    let fwd_name = name.clone();
-    let forwarder = tokio::spawn(async move {
-        // What the child said, kept (bounded) so a run that ends without an
-        // answer can still hand its last words to the parent.
-        let mut said = String::new();
-        // The child's conversation as of its last update, kept for a follow-up.
-        let mut conversation: Vec<serde_json::Value> = Vec::new();
-        while let Some(ev) = child_rx.recv().await {
-            if let StreamEvent::MessagesUpdated { messages } = &ev {
-                conversation = messages.clone();
-            }
-            if let StreamEvent::Token { text } = &ev {
-                said.push_str(text);
-                if said.len() > PARTIAL_KEEP_BYTES * 2 {
-                    let mut cut = said.len() - PARTIAL_KEEP_BYTES;
-                    while !said.is_char_boundary(cut) {
-                        cut += 1;
-                    }
-                    said.drain(..cut);
-                }
-            }
-            if forward_to_parent(&ev) {
-                let _ = parent_events.send(StreamEvent::Subagent {
-                    run_id: fwd_run_id.clone(),
-                    name: fwd_name.clone(),
-                    event: Box::new(ev),
-                });
-            }
-        }
-        (said, conversation)
-    });
-
-    let result = run_orchestration_streamed(&child_tx, &body, &child_args).await;
-    drop(child_tx);
-    let (said, conversation) = forwarder.await.unwrap_or_default();
+    let first = run_child_once(&body, &child_args, &events, &run_id, &name).await;
+    let (result, said, conversation) = retry_if_cut_off(&body, first, |retry| {
+        let (child_args, events, run_id, name) = (&child_args, &events, &run_id, &name);
+        async move { run_child_once(&retry, child_args, events, run_id, name).await }
+    })
+    .await;
 
     let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
     let _ = events.send(StreamEvent::SubagentFinished {
@@ -2200,6 +2184,138 @@ async fn run_subagent(
             let text = child_failure_text(message.kind(), message.message(), effective_child_turns(max_turns));
             Err(SubagentError::Upstream(with_partial_output(text, &said)))
         }
+    }
+}
+
+/// One child run: its result, what it said (bounded) and its conversation as of
+/// the last update.
+type ChildOutcome = (
+    Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    String,
+    Vec<serde_json::Value>,
+);
+
+/// Run `body` as the child, forwarding its events to `events` under `run_id`.
+async fn run_child_once(
+    body: &serde_json::Value,
+    child_args: &crate::core::agent::r#loop::OrchestrationArgs,
+    events: &tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+    run_id: &str,
+    name: &str,
+) -> ChildOutcome {
+    use crate::core::agent::events::StreamEvent;
+    use crate::core::agent::r#loop::run_orchestration_streamed;
+    let (child_tx, mut child_rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
+    let parent_events = events.clone();
+    let fwd_run_id = run_id.to_string();
+    let fwd_name = name.to_string();
+    let forwarder = tokio::spawn(async move {
+        // What the child said, kept (bounded) so a run that ends without an
+        // answer can still hand its last words to the parent.
+        let mut said = String::new();
+        // The child's conversation as of its last update, kept for a follow-up.
+        let mut conversation: Vec<serde_json::Value> = Vec::new();
+        while let Some(ev) = child_rx.recv().await {
+            if let StreamEvent::MessagesUpdated { messages } = &ev {
+                conversation = messages.clone();
+            }
+            if let StreamEvent::Token { text } = &ev {
+                said.push_str(text);
+                if said.len() > PARTIAL_KEEP_BYTES * 2 {
+                    let mut cut = said.len() - PARTIAL_KEEP_BYTES;
+                    while !said.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    said.drain(..cut);
+                }
+            }
+            if forward_to_parent(&ev) {
+                let _ = parent_events.send(StreamEvent::Subagent {
+                    run_id: fwd_run_id.clone(),
+                    name: fwd_name.clone(),
+                    event: Box::new(ev),
+                });
+            }
+        }
+        (said, conversation)
+    });
+
+    let result = run_orchestration_streamed(&child_tx, body, child_args).await;
+    drop(child_tx);
+    let (said, conversation) = forwarder.await.unwrap_or_default();
+    (result, said, conversation)
+}
+
+/// The note a child's answer opens with when it was cut off at the output limit
+/// and the one retry did not finish it either.
+pub(crate) const PARTIAL_NOTE: &str = "[partial: output limit reached]";
+
+/// What a cut-off child is asked on the one retry.
+const BRIEF_RETRY_REMINDER: &str = "Your last reply was cut off at the output limit. Give the whole answer again, much more briefly: conclusions, file paths and caveats only, no preamble or recap of the work. Do not use tools.";
+
+/// A child's final reply stopped because it hit the output-token limit.
+pub(crate) fn hit_output_limit(completion: &serde_json::Value) -> bool {
+    completion
+        .pointer("/choices/0/finish_reason")
+        .and_then(|v| v.as_str())
+        .is_some_and(|r| matches!(r, "length" | "max_tokens"))
+}
+
+/// The retry request: the same body, its conversation ending with the cut-off
+/// answer and then the reminder.
+fn brief_retry_body(
+    body: &serde_json::Value,
+    conversation: &[serde_json::Value],
+    first: &serde_json::Value,
+) -> serde_json::Value {
+    let mut messages: Vec<serde_json::Value> = if conversation.is_empty() {
+        body["messages"].as_array().cloned().unwrap_or_default()
+    } else {
+        conversation.to_vec()
+    };
+    let ends_with_answer = messages
+        .last()
+        .is_some_and(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"));
+    if !ends_with_answer {
+        messages.push(serde_json::json!({ "role": "assistant", "content": final_assistant_text(first) }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": BRIEF_RETRY_REMINDER }));
+    let mut retry = body.clone();
+    retry["messages"] = serde_json::json!(messages);
+    retry
+}
+
+/// `completion` with [`PARTIAL_NOTE`] ahead of its answer.
+fn mark_partial(mut completion: serde_json::Value) -> serde_json::Value {
+    let text = format!("{PARTIAL_NOTE}
+{}", final_assistant_text(&completion));
+    if let Some(msg) = completion.pointer_mut("/choices/0/message") {
+        msg["content"] = serde_json::json!(text);
+    }
+    completion
+}
+
+/// A child whose final reply was cut off at the token limit is asked once for
+/// the whole answer more briefly. The second answer replaces the first when it
+/// is complete; otherwise the first is returned with an up-front partial note.
+async fn retry_if_cut_off<F, Fut>(body: &serde_json::Value, first: ChildOutcome, again: F) -> ChildOutcome
+where
+    F: FnOnce(serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = ChildOutcome>,
+{
+    let (result, said, conversation) = first;
+    let Ok(cut) = &result else {
+        return (result, said, conversation);
+    };
+    if !hit_output_limit(cut) {
+        return (result, said, conversation);
+    }
+    let (second, said2, conversation2) = again(brief_retry_body(body, &conversation, cut)).await;
+    match second {
+        Ok(done) if !hit_output_limit(&done) && !final_assistant_text(&done).trim().is_empty() => {
+            (Ok(done), said2, conversation2)
+        }
+        _ => (Ok(mark_partial(cut.clone())), said, conversation),
     }
 }
 
@@ -2422,6 +2538,8 @@ pub(crate) struct TranscriptMeta {
     request: SubagentRequest,
     parent_run: Option<String>,
     session: Option<String>,
+    /// The model the child ran on, so a continuation stays on it.
+    model: Option<String>,
 }
 
 struct Transcript {
@@ -2497,6 +2615,14 @@ fn take_continuation(
     Ok((rebuilt, messages))
 }
 
+/// The model a kept child ran on, for its continuation.
+fn continuation_model(old_run: &str) -> Option<String> {
+    TRANSCRIPTS
+        .lock()
+        .ok()
+        .and_then(|all| all.iter().find(|t| t.run_id == old_run).and_then(|t| t.meta.model.clone()))
+}
+
 /// Resolve and start a subagent on a background task, returning its `run_id`
 /// immediately (non-blocking). The caller collects the result later with
 /// [`await_subagent`]. Registered in `bg` so the parent run can abort it on
@@ -2520,6 +2646,7 @@ pub(crate) fn spawn_subagent(
 
     let mut req = req;
     let mut parent = std::borrow::Cow::Borrowed(parent);
+    let mut resume_model: Option<String> = None;
     if let Some(old_run) = req.continue_from.clone() {
         if req.durable || req.fork_context {
             return Err(SubagentError::Upstream(
@@ -2536,6 +2663,7 @@ pub(crate) fn spawn_subagent(
         }
         let (rebuilt, messages) = take_continuation(&old_run, &req, parent_args)?;
         req = rebuilt;
+        resume_model = continuation_model(&old_run);
         parent.to_mut().conversation = Some(messages);
     }
     let parent: &ParentRun = &parent;
@@ -2635,6 +2763,7 @@ pub(crate) fn spawn_subagent(
         request: SubagentRequest { description: description.clone(), ..req.clone() },
         parent_run: parent_args_for_record.0,
         session: parent_args_for_record.1,
+        model: resume_model,
     };
     let handle = tokio::spawn(run_child(ChildTask {
         admitted,
@@ -2939,6 +3068,94 @@ mod tests {
         assert_eq!(pick(None, None, None, Some("def"), Some("global")), "def");
         assert_eq!(pick(None, None, None, None, Some("global")), "global");
         assert_eq!(pick(None, None, None, None, None), "parent");
+    }
+
+    #[test]
+    fn a_resumed_child_stays_on_the_model_it_started_on() {
+        let mut parent = ParentRun {
+            routing: Vec::new(),
+            conversation: None,
+            model: "big".to_string(),
+            budget_remaining: None,
+            token_rates: None,
+            usd_remaining: None,
+            send_reasoning: true,
+            model_settings: ModelSettings::default(),
+        };
+        parent.model_settings.global = Some("old-global".into());
+        let resolved =
+            resolve_dispatch(&registry_with("reviewer", None), &req("reviewer", None), &ToolPermissions::allow_all()).unwrap();
+        let first = child_body(&resolved, "d", &parent, None, None);
+        assert_eq!(first["model"], "old-global");
+        // The session's and the global model both change.
+        parent.model = "new-parent".into();
+        parent.model_settings.global = Some("new-global".into());
+        let resumed = child_body_resuming(&resolved, "d", &parent, None, None, first["model"].as_str());
+        assert_eq!(resumed["model"], "old-global");
+        // Without the record it would have moved.
+        assert_eq!(child_body(&resolved, "d", &parent, None, None)["model"], "new-global");
+        // The operator pin still outranks a resumed model.
+        assert_eq!(choose_child_model(Some("pin"), Some("old-global"), None, None, None, None, "p"), "pin");
+    }
+
+    #[test]
+    fn a_kept_transcript_remembers_its_model_for_the_continuation() {
+        let mut meta = kept(Some("run-m"), "reviewer");
+        meta.model = Some("started-on".into());
+        keep_transcript("model-keep-1", &meta, history());
+        assert_eq!(continuation_model("model-keep-1").as_deref(), Some("started-on"));
+        assert_eq!(continuation_model("never-kept"), None);
+    }
+
+    fn completion(text: &str, finish: &str) -> serde_json::Value {
+        serde_json::json!({ "choices": [{ "message": { "role": "assistant", "content": text }, "finish_reason": finish }] })
+    }
+
+    fn outcome(text: &str, finish: &str) -> ChildOutcome {
+        let mut convo = history();
+        convo.push(serde_json::json!({ "role": "assistant", "content": text }));
+        (Ok(completion(text, finish)), text.to_string(), convo)
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_answer_is_asked_for_once_more_briefly_and_the_short_one_wins() {
+        let body = serde_json::json!({ "model": "m", "messages": [] });
+        let calls = AtomicU32::new(0);
+        let (result, _, convo) = retry_if_cut_off(&body, outcome("a very long answ", "length"), |retry| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            let msgs = retry["messages"].as_array().unwrap().clone();
+            assert_eq!(msgs.last().unwrap()["role"], "user");
+            assert!(msgs.last().unwrap()["content"].as_str().unwrap().contains("more briefly"));
+            assert_eq!(msgs[msgs.len() - 2]["content"], "a very long answ");
+            async { outcome("short whole answer", "stop") }
+        })
+        .await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(final_assistant_text(&result.unwrap()), "short whole answer");
+        assert_eq!(convo.last().unwrap()["content"], "short whole answer");
+    }
+
+    #[tokio::test]
+    async fn a_second_cut_off_answer_returns_the_first_marked_partial() {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+        let body = serde_json::json!({ "model": "m", "messages": [] });
+        let failed: ChildOutcome = (Err(HarnessError::new(ErrorKind::Upstream, "boom")), String::new(), Vec::new());
+        for second in [outcome("still cut", "length"), failed] {
+            let (result, _, _) = retry_if_cut_off(&body, outcome("first part", "length"), |_| async { second }).await;
+            let text = final_assistant_text(&result.unwrap());
+            assert!(text.starts_with(PARTIAL_NOTE), "{text}");
+            assert!(text.ends_with("first part"), "{text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_complete_answer_is_not_retried() {
+        let body = serde_json::json!({ "model": "m", "messages": [] });
+        let (result, _, _) = retry_if_cut_off(&body, outcome("done", "stop"), |_| async {
+            panic!("must not run again")
+        })
+        .await;
+        assert_eq!(final_assistant_text(&result.unwrap()), "done");
     }
 
     #[test]
@@ -4671,6 +4888,7 @@ auto_compact_window = 9000
             request: req(name, None),
             parent_run: parent_run.map(str::to_string),
             session: None,
+            model: None,
         }
     }
 
