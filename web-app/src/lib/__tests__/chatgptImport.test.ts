@@ -106,6 +106,18 @@ describe('importConversations', () => {
     expect(new Set(stamps).size).toBe(stamps.length)
     expect(createMessage.mock.calls[0][0].thread_id).toBe(result.threads[0].id)
   })
+
+  it('files messages under the id the backend assigned, not the one sent', async () => {
+    const conversations = parseChatGptExport(JSON.stringify(fixture))
+    const createThread = vi.fn(async (t) => ({ ...t, id: 'backend-uuid' }))
+    const createMessage = vi.fn(async (m) => m)
+    await importConversations(conversations, { createThread, createMessage })
+    expect(createThread.mock.calls[0][0].id).not.toBe('backend-uuid')
+    expect(createMessage.mock.calls.length).toBeGreaterThan(0)
+    for (const [m] of createMessage.mock.calls) {
+      expect(m.thread_id).toBe('backend-uuid')
+    }
+  })
 })
 
 const modern = (extra: Record<string, unknown> = {}) => ({
