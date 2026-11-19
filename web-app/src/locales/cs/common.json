@@ -76,7 +76,8 @@
       "update": "Skupiny se nepodařilo aktualizovat",
       "import": "Skupiny se nepodařilo importovat",
       "unreadable": "{{failure}}: uložené skupiny se nepodařilo načíst",
-      "restored": "{{failure}}. Předchozí pořadí bylo obnoveno."
+      "restored": "{{failure}}. Předchozí pořadí bylo obnoveno.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Skupina {{name}} vytvořena",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Složky položky byly přidány do skupiny"
     },
     "untitled": "Skupina bez názvu",
-    "folderNotInspected": "Složku se nepodařilo zkontrolovat"
+    "folderNotInspected": "Složku se nepodařilo zkontrolovat",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Kód",

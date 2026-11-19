@@ -27,6 +27,12 @@ export type MemoryBinding = {
   projectRoot?: string
   /** A Flint workspace project, for a conversation with no folder. */
   janProjectId?: string
+  /**
+   * Cowork only: the Home group the session's group is linked to. Its memories
+   * are read alongside the folder's (or are the project, with no folder).
+   * Supplied from the renderer's own group state, never by the model.
+   */
+  linkedJanProjectId?: string
   /** For display only; never sent as identity. */
   janProjectName?: string
   temporary: boolean
@@ -38,7 +44,10 @@ export type MemoryBinding = {
  * Declared here as well as in the plugin's guest bindings so this module does
  * not depend on the plugin's built declaration files being current.
  */
-export type ScopedMemoryLocation = MemoryLocation & { janProjectId?: string }
+export type ScopedMemoryLocation = MemoryLocation & {
+  janProjectId?: string
+  linkedJanProjectId?: string
+}
 
 /** What `memory_retrieve` returns, including the fields the panel reads. */
 export type ScopedMemoryRetrieved = MemoryRetrieved & {
@@ -92,6 +101,9 @@ export function memoryLocation(
     dataFolder,
     ...(binding.projectRoot ? { projectRoot: binding.projectRoot } : {}),
     ...(binding.janProjectId ? { janProjectId: binding.janProjectId } : {}),
+    ...(binding.linkedJanProjectId
+      ? { linkedJanProjectId: binding.linkedJanProjectId }
+      : {}),
     ...(sessionId ? { sessionId } : {}),
   }
 }

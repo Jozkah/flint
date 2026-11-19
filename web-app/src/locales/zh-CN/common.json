@@ -76,7 +76,8 @@
       "update": "无法更新分组",
       "import": "无法导入分组",
       "unreadable": "{{failure}}：无法读取已保存的分组",
-      "restored": "{{failure}}。已恢复之前的顺序。"
+      "restored": "{{failure}}。已恢复之前的顺序。",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "已创建分组 {{name}}",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}。已将项目文件夹加入分组"
     },
     "untitled": "未命名分组",
-    "folderNotInspected": "无法检查文件夹"
+    "folderNotInspected": "无法检查文件夹",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "代码",

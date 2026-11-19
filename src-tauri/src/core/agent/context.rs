@@ -949,6 +949,7 @@ pub(crate) fn load_memories(
         &memory::retrieve::RetrievalContext {
             session_id,
             project_id: project_id.as_deref(),
+            shared_project_ids: &[],
             now,
             budget_chars: MEMORY_BUDGET_CHARS,
             temporary,

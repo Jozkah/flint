@@ -76,7 +76,8 @@
       "update": "Không thể cập nhật các nhóm",
       "import": "Không thể nhập các nhóm",
       "unreadable": "{{failure}}: không thể đọc các nhóm đã lưu",
-      "restored": "{{failure}}. Thứ tự trước đó đã được khôi phục."
+      "restored": "{{failure}}. Thứ tự trước đó đã được khôi phục.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "Đã tạo nhóm {{name}}",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Các thư mục của mục đã được thêm vào nhóm"
     },
     "untitled": "Nhóm chưa đặt tên",
-    "folderNotInspected": "Không thể kiểm tra thư mục"
+    "folderNotInspected": "Không thể kiểm tra thư mục",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Mã",

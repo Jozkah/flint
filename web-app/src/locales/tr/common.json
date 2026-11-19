@@ -76,7 +76,8 @@
       "update": "Gruplar güncellenemedi",
       "import": "Gruplar içe aktarılamadı",
       "unreadable": "{{failure}}: kayıtlı gruplar okunamadı",
-      "restored": "{{failure}}. Önceki sıralamanız geri yüklendi."
+      "restored": "{{failure}}. Önceki sıralamanız geri yüklendi.",
+      "link": "Could not change the group link"
     },
     "announce": {
       "created": "{{name}} grubu oluşturuldu",
@@ -91,7 +92,14 @@
       "foldersAdded": "{{base}}. Öğenin klasörleri gruba eklendi"
     },
     "untitled": "Adsız grup",
-    "folderNotInspected": "Klasör incelenemedi"
+    "folderNotInspected": "Klasör incelenemedi",
+    "linkToChat": "Link to chat group",
+    "linkedToChat": "Linked to chat group {{name}}",
+    "linkUnlink": "Unlink",
+    "linkNoChatGroups": "No chat groups yet",
+    "linkExplain": "Shares memories and artifacts with a chat group",
+    "chatLinkedToCowork": "Linked to Cowork: {{names}}",
+    "chatUnlinkCowork": "Unlink from Cowork"
   },
   "htmlArtifact": {
     "code": "Kod",

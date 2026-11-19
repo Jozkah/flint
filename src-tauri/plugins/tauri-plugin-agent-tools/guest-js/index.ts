@@ -339,6 +339,11 @@ export type MemoryLocation = {
    * memory commands accept it; model-facing tools cannot supply it.
    */
   janProjectId?: string
+  /**
+   * A second Jan project whose memories are also readable: the Home group a
+   * Cowork group is linked to. Added alongside the folder's, never instead.
+   */
+  linkedJanProjectId?: string
 }
 
 export type MemoryView = {

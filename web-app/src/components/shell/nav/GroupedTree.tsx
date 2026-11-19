@@ -14,6 +14,7 @@ import {
   FolderInput,
   FolderPlus,
   Folders,
+  Link2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -185,6 +186,7 @@ export function GroupedTree({
   const { t } = useTranslation()
   const { isMobile } = useShellNav()
   const data = useConversationGroups((s) => s.state.surfaces[surface])
+  const homeGroups = useConversationGroups((s) => s.state.surfaces.home.groups)
   const layout = useMemo(
     () => layoutSurface(data, ids, (id) => id),
     [data, ids]
@@ -302,6 +304,16 @@ export function GroupedTree({
                 {group.folderBindings.length > 0 && (
                   <Folders aria-hidden className="size-3 shrink-0" />
                 )}
+                {surface === 'cowork' &&
+                  homeGroups.some((h) => h.id === group.linkedGroupId) && (
+                    <Link2
+                      data-testid="group-linked-icon"
+                      aria-label={t('common:groups.linkedToChat', {
+                        name: homeGroups.find((h) => h.id === group.linkedGroupId)?.name,
+                      })}
+                      className="size-3 shrink-0"
+                    />
+                  )}
                 <FadeText>{group.name}</FadeText>
                 <span className="text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-subtle-foreground tabular-nums">
                   {children.length}
@@ -370,6 +382,7 @@ export function GroupedTree({
                       </DropdownMenuItem>
                     )}
                     <MoveGroupSub surface={surface} group={group} />
+                    {surface === 'cowork' && <LinkGroupSub group={group} />}
                   <DropdownMenuItem onSelect={() => setFoldersOf(group.id)}>
                     <Folders />
                     <span>{t('common:groups.folders')}</span>
@@ -508,6 +521,49 @@ export function GroupedTree({
         />
       )}
     </>
+  )
+}
+
+/**
+ * "Link to chat group" for a Cowork group's menu: pick the Home group whose
+ * memories and artifacts this group shares, or unlink. Hidden for Rooms.
+ */
+function LinkGroupSub({ group }: { group: ConversationGroup }) {
+  const { t } = useTranslation()
+  const homeGroups = useConversationGroups((s) => s.state.surfaces.home.groups)
+  const sorted = [...homeGroups].sort((a, b) => a.position - b.position)
+  const set = (homeId: string | null) =>
+    void useConversationGroups.getState().setLink('cowork', group.id, homeId)
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger data-testid="group-link-chat">
+        <Link2 />
+        <span>{t('common:groups.linkToChat')}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-48">
+        {sorted.length === 0 && (
+          <DropdownMenuItem disabled>
+            <span>{t('common:groups.linkNoChatGroups')}</span>
+          </DropdownMenuItem>
+        )}
+        {sorted.map((g) => (
+          <DropdownMenuItem
+            key={g.id}
+            data-testid="group-link-target"
+            disabled={g.id === group.linkedGroupId}
+            onSelect={() => set(g.id)}
+          >
+            <FadeText>{g.name}</FadeText>
+          </DropdownMenuItem>
+        ))}
+        {group.linkedGroupId && <DropdownMenuSeparator />}
+        {group.linkedGroupId && (
+          <DropdownMenuItem data-testid="group-unlink-chat" onSelect={() => set(null)}>
+            <span>{t('common:groups.linkUnlink')}</span>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 

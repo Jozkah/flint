@@ -4971,6 +4971,7 @@ async fn a_proposed_memory_lists_under_the_session_that_proposed_it() {
         project_root: None,
         session_id: Some("chat-a".to_string()),
         jan_project_id: None,
+        linked_jan_project_id: None,
     })
     .await
     .expect("list");

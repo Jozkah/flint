@@ -40,7 +40,10 @@ import {
   type PreviewLine,
 } from '@/lib/artifactCardPreview'
 import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
-import { sessionWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
+import { sessionWorkspacePath, threadWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
+import { useConversationGroups } from '@/lib/groups/store'
+import { useThreads } from '@/hooks/useThreads'
+import { artifactsOfChatMessages, linkedHomeGroups } from '@/lib/linkedChatArtifacts'
 import { artifactsFromTurns, type CoworkArtifact } from '@/lib/coworkArtifacts'
 import { extensionOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import type { CoworkTurn } from '@/types/coworkSession'
@@ -161,6 +164,67 @@ type Row = CoworkArtifact & {
   root: string | null
   /** Set for a Studio result (source "Studio"), which opens in its viewer. */
   studio?: GalleryItem
+  /** Set for a file a linked chat group's thread made: the thread it opens. */
+  chatThreadId?: string
+  /** The linked chat group the file came from. */
+  chatGroupName?: string
+}
+
+/** Chat-group files for the Home groups a Cowork group is linked to. */
+function useLinkedChatRows(): Row[] {
+  const groups = useConversationGroups((s) => s.state)
+  const threads = useThreads((s) => s.threads)
+  const linked = useMemo(() => linkedHomeGroups(groups), [groups])
+  const targets = useMemo(
+    () =>
+      Object.values(threads)
+        .filter((th) => linked.has(th.metadata?.project?.id ?? ''))
+        .map((th) => ({
+          id: th.id,
+          title: th.title,
+          updated: th.updated || 0,
+          group: linked.get(th.metadata!.project!.id!) ?? '',
+        })),
+    [threads, linked]
+  )
+  const key = targets.map((x) => `${x.id}:${x.updated}`).join(',')
+  const [rows, setRows] = useState<Row[]>([])
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      if (targets.length === 0) return alive && setRows([])
+      const dataFolder = await getServiceHub().app().getJanDataFolder()
+      const built = await Promise.all(
+        targets.map(async (th): Promise<Row[]> => {
+          try {
+            const messages = await getServiceHub().messages().fetchMessages(th.id)
+            const arts = artifactsOfChatMessages(messages)
+            if (arts.length === 0) return []
+            const root = dataFolder ? await threadWorkspacePath(dataFolder, th.id) : null
+            return arts.map((artifact) => ({
+              ...artifact,
+              kind: kindOf(artifact),
+              sessionId: `chat:${th.id}`,
+              sessionTitle: `${th.group} · ${th.title}`,
+              folder: null,
+              updated: th.updated,
+              root: root || null,
+              chatThreadId: th.id,
+              chatGroupName: th.group,
+            }))
+          } catch {
+            return []
+          }
+        })
+      )
+      if (alive) setRows(built.flat())
+    })()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return rows
 }
 
 const rowKey = (row: Pick<Row, 'sessionId' | 'path'>) =>
@@ -350,8 +414,10 @@ function ArtifactsPage() {
       }
     >()
   )
+  const linkedChatRows = useLinkedChatRows()
   const rows = useMemo<Row[]>(
     () => [
+      ...linkedChatRows,
       ...sessions.flatMap((session) => {
         const root = workspaces[session.id] ?? null
         const turns = session.turns ?? []
@@ -392,7 +458,7 @@ function ArtifactsPage() {
         })
       ),
     ].sort((a, b) => (b.updated || 0) - (a.updated || 0)),
-    [sessions, workspaces, studioImages, studioVideos]
+    [sessions, workspaces, studioImages, studioVideos, linkedChatRows]
   )
 
   const shown = useMemo(() => {
@@ -427,6 +493,8 @@ function ArtifactsPage() {
   const open = useCallback(
     (row: Row) => {
       if (row.studio) return setViewing(row.studio)
+      if (row.chatThreadId)
+        return void navigate({ to: route.threadsDetail, params: { threadId: row.chatThreadId } })
       useCoworkSessions.getState().selectSession(row.sessionId)
       useCoworkRun.getState().requestPreview(row.sessionId, row.path)
       navigate({ to: route.cowork })
@@ -438,6 +506,8 @@ function ArtifactsPage() {
   const goToSession = useCallback(
     (row: Row) => {
       if (row.studio) return void navigate({ to: route.studio as never })
+      if (row.chatThreadId)
+        return void navigate({ to: route.threadsDetail, params: { threadId: row.chatThreadId } })
       useCoworkSessions.getState().selectSession(row.sessionId)
       navigate({ to: route.cowork })
     },

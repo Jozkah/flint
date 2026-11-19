@@ -19,6 +19,8 @@ export async function recordMemoryUses(opts: {
    * carried is visible to the backend when the use is recorded.
    */
   janProjectId?: string
+  /** The linked Home group, so a shared memory it carried can be recorded. */
+  linkedJanProjectId?: string
   memory: TurnMemory | undefined
   turnId?: string
   snapshotId?: string
@@ -32,7 +34,11 @@ export async function recordMemoryUses(opts: {
     await memoryRecordUses(
       memoryLocation(
         dataFolder,
-        { projectRoot: opts.projectRoot, janProjectId: opts.janProjectId },
+        {
+          projectRoot: opts.projectRoot,
+          janProjectId: opts.janProjectId,
+          linkedJanProjectId: opts.linkedJanProjectId,
+        },
         opts.sessionId
       ),
       ids.map((id) => ({ id, reason: reasons.get(id) })),

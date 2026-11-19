@@ -451,6 +451,25 @@ impl MemoryRecord {
     /// no other; a project memory reaches only conversations attached to that
     /// project. A record whose scope requires an id it does not have applies to
     /// nothing -- it cannot be matched, so it cannot leak.
+    ///
+    /// Use [`Self::applies_to_shared`] when the caller also reads other
+    /// projects' memories (a linked group).
+    pub fn applies_to_shared(
+        &self,
+        session_id: Option<&str>,
+        project_id: Option<&str>,
+        shared_project_ids: &[String],
+    ) -> bool {
+        if self.applies_to(session_id, project_id) {
+            return true;
+        }
+        self.scope == Scope::Project
+            && self
+                .project_id
+                .as_deref()
+                .is_some_and(|mine| shared_project_ids.iter().any(|s| s == mine))
+    }
+
     pub fn applies_to(&self, session_id: Option<&str>, project_id: Option<&str>) -> bool {
         match self.scope {
             Scope::User => true,
