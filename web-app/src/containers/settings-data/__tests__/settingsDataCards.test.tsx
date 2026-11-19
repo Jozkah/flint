@@ -168,6 +168,23 @@ describe('DataImportCard', () => {
     expect(hub.createThread).not.toHaveBeenCalled()
   })
 
+  it('says so when conversations hold no readable messages', async () => {
+    render(<DataImportCard />)
+    const empty = JSON.stringify([
+      { title: 'x', mapping: { r: { id: 'r', parent: null, children: [] } } },
+    ])
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('import-chatgpt-file'), {
+        target: { files: [new File([empty], 'a.json'), new File([empty], 'b.json')] },
+      })
+      await new Promise((r) => setTimeout(r, 10))
+    })
+    expect(toast.info).toHaveBeenCalledWith(
+      'settings:general.importChatGptNoMessages'
+    )
+    expect(hub.createThread).not.toHaveBeenCalled()
+  })
+
   it('refuses an export over the size limit without reading it', async () => {
     render(<DataImportCard />)
     const file = new File(['[]'], 'c.json')

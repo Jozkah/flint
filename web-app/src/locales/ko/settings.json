@@ -196,13 +196,9 @@
     "resetCodeBlockSuccessDesc": "코드 블록 스타일이 기본값으로 복원되었습니다.",
     "transcriptView": "대화 기록 보기",
     "transcriptViewDesc": "채팅, Cowork, 룸에서 각 턴을 얼마나 보여줄지 정합니다. 승인, 질문, 오류는 항상 표시됩니다.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "기본",
     "transcriptViewNormalDesc": "답변과 조치가 필요한 항목만. 도구 호출은 한 줄의 단계로 접힙니다.",
@@ -655,7 +651,8 @@
       "timedOutDesc": "확인 요청 시간이 초과되었습니다. 네트워크 연결을 확인한 후 다시 시도하세요.",
       "failed": "확인 실패",
       "failedDesc": "토큰을 확인하는 중 네트워크 오류가 발생했습니다. 인터넷 연결을 확인하세요."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "확장 프로그램"

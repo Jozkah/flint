@@ -197,13 +197,9 @@
     "resetCodeBlockSuccessDesc": "Le style du bloc de code a été restauré par défaut.",
     "transcriptView": "Affichage de la transcription",
     "transcriptViewDesc": "Ce que Chat, Cowork et Salons montrent de chaque tour. Les approbations, questions et erreurs restent toujours visibles.",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La réponse et ce qui demande votre action. Les appels d'outils sont regroupés en une ligne d'étapes.",
@@ -657,7 +653,8 @@
       "timedOutDesc": "La requête de validation a expiré. Vérifiez votre connexion réseau et réessayez.",
       "failed": "Échec de la validation",
       "failedDesc": "Une erreur réseau s’est produite lors de la validation du jeton. Vérifiez votre connexion Internet."
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "Extensions"
