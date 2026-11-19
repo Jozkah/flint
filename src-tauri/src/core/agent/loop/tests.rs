@@ -8426,7 +8426,8 @@ fn final_refusals_do_not_count_toward_the_failed_turns_abort() {
     assert!(!counts_toward_stuck("read", "fine"));
 }
 
-/// Without an interactive UI a run that repeats the same call is stopped
+/// Without an interactive UI a run that repeats the same call is first asked
+/// to wrap up in text; a model that ignores that and repeats again is stopped
 /// with an error rather than looping.
 #[tokio::test]
 async fn identical_calls_without_ui_stop_the_run() {
@@ -8462,8 +8463,8 @@ async fn identical_calls_without_ui_stop_the_run() {
         "{err}"
     );
     assert!(err.message().contains("same tool call 8 times"), "{err}");
-    assert_eq!(*calls.lock().unwrap(), REPEATED_CALLS_LIMIT);
-    assert_eq!(tool.calls.lock().unwrap().len(), REPEATED_CALLS_LIMIT);
+    assert_eq!(*calls.lock().unwrap(), REPEATED_CALLS_LIMIT * 2);
+    assert_eq!(tool.calls.lock().unwrap().len(), REPEATED_CALLS_LIMIT * 2);
 }
 
 /// The model is reminded, not stopped, on the way to the limit; the first
