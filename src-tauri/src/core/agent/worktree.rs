@@ -1044,9 +1044,13 @@ fn is_declared(path: &str, declared: &[String]) -> bool {
     })
 }
 
-/// A tool-cache file that nobody asked for: not declared by the plan.
+/// A tool-cache file, or one whose name says it holds secrets (`.env*`,
+/// `*.pem`, `id_*`, `credentials*`), that nobody asked for: not declared by
+/// the plan. A path the plan names outright is always kept.
 pub fn is_unwanted_cache(path: &str, declared: &[String]) -> bool {
-    is_tool_cache_path(path) && !is_declared(path, declared)
+    (is_tool_cache_path(path)
+        || tauri_plugin_agent_tools::tools::command_guards::is_secret_looking(path))
+        && !is_declared(path, declared)
 }
 
 /// Commit everything the session left uncommitted in its worktree.
@@ -1406,7 +1410,68 @@ pub fn discard_owned(
     force: bool,
 ) -> Result<(), String> {
     ensure_owned(record, worktrees_root)?;
+    if !force {
+        let busy = running_inside(&crate::core::app::commands::resolve_jan_data_folder(), record);
+        if !busy.is_empty() {
+            return Err(busy_message(&record.path, &busy));
+        }
+    }
     discard(record, force)
+}
+
+/// What may still be running inside a worktree: subagents this process has
+/// not settled, and background jobs whose recorded project is the worktree
+/// and whose process is still alive. Removing the folder under either one
+/// would cut it off mid-write, so a discard that is not explicit refuses.
+pub fn running_inside(data_folder: &Path, record: &WorktreeRecord) -> Vec<String> {
+    let mut busy: Vec<String> = crate::core::agent::team_children::running_in(data_folder, &record.path)
+        .into_iter()
+        .map(|id| format!("subagent task {id}"))
+        .collect();
+    let here = Path::new(&record.path).canonicalize().ok();
+    for owner in tauri_plugin_agent_tools::job_record::owners(data_folder) {
+        for job in tauri_plugin_agent_tools::job_record::read_owner(data_folder, &owner) {
+            if job.state != tauri_plugin_agent_tools::job_record::JobState::Running || job.project.is_empty() {
+                continue;
+            }
+            let inside = match (&here, Path::new(&job.project).canonicalize().ok()) {
+                (Some(h), Some(p)) => p.starts_with(h),
+                _ => false,
+            };
+            if inside
+                && tauri_plugin_agent_tools::job_record::still_running(&job.identity)
+                    == tauri_plugin_agent_tools::job_record::Verdict::Alive
+            {
+                busy.push(format!("background job {}", job.id));
+            }
+        }
+    }
+    busy
+}
+
+fn busy_message(path: &str, busy: &[String]) -> String {
+    format!(
+        "{} may still be in use by {}; stop it first, or discard explicitly (force) to remove the worktree anyway",
+        path,
+        busy.join(", ")
+    )
+}
+
+#[cfg(test)]
+mod busy_tests {
+    use super::*;
+
+    #[test]
+    fn the_refusal_names_what_is_running_and_how_to_override() {
+        let msg = busy_message("/w/x", &["subagent task t1".into()]);
+        assert!(msg.contains("subagent task t1") && msg.contains("force"), "{msg}");
+    }
+
+    #[test]
+    fn a_folder_with_nothing_recorded_is_not_busy() {
+        let data = std::env::temp_dir().join("flint-busy-none");
+        assert!(crate::core::agent::team_children::running_in(&data, "/w/none").is_empty());
+    }
 }
 
 /// Refuse a record that `record.source_root`'s own Git does not list at
@@ -1664,6 +1729,25 @@ pub fn apply_optimizations(
     for rel in symlink_dirs {
         let link = worktree.join(rel);
         let target = source_root.join(rel);
+        // A link inside the source that leads out of it, or a worktree folder
+        // that is itself a link out, would share (or write into) a place that
+        // is neither checkout. Refuse by where each one really resolves.
+        if let (Ok(real_target), Ok(real_source)) = (target.canonicalize(), source_root.canonicalize()) {
+            if !real_target.starts_with(&real_source) {
+                return Err(format!(
+                    "{rel} in the source checkout is a link that leads outside it; refusing to share it"
+                ));
+            }
+        }
+        if let Some(anchor) = link.ancestors().skip(1).find(|a| a.exists()) {
+            if let (Ok(real_anchor), Ok(real_wt)) = (anchor.canonicalize(), worktree.canonicalize()) {
+                if !real_anchor.starts_with(&real_wt) {
+                    return Err(format!(
+                        "{rel} would be created outside the worktree (a parent folder is a link out of it)"
+                    ));
+                }
+            }
+        }
         // `symlink_metadata` rather than `exists`, so a path that is already a
         // (possibly broken) link is caught too, not just a real directory.
         if link.symlink_metadata().is_ok() {
@@ -1686,6 +1770,15 @@ mod tests {
     use super::*;
 
     /// R20: creating an isolated checkout runs no hook the repository holds.
+    #[test]
+    fn a_secret_looking_file_is_left_out_unless_the_plan_names_it() {
+        assert!(is_unwanted_cache(".env", &[]));
+        assert!(is_unwanted_cache("deploy/server.pem", &[".".to_string()]));
+        assert!(!is_unwanted_cache(".env", &[".env".to_string()]));
+        assert!(!is_unwanted_cache(".env.example", &[]));
+        assert!(!is_unwanted_cache("src/main.rs", &[]));
+    }
+
     #[test]
     fn an_isolated_checkout_runs_no_hook() {
         let base = std::env::temp_dir().join(format!("jan-wt-nohook-{}", std::process::id()));

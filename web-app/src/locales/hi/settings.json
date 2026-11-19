@@ -196,13 +196,9 @@
     "resetCodeBlockSuccessDesc": "कोड ब्लॉक शैली को डिफ़ॉल्ट पर पुनर्स्थापित किया गया।",
     "transcriptView": "ट्रांसक्रिप्ट दृश्य",
     "transcriptViewDesc": "Chat, Cowork और Rooms हर टर्न का कितना हिस्सा दिखाते हैं। अनुमोदन, प्रश्न और त्रुटियाँ हमेशा दिखती हैं।",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "सामान्य",
     "transcriptViewNormalDesc": "उत्तर और जिस पर आपकी ज़रूरत है। टूल कॉल एक चरण पंक्ति में समेटे जाते हैं।",
@@ -655,7 +651,8 @@
       "timedOutDesc": "सत्यापन अनुरोध का समय समाप्त हो गया। कृपया अपना नेटवर्क कनेक्शन जाँचें और फिर कोशिश करें।",
       "failed": "सत्यापन विफल",
       "failedDesc": "टोकन सत्यापित करते समय नेटवर्क त्रुटि हुई। कृपया अपना इंटरनेट कनेक्शन जाँचें।"
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "एक्सटेंशन"

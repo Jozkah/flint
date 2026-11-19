@@ -3105,6 +3105,21 @@ impl CompositeToolInvoker {
             .then(|| tauri_plugin_agent_tools::tools::git_tool::plan_from_args(args).ok())
             .flatten()
             .and_then(|p| p.destructive);
+        // A shell command that names a path a read/edit/write deny rule covers
+        // is the same access by another route: always put to the person, and
+        // refused where nobody can be asked, auto-approval or not.
+        let names_denied_path = (name == "bash" && !self.bypass)
+            .then(|| args.get("command").and_then(|v| v.as_str()))
+            .flatten()
+            .and_then(|c| {
+                tauri_plugin_agent_tools::tools::command_guards::denied_path_named(
+                    &self.permissions,
+                    c,
+                    &self.project_root,
+                    &self.subject,
+                )
+            });
+        let git_destructive = git_destructive.or(names_denied_path);
         let destructive = git_destructive.filter(|_| !self.bypass).or_else(|| (name == "bash" && !self.bypass)
             .then(|| args.get("command").and_then(|v| v.as_str()))
             .flatten()

@@ -213,6 +213,16 @@ pub struct HookError {
 }
 
 impl HookError {
+    /// How a transcript line should name this failure: a hook that was
+    /// stopped (timeout, cancelled) is not the same as one that ran and
+    /// failed, and the reader should not have to guess which it was.
+    pub fn line_tag(&self) -> &'static str {
+        match self.kind {
+            HookErrorKind::TimedOut | HookErrorKind::Cancelled => "stopped",
+            _ => "error",
+        }
+    }
+
     pub fn new(kind: HookErrorKind, message: impl Into<String>) -> Self {
         Self { kind, message: crate::harness_error::scrub(&message.into()) }
     }
@@ -897,7 +907,9 @@ async fn run_with_env(
     input: Option<&HookInput>,
 ) -> Decision {
     let mut decision = Decision::default();
+    let mut current_input: Option<HookInput> = input.cloned();
     for hook in hooks.iter().filter(|h| h.applies_to(event, tool)) {
+        let input = current_input.as_ref();
         if let Some(spec) = &hook.if_filter {
             if !if_matches(spec, input) {
                 continue;
@@ -925,7 +937,12 @@ async fn run_with_env(
                     decision.ask.get_or_insert_with(|| bound(&crate::harness_error::scrub(&out.ask_reason())));
                 }
                 if let Some(new_input) = out.updated_input.clone() {
-                    decision.updated_input = Some(new_input);
+                    let merged = merge_updated_input(decision.updated_input.take(), new_input);
+                    // Later hooks see the call as the earlier ones rewrote it.
+                    if let Some(cur) = current_input.as_mut() {
+                        cur.tool_input = merged.clone();
+                    }
+                    decision.updated_input = Some(merged);
                 }
             }
             if let Some(why) = out.refusal(event) {
@@ -961,6 +978,22 @@ async fn run_with_env(
         }
     }
     decision
+}
+
+/// Combine the rewrites of two `pre-tool` hooks for one call. Objects merge
+/// key by key with the later hook winning a clash, so a hook that changes one
+/// argument does not undo another hook's change to a different one; anything
+/// else is replaced by the later answer. Deterministic: file order decides.
+fn merge_updated_input(earlier: Option<serde_json::Value>, later: serde_json::Value) -> serde_json::Value {
+    match (earlier, later) {
+        (Some(serde_json::Value::Object(mut a)), serde_json::Value::Object(b)) => {
+            for (k, v) in b {
+                a.insert(k, v);
+            }
+            serde_json::Value::Object(a)
+        }
+        (_, later) => later,
+    }
 }
 
 /// Run one hook and say how it went.
@@ -1215,10 +1248,16 @@ fn hook_outcome(
     } else {
         format!(": {}", text.trim())
     };
-    let error = HookError::new(
-        HookErrorKind::Failed,
-        format!("the {event_name} hook exited with {code}{detail}"),
-    );
+    // 127 is the shell's "command not found": the check this hook stands for
+    // most likely never ran, which is not the same as it running and saying no.
+    let message = if out.status.code() == Some(127) {
+        format!(
+            "the {event_name} hook exited with 127 (command not found), so its check may not have run{detail}"
+        )
+    } else {
+        format!("the {event_name} hook exited with {code}{detail}")
+    };
+    let error = HookError::new(HookErrorKind::Failed, message);
     (false, text, Some(error), parsed)
 }
 
@@ -1757,6 +1796,57 @@ json_output = true
         let d = run_with_input(&hooks, Event::PostTool, Some("bash"), &ctx(&root), &input).await;
         assert!(d.blocked.is_none() && d.notes.is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn two_hooks_rewrites_merge_key_by_key_later_wins() {
+        let m = merge_updated_input(Some(serde_json::json!({"a": 1, "b": 1})), serde_json::json!({"b": 2, "c": 3}));
+        assert_eq!(m, serde_json::json!({"a": 1, "b": 2, "c": 3}));
+        let m = merge_updated_input(Some(serde_json::json!({"a": 1})), serde_json::json!("plain"));
+        assert_eq!(m, serde_json::json!("plain"));
+        assert_eq!(merge_updated_input(None, serde_json::json!({"x": 1})), serde_json::json!({"x": 1}));
+    }
+
+    #[tokio::test]
+    async fn a_rewrite_survives_a_later_hook_that_does_not_rewrite() {
+        let root = dir("pre-rewrite-merge");
+        write_config(
+            &root,
+            r##"[[hook]]
+event = "pre-tool"
+command = '''echo '{"updatedInput":{"path":"safe.txt"}}' '''
+json_output = true
+
+[[hook]]
+event = "pre-tool"
+command = '''echo '{"additionalContext":"seen"}' '''
+json_output = true
+"##,
+        );
+        let hooks = load(&root).unwrap();
+        let input = HookInput { tool_name: "write".into(), ..HookInput::default() };
+        let d = run_with_input(&hooks, Event::PreTool, Some("write"), &ctx(&root), &input).await;
+        assert_eq!(d.updated_input, Some(serde_json::json!({"path": "safe.txt"})), "{d:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_hook_that_exits_127_says_its_check_may_not_have_run() {
+        let (ok, _, err, _) = hook_outcome("pre-tool", false, &exited(127, "", "nope: not found"));
+        assert!(!ok);
+        let err = err.unwrap();
+        assert!(err.message.contains("may not have run"), "{}", err.message);
+        assert_eq!(err.line_tag(), "error");
+        let (_, _, err, _) = hook_outcome("pre-tool", false, &exited(2, "", "bad"));
+        assert!(!err.unwrap().message.contains("may not have run"));
+    }
+
+    #[test]
+    fn a_stopped_hook_is_tagged_differently_from_a_failed_one() {
+        let stopped = stop_error(Event::PreTool, 5, crate::lifecycle::StopReason::Timeout);
+        assert_eq!(stopped.line_tag(), "stopped");
+        let failed = HookError::new(HookErrorKind::Failed, "x");
+        assert_eq!(failed.line_tag(), "error");
     }
 
     #[test]

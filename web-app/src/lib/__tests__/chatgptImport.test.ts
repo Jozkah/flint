@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { importConversations, parseChatGptExport } from '../chatgptImport'
+import {
+  importConversations,
+  parseChatGptExport,
+  parseChatGptExportCounted,
+} from '../chatgptImport'
+import { computeActivePath } from '../message-branching'
+import { convertThreadMessagesToUIMessages } from '../messages'
 
 const node = (
   id: string,
@@ -99,5 +105,117 @@ describe('importConversations', () => {
     expect(stamps).toEqual([...stamps].sort((a, b) => a - b))
     expect(new Set(stamps).size).toBe(stamps.length)
     expect(createMessage.mock.calls[0][0].thread_id).toBe(result.threads[0].id)
+  })
+})
+
+const modern = (extra: Record<string, unknown> = {}) => ({
+  title: 'Modern',
+  current_node: 'final',
+  mapping: {
+    root: { id: 'root', parent: null, children: ['ctx'], message: null },
+    ctx: {
+      id: 'ctx',
+      parent: 'root',
+      children: ['u'],
+      message: {
+        author: { role: 'user' },
+        content: { content_type: 'user_editable_context', user_profile: 'x' },
+      },
+    },
+    u: {
+      id: 'u',
+      parent: 'ctx',
+      children: ['th'],
+      message: {
+        author: { role: 'user' },
+        create_time: 1,
+        content: {
+          content_type: 'multimodal_text',
+          parts: [{ content_type: 'audio_transcription', text: 'spoken hi' }],
+        },
+      },
+    },
+    th: {
+      id: 'th',
+      parent: 'u',
+      children: ['rc'],
+      message: {
+        author: { role: 'assistant' },
+        content: { content_type: 'thoughts', thoughts: [{ content: 'hmm' }] },
+      },
+    },
+    rc: {
+      id: 'rc',
+      parent: 'th',
+      children: ['final'],
+      message: {
+        author: { role: 'assistant' },
+        content: { content_type: 'reasoning_recap', content: 'Thought for 3s' },
+      },
+    },
+    final: {
+      id: 'final',
+      parent: 'rc',
+      children: [],
+      message: {
+        author: { role: 'assistant' },
+        create_time: 2,
+        content: { content_type: 'text', parts: ['final answer'] },
+      },
+    },
+  },
+  ...extra,
+})
+
+describe('current export shapes', () => {
+  it('reads object parts with text and skips thoughts and context', () => {
+    const [c] = parseChatGptExport(JSON.stringify([modern()]))
+    expect(c.messages.map((m) => [m.role, m.text])).toEqual([
+      ['user', 'spoken hi'],
+      ['assistant', 'final answer'],
+    ])
+  })
+
+  it('accepts a wrapped conversations list', () => {
+    const out = parseChatGptExport(JSON.stringify({ conversations: [modern()] }))
+    expect(out).toHaveLength(1)
+  })
+
+  it('falls back to the newest path when current_node is a hidden dead end', () => {
+    const conv = modern({ current_node: 'ctx' })
+    const [c] = parseChatGptExport(JSON.stringify([conv]))
+    expect(c.messages).toHaveLength(2)
+  })
+
+  it('keeps nodes whose map key differs from a missing id', () => {
+    const conv = modern({ current_node: undefined })
+    for (const n of Object.values(conv.mapping)) delete (n as { id?: string }).id
+    const [c] = parseChatGptExport(JSON.stringify([conv]))
+    expect(c.messages).toHaveLength(2)
+  })
+
+  it('imported messages load into the chat transcript', async () => {
+    const conversations = parseChatGptExport(JSON.stringify([modern()]))
+    const saved: any[] = []
+    await importConversations(conversations, {
+      createThread: async (t) => t,
+      createMessage: async (m) => {
+        saved.push(m)
+        return m
+      },
+    })
+    const ui = convertThreadMessagesToUIMessages(computeActivePath(saved))
+    expect(ui).toHaveLength(2)
+    expect(JSON.stringify(ui[1].parts)).toContain('final answer')
+  })
+
+  it('counts conversations that hold no visible messages', () => {
+    const hidden = modern()
+    for (const n of Object.values(hidden.mapping)) {
+      const m = (n as { message?: { content: unknown } | null }).message
+      if (m) m.content = { content_type: 'thoughts' }
+    }
+    const r = parseChatGptExportCounted(JSON.stringify([hidden, hidden]))
+    expect(r).toMatchObject({ total: 2, conversations: [] })
   })
 })

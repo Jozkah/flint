@@ -196,13 +196,9 @@
     "resetCodeBlockSuccessDesc": "コードブロックスタイルがデフォルトに復元されました。",
     "transcriptView": "トランスクリプトの表示",
     "transcriptViewDesc": "チャット、Cowork、ルームで各ターンをどこまで表示するか。承認、質問、エラーは常に表示されます。",
-
     "transcriptViewZen": "Zen",
-
     "transcriptViewZenDesc": "Just your message and the agent's final reply, shown when the turn ends. Approvals, questions and errors still show.",
-
     "transcriptViewQuiet": "Hide tool calls",
-
     "transcriptViewQuietDesc": "As Normal, but with no steps row: a Working line while the agent works. Failed calls still show.",
     "transcriptViewNormal": "標準",
     "transcriptViewNormalDesc": "回答と対応が必要なものだけ。ツール呼び出しは 1 行のステップにまとめます。",
@@ -655,7 +651,8 @@
       "timedOutDesc": "検証リクエストがタイムアウトしました。ネットワーク接続を確認してもう一度お試しください。",
       "failed": "検証に失敗しました",
       "failedDesc": "トークンの検証中にネットワークエラーが発生しました。インターネット接続を確認してください。"
-    }
+    },
+    "importChatGptNoMessages": "Found {{count}} conversations but none had readable messages, so nothing was imported. Pick the conversations.json or conversations-000.json files from the export."
   },
   "extensions": {
     "title": "拡張機能"

@@ -4,8 +4,9 @@
 //! thread's `messages.jsonl` for a phrase and returns where it was said, so
 //! "the chat where I asked about the cache key" can be found by what was in it.
 //! Only text the user can read is searched: the text parts of user and
-//! assistant messages, not reasoning, tool input or output, or messages the
-//! app marks hidden (a compaction summary).
+//! assistant messages, and what an `edit`, `write` or `apply_patch` call put
+//! into a file (the new text, the patch, the path), not reasoning, other tool
+//! input, tool output, or messages the app marks hidden (a compaction summary).
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -59,11 +60,56 @@ fn strip_mention_blocks(text: &str) -> String {
     out.trim().to_string()
 }
 
+/// The tools whose input is text that ends up in a file.
+const FILE_WRITING_TOOLS: &[&str] = &["edit", "write", "apply_patch"];
+
+/// Input keys of those tools worth searching, in the order they are read.
+const FILE_INPUT_KEYS: &[&str] = &["path", "file_path", "content", "old_string", "new_string", "patch", "edits"];
+
+fn push_leaves(v: &Value, out: &mut String) {
+    match v {
+        Value::String(s) => {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(s);
+        }
+        Value::Array(items) => items.iter().for_each(|i| push_leaves(i, out)),
+        Value::Object(map) => map.values().for_each(|i| push_leaves(i, out)),
+        _ => {}
+    }
+}
+
+/// What a file-writing tool call part put into a file, one string per line.
+fn written_text(part: &Value) -> Option<String> {
+    let name = part.get("tool_name").and_then(Value::as_str)?;
+    if !FILE_WRITING_TOOLS.contains(&name) {
+        return None;
+    }
+    let input = part.get("input")?;
+    let mut out = String::new();
+    for key in FILE_INPUT_KEYS {
+        if let Some(v) = input.get(key) {
+            push_leaves(v, &mut out);
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
 fn text_of(message: &Value) -> String {
     let mut out = String::new();
     match message.get("content") {
         Some(Value::Array(parts)) => {
             for part in parts {
+                if part.get("type").and_then(Value::as_str) == Some("tool_call") {
+                    if let Some(written) = written_text(part) {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        out.push_str(&written);
+                    }
+                    continue;
+                }
                 if part.get("type").and_then(Value::as_str) != Some("text") {
                     continue;
                 }
@@ -362,6 +408,21 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].message_id, "m2");
         assert!(ascii_prefilter(&['a', '"']).is_none());
+    }
+
+    #[test]
+    fn text_an_edit_or_write_put_into_a_file_is_found() {
+        let message = json!({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": {"value": "done"}},
+                {"type": "tool_call", "tool_name": "edit", "input": {"path": "src/lib.rs", "old_string": "a", "new_string": "fn quuxify() {}"}, "output": "secretoutput"},
+                {"type": "tool_call", "tool_name": "bash", "input": {"command": "echo notsearched"}}
+            ]
+        });
+        let text = text_of(&message);
+        assert!(text.contains("fn quuxify() {}") && text.contains("src/lib.rs"), "{text}");
+        assert!(!text.contains("notsearched") && !text.contains("secretoutput"), "{text}");
     }
 
     #[test]

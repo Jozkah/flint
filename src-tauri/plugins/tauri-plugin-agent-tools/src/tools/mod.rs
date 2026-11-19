@@ -11,6 +11,7 @@ pub mod browser_tool;
 /// The expected shape of a call, for refusals of its arguments.
 pub mod call_shape;
 pub mod cmdscan;
+pub mod command_guards;
 pub mod fuzzy_edit;
 pub mod gate;
 pub mod git_attribution;

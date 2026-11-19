@@ -261,7 +261,7 @@ pub async fn run_pre_tool_hooks(
         refusal: None,
         ask: before.ask,
         updated_input: before.updated_input,
-        warnings: before.warnings.iter().map(|w| format!("[pre-tool hook] {}", w.message)).collect(),
+        warnings: before.warnings.iter().map(|w| format!("[pre-tool hook] {}: {}", w.line_tag(), w.message)).collect(),
     }
 }
 
@@ -416,10 +416,10 @@ pub async fn execute_builtin(
     )
     .await;
     for warning in &after.warnings {
-        content.push_str(&format!("\n\n[post-tool hook] {}", warning.message));
+        content.push_str(&format!("\n\n[post-tool hook] {}: {}", warning.line_tag(), warning.message));
     }
     for warning in &before.warnings {
-        content.push_str(&format!("\n\n[pre-tool hook] {}", warning.message));
+        content.push_str(&format!("\n\n[pre-tool hook] {}: {}", warning.line_tag(), warning.message));
     }
     for warning in &ctx.pre_tool_warnings {
         content.push_str(&format!("\n\n{warning}"));
@@ -440,6 +440,21 @@ pub async fn execute_builtin(
 
 /// The text result for every tool except `read`. Split out so `read` can also
 /// return image parts without duplicating the remaining tool dispatch.
+/// A `git add` of a secret-looking file named in a shell command line.
+fn bash_secret_staging(command: &str) -> Option<String> {
+    for simple in crate::tools::cmdscan::simple_commands(command) {
+        let tokens = crate::tools::git_tool::split_command_line(&simple)?;
+        let first = tokens.first()?;
+        let base = first.rsplit(['/', '\\']).next().unwrap_or(first).to_ascii_lowercase();
+        if matches!(base.as_str(), "git" | "git.exe") {
+            if let Some(why) = crate::tools::command_guards::secret_staging_refusal(&tokens[1..]) {
+                return Some(why);
+            }
+        }
+    }
+    None
+}
+
 pub(crate) async fn execute_text(
     tool: &BuiltinTool,
     args: &serde_json::Value,
@@ -503,6 +518,19 @@ pub(crate) async fn execute_text(
                     crate::shared_folder::tools::guard_command(ctx, command, ctx.project_root)
                 {
                     return held;
+                }
+                if let Some(why) = crate::tools::command_guards::expansion_refusal(command) {
+                    return format!("ERROR: {why}");
+                }
+                if let Some(worktree) = crate::tools::command_guards::isolated_worktree(ctx) {
+                    if let Some(why) =
+                        crate::tools::command_guards::command_worktree_refusal(command, &worktree)
+                    {
+                        return format!("ERROR: {why}");
+                    }
+                }
+                if let Some(why) = bash_secret_staging(command) {
+                    return format!("ERROR: {why}");
                 }
             }
             bash(args, ctx).await
