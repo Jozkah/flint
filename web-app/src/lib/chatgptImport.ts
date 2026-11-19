@@ -213,6 +213,9 @@ export async function importConversations(
         assistants: [],
         metadata: { importedFrom: 'chatgpt' },
       } as Thread)
+      // The backend may assign its own thread id; messages must use that one
+      // or they land under a thread that does not exist and the chat is empty.
+      const threadId = created?.id ?? id
       // Message files are ordered by created_at; keep it strictly increasing.
       let last = 0
       for (const message of conversation.messages) {
@@ -222,8 +225,8 @@ export async function importConversations(
         last = Math.max(wanted, last + 1)
         const built =
           message.role === 'user'
-            ? newUserThreadContent(id, message.text)
-            : newAssistantThreadContent(id, message.text)
+            ? newUserThreadContent(threadId, message.text)
+            : newAssistantThreadContent(threadId, message.text)
         await deps.createMessage({
           ...built,
           created_at: last,
