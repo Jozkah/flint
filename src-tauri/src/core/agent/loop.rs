@@ -4961,6 +4961,9 @@ async fn run_turn_cycle(
     let mut last_broken_signatures: Option<Vec<String>> = None;
     // Loops over well-formed calls: identical repeats, or nothing but errors.
     let mut stuck = StuckDetector::default();
+    // A run nobody can answer for gets one chance to wrap up in text before
+    // it is stopped, so the caller is not left with an error and no reply.
+    let mut wrap_up_offered = false;
     // Mid-run todo upkeep: after a long uninterrupted run of mutating tool
     // calls with no todo touch, nudge the model once to keep the list honest
     // rather than only ever reminding it at a full stop -- a task that never
@@ -6166,6 +6169,17 @@ Address it and continue."
                         format!("{summary}; the user chose to stop the run"),
                     )
                     .at(Stage::Stream));
+                }
+                UserGuidance::Unavailable if !wrap_up_offered => {
+                    wrap_up_offered = true;
+                    stuck.reset();
+                    conversation_messages.push(serde_json::json!({
+                        "role": "user",
+                        "content": format!(
+                            "{summary}
+Nobody is available to give guidance, so stop calling                              tools that are being refused or repeating. Reply now in plain text:                              what you finished, what you could not do, and why."
+                        ),
+                    }));
                 }
                 UserGuidance::Unavailable => {
                     return Err(HarnessError::new(

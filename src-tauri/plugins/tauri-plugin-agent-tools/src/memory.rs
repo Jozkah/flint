@@ -68,9 +68,15 @@ pub async fn list(store: &Path) -> Vec<String> {
 
 pub async fn read(store: &Path, name: &str) -> Result<String, String> {
     let target = target(store, name)?;
-    tokio::fs::read_to_string(&target)
-        .await
-        .map_err(|e| format!("ERROR: {e}"))
+    tokio::fs::read_to_string(&target).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!(
+                "ERROR: no memory note named '{name}'. Call memory_list for the saved notes; a memory you proposed is not readable until the user approves it."
+            )
+        } else {
+            format!("ERROR: {e}")
+        }
+    })
 }
 
 /// A memory note's summary line: the first non-empty, non-heading body line,

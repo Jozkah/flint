@@ -3909,6 +3909,15 @@ async fn memory_write_read_list_roundtrip() {
 
     let l = execute_builtin(lookup("memory_list").unwrap(), &json!({}), &root).await;
     assert_eq!(l, "drift");
+
+    let missing = execute_builtin(
+        lookup("memory_read").unwrap(),
+        &json!({"name": "nope"}),
+        &root,
+    )
+    .await;
+    assert!(missing.contains("no memory note named 'nope'"), "unexpected: {missing}");
+    assert!(!missing.contains("os error"), "raw io error leaked: {missing}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
