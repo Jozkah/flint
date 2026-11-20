@@ -99,7 +99,8 @@
     "linkNoChatGroups": "No chat groups yet",
     "linkExplain": "Shares memories and artifacts with a chat group",
     "chatLinkedToCowork": "Linked to Cowork: {{names}}",
-    "chatUnlinkCowork": "Unlink from Cowork"
+    "chatUnlinkCowork": "Unlink from Cowork",
+    "linkRoomsNotice": "Rooms in a linked group send the chat group's memories to every model in the room."
   },
   "htmlArtifact": {
     "code": "कोड",

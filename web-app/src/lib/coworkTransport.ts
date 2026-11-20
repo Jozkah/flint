@@ -3,7 +3,8 @@ import type { ParentPersona } from '@/lib/subagentChoice'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { useConversationGroups } from '@/lib/groups/store'
-import { linkedHomeGroupOfSession } from '@/lib/groups/links'
+import { linkedHomeGroupOfRun } from '@/lib/groups/links'
+import { useCampaignStore } from '@/hooks/useCampaigns'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { AGENT_TOOL_NAMES, sandboxEnforces } from '@/lib/agentTools'
 import { applyWebSearchToTools, buildCoworkTools, coworkToolSignature } from '@/lib/coworkTools'
@@ -291,8 +292,9 @@ export class CoworkChatTransport extends CustomChatTransport {
     this.setMemoryBinding({
       projectRoot: this.config.readOnlyFolder ?? undefined,
       // Read at send time, so linking or unlinking applies to the next request.
-      linkedJanProjectId: linkedHomeGroupOfSession(
+      linkedJanProjectId: linkedHomeGroupOfRun(
         useConversationGroups.getState().state,
+        useCampaignStore.getState().campaigns,
         this.threadId
       )?.id,
       temporary: false,

@@ -6,6 +6,7 @@
  * AbortController. Only these editor helpers (user actions) change settings,
  * participants, tool access, limits or the moderator.
  */
+import { linkedMemoryBlock } from '@/lib/rooms/linkedMemory'
 import {
   runRoom,
   type AbortIntent,
@@ -145,6 +146,8 @@ export type RoomControllerApi = RoomController &
   }
 
 export type ControllerDeps = {
+  /** Memories from the room group's linked Chat group (default: the real lookup). */
+  linkedMemory?: (roomId: string) => Promise<string | null>
   persistence?: () => RoomPersistence
   streamReply?: StreamReply
   summarize?: SummarizeFn
@@ -248,6 +251,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       deps.compaction ??
       ((model) => roomCompactionSettingsFor(model, lookup, compactionPolicy)),
     sleep: deps.sleep,
+    linkedMemory: deps.linkedMemory ?? linkedMemoryBlock,
     onUpdate: (u) => store().applyEngineUpdate(u),
     workspace: deps.workspace ?? defaultRoomWorkspace,
   })

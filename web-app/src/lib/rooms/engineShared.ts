@@ -62,6 +62,8 @@ export type EngineDeps = {
     window?: number | null
     summaryMaxTokens?: number
   }
+  /** Memories from the linked Chat group, put in every speaker's prompt. */
+  linkedMemory?: (roomId: string) => Promise<string | null>
   /** Backoff wait; resolves false when aborted. */
   sleep?: (ms: number, signal: AbortSignal) => Promise<boolean>
   random?: () => number

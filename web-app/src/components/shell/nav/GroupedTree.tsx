@@ -304,8 +304,7 @@ export function GroupedTree({
                 {group.folderBindings.length > 0 && (
                   <Folders aria-hidden className="size-3 shrink-0" />
                 )}
-                {surface === 'cowork' &&
-                  homeGroups.some((h) => h.id === group.linkedGroupId) && (
+                {homeGroups.some((h) => h.id === group.linkedGroupId) && (
                     <Link2
                       data-testid="group-linked-icon"
                       aria-label={t('common:groups.linkedToChat', {
@@ -382,7 +381,7 @@ export function GroupedTree({
                       </DropdownMenuItem>
                     )}
                     <MoveGroupSub surface={surface} group={group} />
-                    {surface === 'cowork' && <LinkGroupSub group={group} />}
+                    <LinkGroupSub surface={surface} group={group} />
                   <DropdownMenuItem onSelect={() => setFoldersOf(group.id)}>
                     <Folders />
                     <span>{t('common:groups.folders')}</span>
@@ -525,15 +524,21 @@ export function GroupedTree({
 }
 
 /**
- * "Link to chat group" for a Cowork group's menu: pick the Home group whose
- * memories and artifacts this group shares, or unlink. Hidden for Rooms.
+ * "Link to chat group" for a Cowork or Rooms group's menu: pick the Home group
+ * whose memories this group shares (Cowork also its artifacts), or unlink.
  */
-function LinkGroupSub({ group }: { group: ConversationGroup }) {
+function LinkGroupSub({
+  surface,
+  group,
+}: {
+  surface: Extract<GroupSurface, 'cowork' | 'rooms'>
+  group: ConversationGroup
+}) {
   const { t } = useTranslation()
   const homeGroups = useConversationGroups((s) => s.state.surfaces.home.groups)
   const sorted = [...homeGroups].sort((a, b) => a.position - b.position)
   const set = (homeId: string | null) =>
-    void useConversationGroups.getState().setLink('cowork', group.id, homeId)
+    void useConversationGroups.getState().setLink(surface, group.id, homeId)
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger data-testid="group-link-chat">
@@ -541,6 +546,11 @@ function LinkGroupSub({ group }: { group: ConversationGroup }) {
         <span>{t('common:groups.linkToChat')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-48">
+        {surface === 'rooms' && (
+          <DropdownMenuItem disabled>
+            <span className="whitespace-normal">{t('common:groups.linkRoomsNotice')}</span>
+          </DropdownMenuItem>
+        )}
         {sorted.length === 0 && (
           <DropdownMenuItem disabled>
             <span>{t('common:groups.linkNoChatGroups')}</span>

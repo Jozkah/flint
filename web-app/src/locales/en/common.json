@@ -45,6 +45,7 @@
     "linkToChat": "Link to chat group",
     "linkedToChat": "Linked to chat group {{name}}",
     "linkUnlink": "Unlink",
+    "linkRoomsNotice": "Rooms in a linked group send the chat group's memories to every model in the room.",
     "linkNoChatGroups": "No chat groups yet",
     "linkExplain": "Shares memories and artifacts with a chat group",
     "chatLinkedToCowork": "Linked to Cowork: {{names}}",

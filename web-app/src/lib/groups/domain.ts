@@ -198,8 +198,8 @@ export function setGroupParent(
 }
 
 /**
- * Links a Cowork group to a Home group (or unlinks with null). Only the Cowork
- * surface carries the link; the Home side reads it back through
+ * Links a Cowork or Rooms group to a Home group (or unlinks with null). Only
+ * those surfaces carry the link; the Home side reads it back through
  * `coworkGroupsLinkedTo`, so the surfaces stay separate and no write ever
  * touches two of them.
  */
@@ -210,7 +210,7 @@ export function setGroupLink(
   linkedGroupId: string | null,
   now: number
 ): GroupsState {
-  if (surface !== 'cowork') throw new GroupError('notFound')
+  if (surface === 'home') throw new GroupError('notFound')
   if (linkedGroupId !== null) requireGroup(state.surfaces.home, linkedGroupId)
   const current = requireGroup(state.surfaces[surface], groupId).linkedGroupId ?? null
   if (current === linkedGroupId) return state
@@ -500,7 +500,7 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
           .map(sanitizeBinding)
           .filter((b): b is GroupFolderBinding => b !== null)
       ),
-      ...(surface === 'cowork' && typeof g.linkedGroupId === 'string' && g.linkedGroupId
+      ...(surface !== 'home' && typeof g.linkedGroupId === 'string' && g.linkedGroupId
         ? { linkedGroupId: g.linkedGroupId }
         : {}),
       createdAt: typeof g.createdAt === 'number' ? g.createdAt : 0,
