@@ -55,6 +55,8 @@ type ModelYaml = ModelConfig & {
   cpu_moe?: boolean
   n_cpu_moe?: number
   n_cpu_ffn?: number
+  moe_cache_mib?: number
+  expert_count?: number
   no_kv_offload?: boolean
   /** Per-model override of the global Context Shift setting. */
   ctx_shift?: boolean
@@ -1023,6 +1025,12 @@ export async function generatePreset(
   lines.push('')
 
   // ---------- per-model sections ----------
+  const moeCacheAllowed =
+    config.split_mode !== 'tensor' &&
+    !(
+      typeof config.device === 'string' &&
+      config.device.trim().toLowerCase() === 'none'
+    )
   let embeddingCount = 0
   for (const { modelId, configPath } of modelEntries) {
     let mc: ModelYaml
@@ -1256,6 +1264,27 @@ export async function generatePreset(
     }
     if (typeof mc.n_cpu_ffn === 'number' && mc.n_cpu_ffn > 0) {
       lines.push(`n-cpu-ffn = ${Math.floor(mc.n_cpu_ffn)}`)
+    }
+    // moe-cache-mib default = 0 (off): a GPU cache for the experts that
+    // cpu-moe / n-cpu-moe keep in host memory. Per-model only, never in [*]:
+    // llama.cpp refuses to load a model without experts when it is set ("MoE
+    // cache requires a MoE model", llama-moe-cache.cpp), so an engine-wide
+    // value would break every dense and embedding model. For the same reason
+    // it is emitted only when the GGUF declares experts (`expert_count`,
+    // recorded at import); a model whose count is not yet known is treated as
+    // dense, since that only skips the cache. The same file also throws under
+    // tensor split mode and with no GPU backend, so the key is dropped where
+    // the preset can see either: it would only turn a working CPU-offloaded
+    // load into a failed one.
+    if (
+      moeCacheAllowed &&
+      typeof mc.expert_count === 'number' &&
+      mc.expert_count > 0 &&
+      typeof mc.moe_cache_mib === 'number' &&
+      Number.isFinite(mc.moe_cache_mib) &&
+      mc.moe_cache_mib > 0
+    ) {
+      lines.push(`moe-cache-mib = ${Math.floor(mc.moe_cache_mib)}`)
     }
     // A model's own Context Shift choice wins over the global one; a line is
     // written only when it differs from what the [*] block already gives it.
