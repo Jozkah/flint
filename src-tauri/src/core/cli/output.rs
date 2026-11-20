@@ -319,6 +319,9 @@ pub(super) async fn print_event(
                 eprintln!("\n{}", color::paint("2", format_args!("[stopped] {message}")));
             } else {
                 eprintln!("\n{}", color::paint("31", format_args!("[error:{code}] {message}")));
+                if let Ok(mut last) = STREAMED_ERROR.lock() {
+                    *last = Some(message.to_string());
+                }
             }
         }
         StreamEvent::AskRequest { .. } => {
@@ -638,4 +641,16 @@ mod crash_envelope_tests {
         // A task text after `--` is never read as a flag.
         assert_eq!(machine_format_of(&args(&["agent", "run", "--", "--output-format", "json"])), None);
     }
+}
+
+/// The last error line the stream renderer printed, so the command's closing
+/// `Error [..]` line does not say the same thing a second time.
+static STREAMED_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// True when the stream renderer already showed exactly this error message.
+pub fn error_already_streamed(message: &str) -> bool {
+    STREAMED_ERROR
+        .lock()
+        .map(|last| last.as_deref() == Some(message))
+        .unwrap_or(false)
 }
