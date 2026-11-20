@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { canonicalKey } from '@/lib/groups/domain'
+import { chatFolderAdapter } from '@/lib/chatFolders'
+import { inheritGroupFoldersToMembers } from '@/lib/groups/inherit'
 import { inspectFolders } from '@/lib/groups/folders'
 import { useConversationGroups } from '@/lib/groups/store'
 import type {
@@ -101,7 +103,15 @@ export function GroupFoldersDialog({
         keys.add(key)
         added.push(r.binding)
       }
-      if (added.length) await save([...bindings, ...added])
+      if (added.length) {
+        const saved = await save([...bindings, ...added])
+        // Chats read their folders and cannot write to them, so they can take
+        // the new folder now. Cowork sessions and Rooms keep to their own
+        // approval and are not changed behind the user's back.
+        if (saved && surface === 'home') {
+          await inheritGroupFoldersToMembers('home', group.id, chatFolderAdapter)
+        }
+      }
       if (messages.length) setNotice(messages.join('. '))
     } catch (error) {
       setNotice(t('common:groups.addFailed', { error: String(error) }))
