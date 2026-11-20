@@ -11,6 +11,8 @@
    diff colours are never derived from the accent. Surface hex values are kept
    so lib/__tests__/accent.test.ts can check contrast against the same numbers. */
 :root {
+  /* Native scrollbars and form controls follow the theme; .dark flips it. */
+  color-scheme: light;
   --radius: 0.5rem;
   --expo: cubic-bezier(0.16, 1, 0.3, 1);
   /* Motion scale (transitions-polish): match a duration to what the motion does,
