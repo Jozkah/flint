@@ -1143,6 +1143,11 @@ async fn find_and_call<R: Runtime>(
 
     // No server had the tool — check if it's because of transport errors
     if !transport_error_servers.is_empty() {
+        log::warn!(
+            "MCP call to tool {} not run: server(s) [{}] disconnected",
+            req.tool_name,
+            transport_error_servers.join(", ")
+        );
         state.mcp_reconnect_notify.notify_waiters();
         return Err(format!(
             "MCP server(s) [{}] disconnected while looking for tool '{}'. Reconnecting — please retry.",
@@ -1223,7 +1228,9 @@ async fn try_server<R: Runtime>(
         current.as_deref(),
         req.approval_ticket.as_deref(),
     ) {
-        return ServerAttempt::Answer(Err(refusal.message()));
+        let message = refusal.message();
+        log::warn!("MCP call to tool {tool_name} on {srv_name} not approved: {message}");
+        return ServerAttempt::Answer(Err(message));
     }
 
     // AH-144: the server's own budget, before its arguments are sent.
@@ -1232,6 +1239,7 @@ async fn try_server<R: Runtime>(
         srv_name,
     );
     if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
+        log::warn!("MCP call to tool {tool_name} on {srv_name} refused: {refusal}");
         return ServerAttempt::Answer(Err(refusal));
     }
     let server_cap = budget.result_cap(req.tool_output_cap);
