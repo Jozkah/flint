@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { copyViaExecCommand } from "@/lib/clipboard";
 import { tooHeavyToHighlight } from "@/lib/highlightLimits";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
@@ -170,19 +171,31 @@ export const CodeBlockCopyButton = ({
   const { code } = useContext(CodeBlockContext);
 
   const copyToClipboard = async () => {
-    if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
+    if (typeof window === "undefined") {
       onError?.(new Error("Clipboard API not available"));
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(code);
-      setIsCopied(true);
-      onCopy?.();
-      setTimeout(() => setIsCopied(false), timeout);
-    } catch (error) {
-      onError?.(error as Error);
+    let failure: Error | undefined;
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch (error) {
+        failure = error as Error;
+      }
+    } else {
+      failure = new Error("Clipboard API not available");
     }
+
+    // The async API is missing or refused in some webviews (Tauri on Linux);
+    // the execCommand path still works there.
+    if (failure && !copyViaExecCommand(code)) {
+      onError?.(failure);
+      return;
+    }
+    setIsCopied(true);
+    onCopy?.();
+    setTimeout(() => setIsCopied(false), timeout);
   };
 
   const Icon = isCopied ? CheckIcon : CopyIcon;
