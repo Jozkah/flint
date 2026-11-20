@@ -145,7 +145,9 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
         if e.is_cancellation() {
             eprintln!("Stopped: {}", e.message());
         } else {
-            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            if !app_lib::core::cli::error_already_streamed(e.message()) {
+                eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            }
             for cause in e.chain().into_iter().skip(1) {
                 eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
             }
