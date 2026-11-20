@@ -764,7 +764,7 @@ fn reload_on_web_process_crash(window: &tauri::WebviewWindow) {
 /// never interrupts the user. This desktop app has no page-level form state
 /// worth guarding; the dialog only blocks HMR reloads and extension operations.
 #[cfg(all(not(feature = "cli"), windows))]
-fn suppress_beforeunload_dialog(window: &tauri::WebviewWindow) {
+fn suppress_beforeunload_dialog<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
     window
         .with_webview(|webview| {
             use webview2_com::AddScriptToExecuteOnDocumentCreatedCompletedHandler;
@@ -798,6 +798,69 @@ fn reemit_busy_if_any<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     }
 }
 
+/// Whether the exit-confirmation dialog needs a window made for it: the exit
+/// is deferred for a busy model and the main window is already gone. Closing
+/// the last window on Windows/Linux triggers `ExitRequested`; without a window
+/// the Cancel/Force-quit dialog cannot be shown and the process (and the llama
+/// worker) would linger with nothing to see.
+#[cfg(not(feature = "cli"))]
+fn exit_dialog_needs_window(has_main_window: bool, shutting_down: bool) -> bool {
+    !has_main_window && !shutting_down
+}
+
+/// Bring the main window back so the busy-on-exit dialog is reachable. Returns
+/// false when no window could be shown, in which case the caller must not keep
+/// the process alive windowless.
+#[cfg(not(feature = "cli"))]
+fn ensure_main_window_for_exit_dialog<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) -> bool {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = app_handle;
+        return true;
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        use std::sync::atomic::Ordering;
+        use tauri::Manager;
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            return true;
+        }
+        let Some(cfg) = app_handle
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|w| w.label == "main")
+            .cloned()
+        else {
+            return false;
+        };
+        let built = tauri::WebviewWindowBuilder::from_config(app_handle, &cfg)
+            .and_then(|b| b.build());
+        match built {
+            Ok(window) => {
+                log::info!("exit deferred for a busy model; main window recreated for the dialog");
+                // The window may have been created hidden (Windows config).
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                #[cfg(windows)]
+                suppress_beforeunload_dialog(&window);
+                // A later close must flush the webview stores again.
+                CLOSE_FLUSHED.store(false, Ordering::SeqCst);
+                true
+            }
+            Err(e) => {
+                log::warn!("could not recreate the main window for the exit dialog: {e}");
+                false
+            }
+        }
+    }
+}
+
 #[cfg(not(feature = "cli"))]
 async fn handle_graceful_exit<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -809,6 +872,9 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
     // no shell (or child it spawned) outlives the app.
     tauri_plugin_agent_tools::tools::proc::kill_all();
     let mut emitted = false;
+    // Set when the window was recreated for the dialog: the fresh webview was
+    // not listening for the first emit, so keep re-sending while we wait.
+    let mut window_recreated = false;
     loop {
         if SHUTTING_DOWN.load(Ordering::SeqCst) {
             return;
@@ -841,6 +907,21 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
                 }
                 if !emitted {
                     log::warn!("{}: {} model(s) busy: {:?}", source, busy.len(), busy);
+                    use tauri::Manager;
+                    if exit_dialog_needs_window(
+                        app_handle.get_webview_window("main").is_some(),
+                        SHUTTING_DOWN.load(Ordering::SeqCst),
+                    ) {
+                        if !ensure_main_window_for_exit_dialog(&app_handle) {
+                            // Never leave a windowless process running.
+                            SHUTTING_DOWN.store(true, Ordering::SeqCst);
+                            app_handle.exit(exit_code);
+                            return;
+                        }
+                        window_recreated = true;
+                        // Let the new webview load before the first emit.
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    }
                     if let Err(e) = app_handle.emit("llamacpp-busy-on-exit", &busy) {
                         log::warn!("emit llamacpp-busy-on-exit failed: {}", e);
                         SHUTTING_DOWN.store(true, Ordering::SeqCst);
@@ -848,6 +929,8 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
                         return;
                     }
                     emitted = true;
+                } else if window_recreated {
+                    let _ = app_handle.emit("llamacpp-busy-on-exit", &busy);
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
@@ -1759,6 +1842,23 @@ mod startup_guard_tests {
         assert!(
             SOURCE.matches(mark.as_str()).count() >= 3,
             "confirm_exit and both exit paths must mark a clean exit"
+        );
+    }
+
+    #[test]
+    fn busy_exit_recreates_a_missing_main_window_only() {
+        assert!(super::exit_dialog_needs_window(false, false));
+        assert!(!super::exit_dialog_needs_window(true, false));
+        assert!(!super::exit_dialog_needs_window(false, true));
+    }
+
+    #[test]
+    fn graceful_exit_never_leaves_a_windowless_process() {
+        // The busy branch must recreate the window or exit; losing that call
+        // reintroduces the invisible Flint + worker after closing mid-generation.
+        assert!(
+            SOURCE.matches("ensure_main_window_for_exit_dialog(&app_handle)").count() >= 2,
+            "handle_graceful_exit no longer restores the window for the busy dialog"
         );
     }
 }

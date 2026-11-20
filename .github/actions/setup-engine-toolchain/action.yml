@@ -174,8 +174,18 @@ runs:
           choco install ninja -y --no-progress
           echo "C:\ProgramData\chocolatey\bin" >> "$GITHUB_PATH"
         fi
+        # The VS 2026 image's MSVC STL (14.52+) refuses clang older than 22
+        # (STL1000), and the image still carries LLVM 20. Upgrade in place.
+        clang_major=""
         if command -v clang >/dev/null 2>&1; then
-          echo "engine toolchain: clang already on the image"
+          clang_major=$(clang --version | sed -n 's/.*clang version \([0-9][0-9]*\)\..*/\1/p' | head -1)
+        fi
+        if [ -n "$clang_major" ] && [ "$clang_major" -ge 22 ]; then
+          echo "engine toolchain: clang $clang_major already on the image"
+        elif [ -n "$clang_major" ]; then
+          echo "engine toolchain: clang $clang_major is too old for this MSVC STL, upgrading LLVM"
+          choco upgrade llvm -y --no-progress
+          echo "C:\Program Files\LLVM\bin" >> "$GITHUB_PATH"
         elif [ -x "/c/Program Files/LLVM/bin/clang.exe" ]; then
           echo "C:\Program Files\LLVM\bin" >> "$GITHUB_PATH"
         else

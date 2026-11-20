@@ -414,6 +414,114 @@ describe('generatePreset 0.4.0 keys', () => {
   })
 })
 
+describe('generatePreset moe-cache-mib', () => {
+  // llama.cpp throws "MoE cache requires a MoE model" for any model without
+  // experts, so an engine-wide key would break every dense and embedding model
+  // the moment it was set. It is per-model only.
+  it('never emits moe-cache-mib engine-wide', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { moe_cache_mib: 4096 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+  })
+
+  it('emits moe-cache-mib only in the section of the model that set it', async () => {
+    setupModel('dense', {})
+    setupModel('moe', { moe_cache_mib: 4096, expert_count: 128 })
+    await generatePreset('/p', '/jan', CONFIG)
+    const ini = writtenFiles['/p/router.preset.ini']
+    const section = (id: string) =>
+      ini.split(`[${id}]`)[1].split('load-on-startup')[0]
+    expect(section('moe')).toContain('moe-cache-mib = 4096')
+    expect(section('dense')).not.toContain('moe-cache-mib')
+  })
+
+  // The other two load-time throws in llama-moe-cache.cpp depend on engine-wide
+  // settings the preset can see: tensor split mode, and no GPU at all.
+  it('drops moe-cache-mib under configurations llama.cpp refuses it in', async () => {
+    setupModel('moe', { moe_cache_mib: 4096, expert_count: 128 })
+    await generatePreset('/p', '/jan', { split_mode: 'tensor' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+
+    await generatePreset('/p', '/jan', { device: 'none' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+
+    await generatePreset('/p', '/jan', { split_mode: 'row', device: 'CUDA0' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('moe-cache-mib = 4096')
+  })
+
+  // A per-model value can still be set on a dense model by mistake, and
+  // llama.cpp then refuses to load it. Only a model whose GGUF declares
+  // experts gets the key; an unknown count (not yet detected) is treated as
+  // dense, since a false negative only loses the cache.
+  it('omits moe-cache-mib for a model without experts, or with an unknown count', async () => {
+    setupModel('dense', { moe_cache_mib: 4096, expert_count: 0 })
+    setupModel('unknown', { moe_cache_mib: 4096 })
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+  })
+
+  it('omits a per-model moe-cache-mib of 0 or below', async () => {
+    setupModel('moe', { moe_cache_mib: 0, expert_count: 128 })
+    setupModel('moe2', { moe_cache_mib: -5, expert_count: 128 })
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+  })
+})
+
+describe('generatePreset 1.0.0 keys', () => {
+  // llama.cpp reads the share only while building the MoE cache, so it rides
+  // on the same gates as moe-cache-mib and means nothing without it.
+  it('emits moe-cache-cpu-share beside moe-cache-mib', async () => {
+    setupModel('moe', { moe_cache_mib: 4096, moe_cache_cpu_share: 0.25, expert_count: 128 })
+    await generatePreset('/p', '/jan', CONFIG)
+    const ini = writtenFiles['/p/router.preset.ini']
+    const section = ini.split('[moe]')[1].split('load-on-startup')[0]
+    expect(section).toContain('moe-cache-mib = 4096')
+    expect(section).toContain('moe-cache-cpu-share = 0.25')
+  })
+
+  it('omits moe-cache-cpu-share when no MoE cache is emitted', async () => {
+    setupModel('nocache', { moe_cache_cpu_share: 0.5, expert_count: 128 })
+    setupModel('dense', { moe_cache_mib: 4096, moe_cache_cpu_share: 0.5, expert_count: 0 })
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-cpu-share')
+
+    setupModel('moe', { moe_cache_mib: 4096, moe_cache_cpu_share: 0.5, expert_count: 128 })
+    await generatePreset('/p', '/jan', { split_mode: 'tensor' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-cpu-share')
+  })
+
+  // The arg parser throws outside [0, 1], which aborts the load; 0 is the
+  // upstream default.
+  it.each([0, -0.1, 1.5, Number.NaN])(
+    'omits a moe-cache-cpu-share of %s',
+    async (share) => {
+      setupModel('moe', { moe_cache_mib: 4096, moe_cache_cpu_share: share, expert_count: 128 })
+      await generatePreset('/p', '/jan', CONFIG)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(ini).toContain('moe-cache-mib = 4096')
+      expect(ini).not.toContain('moe-cache-cpu-share')
+    }
+  )
+
+  it('emits a moe-cache-cpu-share of 1', async () => {
+    setupModel('moe', { moe_cache_mib: 4096, moe_cache_cpu_share: 1, expert_count: 128 })
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('moe-cache-cpu-share = 1')
+  })
+
+  it('passes the f8_e4m3 KV cache type through, engine-wide and per model', async () => {
+    setupModel('m', { cache_type_k: 'f8_e4m3', cache_type_v: 'f8_e4m3' })
+    await generatePreset('/p', '/jan', { cache_type_k: 'f8_e4m3', cache_type_v: 'f8_e4m3' } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    const [shared, model] = ini.split('[m]')
+    for (const section of [shared, model]) {
+      expect(section).toContain('cache-type-k = f8_e4m3')
+      expect(section).toContain('cache-type-v = f8_e4m3')
+    }
+  })
+})
+
 // A slot of a hybrid model with speculative decoding holds (1 + n_max) rows
 // of recurrent state, so auto's 4 slots overflow a 12 GB card.
 describe('generatePreset parallel with speculative decoding', () => {

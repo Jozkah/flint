@@ -110,6 +110,11 @@ import {
 export { createCustomFetch } from '@/lib/model/customFetch'
 export { createApiKeyRotatingFetch } from '@/lib/model/keyRotation'
 export {
+  IMAGE_REJECTED_STAND_IN,
+  isImageInputRejection,
+  stripImagePartsInBody,
+} from '@/lib/model/imageRejection'
+export {
   DISPATCH_HEADERS,
   DISPATCH_PARAM_KEY,
   type DispatchIdentity,

@@ -738,6 +738,12 @@ jan_llama_response * jan_llama_engine_request_cancellable(jan_llama_engine * eng
         // `logprobs`, ...), all of which reached Jan's API as 500 before.
         out->res = error_response(e.what(), ERROR_TYPE_INVALID_REQUEST);
         return out;
+    } catch (const common_json_error & e) {
+        // Upstream maps JSON parse and type errors to 400 too (server.cpp
+        // ex_wrapper); it derives from std::runtime_error, so it must be
+        // caught before the std::exception arm below.
+        out->res = error_response(e.what(), ERROR_TYPE_INVALID_REQUEST);
+        return out;
     } catch (const std::exception & e) {
         out->res = error_response(e.what(), ERROR_TYPE_SERVER);
         return out;

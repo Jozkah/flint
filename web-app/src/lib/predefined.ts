@@ -1,4 +1,4 @@
-const KV_CACHE_TYPE_OPTIONS = ['f32', 'f16', 'bf16', 'q8_0', 'q4_0', 'q4_1', 'iq4_nl', 'q5_0', 'q5_1'].map(
+const KV_CACHE_TYPE_OPTIONS = ['f32', 'f16', 'bf16', 'q8_0', 'q4_0', 'q4_1', 'iq4_nl', 'q5_0', 'q5_1', 'f8_e4m3'].map(
   (v) => ({ value: v, name: v })
 )
 
@@ -203,6 +203,33 @@ export const modelSettings = {
       value: '',
       placeholder: '24',
       type: 'number',
+    },
+  },
+  moe_cache_mib: {
+    key: 'moe_cache_mib',
+    title: 'MoE expert cache size (MiB)',
+    description:
+      'Size of the GPU cache for Mixture of Experts weights that stay in CPU memory. Leave empty for the engine default. MoE models only.',
+    controller_type: 'input',
+    controller_props: {
+      value: '',
+      placeholder: '4096',
+      type: 'number',
+    },
+  },
+  moe_cache_cpu_share: {
+    key: 'moe_cache_cpu_share',
+    title: 'MoE expert cache CPU share',
+    description:
+      'Fraction (0 to 1) of the CPU-resident MoE experts the cache may hold. Leave empty for the engine default. MoE models only.',
+    controller_type: 'input',
+    controller_props: {
+      value: '',
+      placeholder: '0.5',
+      type: 'number',
+      min: 0,
+      max: 1,
+      step: 0.05,
     },
   },
   override_tensor_buffer_t: {

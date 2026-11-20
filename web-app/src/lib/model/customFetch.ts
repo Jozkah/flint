@@ -20,6 +20,10 @@ import {
   withTransportDetail,
 } from './transportErrors'
 import {
+  isImageInputRejection,
+  stripImagePartsInBody,
+} from './imageRejection'
+import {
   buildRequestBody,
   DISPATCH_HEADERS,
   DISPATCH_PARAM_KEY,
@@ -158,6 +162,33 @@ export function createCustomFetch(
 
     if (!innerMessage) return res
 
+    // Image-rejection auto-retry: a model marked as having vision that has
+    // none rejects any request carrying an image, and the image stays in the
+    // thread history, so every later turn would fail the same way. Retry once
+    // with each image replaced by a short note and tell the user why.
+    if (
+      rawBody &&
+      res.status >= 400 &&
+      res.status < 500 &&
+      isImageInputRejection(innerMessage) &&
+      typeof init?.body === 'string'
+    ) {
+      // A fresh parse of what was sent, so rawBody keeps its images for the
+      // sampling retry below.
+      const textOnlyBody = JSON.parse(init.body) as Record<string, unknown>
+      if (stripImagePartsInBody(textOnlyBody) > 0) {
+        const retry = await baseFetch(input, {
+          ...init,
+          body: JSON.stringify(textOnlyBody),
+        })
+        if (retry.ok) {
+          notifyImagesStripped(innerMessage)
+          return prepareResponse(retry)
+        }
+        // Retry also failed — fall through to surface the cleaned original error.
+      }
+    }
+
     // Sampling-rejection auto-retry: when the upstream complains about an
     // injected parameter (top_k on OpenAI, temp+top_p on Anthropic, etc.),
     // retry once with all our injected params stripped, surface a toast so
@@ -210,5 +241,21 @@ function notifySamplingStripped(reason: string): void {
     })
     .catch(() => {
       console.warn('[sampling-retry]', reason)
+    })
+}
+
+let lastImageNoticeAt = 0
+function notifyImagesStripped(reason: string): void {
+  const now = Date.now()
+  if (now - lastImageNoticeAt < 3000) return
+  lastImageNoticeAt = now
+  void import('sonner')
+    .then(({ toast }) => {
+      toast.warning('Images left out', {
+        description: `${cleanUpstreamErrorMessage(reason)} — request retried without its images. If this model has no vision, turn off Vision in its model settings.`,
+      })
+    })
+    .catch(() => {
+      console.warn('[image-retry]', reason)
     })
 }

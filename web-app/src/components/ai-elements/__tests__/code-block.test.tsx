@@ -187,6 +187,43 @@ describe('CodeBlockCopyButton', () => {
     )
   })
 
+  it('falls back to execCommand when the clipboard API is unavailable', async () => {
+    const user = userEvent.setup()
+    const onError = vi.fn()
+    const onCopy = vi.fn()
+
+    render(
+      <CodeBlock code="const x = 1" language="typescript">
+        <CodeBlockCopyButton onError={onError} onCopy={onCopy} />
+      </CodeBlock>
+    )
+
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    })
+    const exec = vi.fn().mockReturnValue(true)
+    Object.defineProperty(document, 'execCommand', {
+      value: exec,
+      writable: true,
+      configurable: true,
+    })
+
+    try {
+      await user.click(screen.getByRole('button'))
+      expect(exec).toHaveBeenCalledWith('copy')
+      expect(onCopy).toHaveBeenCalledOnce()
+      expect(onError).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(document, 'execCommand', {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      })
+    }
+  })
+
   it('calls onError when writeText rejects', async () => {
     const user = userEvent.setup()
     const onError = vi.fn()

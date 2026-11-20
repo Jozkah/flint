@@ -610,5 +610,24 @@ export function migrateProviderState(
     )
   }
 
+  if (version <= 25 && state?.providers) {
+    // MoE expert cache size and CPU share: add the controls to persisted
+    // llamacpp models so the sidebar renders them.
+    state.providers.forEach((provider) => {
+      if (provider.provider !== 'llamacpp' || !provider.models) return
+      provider.models.forEach((model) => {
+        if (!model.settings) model.settings = {}
+        for (const key of ['moe_cache_mib', 'moe_cache_cpu_share'] as const) {
+          if (!model.settings[key]) {
+            model.settings[key] = {
+              ...modelSettings[key],
+              controller_props: { ...modelSettings[key].controller_props },
+            }
+          }
+        }
+      })
+    })
+  }
+
   return state
 }
