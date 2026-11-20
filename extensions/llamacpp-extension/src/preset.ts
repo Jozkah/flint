@@ -56,6 +56,7 @@ type ModelYaml = ModelConfig & {
   n_cpu_moe?: number
   n_cpu_ffn?: number
   moe_cache_mib?: number
+  moe_cache_cpu_share?: number
   expert_count?: number
   no_kv_offload?: boolean
   /** Per-model override of the global Context Shift setting. */
@@ -1285,6 +1286,11 @@ export async function generatePreset(
       mc.moe_cache_mib > 0
     ) {
       lines.push(`moe-cache-mib = ${Math.floor(mc.moe_cache_mib)}`)
+      // Read only while building that cache; the parser throws outside [0, 1].
+      const share = mc.moe_cache_cpu_share
+      if (typeof share === 'number' && share > 0 && share <= 1) {
+        lines.push(`moe-cache-cpu-share = ${share}`)
+      }
     }
     // A model's own Context Shift choice wins over the global one; a line is
     // written only when it differs from what the [*] block already gives it.

@@ -66,6 +66,7 @@ const KV_CACHE_TYPE_SETTINGS = new Set([
   'f32',
   'f16',
   'bf16',
+  'f8_e4m3',
   'q8_0',
   'q4_0',
   'q4_1',
@@ -190,6 +191,17 @@ export const MODEL_SETTINGS_YAML_MAPPING: Record<
       if (v === '' || v == null) return null
       const n = typeof v === 'number' ? v : Number(v)
       return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+    },
+  },
+  // Read by llama.cpp only while it builds the MoE cache, so it rides on the
+  // same gates as moe_cache_mib (see preset.ts). The arg parser throws outside
+  // [0, 1] and 0 is upstream's default, so anything else is dropped.
+  moe_cache_cpu_share: {
+    yamlKey: 'moe_cache_cpu_share',
+    coerce: (v) => {
+      if (v === '' || v == null) return null
+      const n = typeof v === 'number' ? v : Number(v)
+      return Number.isFinite(n) && n > 0 && n <= 1 ? n : null
     },
   },
   no_kv_offload: {
