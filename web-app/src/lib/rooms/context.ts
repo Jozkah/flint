@@ -468,6 +468,8 @@ export type BuildPromptInput = {
   headroomTokens?: number
   /** The most a summary may run to, in tokens (the compaction policy's). */
   summaryMaxTokens?: number
+  /** Memories from the Chat group this room's group is linked to, if any. */
+  memoryBlock?: string | null
 }
 
 /** The most of a room prompt the skill catalog may take, in characters. Same
@@ -532,6 +534,9 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
       system = `${system}\n\n${catalog}\n\nThese skills are installed for you to use. Before you answer or start work, check the list: when a skill covers what is being asked, even in part, call \`skill_read\` with its name FIRST and follow it instead of improvising. Read every skill that applies.`
     }
   }
+  if (input.memoryBlock) system = `${system}
+
+${input.memoryBlock}`
   // Last, so a new day does not invalidate the cached prefix before it.
   system = `${system}\n\n${todayLine()}`
   const cue = turnCue(input.room, input.speaker, input.instruction)

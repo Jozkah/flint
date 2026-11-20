@@ -11,9 +11,10 @@ import type { ConversationGroup, GroupsState } from './types'
  */
 export function linkedHomeGroup(
   state: GroupsState,
-  coworkGroup: ConversationGroup | undefined
+  coworkGroup: ConversationGroup | undefined,
+  surface: 'cowork' | 'rooms' = 'cowork'
 ): ConversationGroup | undefined {
-  const cowork = state.surfaces.cowork
+  const cowork = state.surfaces[surface]
   const seen = new Set<string>()
   let cur = coworkGroup
   while (cur && !seen.has(cur.id)) {
@@ -37,6 +38,39 @@ export function linkedHomeGroupOfSession(
   const m = cowork.memberships[sessionId]
   const group = m ? cowork.groups.find((g) => g.id === m.groupId) : undefined
   return linkedHomeGroup(state, group)
+}
+
+/**
+ * The Home group a Cowork session reads memories from: its own group's link,
+ * else, for a campaign task session, the link of the campaign's coordinator
+ * session. A campaign is run by the coordinator, so linking the coordinator's
+ * group links the whole campaign.
+ */
+export function linkedHomeGroupOfRun(
+  state: GroupsState,
+  campaigns: ReadonlyArray<{
+    coordinatorSession: string
+    tasks: ReadonlyArray<{ sessionId?: string | null }>
+  }>,
+  sessionId: string | undefined
+): ConversationGroup | undefined {
+  if (!sessionId) return undefined
+  const own = linkedHomeGroupOfSession(state, sessionId)
+  if (own) return own
+  const campaign = campaigns.find((c) => c.tasks.some((t) => t.sessionId === sessionId))
+  return campaign ? linkedHomeGroupOfSession(state, campaign.coordinatorSession) : undefined
+}
+
+/** The Home group a Room's group links to, if any. */
+export function linkedHomeGroupOfRoom(
+  state: GroupsState,
+  roomId: string | undefined
+): ConversationGroup | undefined {
+  if (!roomId) return undefined
+  const rooms = state.surfaces.rooms
+  const m = rooms.memberships[roomId]
+  const group = m ? rooms.groups.find((g) => g.id === m.groupId) : undefined
+  return linkedHomeGroup(state, group, 'rooms')
 }
 
 /** Cowork groups (direct links only) pointing at a Home group. */

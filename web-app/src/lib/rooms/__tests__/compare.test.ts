@@ -57,6 +57,18 @@ beforeEach(() => {
   useRoomsStore.setState(initialStore, true)
 })
 
+describe('linked chat-group memory', () => {
+  it('is added to the speaker system prompt only when given', async () => {
+    const room = makeRoom({ mode: 'compare', participants: three() })
+    const speaker = { kind: 'participant' as const, participant: room.participants[0] }
+    const input = { room, messages: [], speaker, contextWindow: 32_000, maxOutputTokens: 512 }
+    const without = await buildPrompt(input)
+    const withMemory = await buildPrompt({ ...input, memoryBlock: '# Memory - the harbor code is zeta-9' })
+    expect(without.system).not.toContain('zeta-9')
+    expect(withMemory.system).toContain('the harbor code is zeta-9')
+  })
+})
+
 describe('compare mode: context', () => {
   it("a participant's history holds the user and itself, never the other answers", async () => {
     const room = makeRoom({ mode: 'compare', participants: three() })

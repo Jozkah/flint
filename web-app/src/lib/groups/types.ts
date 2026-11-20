@@ -42,7 +42,7 @@ export type ConversationGroup = {
   collapsed: boolean
   folderBindings: GroupFolderBinding[]
   /**
-   * Cowork groups only: the Home group this group is linked to. A linked pair
+   * Cowork and Rooms groups only: the Home group this group is linked to. A linked pair
    * shares project memories and shows each other's artifacts. Optional so
    * data written before links existed decodes unchanged; a link to a Home
    * group that no longer exists is ignored at use time.

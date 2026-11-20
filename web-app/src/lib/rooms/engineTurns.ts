@@ -190,8 +190,10 @@ export class RoomRunTurns extends RoomRunBase {
     const window = this.contextWindow(model)
     const workspacePath =
       speaker.kind === 'participant' ? this.workspaces.get(speaker.participant.id) : undefined
+    const memoryBlock = (await this.deps.linkedMemory?.(this.room.id)) ?? null
     const built = await buildPrompt({
       room: this.room,
+      ...(memoryBlock ? { memoryBlock } : {}),
       messages: this.historyFor(speaker),
       speaker,
       ...(workspacePath && this.room.folder

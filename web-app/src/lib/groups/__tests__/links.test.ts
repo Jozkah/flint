@@ -11,6 +11,8 @@ import {
   coworkGroupsLinkedTo,
   itemIdsInGroupTree,
   linkedHomeGroup,
+  linkedHomeGroupOfRoom,
+  linkedHomeGroupOfRun,
   linkedHomeGroupOfSession,
 } from '../links'
 import { linkedHomeGroups } from '../../linkedChatArtifacts'
@@ -94,5 +96,39 @@ describe('resolving links', () => {
     expect(coworkGroupsLinkedTo(s, 'other')).toEqual([])
     expect([...linkedHomeGroups(s)]).toEqual([['h1', 'Chat A']])
     expect(itemIdsInGroupTree(s, 'cowork', 'c1').sort()).toEqual(['sess-1', 'sess-2'])
+  })
+})
+
+describe('rooms and campaigns', () => {
+  const withRoom = () => {
+    let s = createGroup(base(), 'rooms', { id: 'r1', name: 'Rooms A', now: 1 })
+    s = createGroup(s, 'rooms', { id: 'r2', name: 'Sub', now: 1, parentId: 'r1' })
+    s = moveItem(s, 'rooms', 'room-1', 'r2', 2)
+    return setGroupLink(s, 'rooms', 'r1', 'h1', 3)
+  }
+
+  it('links a rooms group, and the room reads it from an ancestor', () => {
+    const s = withRoom()
+    expect(s.surfaces.rooms.groups.find((g) => g.id === 'r1')?.linkedGroupId).toBe('h1')
+    expect(linkedHomeGroupOfRoom(s, 'room-1')?.id).toBe('h1')
+    expect(linkedHomeGroupOfRoom(s, 'room-2')).toBeUndefined()
+    expect(linkedHomeGroupOfRoom(s, undefined)).toBeUndefined()
+  })
+
+  it('keeps a rooms link through a round trip and ignores one to a deleted chat group', () => {
+    const s = withRoom()
+    const back = sanitizeGroupsState(JSON.parse(JSON.stringify(s)))
+    expect(linkedHomeGroupOfRoom(back, 'room-1')?.id).toBe('h1')
+    expect(linkedHomeGroupOfRoom(deleteGroup(s, 'home', 'h1'), 'room-1')).toBeUndefined()
+  })
+
+  it('a campaign task session inherits the coordinator session link', () => {
+    let s = moveItem(base(), 'cowork', 'coord', 'c1', 2)
+    s = setGroupLink(s, 'cowork', 'c1', 'h1', 3)
+    const campaigns = [{ coordinatorSession: 'coord', tasks: [{ sessionId: 'task-1' }, { sessionId: null }] }]
+    expect(linkedHomeGroupOfRun(s, campaigns, 'task-1')?.id).toBe('h1')
+    expect(linkedHomeGroupOfRun(s, campaigns, 'coord')?.id).toBe('h1')
+    expect(linkedHomeGroupOfRun(s, campaigns, 'stranger')).toBeUndefined()
+    expect(linkedHomeGroupOfRun(s, [], 'task-1')).toBeUndefined()
   })
 })
