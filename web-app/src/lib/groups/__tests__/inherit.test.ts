@@ -6,6 +6,7 @@ import { configureGroups, useConversationGroups } from '../store'
 import { emptyGroupsState } from '../domain'
 import {
   addNewItemToGroup,
+  inheritGroupFoldersToMembers,
   inheritedFolders,
   joinNeedsChoice,
   missingFolders,
@@ -65,6 +66,19 @@ beforeEach(() => {
 })
 
 describe('group folder inheritance', () => {
+  it('a folder added later reaches the items already in the group, once', async () => {
+    const g = (await store().createGroup('home', 'Chats'))!
+    const { adapter, folders } = memoryAdapter({ c2: ['/p/web'] })
+    await store().moveItem('home', 'c1', g)
+    await store().moveItem('home', 'c2', g)
+    await store().setFolders('home', g, [binding('/p/web')])
+    expect(await inheritGroupFoldersToMembers('home', g, adapter)).toEqual(['c1'])
+    expect(folders.c1).toEqual(['/p/web'])
+    expect(folders.c2).toEqual(['/p/web'])
+    expect(await inheritGroupFoldersToMembers('home', g, adapter)).toEqual([])
+    expect(folders.c1).toEqual(['/p/web'])
+  })
+
   it('lists only folders not already attached, ignoring case and slashes', () => {
     expect(missingFolders(['C:\\Repo\\A'], ['c:/repo/a', 'C:/Repo/B', 'C:/Repo/B'])).toEqual([
       'C:/Repo/B',

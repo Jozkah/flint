@@ -68,6 +68,28 @@ export async function inheritGroupFolders(
   return added
 }
 
+/**
+ * Give a group's folders to the items already in it (direct members). Without
+ * this a folder added to a group only reached items that joined afterwards, so
+ * chats that were there first stayed without it. Each item goes through the
+ * same attach path as a join; ones that already have a folder are skipped.
+ * Resolves to the item ids that gained something.
+ */
+export async function inheritGroupFoldersToMembers(
+  surface: GroupSurface,
+  groupId: string,
+  adapter: FolderAdapter
+): Promise<string[]> {
+  const memberships = groups().state.surfaces[surface].memberships
+  const gained: string[] = []
+  for (const m of Object.values(memberships)) {
+    if (m.groupId !== groupId) continue
+    const added = await inheritGroupFolders(surface, m.itemId, groupId, adapter)
+    if (added.length) gained.push(m.itemId)
+  }
+  return gained
+}
+
 /** Folders the item took from `groupId` that are still attached to it. */
 export async function inheritedFolders(
   surface: GroupSurface,
