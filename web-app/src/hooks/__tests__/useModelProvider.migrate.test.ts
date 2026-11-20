@@ -131,7 +131,7 @@ describe('useModelProvider migrate', () => {
   const migrate = useModelProvider.persist.getOptions().migrate!
 
   it('declares the current persisted version', () => {
-    expect(useModelProvider.persist.getOptions().version).toBe(25)
+    expect(useModelProvider.persist.getOptions().version).toBe(26)
   })
 
   for (let version = 0; version <= 25; version++) {

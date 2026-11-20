@@ -225,6 +225,8 @@ export function ModelSetting({
         key === 'cpu_moe' ||
         key === 'n_cpu_moe' ||
         key === 'n_cpu_ffn' ||
+        key === 'moe_cache_mib' ||
+        key === 'moe_cache_cpu_share' ||
         key === 'no_kv_offload' ||
         key === 'cache_type_k' ||
         key === 'cache_type_v' ||
