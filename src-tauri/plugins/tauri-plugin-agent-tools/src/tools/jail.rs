@@ -29,7 +29,7 @@
 //! binary because the confinement is a `CreateProcessW` token attribute.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::appcontainer;
@@ -893,6 +893,77 @@ fn bwrap_git_guard_args(args: &mut Vec<String>, policy: &Policy) {
     }
 }
 
+/// The folders bubblewrap binds onto their own paths for this policy.
+fn bound_roots(policy: &Policy) -> impl Iterator<Item = &Path> {
+    std::iter::once(policy.workspace.as_path())
+        .chain(policy.read_roots.iter().map(PathBuf::as_path))
+        .chain(policy.write_roots.iter().map(PathBuf::as_path))
+}
+
+/// Folders writable at their own path that no remount may cover: the scratch,
+/// the package cache and the configured `[tools.fs]` write allowances.
+fn own_path_dirs(policy: &Policy, fs_write: &[PathBuf]) -> Vec<PathBuf> {
+    policy
+        .scratch_root
+        .iter()
+        .chain(policy.pkg_cache.iter())
+        .chain(fs_write.iter())
+        .cloned()
+        .collect()
+}
+
+/// Top ancestors of bound folders under a writable sandbox tmpfs (`/tmp`, and
+/// `$HOME` unless it is mounted read-only), remounted read-only so `../x`
+/// beside an attached folder is refused instead of silently discarded with the
+/// tmpfs (janhq/jan#9678). Skips an anchor that would cover a writable or
+/// masked directory, or sit on a bound root, where the remount would hit the bind.
+fn escape_anchors(policy: &Policy, home: Option<&Path>, fs_write: &[PathBuf]) -> Vec<PathBuf> {
+    let bases: Vec<&Path> = std::iter::once(Path::new("/tmp"))
+        .chain(home.filter(|_| !policy.home_readonly))
+        .collect();
+    let kept: Vec<PathBuf> = bases
+        .iter()
+        .map(|base| base.to_path_buf())
+        .chain(policy.mask_roots.iter().cloned())
+        .chain(policy.hide_roots.iter().cloned())
+        .chain(own_path_dirs(policy, fs_write))
+        .collect();
+    let mut anchors: Vec<PathBuf> = bound_roots(policy)
+        .flat_map(|root| {
+            bases.iter().filter_map(move |base| {
+                let first = root.strip_prefix(base).ok()?.components().next()?;
+                let anchor = match first {
+                    Component::Normal(name) => base.join(name),
+                    _ => return None,
+                };
+                (anchor != root).then_some(anchor)
+            })
+        })
+        .filter(|anchor| !kept.iter().any(|k| k.starts_with(anchor)))
+        .filter(|anchor| !bound_roots(policy).any(|root| anchor.starts_with(root)))
+        .collect();
+    anchors.sort();
+    anchors.dedup();
+    anchors
+}
+
+/// The masked and hidden folders remounted read-only like [`escape_anchors`].
+/// A mask mounted before the binds is no longer the top mount at its path when
+/// a bind sits on or around it, so those are skipped; a hide is mounted after
+/// the binds and always is.
+fn read_only_masks(policy: &Policy, fs_write: &[PathBuf]) -> Vec<PathBuf> {
+    let own = own_path_dirs(policy, fs_write);
+    let masks = policy.mask_roots.iter().filter(|mask| {
+        !bound_roots(policy).any(|root| mask.starts_with(root))
+            && !own.iter().any(|dir| mask.starts_with(dir))
+    });
+    masks
+        .chain(policy.hide_roots.iter())
+        .filter(|dir| !fs_write.iter().any(|w| w == *dir))
+        .cloned()
+        .collect()
+}
+
 /// Build bubblewrap's argv. Operations apply in order, which the layering below
 /// depends on: the read-only root comes first, then the tmpfs that hides `$HOME`,
 /// then the workspace bind that punches back through it.
@@ -971,6 +1042,13 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     for mask in &policy.mask_roots {
         push(&mut args, &["--tmpfs", &mask.to_string_lossy()]);
     }
+    // Before the binds, which create their mount points inside these; made
+    // read-only after them.
+    let fs_write = fs_rules(policy).allow_write;
+    let anchors = escape_anchors(policy, home_dir().as_deref(), &fs_write);
+    for anchor in &anchors {
+        push(&mut args, &["--tmpfs", &anchor.to_string_lossy()]);
+    }
 
     // Between the masks above and the workspace below, and that position is the
     // enforcement: after the `$HOME`/data-folder tmpfs so a project living under
@@ -1021,6 +1099,12 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     }
     bwrap_fs_args(&mut args, policy);
     bwrap_git_guard_args(&mut args, policy);
+    // Last, after every bind (and every mount point they needed): a remount
+    // covers only its own mount, so the binds beneath stay writable while a
+    // write beside them is refused rather than discarded.
+    for dir in anchors.iter().chain(&read_only_masks(policy, &fs_write)) {
+        push(&mut args, &["--remount-ro", &dir.to_string_lossy()]);
+    }
     push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
@@ -2353,6 +2437,130 @@ mod tests {
 
     /// A run writing to a managed worktree starts the shell there; a start
     /// outside the write roots is ignored rather than trusted.
+    fn paths(items: &[&str]) -> Vec<PathBuf> {
+        items.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn escape_anchors_are_the_top_ancestor_under_tmp_and_home() {
+        let home = Path::new("/home/u");
+        let p = Policy::new(Path::new("/srv/ws"), false)
+            .with_write_roots(paths(&["/home/u/Projects/app", "/tmp/qa/folders/f"]));
+        assert_eq!(
+            escape_anchors(&p, Some(home), &[]),
+            paths(&["/home/u/Projects", "/tmp/qa"])
+        );
+    }
+
+    #[test]
+    fn escape_anchors_skip_what_has_no_ancestor_to_protect() {
+        let home = Path::new("/home/u");
+        // Directly in the tmpfs: its parent is the tmpfs itself (the known gap).
+        let direct = Policy::new(Path::new("/srv/ws"), false)
+            .with_write_roots(paths(&["/home/u/app", "/tmp/f"]));
+        assert!(escape_anchors(&direct, Some(home), &[]).is_empty());
+        // A read-only `$HOME` is the host's own directories, already refusing.
+        let ro = Policy::new(Path::new("/srv/ws"), false)
+            .with_home_readonly(true)
+            .with_write_roots(paths(&["/home/u/Projects/app"]));
+        assert!(escape_anchors(&ro, Some(home), &[]).is_empty());
+        // Outside both tmpfs mounts the read-only root already refuses.
+        let outside = Policy::new(Path::new("/srv/a/ws"), false);
+        assert!(escape_anchors(&outside, Some(home), &[]).is_empty());
+    }
+
+    /// An anchor never covers what must stay writable or is masked on its own,
+    /// and never sits on a bound root, where the remount would hit the bind.
+    #[test]
+    fn escape_anchors_never_cover_writable_or_bound_paths() {
+        let home = Path::new("/home/u");
+        let ws = Path::new("/home/u/.local/share/Jan/data/ws/t1");
+        let desktop =
+            Policy::new(ws, false).with_mask_root(Path::new("/home/u/.local/share/Jan/data"));
+        assert!(
+            escape_anchors(&desktop, Some(home), &[]).is_empty(),
+            "the mask covers the workspace"
+        );
+        let scratch = Policy::new(Path::new("/home/u/.cache/proj"), false)
+            .with_scratch_root(Path::new("/home/u/.cache/jan/s1"));
+        assert!(
+            escape_anchors(&scratch, Some(home), &[]).is_empty(),
+            "~/.cache holds the scratch"
+        );
+        let nested = Policy::new(Path::new("/srv/ws"), false)
+            .with_write_roots(paths(&["/home/u/Projects", "/home/u/Projects/app"]));
+        assert!(
+            escape_anchors(&nested, Some(home), &[]).is_empty(),
+            "~/Projects is itself bound"
+        );
+        // A `$HOME` inside `/tmp` must not be buried under a `/tmp` anchor.
+        let tmp_home = Policy::new(Path::new("/srv/ws"), false)
+            .with_write_roots(paths(&["/tmp/qa/folders/f"]));
+        assert!(escape_anchors(&tmp_home, Some(Path::new("/tmp/qa/home")), &[]).is_empty());
+        // A configured write allowance is writable at its own path too.
+        let fs = Policy::new(Path::new("/srv/ws"), false)
+            .with_write_roots(paths(&["/home/u/Projects/app"]));
+        assert!(
+            escape_anchors(&fs, Some(home), &paths(&["/home/u/Projects/other"])).is_empty(),
+            "an [tools.fs] allow_write under the anchor stays writable"
+        );
+    }
+
+    /// The anchor is mounted before the root it protects and remounted
+    /// read-only after every bind, so the binds stay writable beneath it.
+    #[test]
+    fn bwrap_mounts_an_anchor_before_the_root_and_remounts_it_read_only_after() {
+        let Some(home) = home_dir() else { return };
+        let repo = home.join("jan-anchor-test/app");
+        let anchor = home.join("jan-anchor-test");
+        let (repo, anchor) = (repo.to_string_lossy(), anchor.to_string_lossy());
+        let text = joined(&bwrap_args(
+            &policy().with_write_roots(vec![PathBuf::from(&*repo)]),
+            &cfg(),
+        ));
+        let tmpfs = text
+            .find(&format!("--tmpfs {anchor} "))
+            .expect("anchor tmpfs");
+        let bind = text
+            .find(&format!("--bind {repo} {repo}"))
+            .expect("root bind");
+        let ws_bind = text
+            .find("--bind /data/agent-workspace/threads/t1")
+            .expect("ws bind");
+        let remount = text
+            .find(&format!("--remount-ro {anchor} "))
+            .expect("anchor remount");
+        let chdir = text.find("--chdir").expect("chdir");
+        assert!(
+            tmpfs < bind && bind < ws_bind && ws_bind < remount && remount < chdir,
+            "{text}"
+        );
+    }
+
+    /// Writes into the masks are refused rather than discarded; a mask inside a
+    /// bind is no longer the top mount there and is left alone.
+    #[test]
+    fn bwrap_remounts_the_masks_read_only_unless_a_bind_contains_them() {
+        let mask = "/data";
+        let hide = "/srv/u/.jan";
+        let p = policy()
+            .with_mask_root(Path::new(mask))
+            .with_hide_root(Path::new(hide));
+        let text = joined(&bwrap_args(&p, &cfg()));
+        let ws_bind = text
+            .find("--bind /data/agent-workspace/threads/t1")
+            .expect("ws bind");
+        let remount = text
+            .find(&format!("--remount-ro {mask} "))
+            .expect("mask remount");
+        assert!(ws_bind < remount, "{text}");
+        assert!(text.contains(&format!("--remount-ro {hide} ")), "{text}");
+        let around =
+            Policy::new(Path::new("/srv/u"), false).with_mask_root(Path::new("/srv/u/data"));
+        let text = joined(&bwrap_args(&around, &cfg()));
+        assert!(!text.contains("--remount-ro /srv/u/data"), "{text}");
+    }
+
     #[test]
     fn bwrap_chdirs_into_the_start_dir_only_when_it_is_a_write_root() {
         let wt = PathBuf::from("/data/agent-workspace/worktrees/repo/s1");
@@ -3974,5 +4182,37 @@ mod enforcement_tests {
         assert!(args.contains(&format!("-DFS_ALLOW_WRITE_0={}", other.join("out").display())), "{args}");
         // No fs lists and no readable home: no fs rules in the profile at all.
         assert!(!seatbelt_policy(&Policy::new(&ws, false)).contains("FS_"));
+    }
+
+    /// janhq/jan#9678: a write beside an attached folder is refused, not discarded, while the
+    /// folder, a bare `/tmp` path and `$HOME` (where caches go) stay writable.
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn a_write_beside_an_attached_folder_is_refused_not_discarded() {
+        require_backend!();
+        let ws = workspace();
+        let base = workspace();
+        let folder = base.join("folders/f");
+        std::fs::create_dir_all(&folder).unwrap();
+        let policy = Policy::new(&ws, false).with_write_roots(vec![folder.clone()]);
+        let in_folder = format!("cd {} && echo in > in.txt", folder.to_string_lossy());
+        let (ok, out) = run_policy(policy.clone(), &ws, &in_folder).await;
+        assert!(ok, "the folder stays writable: {out}");
+        assert_eq!(
+            std::fs::read_to_string(folder.join("in.txt"))
+                .unwrap_or_default()
+                .trim(),
+            "in"
+        );
+        for target in ["../x", "../../x"] {
+            let cmd = format!("cd {} && echo x > {target}", folder.to_string_lossy());
+            let (ok, out) = run_policy(policy.clone(), &ws, &cmd).await;
+            assert!(!ok, "{target} must be refused, not discarded: {out}");
+            assert!(looks_denied(&out), "{out}");
+        }
+        let (ok, out) = run_policy(policy, &ws, "echo t > /tmp/t && mkdir -p \"$HOME/.npm\"").await;
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(ok, "/tmp and $HOME stay writable for tools: {out}");
     }
 }

@@ -408,7 +408,7 @@
   {
     "key": "cache_type_k",
     "title": "KV Cache K Type",
-    "description": "KV cache data type for Keys. Auto uses q8_0, which halves the cache at a negligible quality cost.",
+    "description": "KV cache data type for Keys. Auto uses q8_0, which halves the cache at a negligible quality cost. f8_e4m3 has GPU kernels on NVIDIA (CUDA) only; elsewhere it may run on the CPU and be much slower.",
     "controllerType": "dropdown",
     "controllerProps": {
       "value": "auto",
@@ -428,6 +428,10 @@
         {
           "value": "bf16",
           "name": "bf16"
+        },
+        {
+          "value": "f8_e4m3",
+          "name": "f8_e4m3"
         },
         {
           "value": "q8_0",
@@ -459,7 +463,7 @@
   {
     "key": "cache_type_v",
     "title": "KV Cache V Type",
-    "description": "KV cache data type for Values. Auto uses q8_0 when Flash Attention is On and f16 otherwise, since a quantized V cache needs Flash Attention. A model that fails to load with it is retried once with f16.",
+    "description": "KV cache data type for Values. Auto uses q8_0 when Flash Attention is On and f16 otherwise, since a quantized V cache needs Flash Attention. A model that fails to load with it is retried once with f16. f8_e4m3 has GPU kernels on NVIDIA (CUDA) only; elsewhere it may run on the CPU and be much slower.",
     "controllerType": "dropdown",
     "controllerProps": {
       "value": "auto",
@@ -479,6 +483,10 @@
         {
           "value": "bf16",
           "name": "bf16"
+        },
+        {
+          "value": "f8_e4m3",
+          "name": "f8_e4m3"
         },
         {
           "value": "q8_0",
