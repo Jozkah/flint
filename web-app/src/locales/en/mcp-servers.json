@@ -283,5 +283,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Open page"
+  },
+  "presets": {
+    "title": "Optional servers (nothing is installed or started until you save)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (self-hosted)",
+      "note": "Keyless web, news, social and academic search, MIT licensed. Not on PyPI: clone github.com/damionrashford/RivalSearchMCP, run `uv sync` in it, then replace /path/to/RivalSearchMCP in the arguments with that folder. Runs on this computer with your user privileges. It scrapes search engines and spoofs browser fingerprints, so it can break without notice and may go against those sites' terms. One maintainer, not audited."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (hosted)",
+      "note": "Every query is sent to rivalsearchmcp.fastmcp.app, run by a third party whose logging and retention are not documented. Fair-use rate limits apply. Prefer the self-hosted option for anything private. Same caveats as self-hosted: scraping based, one maintainer, not audited."
+    }
   }
 }

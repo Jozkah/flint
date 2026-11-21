@@ -45,6 +45,7 @@ import {
   type McpFieldId,
   type McpValidationIssue,
 } from '@/lib/mcpServerValidation'
+import { MCP_PRESETS, type McpPreset } from '@/lib/mcpPresets'
 
 /**
  * The message under one field: an error (blocks saving) or a warning (does
@@ -240,6 +241,7 @@ export default function AddEditMCPServer({
   const [isToggled, setIsToggled] = useState(false)
   const [jsonContent, setJsonContent] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [preset, setPreset] = useState<McpPreset | null>(null)
 
   // Reset form when modal opens/closes or editing key changes
   useEffect(() => {
@@ -287,6 +289,25 @@ export default function AddEditMCPServer({
     setJsonContent('')
     setError(null)
     setAttempted(false)
+    setPreset(null)
+  }
+
+  /** Fill the form from a preset. Nothing is saved until the user saves. */
+  const applyPreset = (p: McpPreset) => {
+    const existing = new Set(existingNames)
+    let name = p.name
+    for (let i = 2; existing.has(name); i++) name = `${p.name}-${i}`
+    setServerName(name)
+    setCommand(p.config.command)
+    setUrl(p.config.url ?? '')
+    setTransportType(p.config.type ?? 'stdio')
+    resetArgs(p.config.args)
+    resetEnv(p.config.env)
+    resetHeaders()
+    setCwd('')
+    setTimeoutText('')
+    setAttempted(false)
+    setPreset(p)
   }
 
   // Sensors for drag and drop
@@ -533,6 +554,42 @@ export default function AddEditMCPServer({
           </div>
         ) : (
           <div className="space-y-4">
+            {!editingKey && (
+              <div className="space-y-2">
+                <p className="text-sm">{t('mcp-servers:presets.title')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {MCP_PRESETS.map((p) => (
+                    <Button
+                      key={p.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      aria-pressed={preset?.id === p.id}
+                      onClick={() => applyPreset(p)}
+                    >
+                      {t(p.labelKey)}
+                    </Button>
+                  ))}
+                </div>
+                {preset && (
+                  <p
+                    role="note"
+                    className={cn(
+                      'flex items-start gap-1.5 text-xs',
+                      preset.hosted ? 'text-warning' : 'text-muted-foreground'
+                    )}
+                  >
+                    {preset.hosted && (
+                      <TriangleAlert
+                        className="mt-px size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                    )}
+                    <span className="min-w-0">{t(preset.noteKey)}</span>
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <label
                 htmlFor={fieldId('name')}
