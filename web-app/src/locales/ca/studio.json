@@ -250,5 +250,22 @@
     "all": "Tot",
     "empty": "Encara no hi ha res. El que facis apareixerà aquí."
   },
-  "videoMemoryWarning": "Aquest ordinador té uns {{gb}} GB de memòria. La generació de vídeo en necessita molta i en una màquina com aquesta un clip pot trigar hores perquè es queda sense memòria i passa a fer swap al disc."
+  "videoMemoryWarning": "Aquest ordinador té uns {{gb}} GB de memòria. La generació de vídeo en necessita molta i en una màquina com aquesta un clip pot trigar hores perquè es queda sense memòria i passa a fer swap al disc.",
+  "editor": {
+    "title": "Edita en una aplicació externa",
+    "intro": "Obre una imatge en un editor d'aquest ordinador, com G'MIC-Qt. Flint no en inclou cap: tria l'aplicació que has instal·lat. La imatge s'obre tal com és; desar a l'editor no la canvia a Studio.",
+    "preset": "Editor",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Una altra aplicació",
+    "gmicNote": "Tria gmic_qt de la teva instal·lació de G'MIC (descarrega'l a gmic.eu). Flint no inclou res de G'MIC.",
+    "program": "Aplicació",
+    "programPlaceholder": "Ruta completa del fitxer del programa de l'aplicació",
+    "browse": "Explora…",
+    "args": "Arguments",
+    "argsHelp": "Usa {file} on va la ruta de la imatge. Si l'ometes, la ruta s'afegeix al final.",
+    "save": "Desa i obre",
+    "setup": "Edita l'aplicació",
+    "edit": "Edita en una aplicació externa",
+    "reveal": "Mostra a la carpeta"
+  }
 }

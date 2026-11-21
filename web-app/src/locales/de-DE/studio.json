@@ -247,5 +247,22 @@
     "all": "Alle",
     "empty": "Noch nichts da. Was du erstellst, erscheint hier."
   },
-  "videoMemoryWarning": "Dieser Computer hat etwa {{gb}} GB Speicher. Die Videoerzeugung benötigt viel davon, und auf einem solchen Rechner kann ein Clip Stunden dauern, weil der Speicher ausgeht und auf die Festplatte ausgelagert wird."
+  "videoMemoryWarning": "Dieser Computer hat etwa {{gb}} GB Speicher. Die Videoerzeugung benötigt viel davon, und auf einem solchen Rechner kann ein Clip Stunden dauern, weil der Speicher ausgeht und auf die Festplatte ausgelagert wird.",
+  "editor": {
+    "title": "In externer App bearbeiten",
+    "intro": "Öffne ein Bild in einem Editor auf diesem Computer, zum Beispiel G'MIC-Qt. Flint bringt keinen mit: Wähle die App, die du installiert hast. Das Bild wird unverändert geöffnet; Speichern im Editor ändert es in Studio nicht.",
+    "preset": "Editor",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Andere App",
+    "gmicNote": "Wähle gmic_qt aus deiner G'MIC-Installation (erhältlich auf gmic.eu). Flint liefert nichts von G'MIC mit.",
+    "program": "App",
+    "programPlaceholder": "Vollständiger Pfad zur Programmdatei der App",
+    "browse": "Durchsuchen…",
+    "args": "Argumente",
+    "argsHelp": "Verwende {file} an der Stelle, wo der Bildpfad stehen soll. Lässt du es weg, wird der Pfad am Ende angehängt.",
+    "save": "Speichern und öffnen",
+    "setup": "App bearbeiten",
+    "edit": "In externer App bearbeiten",
+    "reveal": "Im Ordner anzeigen"
+  }
 }

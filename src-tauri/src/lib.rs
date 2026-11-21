@@ -54,6 +54,7 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_gallery,
         core::diffusion::commands::diffusion_delete,
         core::diffusion::commands::diffusion_media,
+        core::diffusion::commands::diffusion_open_external,
         core::diffusion::commands::diffusion_save_external_images,
         core::diffusion::commands::diffusion_families,
         core::diffusion::commands::diffusion_guess_family,

@@ -67,6 +67,8 @@ export const localStorageKey = {
   splitConversation: 'split-conversation',
   /** The hosted picture model last used in Studio, for the chat picture tools. */
   lastHostedImageModel: 'last-hosted-image-model',
+  /** The editor app Studio pictures open in (program path and arguments). */
+  studioExternalEditor: 'studio-external-editor',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

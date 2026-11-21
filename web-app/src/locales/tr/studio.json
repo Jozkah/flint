@@ -247,5 +247,22 @@
     "all": "Tümü",
     "empty": "Burada henüz bir şey yok. Ürettikleriniz burada görünür."
   },
-  "videoMemoryWarning": "Bu bilgisayarda yaklaşık {{gb}} GB bellek var. Video üretimi çok bellek ister ve bunun gibi bir makinede tek bir klip saatler sürebilir, çünkü bellek tükenir ve diske takas yapılır."
+  "videoMemoryWarning": "Bu bilgisayarda yaklaşık {{gb}} GB bellek var. Video üretimi çok bellek ister ve bunun gibi bir makinede tek bir klip saatler sürebilir, çünkü bellek tükenir ve diske takas yapılır.",
+  "editor": {
+    "title": "Harici uygulamada düzenle",
+    "intro": "Bir resmi bu bilgisayardaki bir düzenleyicide açın, örneğin G'MIC-Qt. Flint hiçbirini içermez: kurduğunuz uygulamayı seçin. Resim olduğu gibi açılır; düzenleyicide kaydetmek Studio'daki resmi değiştirmez.",
+    "preset": "Düzenleyici",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Başka uygulama",
+    "gmicNote": "G'MIC kurulumunuzdan gmic_qt dosyasını seçin (gmic.eu adresinden edinin). Flint, G'MIC'ten hiçbir şey içermez.",
+    "program": "Uygulama",
+    "programPlaceholder": "Uygulamanın program dosyasının tam yolu",
+    "browse": "Gözat…",
+    "args": "Bağımsız değişkenler",
+    "argsHelp": "Resmin yolunun geleceği yere {file} yazın. Yazmazsanız yol sona eklenir.",
+    "save": "Kaydet ve aç",
+    "setup": "Uygulamayı düzenle",
+    "edit": "Harici uygulamada düzenle",
+    "reveal": "Klasörde göster"
+  }
 }

@@ -244,5 +244,22 @@
     "all": "全部",
     "empty": "這裡還沒有內容。你建立的內容會顯示在這裡。"
   },
-  "videoMemoryWarning": "這台電腦約有 {{gb}} GB 記憶體。影片生成需要大量記憶體，在這樣的機器上，一個片段可能需要數小時，因為它會用盡記憶體並交換到磁碟。"
+  "videoMemoryWarning": "這台電腦約有 {{gb}} GB 記憶體。影片生成需要大量記憶體，在這樣的機器上，一個片段可能需要數小時，因為它會用盡記憶體並交換到磁碟。",
+  "editor": {
+    "title": "在外部應用程式中編輯",
+    "intro": "用這台電腦上的編輯器(如 G'MIC-Qt)開啟圖片。Flint 不內建編輯器:請選擇你已安裝的應用程式。圖片會依原樣開啟;在編輯器中儲存不會改變 Studio 中的圖片。",
+    "preset": "編輯器",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "其他應用程式",
+    "gmicNote": "從你安裝的 G'MIC 中選擇 gmic_qt(可在 gmic.eu 取得)。Flint 不附帶 G'MIC 的任何內容。",
+    "program": "應用程式",
+    "programPlaceholder": "應用程式檔案的完整路徑",
+    "browse": "瀏覽…",
+    "args": "引數",
+    "argsHelp": "在圖片路徑的位置使用 {file}。省略時,路徑會加到結尾。",
+    "save": "儲存並開啟",
+    "setup": "編輯應用程式",
+    "edit": "在外部應用程式中編輯",
+    "reveal": "在資料夾中顯示"
+  }
 }

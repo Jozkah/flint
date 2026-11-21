@@ -253,5 +253,22 @@
     "all": "Wszystkie",
     "empty": "Na razie nic tu nie ma. To, co utworzysz, pojawi się tutaj."
   },
-  "videoMemoryWarning": "Ten komputer ma około {{gb}} GB pamięci. Generowanie wideo wymaga jej dużo, a na takiej maszynie jeden klip może trwać godzinami, bo kończy się pamięć i dane są zrzucane na dysk."
+  "videoMemoryWarning": "Ten komputer ma około {{gb}} GB pamięci. Generowanie wideo wymaga jej dużo, a na takiej maszynie jeden klip może trwać godzinami, bo kończy się pamięć i dane są zrzucane na dysk.",
+  "editor": {
+    "title": "Edytuj w zewnętrznej aplikacji",
+    "intro": "Otwórz obraz w edytorze na tym komputerze, na przykład G'MIC-Qt. Flint żadnego nie zawiera: wybierz zainstalowaną aplikację. Obraz otwiera się w niezmienionej postaci; zapis w edytorze nie zmienia go w Studio.",
+    "preset": "Edytor",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Inna aplikacja",
+    "gmicNote": "Wybierz gmic_qt z instalacji G'MIC (pobierzesz go na gmic.eu). Flint nie dostarcza niczego z G'MIC.",
+    "program": "Aplikacja",
+    "programPlaceholder": "Pełna ścieżka do pliku programu aplikacji",
+    "browse": "Przeglądaj…",
+    "args": "Argumenty",
+    "argsHelp": "Wpisz {file} tam, gdzie ma być ścieżka obrazu. Jeśli go pominiesz, ścieżka zostanie dodana na końcu.",
+    "save": "Zapisz i otwórz",
+    "setup": "Edytuj aplikację",
+    "edit": "Edytuj w zewnętrznej aplikacji",
+    "reveal": "Pokaż w folderze"
+  }
 }

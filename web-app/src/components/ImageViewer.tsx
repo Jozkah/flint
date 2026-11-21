@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -31,11 +32,14 @@ export function ImageViewer({
   index,
   onIndexChange,
   onClose,
+  actions,
 }: {
   images: readonly ViewerImage[]
   index: number
   onIndexChange: (index: number) => void
   onClose: () => void
+  /** Extra buttons for the current image, shown beside save (use the same round style). */
+  actions?: (toolButton: string) => ReactNode
 }) {
   const { t } = useTranslation()
   const [zoom, setZoom] = useState(1)
@@ -156,6 +160,7 @@ export function ImageViewer({
           <button type="button" className={toolButton} onClick={() => zoomBy(1.25)} aria-label={t('common:imageViewer.zoomIn')} disabled={zoom >= MAX_ZOOM}>
             <ZoomIn className="size-4" />
           </button>
+          {actions?.(toolButton)}
           <a
             className={toolButton}
             href={image.url}

@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAssetUrl } from '@/lib/assetPath'
-import { Film, ImageIcon, Loader, X } from 'lucide-react'
+import { Film, FolderOpen, ImageIcon, Loader, SquarePen, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Segmented } from '@/components/ui/segmented'
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { useStudio } from '@/hooks/useStudio'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { IMAGE_SIZES, VIDEO_SIZES, sizeIndexOf } from '@/lib/studio/helpers'
 import { type GalleryItem, type StudioKind } from '@/lib/studio/studio'
 import { ActivityPanel } from '@/containers/studio/panels/ActivityPanel'
+import { useEditExternally } from '@/containers/studio/panels/ExternalEditorDialog'
 import { EngineSetup } from '@/containers/studio/panels/EngineSetup'
 import { GenerationsPanel } from '@/containers/studio/panels/GenerationsPanel'
 import { ModelPanel } from '@/containers/studio/panels/ModelPanel'
@@ -30,6 +33,8 @@ export function StudioPage() {
   const refreshGallery = useStudio((s) => s.refreshGallery)
   const clearError = useStudio((s) => s.clearError)
   const gallery = useStudio((s) => s.gallery)
+  const serviceHub = useServiceHub()
+  const { edit, dialog: editorDialog } = useEditExternally()
   const [kind, setKind] = useState<StudioKind>('image')
   const [form, setFormState] = useState<Form>(EMPTY_FORM)
   const [viewing, setViewing] = useState<number | null>(null)
@@ -223,8 +228,40 @@ export function StudioPage() {
           index={viewing}
           onIndexChange={setViewing}
           onClose={() => setViewing(null)}
+          actions={(toolButton) => {
+            const current = shown[viewing]
+            if (!current) return null
+            return (
+              <>
+                <button
+                  type="button"
+                  className={toolButton}
+                  title={t('studio:editor.edit')}
+                  aria-label={t('studio:editor.edit')}
+                  onClick={() => edit(current)}
+                >
+                  <SquarePen className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className={toolButton}
+                  title={t('studio:editor.reveal')}
+                  aria-label={t('studio:editor.reveal')}
+                  onClick={() =>
+                    void serviceHub
+                      .opener()
+                      .revealItemInDir(current.path)
+                      .catch((error: unknown) => toast.error(String(error)))
+                  }
+                >
+                  <FolderOpen className="size-4" />
+                </button>
+              </>
+            )
+          }}
         />
       )}
+      {editorDialog}
       <VideoDialog
         item={
           kind === 'video' && viewing !== null ? (shown[viewing] ?? null) : null

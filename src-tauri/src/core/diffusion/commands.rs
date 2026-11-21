@@ -229,6 +229,25 @@ pub async fn diffusion_media<R: Runtime>(
         .map_err(|e| format!("Could not read the item: {e}"))?
 }
 
+/// Opens one gallery picture in the editor the person set up (G'MIC-Qt or any
+/// other app). The file is looked up in the gallery by id, so the webview never
+/// names a path to open; the program is validated and started without a shell
+/// (see `external.rs`).
+#[tauri::command(async)]
+pub fn diffusion_open_external<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    kind: Kind,
+    id: String,
+    program: String,
+    args: Option<String>,
+) -> Result<(), String> {
+    let item = gallery::list(&app, kind)
+        .into_iter()
+        .find(|g| g.id == id)
+        .ok_or("That picture is no longer in the gallery.")?;
+    super::external::launch(&program, args.as_deref().unwrap_or(""), Path::new(&item.path))
+}
+
 /// Pictures a hosted provider returned, to keep in the gallery beside local ones.
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

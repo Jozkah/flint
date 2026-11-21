@@ -253,5 +253,22 @@
     "all": "Vše",
     "empty": "Zatím tu nic není. To, co vytvoříte, se zobrazí tady."
   },
-  "videoMemoryWarning": "Tento počítač má asi {{gb}} GB paměti. Generování videa jich potřebuje hodně a na takovém stroji může jeden klip trvat hodiny, protože dojde paměť a systém swapuje na disk."
+  "videoMemoryWarning": "Tento počítač má asi {{gb}} GB paměti. Generování videa jich potřebuje hodně a na takovém stroji může jeden klip trvat hodiny, protože dojde paměť a systém swapuje na disk.",
+  "editor": {
+    "title": "Upravit v externí aplikaci",
+    "intro": "Otevřete obrázek v editoru na tomto počítači, například G'MIC-Qt. Flint žádný neobsahuje: vyberte aplikaci, kterou jste nainstalovali. Obrázek se otevře tak, jak je; uložení v editoru ho ve Studiu nezmění.",
+    "preset": "Editor",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Jiná aplikace",
+    "gmicNote": "Vyberte gmic_qt z instalace G'MIC (stáhnete ji na gmic.eu). Flint nedodává nic z G'MIC.",
+    "program": "Aplikace",
+    "programPlaceholder": "Úplná cesta k programovému souboru aplikace",
+    "browse": "Procházet…",
+    "args": "Argumenty",
+    "argsHelp": "Na místo cesty k obrázku napište {file}. Pokud ho vynecháte, cesta se přidá na konec.",
+    "save": "Uložit a otevřít",
+    "setup": "Upravit aplikaci",
+    "edit": "Upravit v externí aplikaci",
+    "reveal": "Zobrazit ve složce"
+  }
 }
