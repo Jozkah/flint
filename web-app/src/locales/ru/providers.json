@@ -255,5 +255,8 @@
   "skippedLinkedTitle": "Пропущено моделей: {{count}}",
   "skippedLinkedBody": "Эти модели хранятся через ссылку, ведущую за пределы папки данных Flint, поэтому Flint их не загрузил:",
   "skippedLinkedHowTo": "Чтобы использовать модель, импортируйте её файл GGUF по пути (Flint оставит файл на месте) или переместите файлы обратно в папку моделей.",
-  "skippedLinkedDismiss": "Скрыть"
+  "skippedLinkedDismiss": "Скрыть",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }

@@ -26,7 +26,11 @@
     "localAuto": "Detect from the file name",
     "localButton": "Add from a file…",
     "localFilter": "Model weights",
-    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE."
+    "localAdded": "Added {{name}}. Open Studio to download its text encoder and VAE.",
+    "scanIntro": "Keep your models in folders like ComfyUI's (diffusion_models, text_encoders, vae)? Point Flint at the folder; models are used where they are.",
+    "scanAddFolder": "Add a folder…",
+    "scanFind": "Find picture models",
+    "scanNone": "No picture models found in those folders."
   },
   "page": {
     "title": "工作室",

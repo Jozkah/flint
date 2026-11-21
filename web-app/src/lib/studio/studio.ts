@@ -153,11 +153,18 @@ export const studioApi = {
     token?: string
   }) => invoke<StudioModel>('diffusion_add_custom_model', { params }),
   /** A weights file already on this computer, used where it is. */
-  addLocalModel: (params: { path: string; family: string; displayName?: string }) =>
+  addLocalModel: (params: {
+    path: string
+    family: string
+    displayName?: string
+    /** Other files the person has (text encoders, a VAE); matching ones are used in place. */
+    companions?: string[]
+  }) =>
     invoke<StudioModel>('diffusion_add_local_model', {
       path: params.path,
       family: params.family,
       displayName: params.displayName ?? null,
+      companions: params.companions ?? null,
     }),
   removeCustomModel: (modelId: string) => invoke<void>('diffusion_remove_custom_model', { modelId }),
   /** Pictures a hosted provider made, kept in the gallery beside local ones. */

@@ -28,6 +28,9 @@ import {
   type HuggingFaceModel,
 } from '@/lib/huggingface'
 import { studioApi, type StudioFamily } from '@/lib/studio/studio'
+import { addScannedToStudio, splitByKind, type ScannedModel } from '@/lib/localModelScan'
+import { useModelFolderScan } from '@/hooks/useModelFolderScan'
+import { formatBytes } from '@/lib/utils'
 import { useStudio } from '@/hooks/useStudio'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { pickLicense, weightsFiles } from '@/lib/studio/discover'
@@ -201,6 +204,32 @@ export function StudioDiscover({
     }
   }
 
+  const { scanState, runScan, handleAddFolder, removeModelFolder, modelFolders } =
+    useModelFolderScan()
+  const addScanned = async (found: ScannedModel, all: ScannedModel[]) => {
+    setAddingLocal(true)
+    try {
+      const added = await addScannedToStudio(found, all, localFamily || undefined)
+      await refresh()
+      toast.success(t('studio:discover.localAdded', { name: added.display_name }), {
+        action: {
+          label: t('studio:discover.openStudio'),
+          onClick: () => navigate({ to: route.studio }),
+        },
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error && err.message === 'unsupported-family'
+          ? t('studio:discover.pickKindFirst')
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      )
+    } finally {
+      setAddingLocal(false)
+    }
+  }
+
   const addLocal = async () => {
     if (!status?.supported) {
       toast.error(t('studio:discover.unsupportedToast'))
@@ -276,6 +305,64 @@ export function StudioDiscover({
             <Plus className="size-3.5" />
             {t('studio:discover.localButton')}
           </Button>
+        </div>
+
+        <div
+          className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground"
+          data-testid="studio-scan-folders"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-auto text-secondary-foreground">{t('studio:discover.scanIntro')}</span>
+            <Button size="sm" variant="outline" onClick={() => void handleAddFolder()}>
+              {t('studio:discover.scanAddFolder')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={scanState.status === 'scanning'}
+              onClick={() => void runScan()}
+            >
+              {t('studio:discover.scanFind')}
+            </Button>
+          </div>
+          {modelFolders.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {modelFolders.map((folder) => (
+                <span key={folder} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5">
+                  <span className="break-all">{folder}</span>
+                  <button
+                    type="button"
+                    aria-label={t('providers:importRemoveFolder', { folder })}
+                    onClick={() => removeModelFolder(folder)}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {scanState.status === 'failed' && <span className="text-destructive">{scanState.message}</span>}
+          {scanState.status === 'done' && splitByKind(scanState.models).diffusion.length === 0 && (
+            <span>{t('studio:discover.scanNone')}</span>
+          )}
+          {scanState.status === 'done' &&
+            splitByKind(scanState.models).diffusion.map((found) => (
+              <div key={found.path} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 truncate text-secondary-foreground" title={found.path}>
+                  {found.name}
+                </span>
+                <span>{formatBytes(found.size_bytes)}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={addingLocal}
+                  onClick={() => void addScanned(found, scanState.models)}
+                >
+                  <Plus className="size-3.5" />
+                  {t('studio:discover.addToStudio')}
+                </Button>
+              </div>
+            ))}
         </div>
 
         {familiesError && (

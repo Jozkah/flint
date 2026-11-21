@@ -254,5 +254,8 @@
   "skippedLinkedTitle": "Models omesos: {{count}}",
   "skippedLinkedBody": "Aquests models es desen a través d'un enllaç que apunta fora de la carpeta de dades de Flint, així que Flint no els ha carregat:",
   "skippedLinkedHowTo": "Per fer-ne servir un, importa el fitxer GGUF per ruta (Flint el deixa on és) o torna a moure els fitxers a la carpeta de models.",
-  "skippedLinkedDismiss": "Descarta"
+  "skippedLinkedDismiss": "Descarta",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }

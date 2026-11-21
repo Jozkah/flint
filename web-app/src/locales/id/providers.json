@@ -252,5 +252,8 @@
   "skippedLinkedTitle": "Model dilewati: {{count}}",
   "skippedLinkedBody": "Model ini disimpan melalui tautan yang mengarah ke luar folder data Flint, jadi Flint tidak memuatnya:",
   "skippedLinkedHowTo": "Untuk memakai salah satunya, impor file GGUF-nya lewat path (Flint membiarkan file di tempatnya), atau pindahkan file kembali ke folder model.",
-  "skippedLinkedDismiss": "Tutup"
+  "skippedLinkedDismiss": "Tutup",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }

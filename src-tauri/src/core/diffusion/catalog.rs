@@ -106,7 +106,7 @@ pub enum Kind {
 }
 
 /// What one file is for in the server's command line.
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     DiffusionModel,

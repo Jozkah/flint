@@ -1,4 +1,9 @@
 import { invokeCommand as invoke } from '@/lib/backend'
+import { studioApi, type StudioModel } from '@/lib/studio/studio'
+
+/** What a found file is for. ComfyUI-style folders keep picture models, text
+ * encoders, VAEs and LoRAs together; only `text` belongs in the chat list. */
+export type ScannedKind = 'text' | 'diffusion' | 'encoder' | 'vae' | 'lora'
 
 /** A GGUF model another app already keeps on this machine. */
 export interface ScannedModel {
@@ -8,6 +13,42 @@ export interface ScannedModel {
   /** The app whose store holds it, e.g. `LM Studio`. */
   source: string
   size_bytes: number
+  /** Absent from older scans, which found chat models only. */
+  kind?: ScannedKind
+}
+
+/** Split a scan into chat models, picture models and the files that only
+ * make sense beside a picture model (text encoders, VAEs, LoRAs). */
+export function splitByKind(models: ScannedModel[]) {
+  const kindOf = (m: ScannedModel) => m.kind ?? 'text'
+  return {
+    text: models.filter((m) => kindOf(m) === 'text'),
+    diffusion: models.filter((m) => kindOf(m) === 'diffusion'),
+    companions: models.filter((m) => ['encoder', 'vae'].includes(kindOf(m))),
+    loras: models.filter((m) => kindOf(m) === 'lora'),
+  }
+}
+
+/**
+ * Register a found picture model with Studio, where it is. Encoders and VAEs
+ * found in the same scan are offered as its companions; those that match what
+ * the model's family needs are used in place, the rest are downloaded as usual.
+ * Rejects when the file's family is not one Studio can run.
+ */
+export async function addScannedToStudio(
+  model: ScannedModel,
+  scan: ScannedModel[],
+  family?: string
+): Promise<StudioModel> {
+  const name = model.path.split(/[\\/]/).pop() ?? model.path
+  const chosen =
+    family || (await studioApi.guessFamily('', name).catch(() => null)) || ''
+  if (!chosen) throw new Error('unsupported-family')
+  return studioApi.addLocalModel({
+    path: model.path,
+    family: chosen,
+    companions: splitByKind(scan).companions.map((m) => m.path),
+  })
 }
 
 /**

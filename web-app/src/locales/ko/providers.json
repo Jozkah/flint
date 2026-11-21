@@ -253,5 +253,8 @@
   "skippedLinkedTitle": "건너뛴 모델: {{count}}",
   "skippedLinkedBody": "이 모델들은 Flint 데이터 폴더 밖을 가리키는 링크를 통해 저장되어 있어 Flint가 불러오지 않았습니다:",
   "skippedLinkedHowTo": "사용하려면 GGUF 파일을 경로로 가져오거나(Flint는 파일을 그 자리에 둡니다) 파일을 모델 폴더로 다시 옮기세요.",
-  "skippedLinkedDismiss": "닫기"
+  "skippedLinkedDismiss": "닫기",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }

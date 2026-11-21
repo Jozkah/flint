@@ -254,5 +254,8 @@
   "skippedLinkedTitle": "Modelos ignorados: {{count}}",
   "skippedLinkedBody": "Estes modelos estão salvos por meio de um link que aponta para fora da pasta de dados do Flint, então o Flint não os carregou:",
   "skippedLinkedHowTo": "Para usar um deles, importe o arquivo GGUF pelo caminho (o Flint mantém o arquivo onde está) ou mova os arquivos de volta para a pasta de modelos.",
-  "skippedLinkedDismiss": "Dispensar"
+  "skippedLinkedDismiss": "Dispensar",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }

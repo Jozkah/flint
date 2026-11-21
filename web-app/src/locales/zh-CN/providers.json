@@ -253,5 +253,8 @@
   "skippedLinkedTitle": "已跳过的模型：{{count}}",
   "skippedLinkedBody": "这些模型通过指向 Flint 数据文件夹之外的链接存放，因此 Flint 没有加载它们：",
   "skippedLinkedHowTo": "要使用其中某个模型，请按路径导入它的 GGUF 文件（Flint 会让文件留在原处），或将文件移回模型文件夹。",
-  "skippedLinkedDismiss": "关闭"
+  "skippedLinkedDismiss": "关闭",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
 }
