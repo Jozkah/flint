@@ -3394,7 +3394,8 @@
   "capabilityTips": {
     "web_search": "Recherche web",
     "embeddings": "Modèle d’embedding (pour RAG/vecteurs, pas pour le chat)",
-    "raw_completion": "Complétion brute (poursuit votre texte, sans chat ni outils)"
+    "raw_completion": "Complétion brute (poursuit votre texte, sans chat ni outils)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Changer d’assistant ({{shortcut}})",
   "workProfileLabels": {

@@ -3308,7 +3308,8 @@
   "capabilityTips": {
     "web_search": "网页搜索",
     "embeddings": "嵌入模型（用于 RAG/向量，不用于聊天）",
-    "raw_completion": "原始补全（续写你的文本，无聊天或工具）"
+    "raw_completion": "原始补全（续写你的文本，无聊天或工具）",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "切换助手（{{shortcut}}）",
   "workProfileLabels": {

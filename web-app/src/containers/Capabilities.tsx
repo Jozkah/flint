@@ -12,6 +12,7 @@ import {
   Binary,
   Headphones,
   TextCursorInput,
+  Scale,
 } from 'lucide-react'
 import { Fragment, memo } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -60,6 +61,8 @@ const Capabilities = memo(function Capabilities({
           icon = <Binary className="size-3.5" />
         } else if (capability === 'raw_completion') {
           icon = <TextCursorInput className="size-3.5" />
+        } else if (capability === 'decision') {
+          icon = <Scale className="size-3.5" />
         } else if (capability === 'web_search') {
           icon = <Globe className="size-3.5" />
         } else {

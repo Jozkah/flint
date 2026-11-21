@@ -3394,7 +3394,8 @@
   "capabilityTips": {
     "web_search": "Cerca al web",
     "embeddings": "Model d'embedding (per a RAG/vectors, no per al xat)",
-    "raw_completion": "Completació en brut (continua el teu text, sense xat ni eines)"
+    "raw_completion": "Completació en brut (continua el teu text, sense xat ni eines)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Canvia d'assistent ({{shortcut}})",
   "workProfileLabels": {

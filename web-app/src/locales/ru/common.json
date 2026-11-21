@@ -3467,7 +3467,8 @@
   "capabilityTips": {
     "web_search": "Веб-поиск",
     "embeddings": "Модель эмбеддингов (для RAG/векторов, не для чата)",
-    "raw_completion": "Сырое дополнение (продолжает ваш текст, без чата и инструментов)"
+    "raw_completion": "Сырое дополнение (продолжает ваш текст, без чата и инструментов)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Сменить ассистента ({{shortcut}})",
   "workProfileLabels": {

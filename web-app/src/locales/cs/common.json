@@ -3467,7 +3467,8 @@
   "capabilityTips": {
     "web_search": "Vyhledávání na webu",
     "embeddings": "Embedding model (pro RAG/vektory, ne pro chat)",
-    "raw_completion": "Surové dokončování (pokračuje ve vašem textu, bez chatu a nástrojů)"
+    "raw_completion": "Surové dokončování (pokračuje ve vašem textu, bez chatu a nástrojů)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Přepnout asistenta ({{shortcut}})",
   "workProfileLabels": {

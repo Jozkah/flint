@@ -3320,7 +3320,8 @@
   "capabilityTips": {
     "web_search": "Web Araması",
     "embeddings": "Gömme modeli (RAG/vektörler için, sohbet için değil)",
-    "raw_completion": "Ham tamamlama (metninizi sürdürür, sohbet veya araç yok)"
+    "raw_completion": "Ham tamamlama (metninizi sürdürür, sohbet veya araç yok)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Asistanı değiştir ({{shortcut}})",
   "workProfileLabels": {

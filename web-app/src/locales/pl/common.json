@@ -3468,7 +3468,8 @@
   "capabilityTips": {
     "web_search": "Wyszukiwanie w sieci",
     "embeddings": "Model osadzeń (dla RAG/wektorów, nie do czatu)",
-    "raw_completion": "Surowe uzupełnianie (kontynuuje Twój tekst, bez czatu i narzędzi)"
+    "raw_completion": "Surowe uzupełnianie (kontynuuje Twój tekst, bez czatu i narzędzi)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Przełącz asystenta ({{shortcut}})",
   "workProfileLabels": {

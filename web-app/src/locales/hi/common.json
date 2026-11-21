@@ -3322,7 +3322,8 @@
   "capabilityTips": {
     "web_search": "वेब सर्च",
     "embeddings": "एम्बेडिंग मॉडल (RAG/वेक्टर के लिए, चैट के लिए नहीं)",
-    "raw_completion": "रॉ कम्प्लीशन (आपके टेक्स्ट को आगे बढ़ाता है, चैट या टूल नहीं)"
+    "raw_completion": "रॉ कम्प्लीशन (आपके टेक्स्ट को आगे बढ़ाता है, चैट या टूल नहीं)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "असिस्टेंट बदलें ({{shortcut}})",
   "workProfileLabels": {

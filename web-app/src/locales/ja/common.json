@@ -3303,7 +3303,8 @@
   "capabilityTips": {
     "web_search": "Web 検索",
     "embeddings": "埋め込みモデル(RAG/ベクトル用、チャット用ではありません)",
-    "raw_completion": "生の補完(入力テキストの続きを生成。チャットやツールは使用しません)"
+    "raw_completion": "生の補完(入力テキストの続きを生成。チャットやツールは使用しません)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "アシスタントを切り替え({{shortcut}})",
   "workProfileLabels": {

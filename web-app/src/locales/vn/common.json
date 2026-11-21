@@ -3395,7 +3395,8 @@
   "capabilityTips": {
     "web_search": "Tìm kiếm web",
     "embeddings": "Mô hình embedding (cho RAG/vector, không dùng để trò chuyện)",
-    "raw_completion": "Hoàn thành thô (viết tiếp văn bản của bạn, không trò chuyện hay dùng công cụ)"
+    "raw_completion": "Hoàn thành thô (viết tiếp văn bản của bạn, không trò chuyện hay dùng công cụ)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Chuyển trợ lý ({{shortcut}})",
   "workProfileLabels": {

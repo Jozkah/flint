@@ -3261,7 +3261,8 @@
   "capabilityTips": {
     "web_search": "Pencarian Web",
     "embeddings": "Model Embedding (untuk RAG/vektor, bukan obrolan)",
-    "raw_completion": "Penyelesaian mentah (melanjutkan teks Anda, tanpa obrolan atau alat)"
+    "raw_completion": "Penyelesaian mentah (melanjutkan teks Anda, tanpa obrolan atau alat)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Ganti asisten ({{shortcut}})",
   "workProfileLabels": {

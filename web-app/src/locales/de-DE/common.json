@@ -3322,7 +3322,8 @@
   "capabilityTips": {
     "web_search": "Websuche",
     "embeddings": "Embedding-Modell (für RAG/Vektoren, nicht für Chat)",
-    "raw_completion": "Rohvervollständigung (setzt Ihren Text fort, kein Chat und keine Tools)"
+    "raw_completion": "Rohvervollständigung (setzt Ihren Text fort, kein Chat und keine Tools)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Assistent wechseln ({{shortcut}})",
   "workProfileLabels": {

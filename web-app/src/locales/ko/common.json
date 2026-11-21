@@ -3305,7 +3305,8 @@
   "capabilityTips": {
     "web_search": "웹 검색",
     "embeddings": "임베딩 모델(RAG/벡터용, 채팅용 아님)",
-    "raw_completion": "원시 완성(입력한 텍스트를 이어서 생성하며 채팅이나 도구는 사용하지 않음)"
+    "raw_completion": "원시 완성(입력한 텍스트를 이어서 생성하며 채팅이나 도구는 사용하지 않음)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "어시스턴트 전환({{shortcut}})",
   "workProfileLabels": {
