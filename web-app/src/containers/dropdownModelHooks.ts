@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { useAppState } from '@/hooks/useAppState'
 import type { ConversationPane } from '@/hooks/useConversationPane'
 import type { FavoriteModel } from '@/hooks/useFavoriteModel'
 import type { ModelProviderState } from '@/lib/providerState'
@@ -207,7 +208,12 @@ export function useInitializeModelSelection({
               (p) => p.provider === 'llamacpp' && p.active && p.models.length > 0
             )
           if (llamacppProvider && llamacppProvider.models.length > 0) {
-            const firstModel = llamacppProvider.models[0]
+            // A model the engine already has loaded beats the first one in the
+            // list: the user is plainly working with it.
+            const loaded = useAppState.getState().activeModels
+            const firstModel =
+              llamacppProvider.models.find((m) => loaded.includes(m.id)) ??
+              llamacppProvider.models[0]
             h.selectModelProvider('llamacpp', firstModel.id)
             setLastUsedModel('llamacpp', firstModel.id)
           } else {

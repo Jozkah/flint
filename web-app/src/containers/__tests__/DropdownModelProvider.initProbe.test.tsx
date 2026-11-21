@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
 
 import DropdownModelProvider from '../DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useAppState } from '@/hooks/useAppState'
 
 vi.mock('@/hooks/useThreads', () => ({
   useThreads: vi.fn(() => ({ updateCurrentThreadModel: vi.fn() })),
@@ -113,5 +114,20 @@ describe('the model initializer probes', () => {
     release()
     await flush()
     expect(useModelProvider.getState().selectedModel?.id).toBe('local-a')
+  })
+})
+
+describe('a new chat with no remembered model', () => {
+  it('picks the model the engine has loaded, not the first in the list', async () => {
+    localStorage.removeItem('last-used-model')
+    useAppState.setState({ activeModels: ['local-b'] })
+    useModelProvider.setState({
+      providers: [llama([MODEL, { ...MODEL, id: 'local-b' }])],
+      selectedModel: null,
+    })
+    render(<DropdownModelProvider model={undefined} useLastUsedModel />)
+    await flush()
+    expect(useModelProvider.getState().selectedModel?.id).toBe('local-b')
+    useAppState.setState({ activeModels: [] })
   })
 })
