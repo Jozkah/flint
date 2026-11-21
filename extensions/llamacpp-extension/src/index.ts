@@ -2150,8 +2150,24 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // folder. Checking that string directly looks in the process working
       // directory (notably / on a Linux desktop launch).
       const fullPath = await joinPath([janDataFolderPath, path])
-      if (!(await fs.existsSync(fullPath)))
+      if (!(await fs.existsSync(fullPath))) {
+        // `existsSync` answers false for a path the app may not read, so ask
+        // again in a way that tells a refused read from a missing file.
+        let denied = false
+        try {
+          await fs.fileStat(fullPath)
+        } catch (e) {
+          denied = String(e instanceof Error ? e.message : e).includes(
+            'fs_read_denied'
+          )
+        }
+        if (denied)
+          throw new Error(
+            `Flint is not allowed to read ${fullPath}. Add the folder with the ` +
+              'Add folder button in the import dialog to grant access, then import again.'
+          )
         throw new Error(`File not found: ${fullPath}`)
+      }
       return path
     }
 
