@@ -557,6 +557,21 @@ function getReasoningTagName(modelId: string): string {
 }
 
 /**
+ * Does an `openai` provider point somewhere other than OpenAI? A blank Base URL
+ * and api.openai.com are the genuine service; anything else is a gateway.
+ */
+export function usesCustomOpenAIEndpoint(baseUrl: string | undefined): boolean {
+  const raw = baseUrl?.trim()
+  if (!raw) return false
+  try {
+    const host = new URL(raw).hostname.toLowerCase()
+    return host !== 'api.openai.com' && !host.endsWith('.openai.com')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Factory for creating language models based on provider type.
  * Supports native AI SDK providers (Anthropic, Google) and OpenAI-compatible providers.
  */
@@ -602,6 +617,12 @@ export class ModelFactory {
         return this.createAnthropicModel(modelId, provider, parameters)
 
       case 'openai':
+        // Only OpenAI itself is known to serve /responses. A different Base URL
+        // is a gateway or proxy, and most of those implement chat completions
+        // only ("Unknown endpoint"), so it goes the compatible route.
+        if (usesCustomOpenAIEndpoint(provider.base_url)) {
+          return this.createOpenAICompatibleModel(modelId, provider, parameters)
+        }
         return this.createOpenAIModel(modelId, provider, parameters)
       case 'google':
       case 'gemini':
