@@ -12,7 +12,7 @@ import { interfacePersistOptions } from '@/hooks/interfaceSettings/persistence'
 describe('transcript view modes', () => {
   it('orders the modes from quietest to loudest', () => {
     expect(TRANSCRIPT_VIEWS).toEqual(['zen', 'quiet', 'normal', 'thinking', 'verbose'])
-    expect(DEFAULT_TRANSCRIPT_VIEW).toBe('normal')
+    expect(DEFAULT_TRANSCRIPT_VIEW).toBe('thinking')
   })
 
   it('recognises every mode and nothing else', () => {
