@@ -1,7 +1,8 @@
 /**
- * Requesty is an OpenAI-compatible router with one extra list: `/models` names
- * the chat models and `/models/image` the picture models, which `/models`
- * leaves out. Picture models are fetched from there so they appear without the
+ * Requesty is an OpenAI-compatible router with two extra lists: `/models` names
+ * the chat models, `/models/image` the picture models and `/models/decision`
+ * the decision models (typed-question models answered at `/systemone`), which
+ * `/models` leaves out. They are fetched from there so they appear without the
  * user adding each one by hand.
  */
 
@@ -16,6 +17,12 @@ export function isRequestyProvider(provider: ProviderLike): boolean {
   } catch {
     return false
   }
+}
+
+/** Where the decision models approved for the key are listed, or null. */
+export function decisionModelsUrl(baseUrl: string | undefined): string | null {
+  const base = baseUrl?.trim().replace(/\/+$/, '')
+  return base ? `${base}/models/decision` : null
 }
 
 /** Where the picture models are listed, or null without an endpoint. */

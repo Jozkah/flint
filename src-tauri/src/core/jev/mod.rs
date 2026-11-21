@@ -877,8 +877,17 @@ fn open_post(up: backend::Upstream) -> Box<PostFn> {
     Box::new(move |body, _key, timeout| {
         let up = up.clone();
         Box::pin(async move {
-            let req = backend::chat_request(&up.model, &body)?;
             let key = up.keys.first().map(String::as_str);
+            if up.decision {
+                // A decision model takes the System One body as is, under its
+                // own model id; receipts name it like any open model.
+                let mut body = body;
+                body["model"] = Value::String(up.model.clone());
+                let mut resp = client::post(&up.url, key.unwrap_or_default(), &body, timeout).await?;
+                resp.model = up.label.clone();
+                return Ok(resp);
+            }
+            let req = backend::chat_request(&up.model, &body)?;
             let completion = client::post_chat(&up.url, key, &up.headers, &req, timeout).await?;
             backend::parse_chat_answer(&body, &completion, &up.label)
         })
@@ -907,9 +916,9 @@ async fn live_deps(backend: &Backend, needed: bool) -> Option<Live> {
             let key = tokio::task::spawn_blocking(load_key).await.ok().flatten()?;
             Some(Live { key, post: Box::new(live_post()) })
         }
-        Backend::OpenModel { provider, model } => {
+        Backend::OpenModel { provider, model, decision } => {
             let app = APP.get()?;
-            let up = backend::resolve(app, provider, model).await?;
+            let up = backend::resolve(app, provider, model, *decision).await?;
             for k in &up.keys {
                 crate::core::secret_values::register(k);
             }

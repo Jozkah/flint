@@ -2483,6 +2483,7 @@
     "backendModelPlaceholder": "Scegli un modello",
     "backendModelSearch": "Cerca modelli",
     "backendModelEmpty": "Nessun modello disponibile. Aggiungi prima un provider o carica un modello locale.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Nessun modello corrisponde a \"{{query}}\"",
     "backendNoModel": "Nessun modello scelto: viene usato Jev finché non ne scegli uno.",
     "backendLocal": "Funziona su questo computer o sulla tua rete locale: il testo della decisione non va a TypeSafe né a nessun servizio cloud.",

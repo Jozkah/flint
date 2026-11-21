@@ -2533,6 +2533,7 @@
     "backendModelPlaceholder": "Vyberte model",
     "backendModelSearch": "Hledat modely",
     "backendModelEmpty": "Žádné dostupné modely. Nejprve přidejte poskytovatele nebo načtěte místní model.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Žádný model neodpovídá „{{query}}“",
     "backendNoModel": "Nevybrán žádný model: používá se Jev, dokud nějaký nevyberete.",
     "backendLocal": "Běží na tomto počítači nebo ve vaší místní síti: text rozhodnutí se neposílá do TypeSafe ani do žádné cloudové služby.",

@@ -33,6 +33,10 @@ pub enum Backend {
     OpenModel {
         provider: String,
         model: String,
+        /// A provider-approved decision model (e.g. Requesty's `/models/decision`):
+        /// asked the System One body itself at `<base>/systemone`, not a chat call.
+        #[serde(default)]
+        decision: bool,
     },
 }
 
@@ -60,10 +64,10 @@ pub fn backend_from_settings(raw: Option<&str>) -> Backend {
     }
     let p: Persisted = raw.and_then(|r| serde_json::from_str(r).ok()).unwrap_or_default();
     match p.state.backend.and_then(|v| serde_json::from_value::<Backend>(v).ok()) {
-        Some(Backend::OpenModel { provider, model })
+        Some(Backend::OpenModel { provider, model, decision })
             if !provider.trim().is_empty() && !model.trim().is_empty() =>
         {
-            Backend::OpenModel { provider, model }
+            Backend::OpenModel { provider, model, decision }
         }
         _ => Backend::Jev,
     }
@@ -254,13 +258,15 @@ pub struct Upstream {
     pub headers: Vec<(String, String)>,
     pub model: String,
     pub label: String,
+    /// `url` is a System One endpoint (`.../systemone`), not chat completions.
+    pub decision: bool,
 }
 
 /// Resolve the user's chosen provider/model to an upstream: a provider with a
 /// base URL is HTTP; `llamacpp` / `mlx` are the local engines Flint runs.
 /// `None` when nothing is configured or loaded -- the caller treats it like a
 /// missing key, and no request is made.
-pub async fn resolve(app: &tauri::AppHandle, provider: &str, model: &str) -> Option<Upstream> {
+pub async fn resolve(app: &tauri::AppHandle, provider: &str, model: &str, decision: bool) -> Option<Upstream> {
     use tauri::Manager;
     let state = app.try_state::<crate::core::state::AppState>()?;
     let cfg = state.provider_configs.lock().await.get(provider).cloned();
@@ -268,11 +274,12 @@ pub async fn resolve(app: &tauri::AppHandle, provider: &str, model: &str) -> Opt
     if let Some(cfg) = cfg {
         if let Some(base) = cfg.base_url.clone().filter(|u| !u.trim().is_empty()) {
             return Some(Upstream {
-                url: format!("{}/chat/completions", base.trim_end_matches('/')),
+                url: format!("{}/{}", base.trim_end_matches('/'), if decision { "systemone" } else { "chat/completions" }),
                 keys: cfg.bearer_key_chain(),
                 headers: cfg.custom_headers.iter().map(|h| (h.header.clone(), h.value.clone())).collect(),
                 model: model.to_string(),
                 label,
+                decision,
             });
         }
     }
@@ -287,12 +294,13 @@ pub async fn resolve(app: &tauri::AppHandle, provider: &str, model: &str) -> Opt
             headers: Vec::new(),
             model: model.to_string(),
             label,
+            decision: false,
         });
     }
     if provider == "llamacpp" {
         let llama = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>()?;
         let (url, key) = crate::core::server::proxy::engine_upstream(&llama, "/chat/completions").await?;
-        return Some(Upstream { url, keys: vec![key], headers: Vec::new(), model: model.to_string(), label });
+        return Some(Upstream { url, keys: vec![key], headers: Vec::new(), model: model.to_string(), label, decision: false });
     }
     None
 }
@@ -326,7 +334,15 @@ mod tests {
         assert_eq!(backend_from_settings(Some(r#"{"state":{"backend":{"kind":"mystery"}}}"#)), Backend::Jev);
         assert_eq!(
             backend_from_settings(Some(r#"{"state":{"backend":{"kind":"open_model","provider":"llamacpp","model":"qwen3-4b"}}}"#)),
-            Backend::OpenModel { provider: "llamacpp".into(), model: "qwen3-4b".into() }
+            Backend::OpenModel { provider: "llamacpp".into(), model: "qwen3-4b".into(), decision: false }
+        );
+    }
+
+    #[test]
+    fn decision_flag_is_read_and_defaults_off() {
+        assert_eq!(
+            backend_from_settings(Some(r#"{"state":{"backend":{"kind":"open_model","provider":"requesty","model":"typesafe/jev-1.14.0","decision":true}}}"#)),
+            Backend::OpenModel { provider: "requesty".into(), model: "typesafe/jev-1.14.0".into(), decision: true }
         );
     }
 

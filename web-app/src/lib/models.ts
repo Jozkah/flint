@@ -91,9 +91,14 @@ export const initialModelCapabilities = (
     const pictureOnly =
       listed.includes(ModelCapabilities.IMAGE_GENERATION) &&
       !listed.includes(ModelCapabilities.COMPLETION)
-    const start = pictureOnly
-      ? base.filter((c) => c !== ModelCapabilities.COMPLETION)
-      : base
+    // Likewise a decision-only model: it answers typed questions at /systemone.
+    const decisionOnly =
+      listed.includes(ModelCapabilities.DECISION) &&
+      !listed.includes(ModelCapabilities.COMPLETION)
+    const start =
+      pictureOnly || decisionOnly
+        ? base.filter((c) => c !== ModelCapabilities.COMPLETION)
+        : base
     return [...new Set([...start, ...listed])]
   }
   const custom =

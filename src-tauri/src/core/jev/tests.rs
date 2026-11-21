@@ -527,7 +527,7 @@ fn open_fake(content: &'static str, label: &'static str) -> (Post, Arc<AtomicUsi
 
 #[tokio::test]
 async fn an_open_model_answers_through_the_same_guarantees() {
-    let open = Backend::OpenModel { provider: "llamacpp".into(), model: "tiny-4b".into() };
+    let open = Backend::OpenModel { provider: "llamacpp".into(), model: "tiny-4b".into(), decision: false };
     let (post, calls) = open_fake(r#"{"skill":{"choice":"s0","confidence":0.95}}"#, "open:llamacpp/tiny-4b");
     // Off: no request, even for an open model.
     let off = Deps { backend: open.clone(), modes: Modes::default(), key: Some(String::new()), post: &post };
@@ -554,7 +554,7 @@ async fn an_open_model_answers_through_the_same_guarantees() {
 
 #[tokio::test]
 async fn an_open_model_that_answers_badly_falls_back_to_flint() {
-    let open = Backend::OpenModel { provider: "p".into(), model: "m".into() };
+    let open = Backend::OpenModel { provider: "p".into(), model: "m".into(), decision: false };
     let (post, _) = open_fake("Sure, I'd pick pdf-forms!", "open:p/m-bad");
     let deps = Deps { backend: open, modes: modes(Mode::On, Mode::On), key: Some(String::new()), post: &post };
     let d = suggest_skill(&deps, PRIVATE, &skills()).await;
@@ -569,7 +569,7 @@ async fn an_open_model_that_answers_badly_falls_back_to_flint() {
 
 #[tokio::test]
 async fn an_open_model_review_can_refuse_but_never_approve() {
-    let open = Backend::OpenModel { provider: "p".into(), model: "m".into() };
+    let open = Backend::OpenModel { provider: "p".into(), model: "m".into(), decision: false };
     let (post, _) = open_fake(r#"{"review":{"choice":"deny_exfiltration","confidence":0.97}}"#, "open:p/m");
     let deps = Deps { backend: open.clone(), modes: Modes::default(), key: Some(String::new()), post: &post };
     match review_call(&deps, &pending()).await {

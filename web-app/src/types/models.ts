@@ -8,6 +8,8 @@ export enum ModelCapabilities {
   TOOLS = 'tools',
   EMBEDDINGS = 'embeddings',
   IMAGE_GENERATION = 'image_generation',
+  /** Answers typed questions (System One / decision API), does not chat. */
+  DECISION = 'decision',
   AUDIO_GENERATION = 'audio_generation',
   TEXT_TO_IMAGE = 'text_to_image',
   IMAGE_TO_IMAGE = 'image_to_image',

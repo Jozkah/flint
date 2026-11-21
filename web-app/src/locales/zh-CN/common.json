@@ -2441,6 +2441,7 @@
     "backendModelPlaceholder": "选择模型",
     "backendModelSearch": "搜索模型",
     "backendModelEmpty": "没有可用的模型。请先添加提供商或加载本地模型。",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "没有与“{{query}}”匹配的模型",
     "backendNoModel": "未选择模型：在你选择之前将使用 Jev。",
     "backendLocal": "在本机或你的本地网络上运行：决策文本不会发送给 TypeSafe 或任何云服务。",

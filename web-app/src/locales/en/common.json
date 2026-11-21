@@ -2580,6 +2580,7 @@
     "backendModelPlaceholder": "Choose a model",
     "backendModelSearch": "Search models",
     "backendModelEmpty": "No models available. Add a provider or load a local model first.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "No models match \"{{query}}\"",
     "backendNoModel": "No model chosen: Jev is used until you pick one.",
     "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",

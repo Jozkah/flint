@@ -2490,6 +2490,7 @@
     "backendModelPlaceholder": "Chọn mô hình",
     "backendModelSearch": "Tìm mô hình",
     "backendModelEmpty": "Không có mô hình nào. Hãy thêm nhà cung cấp hoặc tải một mô hình cục bộ trước.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Không có mô hình nào khớp với \"{{query}}\"",
     "backendNoModel": "Chưa chọn mô hình: sẽ dùng Jev cho đến khi bạn chọn.",
     "backendLocal": "Chạy trên máy này hoặc mạng cục bộ của bạn: văn bản quyết định không được gửi đến TypeSafe hay bất kỳ dịch vụ đám mây nào.",

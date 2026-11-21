@@ -2434,6 +2434,7 @@
     "backendModelPlaceholder": "मॉडल चुनें",
     "backendModelSearch": "मॉडल खोजें",
     "backendModelEmpty": "कोई मॉडल उपलब्ध नहीं है। पहले कोई प्रदाता जोड़ें या लोकल मॉडल लोड करें।",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "\"{{query}}\" से कोई मॉडल मेल नहीं खाता",
     "backendNoModel": "कोई मॉडल नहीं चुना गया: आपके चुनने तक Jev का उपयोग होगा।",
     "backendLocal": "इस मशीन या आपके लोकल नेटवर्क पर चलता है: निर्णय का टेक्स्ट TypeSafe या किसी क्लाउड सेवा को नहीं जाता।",

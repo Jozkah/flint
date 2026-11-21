@@ -11,6 +11,7 @@ import { ChevronDown, X } from 'lucide-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
+import { isDecisionModel } from '@/lib/decisionModel'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
@@ -32,6 +33,9 @@ export type McpRouterModelPickerProps = {
   placeholder: string
   searchPlaceholder: string
   emptyListMessage: string
+  /** Also offer the provider's decision models, listed first and badged. */
+  includeDecisionModels?: boolean
+  decisionBadge?: string
   /** Called with trimmed search text when the filter returns no rows. */
   formatEmptySearch: (query: string) => string
 }
@@ -46,6 +50,8 @@ export function McpRouterModelPicker({
   placeholder,
   searchPlaceholder,
   emptyListMessage,
+  includeDecisionModels = false,
+  decisionBadge,
   formatEmptySearch,
 }: McpRouterModelPickerProps) {
   const [open, setOpen] = useState(false)
@@ -63,7 +69,8 @@ export function McpRouterModelPicker({
       if (!p.active) continue
       const filteredOut = hideProvider(p)
       for (const m of p.models) {
-        if (!isRouterModelSelectable(p, m)) continue
+        if (!isRouterModelSelectable(p, m, { decision: includeDecisionModels }))
+          continue
         // The filter never hides the model in use.
         if (
           filteredOut &&
@@ -86,8 +93,17 @@ export function McpRouterModelPicker({
         })
       }
     }
-    return entries
-  }, [providers, hideProvider, selectedProvider, selectedModelId])
+    // Decision models first within each provider.
+    return entries.sort(
+      (a, b) => Number(isDecisionModel(b.model)) - Number(isDecisionModel(a.model))
+    )
+  }, [
+    providers,
+    hideProvider,
+    selectedProvider,
+    selectedModelId,
+    includeDecisionModels,
+  ])
 
   const filteredModels = useMemo(() => {
     if (!searchValue.trim()) return availableModels
@@ -247,6 +263,11 @@ export function McpRouterModelPicker({
                               >
                                 {getModelDisplayName(e.model)}
                               </span>
+                              {decisionBadge && isDecisionModel(e.model) && (
+                                <span className="shrink-0 rounded-md bg-muted px-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] leading-5 text-fg-2">
+                                  {decisionBadge}
+                                </span>
+                              )}
                               <div className="flex-1" />
                               {capabilities.length > 0 && (
                                 <div className="shrink-0 -mr-1.5">
