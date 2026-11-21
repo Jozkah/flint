@@ -28,7 +28,7 @@
   "backendHistoryFailed": "Gagal",
   "chatModels": "Model Obrolan",
   "embeddingModels": "Model Embedding",
-  "decisionModels": "Decision models",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "Dipakai untuk RAG dan pencarian vektor. Model yang dipilih menjadi default saat membuat embedding.",
   "embeddingModelDefault": "Default",
   "embeddingModelSetDefault": "Jadikan model embedding default",

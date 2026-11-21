@@ -28,7 +28,7 @@
   "backendHistoryFailed": "Ошибка",
   "chatModels": "Модели чата",
   "embeddingModels": "Модели эмбеддингов",
-  "decisionModels": "Decision models",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "Используются для RAG и векторного поиска. Выбранная модель становится моделью по умолчанию при создании эмбеддингов.",
   "embeddingModelDefault": "По умолчанию",
   "embeddingModelSetDefault": "Сделать моделью эмбеддингов по умолчанию",

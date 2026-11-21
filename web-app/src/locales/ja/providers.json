@@ -28,7 +28,7 @@
   "backendHistoryFailed": "失敗",
   "chatModels": "チャットモデル",
   "embeddingModels": "埋め込みモデル",
-  "decisionModels": "Decision models",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "RAGとベクトル検索に使用されます。選択したモデルは、埋め込みを生成する際のデフォルトになります。",
   "embeddingModelDefault": "デフォルト",
   "embeddingModelSetDefault": "デフォルトの埋め込みモデルに設定",

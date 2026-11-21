@@ -75,14 +75,14 @@ describe('ProviderModelsFrame', () => {
       />
     )
     expect(screen.getByLabelText('Chat Models')).toBeTruthy()
-    expect(screen.getByLabelText('Decision models')).toBeTruthy()
+    expect(screen.getByLabelText('Decision Models')).toBeTruthy()
     const rows = screen.getAllByTestId(/^row-/).map((r) => r.dataset.testid)
     expect(rows).toEqual(['row-chat-1', 'row-typesafe/jev-1.14.0'])
   })
 
   it('shows no decision section for a provider without decision models', () => {
     render(<ProviderModelsFrame {...(props() as any)} />) // eslint-disable-line @typescript-eslint/no-explicit-any
-    expect(screen.queryByLabelText('Decision models')).toBeNull()
+    expect(screen.queryByLabelText('Decision Models')).toBeNull()
   })
 
   it('refreshes remote models, and disables the button while refreshing', async () => {
