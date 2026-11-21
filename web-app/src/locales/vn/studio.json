@@ -250,5 +250,23 @@
     "all": "Tất cả",
     "empty": "Chưa có gì ở đây. Những gì bạn tạo sẽ xuất hiện ở đây."
   },
-  "videoMemoryWarning": "Máy tính này có khoảng {{gb}} GB bộ nhớ. Tạo video cần rất nhiều, và trên một máy như thế này, một clip có thể mất hàng giờ vì hết bộ nhớ và phải hoán đổi ra đĩa."
+  "videoMemoryWarning": "Máy tính này có khoảng {{gb}} GB bộ nhớ. Tạo video cần rất nhiều, và trên một máy như thế này, một clip có thể mất hàng giờ vì hết bộ nhớ và phải hoán đổi ra đĩa.",
+  "editor": {
+    "title": "Chỉnh sửa trong ứng dụng ngoài",
+    "intro": "Mở ảnh trong một trình chỉnh sửa trên máy tính này, ví dụ G'MIC-Qt. Flint không đi kèm trình nào: hãy chọn ứng dụng bạn đã cài. Ảnh được mở nguyên trạng; lưu trong trình chỉnh sửa không làm thay đổi ảnh trong Studio.",
+    "preset": "Trình chỉnh sửa",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Ứng dụng khác",
+    "gmicNote": "Chọn gmic_qt từ bản cài G'MIC của bạn (tải tại gmic.eu). Flint không đi kèm bất cứ thứ gì của G'MIC.",
+    "program": "Ứng dụng",
+    "programPlaceholder": "Đường dẫn đầy đủ tới tệp chương trình của ứng dụng",
+    "browse": "Duyệt…",
+    "args": "Tham số",
+    "argsPlaceholder": "{file}",
+    "argsHelp": "Dùng {file} ở chỗ đặt đường dẫn của ảnh. Nếu bỏ qua, đường dẫn sẽ được thêm vào cuối.",
+    "save": "Lưu và mở",
+    "setup": "Sửa ứng dụng",
+    "edit": "Chỉnh sửa trong ứng dụng ngoài",
+    "reveal": "Hiện trong thư mục"
+  }
 }

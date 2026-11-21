@@ -33,6 +33,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'diffusion_list_loras',
       'diffusion_load',
       'diffusion_media',
+      'diffusion_open_external',
       'diffusion_remove_custom_model',
       'diffusion_save_external_images',
       'diffusion_status',

@@ -250,5 +250,23 @@
     "all": "Tutto",
     "empty": "Ancora niente qui. Quello che crei compare qui."
   },
-  "videoMemoryWarning": "Questo computer ha circa {{gb}} GB di memoria. La generazione video ne richiede molta e su una macchina come questa una clip può richiedere ore perché la memoria si esaurisce e si passa allo swap su disco."
+  "videoMemoryWarning": "Questo computer ha circa {{gb}} GB di memoria. La generazione video ne richiede molta e su una macchina come questa una clip può richiedere ore perché la memoria si esaurisce e si passa allo swap su disco.",
+  "editor": {
+    "title": "Modifica in un'app esterna",
+    "intro": "Apri un'immagine in un editor su questo computer, come G'MIC-Qt. Flint non ne include nessuno: scegli l'app che hai installato. L'immagine si apre così com'è; salvare nell'editor non la cambia in Studio.",
+    "preset": "Editor",
+    "presetGmic": "G'MIC-Qt",
+    "presetCustom": "Altra app",
+    "gmicNote": "Scegli gmic_qt dalla tua installazione di G'MIC (scaricalo da gmic.eu). Flint non include nulla di G'MIC.",
+    "program": "App",
+    "programPlaceholder": "Percorso completo del file programma dell'app",
+    "browse": "Sfoglia…",
+    "args": "Argomenti",
+    "argsPlaceholder": "{file}",
+    "argsHelp": "Usa {file} dove va il percorso dell'immagine. Se lo ometti, il percorso viene aggiunto alla fine.",
+    "save": "Salva e apri",
+    "setup": "Modifica app",
+    "edit": "Modifica in app esterna",
+    "reveal": "Mostra nella cartella"
+  }
 }

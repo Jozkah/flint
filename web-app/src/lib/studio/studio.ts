@@ -180,4 +180,7 @@ export const studioApi = {
   }) => invoke<Generated>('diffusion_save_external_images', { params }),
   /** A gallery item's media as a `data:` URL (for phones; the desktop shows files directly). */
   media: (kind: StudioKind, id: string) => invoke<string>('diffusion_media', { kind, id }),
+  /** Opens a gallery picture in an editor app; the backend finds the file and checks the program. */
+  openExternal: (kind: StudioKind, id: string, program: string, args: string) =>
+    invoke<void>('diffusion_open_external', { kind, id, program, args }),
 }

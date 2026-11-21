@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react'
-import { Check, Film, LayoutGrid, List, RefreshCw, Trash2 } from 'lucide-react'
+import { Check, Film, FolderOpen, LayoutGrid, List, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useStudio } from '@/hooks/useStudio'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { cn } from '@/lib/utils'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { type GalleryItem, type StudioKind } from '@/lib/studio/studio'
 import { PanelButton } from '@/containers/studio/panels/PanelButton'
 import { Thumb } from '@/containers/studio/panels/Thumb'
+import { useEditExternally } from '@/containers/studio/panels/ExternalEditorDialog'
 import { ON, rise, timeAgo } from '@/containers/studio/studioHelpers'
 
 /** Your Generations: everything made, filterable, with a select mode to remove several. */
@@ -22,6 +25,13 @@ export function GenerationsPanel({
   const gallery = useStudio((s) => s.gallery)
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
+  const serviceHub = useServiceHub()
+  const { edit, configure, dialog } = useEditExternally()
+  const reveal = (item: GalleryItem) =>
+    void serviceHub
+      .opener()
+      .revealItemInDir(item.path)
+      .catch((error: unknown) => toast.error(String(error)))
   const [tab, setTab] = useState<'all' | StudioKind>('all')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [selecting, setSelecting] = useState(false)
@@ -82,6 +92,10 @@ export function GenerationsPanel({
                 </PanelButton>
               </>
             )}
+            <PanelButton onClick={configure}>
+              <SquarePen className="size-3" aria-hidden />
+              {t('studio:editor.setup')}
+            </PanelButton>
             <PanelButton onClick={() => (selecting ? leaveSelect() : setSelecting(true))}>
               {selecting ? t('studio:gens.done') : t('studio:gens.select')}
             </PanelButton>
@@ -170,6 +184,26 @@ export function GenerationsPanel({
                           {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
                         </span>
                         <span className="pointer-events-auto flex shrink-0 gap-1">
+                          {item.kind === 'image' && (
+                            <button
+                              type="button"
+                              title={t('studio:editor.edit')}
+                              aria-label={t('studio:editor.edit')}
+                              onClick={() => edit(item)}
+                              className="grid size-6 place-items-center rounded-md bg-white/15 transition-colors hover:bg-white/30 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-hidden pointer-coarse:size-9"
+                            >
+                              <SquarePen className="size-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title={t('studio:editor.reveal')}
+                            aria-label={t('studio:editor.reveal')}
+                            onClick={() => reveal(item)}
+                            className="grid size-6 place-items-center rounded-md bg-white/15 transition-colors hover:bg-white/30 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-hidden pointer-coarse:size-9"
+                          >
+                            <FolderOpen className="size-3" />
+                          </button>
                           <button
                             type="button"
                             title={t('studio:prompt.remix')}
@@ -225,6 +259,28 @@ export function GenerationsPanel({
                       </span>
                     </span>
                   </button>
+                  {!selecting && item.kind === 'image' && (
+                    <button
+                      type="button"
+                      title={t('studio:editor.edit')}
+                      aria-label={t('studio:editor.edit')}
+                      onClick={() => edit(item)}
+                      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:size-11"
+                    >
+                      <SquarePen className="size-4" />
+                    </button>
+                  )}
+                  {!selecting && (
+                    <button
+                      type="button"
+                      title={t('studio:editor.reveal')}
+                      aria-label={t('studio:editor.reveal')}
+                      onClick={() => reveal(item)}
+                      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:size-11"
+                    >
+                      <FolderOpen className="size-4" />
+                    </button>
+                  )}
                   {!selecting && (
                     <button
                       type="button"
@@ -242,6 +298,7 @@ export function GenerationsPanel({
           </ul>
         )}
       </FrameBody>
+      {dialog}
     </Frame>
   )
 }
