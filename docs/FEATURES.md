@@ -129,6 +129,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **MCP sign-in (OAuth)** with tokens in the OS keychain, refreshed automatically, and requested scopes shown and enforced.
 - **Trust bound to a server's configuration:** changing, renaming or deleting a server invalidates its approvals with a stated reason.
 - **Validated MCP setup** with clear connection states and a per-server auto-approve switch.
+- **Optional MCP presets:** the Add dialog can prefill RivalSearchMCP (keyless web, news, social and academic search) either self-hosted with `uv` from a clone or against its hosted endpoint. Nothing is added or started until you save. The hosted option sends every query to a third party, and the server scrapes search engines, has one maintainer and is not audited.
 - **Sandboxed servers:** imported and local servers are confined to the session's permissions.
 - **`ocr`:** reads text out of an image or PDF pages with the engine the machine already has (Windows' built-in one, or `tesseract` on PATH). It refuses cleanly when there is none, reads files like `read` does, and returns the text as untrusted data.
 - **Browser tool downloads and waits:** the confined `browser` tool can `download` one file into a folder inside the working folder (never overwriting, 100 MB at most; every other download stays refused), and `wait` takes combined conditions (text, selector, their absence, address, title, load).

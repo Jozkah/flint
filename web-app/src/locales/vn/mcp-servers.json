@@ -286,5 +286,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Mở trang"
+  },
+  "presets": {
+    "title": "Máy chủ tùy chọn (không cài hay khởi động gì cho đến khi bạn lưu)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (tự lưu trữ)",
+      "note": "Tìm kiếm web, tin tức, mạng xã hội và học thuật không cần khóa, giấy phép MIT. Không có trên PyPI: hãy clone github.com/damionrashford/RivalSearchMCP, chạy `uv sync` trong đó, rồi thay /path/to/RivalSearchMCP trong đối số bằng thư mục đó. Chạy trên máy này với quyền của bạn. Nó cào dữ liệu công cụ tìm kiếm và giả mạo dấu vân tay trình duyệt, nên có thể hỏng không báo trước và vi phạm điều khoản của họ. Một người bảo trì, chưa được kiểm toán."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (lưu trữ sẵn)",
+      "note": "Mọi truy vấn được gửi tới rivalsearchmcp.fastmcp.app, do bên thứ ba vận hành và chưa công bố cách ghi log hay lưu giữ. Áp dụng giới hạn sử dụng hợp lý. Với nội dung riêng tư, hãy chọn tự lưu trữ. Cùng lưu ý: dựa trên cào dữ liệu, một người bảo trì, chưa kiểm toán."
+    }
   }
 }

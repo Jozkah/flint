@@ -283,5 +283,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Sayfayı aç"
+  },
+  "presets": {
+    "title": "İsteğe bağlı sunucular (kaydedene kadar hiçbir şey kurulmaz veya başlatılmaz)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (kendi barındırma)",
+      "note": "Anahtarsız web, haber, sosyal ve akademik arama, MIT lisansı. PyPI'de yok: github.com/damionrashford/RivalSearchMCP'yi klonlayın, içinde `uv sync` çalıştırın, ardından argümanlardaki /path/to/RivalSearchMCP yerine o klasörü yazın. Bu bilgisayarda kullanıcı yetkilerinizle çalışır. Arama motorlarını kazır ve tarayıcı parmak izlerini taklit eder; bu yüzden haber vermeden bozulabilir ve onların şartlarına aykırı olabilir. Tek bakımcı, denetlenmemiş."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (barındırılan)",
+      "note": "Her sorgu, kayıt tutma ve saklama politikası belgelenmemiş bir üçüncü tarafın işlettiği rivalsearchmcp.fastmcp.app adresine gönderilir. Adil kullanım sınırları geçerlidir. Özel işler için kendi barındırma seçeneğini seçin. Aynı çekinceler: kazıma tabanlı, tek bakımcı, denetlenmemiş."
+    }
   }
 }

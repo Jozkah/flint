@@ -283,5 +283,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "ページを開く"
+  },
+  "presets": {
+    "title": "オプションのサーバー(保存するまで何もインストール・起動されません)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP(セルフホスト)",
+      "note": "キー不要のウェブ・ニュース・SNS・学術検索。MIT ライセンス。PyPI にはありません。github.com/damionrashford/RivalSearchMCP をクローンして `uv sync` を実行し、引数の /path/to/RivalSearchMCP をそのフォルダーに置き換えてください。このコンピューター上であなたの権限で動作します。検索エンジンをスクレイピングし、ブラウザーのフィンガープリントを偽装するため、予告なく動かなくなったり、各サービスの利用規約に反したりする可能性があります。メンテナーは 1 人で、監査はされていません。"
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP(ホスト型)",
+      "note": "すべてのクエリが rivalsearchmcp.fastmcp.app に送信されます。運営は第三者で、ログと保持期間は文書化されていません。公正使用の制限があります。非公開の内容にはセルフホストを選んでください。注意点は同じで、スクレイピング依存、メンテナー 1 人、未監査です。"
+    }
   }
 }

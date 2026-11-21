@@ -413,4 +413,59 @@ describe('AddEditMCPServer JSON duplicate names (#221)', () => {
 
     expect(props.onSave).not.toHaveBeenCalled()
   })
+
+  describe('optional server presets', () => {
+    it('offers presets in add mode but not when editing', () => {
+      const { unmount } = render(<AddEditMCPServer {...baseProps()} />)
+      expect(
+        screen.getByText('mcp-servers:presets.rivalsearchLocal.label')
+      ).toBeInTheDocument()
+      unmount()
+      const props = baseProps()
+      props.editingKey = 'srv1'
+      props.initialData = { command: 'node', args: [], env: {}, type: 'stdio' }
+      render(<AddEditMCPServer {...props} />)
+      expect(
+        screen.queryByText('mcp-servers:presets.rivalsearchLocal.label')
+      ).not.toBeInTheDocument()
+    })
+
+    it('prefills the self-hosted preset without saving it', () => {
+      const props = baseProps()
+      render(<AddEditMCPServer {...props} />)
+      fireEvent.click(
+        screen.getByText('mcp-servers:presets.rivalsearchLocal.label')
+      )
+      expect(screen.getByDisplayValue('RivalSearchMCP')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('uv')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('server.py')).toBeInTheDocument()
+      expect(
+        screen.getByText('mcp-servers:presets.rivalsearchLocal.note')
+      ).toBeInTheDocument()
+      expect(props.onSave).not.toHaveBeenCalled()
+    })
+
+    it('prefills the hosted preset as http with the third-party warning', () => {
+      render(<AddEditMCPServer {...baseProps()} />)
+      fireEvent.click(
+        screen.getByText('mcp-servers:presets.rivalsearchHosted.label')
+      )
+      expect(
+        screen.getByDisplayValue('https://RivalSearchMCP.fastmcp.app/mcp')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('mcp-servers:presets.rivalsearchHosted.note')
+      ).toBeInTheDocument()
+    })
+
+    it('does not reuse a name that already exists', () => {
+      render(
+        <AddEditMCPServer {...baseProps()} existingNames={['RivalSearchMCP']} />
+      )
+      fireEvent.click(
+        screen.getByText('mcp-servers:presets.rivalsearchLocal.label')
+      )
+      expect(screen.getByDisplayValue('RivalSearchMCP-2')).toBeInTheDocument()
+    })
+  })
 })
