@@ -80,6 +80,27 @@ describe('ProviderModelsFrame', () => {
     expect(rows).toEqual(['row-chat-1', 'row-typesafe/jev-1.14.0'])
   })
 
+  it('lists picture models in their own section, not under chat models', () => {
+    const chat = model('chat-1')
+    const image = { id: 'fake-image-1', capabilities: ['image_generation'] } as never
+    render(
+      <ProviderModelsFrame
+        {...(props({
+          provider: { provider: 'requesty', models: [chat, image] },
+          filteredModels: [chat, image],
+          modelEntries: [
+            { kind: 'model', model: chat },
+            { kind: 'model', model: image },
+          ],
+        }) as any)} // eslint-disable-line @typescript-eslint/no-explicit-any
+      />
+    )
+    expect(screen.getByLabelText('Chat Models')).toBeTruthy()
+    expect(screen.getByLabelText('Image Models')).toBeTruthy()
+    const rows = screen.getAllByTestId(/^row-/).map((r) => r.dataset.testid)
+    expect(rows).toEqual(['row-chat-1', 'row-fake-image-1'])
+  })
+
   it('shows no decision section for a provider without decision models', () => {
     render(<ProviderModelsFrame {...(props() as any)} />) // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(screen.queryByLabelText('Decision Models')).toBeNull()

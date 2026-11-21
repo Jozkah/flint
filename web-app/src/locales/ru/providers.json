@@ -29,6 +29,7 @@
   "chatModels": "Модели чата",
   "embeddingModels": "Модели эмбеддингов",
   "decisionModels": "Decision Models",
+  "imageModels": "Image Models",
   "embeddingModelsDesc": "Используются для RAG и векторного поиска. Выбранная модель становится моделью по умолчанию при создании эмбеддингов.",
   "embeddingModelDefault": "По умолчанию",
   "embeddingModelSetDefault": "Сделать моделью эмбеддингов по умолчанию",

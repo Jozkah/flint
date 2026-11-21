@@ -64,6 +64,21 @@ describe('buildSearchableItems', () => {
     expect(items[0].searchStr).toContain('vision')
   })
 
+  it('leaves out decision-only and picture-only models, keeps dual-use ones', () => {
+    const items = buildSearchableItems(
+      [
+        prov('requesty', [
+          { id: 'chat', capabilities: ['completion'] },
+          { id: 'decide', capabilities: ['decision'] },
+          { id: 'decide-and-chat', capabilities: ['decision', 'completion'] },
+          { id: 'draw', capabilities: ['image_generation'] },
+        ]),
+      ],
+      { hideProvider: noHide, selectedProvider: '' }
+    )
+    expect(items.map((i) => i.model.id)).toEqual(['chat', 'decide-and-chat'])
+  })
+
   it('a hidden provider keeps only the selected model', () => {
     const items = buildSearchableItems(
       [prov('openai', [{ id: 'a' }, { id: 'b' }])],

@@ -29,6 +29,7 @@
   "chatModels": "Models de xat",
   "embeddingModels": "Models d'incrustació",
   "decisionModels": "Decision Models",
+  "imageModels": "Image Models",
   "embeddingModelsDesc": "S'usen per a RAG i la cerca vectorial. El model seleccionat esdevé el predeterminat en generar incrustacions.",
   "embeddingModelDefault": "Per defecte",
   "embeddingModelSetDefault": "Defineix com a model d'incrustació per defecte",

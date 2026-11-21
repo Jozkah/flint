@@ -29,6 +29,7 @@
   "chatModels": "Mô hình trò chuyện",
   "embeddingModels": "Mô hình embedding",
   "decisionModels": "Decision Models",
+  "imageModels": "Image Models",
   "embeddingModelsDesc": "Dùng cho RAG và tìm kiếm vector. Mô hình được chọn trở thành mặc định khi tạo embedding.",
   "embeddingModelDefault": "Mặc định",
   "embeddingModelSetDefault": "Đặt làm mô hình embedding mặc định",

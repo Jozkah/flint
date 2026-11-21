@@ -29,6 +29,7 @@
   "chatModels": "Modelli di chat",
   "embeddingModels": "Modelli di embedding",
   "decisionModels": "Decision Models",
+  "imageModels": "Image Models",
   "embeddingModelsDesc": "Utilizzati per la RAG e la ricerca vettoriale. Il modello selezionato diventa quello predefinito quando si generano gli embedding.",
   "embeddingModelDefault": "Predefinito",
   "embeddingModelSetDefault": "Imposta come modello di embedding predefinito",
