@@ -28,6 +28,7 @@
   "backendHistoryFailed": "失败",
   "chatModels": "对话模型",
   "embeddingModels": "Embedding 模型",
+  "decisionModels": "Decision models",
   "embeddingModelsDesc": "用于 RAG 和向量搜索。所选模型将成为生成 embeddings 时的默认模型。",
   "embeddingModelDefault": "默认",
   "embeddingModelSetDefault": "设为默认 embedding 模型",

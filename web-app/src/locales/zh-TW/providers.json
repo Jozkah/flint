@@ -28,6 +28,7 @@
   "backendHistoryFailed": "失敗",
   "chatModels": "聊天模型",
   "embeddingModels": "嵌入模型",
+  "decisionModels": "Decision models",
   "embeddingModelsDesc": "用於 RAG 和向量搜尋。所選模型會成為產生嵌入時的預設模型。",
   "embeddingModelDefault": "預設",
   "embeddingModelSetDefault": "設為預設嵌入模型",

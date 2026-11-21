@@ -28,6 +28,7 @@
   "backendHistoryFailed": "Falhou",
   "chatModels": "Modelos de chat",
   "embeddingModels": "Modelos de embedding",
+  "decisionModels": "Decision models",
   "embeddingModelsDesc": "Usados para RAG e busca vetorial. O modelo selecionado se torna o padrão ao gerar embeddings.",
   "embeddingModelDefault": "Padrão",
   "embeddingModelSetDefault": "Definir como modelo de embedding padrão",

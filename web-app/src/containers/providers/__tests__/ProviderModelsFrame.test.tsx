@@ -59,6 +59,32 @@ describe('ProviderModelsFrame', () => {
     expect(screen.getByTestId('row-b')).toBeTruthy()
   })
 
+  it('lists decision models in their own section, apart from chat models', () => {
+    const chat = model('chat-1')
+    const decision = { id: 'typesafe/jev-1.14.0', capabilities: ['decision'] } as never
+    render(
+      <ProviderModelsFrame
+        {...(props({
+          provider: { provider: 'requesty', models: [chat, decision] },
+          filteredModels: [chat, decision],
+          modelEntries: [
+            { kind: 'model', model: chat },
+            { kind: 'model', model: decision },
+          ],
+        }) as any)} // eslint-disable-line @typescript-eslint/no-explicit-any
+      />
+    )
+    expect(screen.getByLabelText('Chat Models')).toBeTruthy()
+    expect(screen.getByLabelText('Decision models')).toBeTruthy()
+    const rows = screen.getAllByTestId(/^row-/).map((r) => r.dataset.testid)
+    expect(rows).toEqual(['row-chat-1', 'row-typesafe/jev-1.14.0'])
+  })
+
+  it('shows no decision section for a provider without decision models', () => {
+    render(<ProviderModelsFrame {...(props() as any)} />) // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(screen.queryByLabelText('Decision models')).toBeNull()
+  })
+
   it('refreshes remote models, and disables the button while refreshing', async () => {
     const p: any = props() // eslint-disable-line @typescript-eslint/no-explicit-any
     const { rerender } = render(<ProviderModelsFrame {...p} />)
