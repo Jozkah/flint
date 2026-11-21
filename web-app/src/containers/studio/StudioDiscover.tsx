@@ -31,6 +31,7 @@ import {
 import { studioApi, type StudioFamily } from '@/lib/studio/studio'
 import { addScannedToStudio, splitByKind, type ScannedModel } from '@/lib/localModelScan'
 import { useModelFolderScan } from '@/hooks/useModelFolderScan'
+import { useScannedFamilies } from '@/hooks/useScannedFamilies'
 import { formatBytes } from '@/lib/utils'
 import { useStudio } from '@/hooks/useStudio'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -51,6 +52,8 @@ function formatCount(value: number): string {
  * repositories tagged for text-to-image. A weights file is chosen, the family it
  * belongs to decides what else gets downloaded, and Studio takes it from there.
  */
+const NO_MODELS: ScannedModel[] = []
+
 export function StudioDiscover({
   query,
   token,
@@ -207,6 +210,9 @@ export function StudioDiscover({
 
   const { scanState, runScan, handleAddFolder, removeModelFolder, modelFolders } =
     useModelFolderScan()
+  const scannedFamilies = useScannedFamilies(
+    scanState.status === 'done' ? scanState.models : NO_MODELS
+  )
   const addScanned = async (found: ScannedModel, all: ScannedModel[]) => {
     setAddingLocal(true)
     try {
@@ -351,7 +357,10 @@ export function StudioDiscover({
             <span>{t('studio:discover.scanNone')}</span>
           )}
           {scanState.status === 'done' &&
-            splitByKind(scanState.models).diffusion.map((found) => (
+            splitByKind(scanState.models).diffusion.map((found) => {
+              // Unknown to Studio and no kind picked above: it would only fail.
+              const unsupported = scannedFamilies[found.path] === null && !localFamily
+              return (
               <div key={found.path} className="flex items-center justify-between gap-3">
                 <span className="min-w-0 flex-1 truncate text-secondary-foreground" title={found.path}>
                   {found.name}
@@ -360,14 +369,21 @@ export function StudioDiscover({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={addingLocal}
+                  disabled={addingLocal || unsupported}
                   onClick={() => void addScanned(found, scanState.models)}
                 >
-                  <Plus className="size-3.5" />
-                  {t('studio:discover.addToStudio')}
+                  {unsupported ? (
+                    t('providers:importStudioUnsupportedShort')
+                  ) : (
+                    <>
+                      <Plus className="size-3.5" />
+                      {t('studio:discover.addToStudio')}
+                    </>
+                  )}
                 </Button>
               </div>
-            ))}
+              )
+            })}
         </div>
 
         {familiesError && (

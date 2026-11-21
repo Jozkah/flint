@@ -50,11 +50,41 @@ export function seedStudioAnswers() {
     installed: kind === 'image',
     totalBytes: files.reduce((a, b) => a + b, 0),
   })
+  // Models added "from this computer" in the preview, so Studio shows them.
+  const added: ReturnType<typeof model>[] = []
+  answer('diffusion_add_local_model', (a) => {
+    const name = String(a.path).split('/').pop() ?? 'model'
+    const m = {
+      ...model(`custom-local-${added.length}`, name.replace(/\.gguf$/i, ''), 'image', [2_900_000_000, 335_304_388, 2_497_281_120]),
+      custom: true,
+      family: String(a.family),
+      license: 'Local file',
+    }
+    added.push(m)
+    return { ...m, def: m }
+  })
+  // A ComfyUI-style folder the user added: picture models, encoders, a VAE and a LoRA beside a chat model.
+  const found = (name: string, kind: string, size: number) => ({
+    path: `D:/ProgramData/llm_models/${name.replace(' / ', '/')}.gguf`,
+    name,
+    source: 'Custom folder',
+    size_bytes: size,
+    kind,
+  })
+  answer('scan_local_models', () => [
+    found('diffusion_models / flux-2-klein-4b-Q4_0', 'diffusion', 2_300_000_000),
+    found('diffusion_models / z_image_turbo-Q3_K', 'diffusion', 2_900_000_000),
+    found('text_encoders / Qwen3-4B-Instruct-2507-Q4_K_M', 'encoder', 2_300_000_000),
+    found('vae / ae', 'vae', 335_304_388),
+    found('loras / pixel-style', 'lora', 160_000_000),
+    found('chat / llama-3.1-8b-instruct-Q4_K_M', 'text', 4_900_000_000),
+  ])
   answer('diffusion_status', () => ({
     supported: true,
     engineTag: 'master-883-137f740',
     engineBackend: 'vulkan',
     models: [
+      ...added,
       model('z-image-turbo', 'Z-Image Turbo', 'image', [5_017_613_376, 335_304_388, 2_497_281_120]),
       model('wan2.2-ti2v-5b', 'Wan 2.2 TI2V 5B', 'video', [3_433_116_000, 1_409_400_960, 3_655_145_312]),
       { ...model('custom-quantstack-qwen-image-gguf-qwen-image-q4-k-m', 'Qwen_Image Q4_K_M', 'image', [13_065_746_976, 253_806_246, 4_683_072_512]), installed: false, custom: true, family: 'qwen-image', license: 'apache-2.0' },
@@ -84,7 +114,7 @@ export function seedStudioAnswers() {
     { id: 'qwen-image', label: 'Qwen-Image', description: 'Strong at text in pictures.', hints: [], minSide: 16, maxSide: 2048, companionBytes: 4_936_878_758 },
     { id: 'flux1', label: 'FLUX.1', description: 'FLUX.1 dev or schnell.', hints: [], minSide: 16, maxSide: 2048, companionBytes: 3_477_572_612 },
   ])
-  answer('diffusion_guess_family', () => 'qwen-image')
+  answer('diffusion_guess_family', (a) => (/z[-_]image/i.test(String(a.filename)) ? 'z-image' : /flux-2/i.test(String(a.filename)) ? null : 'qwen-image'))
   answer('plugin:event|listen', () => 1)
   answer('plugin:event|unlisten', () => undefined)
 }

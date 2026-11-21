@@ -34,6 +34,7 @@ import {
   type ScannedModel,
 } from '@/lib/localModelScan'
 import { formatBytes } from '@/lib/utils'
+import { useScannedFamilies } from '@/hooks/useScannedFamilies'
 import {
   detectEmbeddingFromMetadata,
   draftValidationFailure,
@@ -44,6 +45,8 @@ import {
   type TokenizerInfo,
 } from '@/lib/ggufImport'
 import { useModelFolderScan } from '@/hooks/useModelFolderScan'
+
+const NO_MODELS: ScannedModel[] = []
 
 type ImportLlamacppModelDialogProps = {
   provider: ModelProvider
@@ -309,6 +312,9 @@ export const ImportLlamacppModelDialog = ({
 
   // A found picture model goes to Studio, where it is; chat models become
   // llama.cpp models through the form below.
+  const scannedFamilies = useScannedFamilies(
+    scanState.status === 'done' ? scanState.models : NO_MODELS
+  )
   const [addingToStudio, setAddingToStudio] = useState<string | null>(null)
   const addToStudio = async (found: ScannedModel, scan: ScannedModel[]) => {
     setAddingToStudio(found.path)
@@ -764,7 +770,11 @@ export const ImportLlamacppModelDialog = ({
                                 onClick={() =>
                                   void addToStudio(found, scanState.models)
                                 }
-                                disabled={importing || addingToStudio !== null}
+                                disabled={
+                                  importing ||
+                                  addingToStudio !== null ||
+                                  scannedFamilies[found.path] === null
+                                }
                                 className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
                               >
                                 <MiddleText
@@ -780,20 +790,23 @@ export const ImportLlamacppModelDialog = ({
                                       className="motion-safe:animate-spin"
                                     />
                                   )}
-                                  {formatBytes(found.size_bytes)}
+                                  {scannedFamilies[found.path] === null
+                                    ? t('providers:importStudioUnsupportedShort')
+                                    : formatBytes(found.size_bytes)}
                                 </span>
                               </button>
                             ))}
                           </div>
                         )}
-                        {splitByKind(scanState.models).companions.length > 0 && (
-                          <p className="px-1 text-xs text-muted-foreground">
-                            {t('providers:importCompanionsNote', {
-                              count: splitByKind(scanState.models).companions.length,
-                            })}
-                          </p>
-                        )}
                       </div>
+                    )}
+                  {scanState.status === 'done' &&
+                    splitByKind(scanState.models).companions.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('providers:importCompanionsNote', {
+                          count: splitByKind(scanState.models).companions.length,
+                        })}
+                      </p>
                     )}
                 </div>
               )}
