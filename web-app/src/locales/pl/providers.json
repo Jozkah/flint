@@ -29,6 +29,7 @@
   "chatModels": "Modele czatu",
   "embeddingModels": "Modele osadzeń",
   "decisionModels": "Decision Models",
+  "imageModels": "Image Models",
   "embeddingModelsDesc": "Używane do RAG i wyszukiwania wektorowego. Wybrany model staje się domyślnym przy generowaniu osadzeń.",
   "embeddingModelDefault": "Domyślny",
   "embeddingModelSetDefault": "Ustaw jako domyślny model osadzeń",

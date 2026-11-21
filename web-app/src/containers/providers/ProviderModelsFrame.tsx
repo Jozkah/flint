@@ -16,6 +16,7 @@ import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppMo
 import { ImportMlxModelDialog } from '@/containers/dialogs/ImportMlxModelDialog'
 import { TBox } from '@/containers/engine/EngineKit'
 import { isDecisionOnlyModel } from '@/lib/decisionModel'
+import { isImageOnlyModel } from '@/lib/imageOnlyModel'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import { isLocalProvider } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
@@ -92,8 +93,15 @@ export function ProviderModelsFrame({
   // Models that answer typed questions rather than chat (Requesty's decision
   // list) sit in their own section, so they are not mistaken for chat models.
   const decisionModels = isLlamacpp ? [] : filteredModels.filter(isDecisionOnlyModel)
-  const chatEntries = decisionModels.length
-    ? modelEntries.filter((e) => e.kind !== 'model' || !isDecisionOnlyModel(e.model))
+  // Picture-only models are not chat models either (Studio uses them).
+  const imageModels = isLlamacpp ? [] : filteredModels.filter(isImageOnlyModel)
+  const hasOtherSections = decisionModels.length > 0 || imageModels.length > 0
+  const chatEntries = hasOtherSections
+    ? modelEntries.filter(
+        (e) =>
+          e.kind !== 'model' ||
+          !(isDecisionOnlyModel(e.model) || isImageOnlyModel(e.model))
+      )
     : modelEntries
   return (
     <Frame className="motion-safe:animate-rise-in [animation-delay:160ms]">
@@ -196,7 +204,7 @@ export function ProviderModelsFrame({
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
           >
             {((isLlamacpp && embeddingModels.length > 0 && chatModels.length > 0) ||
-              (decisionModels.length > 0 && chatEntries.length > 0)) &&
+              (hasOtherSections && chatEntries.length > 0)) &&
               sectionDivider(t('providers:chatModels'), 'mt-1 mb-1')}
             <ul className="flex flex-col">
               {chatEntries.map((entry, modelIndex) => {
@@ -301,6 +309,28 @@ export function ProviderModelsFrame({
                 <ul className="flex flex-col">
                   {decisionModels.map((model, modelIndex) =>
                     renderModelRow(model, `decision-${modelIndex}`, {
+                      actions: (
+                        <>
+                          <DialogEditModel provider={provider} modelId={model.id} />
+                          <DialogDeleteModel provider={provider} modelId={model.id} />
+                        </>
+                      ),
+                    })
+                  )}
+                </ul>
+              </>
+            )}
+            {provider && imageModels.length > 0 && (
+              <>
+                {sectionDivider(
+                  t('providers:imageModels'),
+                  chatEntries.length > 0 || decisionModels.length > 0
+                    ? 'mt-4 mb-1'
+                    : 'mt-1 mb-1'
+                )}
+                <ul className="flex flex-col">
+                  {imageModels.map((model, modelIndex) =>
+                    renderModelRow(model, `image-${modelIndex}`, {
                       actions: (
                         <>
                           <DialogEditModel provider={provider} modelId={model.id} />

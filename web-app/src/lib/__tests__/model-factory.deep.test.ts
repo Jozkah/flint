@@ -396,7 +396,7 @@ describe('model-factory deep coverage', () => {
     })
 
     it('openai passes custom headers', async () => {
-      await ModelFactory.createModel('o', mkProvider('openai', { custom_header: [{ header: 'X-O', value: 'v' }] }), {})
+      await ModelFactory.createModel('o', mkProvider('openai', { base_url: 'https://api.openai.com/v1', custom_header: [{ header: 'X-O', value: 'v' }] }), {})
       expect((globalThis as any).__capturedOpenAICfg.headers).toEqual({ 'X-O': 'v' })
     })
 

@@ -13,6 +13,7 @@ import { offersModels } from '@/lib/providerOffers'
 import { sortModels } from '@/lib/modelSort'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 import { isImageOnlyModel } from '@/lib/imageOnlyModel'
+import { isDecisionOnlyModel } from '@/lib/decisionModel'
 
 export interface SearchableModel {
   provider: ModelProvider
@@ -82,6 +83,8 @@ export function buildSearchableItems(
       if (modelItem.embedding) return
       // Nor can picture-only models; Studio and the picture tools use those.
       if (isImageOnlyModel(modelItem)) return
+      // Decision models answer typed questions and do not chat.
+      if (isDecisionOnlyModel(modelItem)) return
       // The dictation model transcribes speech; it is not for chatting.
       if (modelItem.id === VOICE_MODEL_ID) return
 

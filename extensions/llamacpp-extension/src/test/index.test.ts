@@ -337,6 +337,15 @@ describe('llamacpp_extension', () => {
       expect(fs.existsSync).toHaveBeenCalledWith(`/home/user/.flint/${path}`)
       expect(fs.existsSync).not.toHaveBeenCalledWith(path)
     })
+    it('says the folder is not granted when the read is refused, not that the file is missing', async () => {
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/home/user/.flint')
+      vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+      vi.mocked(fs.existsSync).mockResolvedValue(false)
+      vi.mocked(fs.fileStat).mockRejectedValue(new Error('fs_read_denied'))
+      const path = 'downloads/huggingface/owner/repo/model.gguf'
+      await expect(extension.import('owner/repo-model', { modelPath: path }))
+        .rejects.toThrow(/not allowed to read .*Add folder/)
+    })
     it('should throw error for invalid modelId', async () => {
       await expect(extension.import('invalid/model/../id', { modelPath: '/path/to/model' }))
         .rejects.toThrow('Invalid modelId')
