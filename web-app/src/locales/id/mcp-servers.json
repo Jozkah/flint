@@ -280,5 +280,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Buka halaman"
+  },
+  "presets": {
+    "title": "Server opsional (tidak ada yang diinstal atau dijalankan sampai Anda menyimpan)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (host sendiri)",
+      "note": "Pencarian web, berita, sosial, dan akademik tanpa kunci, lisensi MIT. Tidak ada di PyPI: klon github.com/damionrashford/RivalSearchMCP, jalankan `uv sync` di dalamnya, lalu ganti /path/to/RivalSearchMCP pada argumen dengan folder itu. Berjalan di komputer ini dengan hak akses pengguna Anda. Ia men-scrape mesin pencari dan memalsukan sidik jari browser, sehingga bisa rusak tanpa pemberitahuan dan melanggar ketentuan mereka. Satu pemelihara, belum diaudit."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (hosted)",
+      "note": "Setiap kueri dikirim ke rivalsearchmcp.fastmcp.app, dioperasikan pihak ketiga yang logging dan retensinya tidak didokumentasikan. Berlaku batas penggunaan wajar. Untuk hal pribadi, pilih opsi host sendiri. Catatan sama: berbasis scraping, satu pemelihara, belum diaudit."
+    }
   }
 }

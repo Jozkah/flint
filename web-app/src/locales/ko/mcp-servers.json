@@ -283,5 +283,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "페이지 열기"
+  },
+  "presets": {
+    "title": "선택 서버(저장하기 전에는 아무것도 설치되거나 시작되지 않습니다)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP(자체 호스팅)",
+      "note": "키 없이 쓰는 웹·뉴스·소셜·학술 검색, MIT 라이선스. PyPI에는 없습니다. github.com/damionrashford/RivalSearchMCP를 클론해 `uv sync`를 실행한 뒤 인수의 /path/to/RivalSearchMCP를 그 폴더로 바꾸세요. 이 컴퓨터에서 사용자 권한으로 실행됩니다. 검색 엔진을 스크래핑하고 브라우저 지문을 위조하므로 예고 없이 깨질 수 있고 해당 서비스 약관에 어긋날 수 있습니다. 유지관리자 1명, 감사 받지 않음."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP(호스팅)",
+      "note": "모든 쿼리가 rivalsearchmcp.fastmcp.app으로 전송됩니다. 운영은 제3자이며 로그와 보관 정책은 문서화되어 있지 않습니다. 공정 사용 제한이 적용됩니다. 비공개 내용에는 자체 호스팅을 선택하세요. 주의점은 동일합니다: 스크래핑 기반, 유지관리자 1명, 감사 안 됨."
+    }
   }
 }

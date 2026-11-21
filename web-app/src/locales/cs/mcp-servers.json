@@ -289,5 +289,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Otevřít stránku"
+  },
+  "presets": {
+    "title": "Volitelné servery (nic se neinstaluje ani nespustí, dokud neuložíte)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (vlastní hostování)",
+      "note": "Webové, zpravodajské, sociální a akademické vyhledávání bez klíče, licence MIT. Není na PyPI: naklonujte github.com/damionrashford/RivalSearchMCP, spusťte `uv sync` a v argumentech nahraďte /path/to/RivalSearchMCP touto složkou. Běží na tomto počítači s vašimi oprávněními. Scrapuje vyhledávače a padělá otisky prohlížeče, takže může bez upozornění přestat fungovat a porušovat jejich podmínky. Jeden správce, bez auditu."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (hostovaný)",
+      "note": "Každý dotaz se odesílá na rivalsearchmcp.fastmcp.app, který provozuje třetí strana s nezdokumentovaným logováním a uchováváním. Platí limity férového užití. Pro cokoli soukromého zvolte vlastní hostování. Stejné výhrady: scraping, jeden správce, bez auditu."
+    }
   }
 }

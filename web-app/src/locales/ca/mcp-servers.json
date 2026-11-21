@@ -288,5 +288,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Obre la pàgina"
+  },
+  "presets": {
+    "title": "Servidors opcionals (res s'instal·la ni s'inicia fins que desis)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (autoallotjat)",
+      "note": "Cerca web, de notícies, social i acadèmica sense clau, llicència MIT. No és a PyPI: clona github.com/damionrashford/RivalSearchMCP, executa `uv sync` i substitueix /path/to/RivalSearchMCP als arguments per aquesta carpeta. S'executa en aquest ordinador amb els teus privilegis. Fa scraping de cercadors i falsifica empremtes de navegador, així que pot deixar de funcionar sense avís i anar contra els seus termes. Un sol mantenidor, sense auditar."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (allotjat)",
+      "note": "Cada consulta s'envia a rivalsearchmcp.fastmcp.app, gestionat per un tercer del qual no es documenta el registre ni la retenció. S'apliquen límits d'ús just. Per a res privat, tria l'opció autoallotjada. Mateixes reserves: basat en scraping, un sol mantenidor, sense auditar."
+    }
   }
 }

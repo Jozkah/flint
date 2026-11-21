@@ -286,5 +286,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "Abrir página"
+  },
+  "presets": {
+    "title": "Servidores opcionales (no se instala ni inicia nada hasta que guardes)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP (autoalojado)",
+      "note": "Búsqueda web, de noticias, social y académica sin clave, licencia MIT. No está en PyPI: clona github.com/damionrashford/RivalSearchMCP, ejecuta `uv sync` y sustituye /path/to/RivalSearchMCP en los argumentos por esa carpeta. Se ejecuta en este equipo con tus privilegios. Hace scraping de buscadores y falsifica huellas del navegador, por lo que puede romperse sin aviso e ir contra sus términos. Un solo mantenedor, sin auditar."
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP (alojado)",
+      "note": "Cada consulta se envía a rivalsearchmcp.fastmcp.app, operado por un tercero cuyo registro y retención no están documentados. Se aplican límites de uso justo. Para algo privado, elige la opción autoalojada. Mismas salvedades: basado en scraping, un solo mantenedor, sin auditar."
+    }
   }
 }

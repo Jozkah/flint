@@ -283,5 +283,16 @@
     "decline": "Decline",
     "cancel": "Cancel",
     "openPage": "打开页面"
+  },
+  "presets": {
+    "title": "可选服务器(保存之前不会安装或启动任何内容)",
+    "rivalsearchLocal": {
+      "label": "RivalSearchMCP(自托管)",
+      "note": "无需密钥的网页、新闻、社交和学术搜索,MIT 许可证。不在 PyPI 上:克隆 github.com/damionrashford/RivalSearchMCP,在其中运行 `uv sync`,再把参数中的 /path/to/RivalSearchMCP 替换为该文件夹。它在本机以你的用户权限运行。它抓取搜索引擎并伪造浏览器指纹,因此可能无预警失效,也可能违反这些网站的条款。只有一位维护者,未经审计。"
+    },
+    "rivalsearchHosted": {
+      "label": "RivalSearchMCP(托管)",
+      "note": "每次查询都会发送到 rivalsearchmcp.fastmcp.app,由第三方运营,其日志和保留政策未公开。适用合理使用限额。涉及隐私的内容请选择自托管。同样的提醒:基于抓取、一位维护者、未经审计。"
+    }
   }
 }
