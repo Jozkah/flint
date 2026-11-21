@@ -23,12 +23,12 @@ describe('mobile navigation and chat paging', () => {
     resetApp({ name: 'chat', id: 'c1' })
     render(<Shell />)
     await screen.findByText('message 1', {}, T)
-    const box = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+    const box = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'draft for chat one' } })
     expect(box.value).toBe('draft for chat one')
     act(() => app.set({ route: { name: 'chat', id: 'c2' } }))
     await screen.findByText('message 2', {}, T)
-    const next = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+    const next = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
     expect(next.value).toBe('')
   })
 
