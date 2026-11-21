@@ -392,6 +392,7 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
         sha256,
         license,
         local_path: None,
+        local_companions: Vec::new(),
     };
     let def = custom::add(&app, record)?;
     Ok(ModelStatus {
@@ -404,19 +405,31 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
 }
 
 /// Add a weights file that is already on this computer. It is used where it
-/// is, not copied; the family's small companion files (VAE, text encoder) are
-/// downloaded as for any model, from the Studio model list.
+/// is, not copied. `companions` are other files the person has (text encoders,
+/// a VAE); those that match what the family needs are used in place too, and the
+/// rest are downloaded as for any model, from the Studio model list.
 #[tauri::command(async)]
 pub fn diffusion_add_local_model<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
     family: String,
     display_name: Option<String>,
+    companions: Option<Vec<String>>,
 ) -> Result<ModelStatus, String> {
     if !engine::platform_supported() {
         return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
     }
-    custom::family(&family).ok_or("That model family is not supported.")?;
+    let family_def = custom::family(&family).ok_or("That model family is not supported.")?;
+    let candidates: Vec<(String, u64)> = companions
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|p| {
+            let meta = std::fs::metadata(&p).ok().filter(|m| m.is_file())?;
+            let shown = std::fs::canonicalize(&p).ok()?.to_string_lossy().trim_start_matches(r"\?\").to_string();
+            Some((shown, meta.len()))
+        })
+        .collect();
+    let local_companions = custom::match_companions(family_def, &candidates);
     let source = Path::new(&path);
     let meta = std::fs::metadata(source).map_err(|_| "That file could not be found.".to_string())?;
     if !meta.is_file() {
@@ -448,6 +461,7 @@ pub fn diffusion_add_local_model<R: Runtime>(
         sha256: String::new(),
         license: "Local file".to_string(),
         local_path: Some(shown),
+        local_companions,
     };
     let def = custom::add(&app, record)?;
     Ok(ModelStatus {

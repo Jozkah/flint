@@ -255,5 +255,9 @@
   "skippedLinkedTitle": "Models skipped: {{count}}",
   "skippedLinkedBody": "These models are stored through a link that points outside Flint's data folder, so Flint did not load them:",
   "skippedLinkedHowTo": "To use one, import its GGUF file by path (Flint keeps the file where it is), or move the files back into the models folder.",
-  "skippedLinkedDismiss": "Dismiss"
+  "skippedLinkedDismiss": "Dismiss",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "Text encoder and VAE files found: {{count}}. They are used with a picture model that needs them, not listed as chat models.",
+  "importStudioUnsupportedShort": "Not supported yet"
 }

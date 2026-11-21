@@ -292,6 +292,56 @@ pub struct CustomModel {
     /// repository can be named.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_path: Option<String>,
+    /// Companion files (text encoder, VAE) the person already has, used where
+    /// they are in place of the family's download.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_companions: Vec<LocalCompanion>,
+}
+
+/// A companion file already on this computer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LocalCompanion {
+    pub role: Role,
+    pub path: String,
+    pub size: u64,
+}
+
+/// The repo name given to one local companion of a model: `local:<id>:<Role>`.
+fn companion_repo(id: &str, role: Role) -> String {
+    format!("{LOCAL_REPO_PREFIX}{id}:{role:?}")
+}
+
+fn stem_key(path: &str) -> String {
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_ascii_lowercase();
+    let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&name);
+    // Drop a trailing quantisation tag, so another quant of the same file still matches.
+    let mut end = stem.len();
+    for (i, c) in stem.char_indices() {
+        if (c == '-' || c == '_' || c == '.') && i > 0 {
+            let rest = &stem[i + 1..];
+            let quant = rest.starts_with('q') && rest[1..].starts_with(|d: char| d.is_ascii_digit());
+            if quant || ["f16", "bf16", "f32", "fp16", "fp32", "fp8"].iter().any(|p| rest.starts_with(p)) {
+                end = i;
+                break;
+            }
+        }
+    }
+    stem[..end].to_string()
+}
+
+/// Which of the person's own files stand in for a family's companions. A file
+/// matches a companion when their names agree apart from the quantisation, so a
+/// text encoder the person keeps in another quant is still found.
+pub fn match_companions(family: &Family, candidates: &[(String, u64)]) -> Vec<LocalCompanion> {
+    family
+        .companions
+        .iter()
+        .filter_map(|want| {
+            let key = stem_key(want.filename);
+            let (path, size) = candidates.iter().find(|(p, size)| *size > 0 && stem_key(p) == key)?;
+            Some(LocalCompanion { role: want.role, path: path.clone(), size: *size })
+        })
+        .collect()
 }
 
 struct Registry {
@@ -322,7 +372,18 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
         size: record.size,
         sha256: leak(&record.sha256),
     }];
-    files.extend(family.companions.iter().copied());
+    files.extend(family.companions.iter().map(|c| {
+        match record.local_companions.iter().find(|l| l.role == c.role) {
+            Some(local) => FileDef {
+                role: c.role,
+                repo: leak(&companion_repo(&record.id, c.role)),
+                filename: leak(local.path.rsplit(['/', '\\']).next().unwrap_or(&local.path)),
+                size: local.size,
+                sha256: "",
+            },
+            None => *c,
+        }
+    }));
     let mut defaults = family.defaults;
     // The fast FLUX.1 variant needs only a few steps.
     if family.id == "flux1" && record.filename.to_ascii_lowercase().contains("schnell") {
@@ -346,9 +407,20 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
 /// Where a model added from a file on this computer lives, for the repo name
 /// its record carries. `None` for a Hugging Face model.
 pub fn local_path(repo: &str) -> Option<PathBuf> {
-    let id = repo.strip_prefix(LOCAL_REPO_PREFIX)?;
+    let rest = repo.strip_prefix(LOCAL_REPO_PREFIX)?;
     let reg = registry().lock().ok()?;
-    reg.records.iter().find(|r| r.id == id)?.local_path.as_ref().map(PathBuf::from)
+    match rest.split_once(':') {
+        // A companion: `<id>:<Role>`.
+        Some((id, role)) => reg
+            .records
+            .iter()
+            .find(|r| r.id == id)?
+            .local_companions
+            .iter()
+            .find(|l| format!("{:?}", l.role) == role)
+            .map(|l| PathBuf::from(&l.path)),
+        None => reg.records.iter().find(|r| r.id == rest)?.local_path.as_ref().map(PathBuf::from),
+    }
 }
 
 /// The repo name given to a model added from a file on this computer.
@@ -517,7 +589,32 @@ mod tests {
             sha256: "645473886d7dbb0103f84c563c798f7b0867293d919752d4d6be6a432b0bc988".into(),
             license: "apache-2.0".into(),
             local_path: None,
+            local_companions: Vec::new(),
         }
+    }
+
+    #[test]
+    fn own_companions_replace_the_download_and_match_across_quants() {
+        let z = family("z-image").unwrap();
+        let found = match_companions(
+            z,
+            &[
+                ("D:/m/text_encoders/Qwen3-4B-Instruct-2507-Q8_0.gguf".into(), 4_000_000_000),
+                ("D:/m/vae/ae.safetensors".into(), 335_304_388),
+                ("D:/m/loras/other.safetensors".into(), 5),
+            ],
+        );
+        assert_eq!(found.iter().map(|c| c.role).collect::<Vec<_>>(), vec![Role::Vae, Role::Llm]);
+        let mut r = record("z-image", "z_image_turbo-Q3_K.gguf");
+        r.local_companions = found;
+        let def = def_of(&r).unwrap();
+        assert_eq!(def.files[1].role, Role::Vae);
+        assert!(def.files[1].repo.starts_with("local:") && def.files[1].repo.ends_with(":Vae"));
+        assert_eq!(def.files[2].size, 4_000_000_000);
+        assert_eq!(def.files[2].filename, "Qwen3-4B-Instruct-2507-Q8_0.gguf");
+        assert_eq!(stem_key("x/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), "qwen3-4b-instruct-2507");
+        assert_eq!(stem_key("ae.safetensors"), "ae");
+        assert!(match_companions(z, &[("D:/m/ae.safetensors".into(), 0)]).is_empty());
     }
 
     #[test]

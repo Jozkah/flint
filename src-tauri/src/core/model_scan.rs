@@ -19,6 +19,18 @@ const MAX_ENTRIES_PER_ROOT: usize = 20_000;
 /// Anything smaller is a test fixture or a stub, not a model.
 const MIN_MODEL_BYTES: u64 = 1_000_000;
 
+/// What a found file is for. ComfyUI-style folders keep picture models, text
+/// encoders, VAEs and LoRAs side by side; only `Text` belongs in the chat list.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelKind {
+    Text,
+    Diffusion,
+    Encoder,
+    Vae,
+    Lora,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ScannedModel {
     /// Absolute path to the GGUF file.
@@ -28,6 +40,7 @@ pub struct ScannedModel {
     /// The app whose store it was found in.
     pub source: String,
     pub size_bytes: u64,
+    pub kind: ModelKind,
 }
 
 /// Inputs the scan depends on, so tests can point it at a temp directory.
@@ -126,11 +139,23 @@ fn push(
     name: String,
     source: &str,
 ) {
+    push_kind(out, seen, path, name, source, ModelKind::Text);
+}
+
+fn push_kind(
+    out: &mut Vec<ScannedModel>,
+    seen: &mut HashSet<PathBuf>,
+    path: &Path,
+    name: String,
+    source: &str,
+    kind: ModelKind,
+) {
     if out.len() >= MAX_RESULTS {
         return;
     }
     let Ok(meta) = fs::metadata(path) else { return };
-    if meta.len() < MIN_MODEL_BYTES || !is_gguf(path) {
+    let safetensors = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("safetensors"));
+    if meta.len() < MIN_MODEL_BYTES || (!safetensors && !is_gguf(path)) {
         return;
     }
     // The same blob is reachable from several paths (HF snapshots symlink into
@@ -144,6 +169,7 @@ fn push(
         name,
         source: source.to_string(),
         size_bytes: meta.len(),
+        kind,
     });
 }
 
@@ -206,6 +232,129 @@ fn lmstudio_name(root: &Path, path: &Path) -> String {
         file_stem(path)
     } else {
         format!("{parent} / {}", file_stem(path))
+    }
+}
+
+/// The kind a ComfyUI-style folder name stands for.
+fn kind_of_folder(name: &str) -> Option<ModelKind> {
+    match name.to_ascii_lowercase().as_str() {
+        "diffusion_models" | "unet" | "checkpoints" | "diffusion" => Some(ModelKind::Diffusion),
+        "text_encoders" | "clip" | "clip_vision" => Some(ModelKind::Encoder),
+        "vae" => Some(ModelKind::Vae),
+        "loras" | "lora" => Some(ModelKind::Lora),
+        _ => None,
+    }
+}
+
+/// The kind a GGUF `general.architecture` stands for. Chat models have names
+/// like `llama` or `qwen3`; these are the picture and encoder-only ones.
+fn kind_of_architecture(arch: &str) -> Option<ModelKind> {
+    match arch.to_ascii_lowercase().as_str() {
+        "flux" | "sd1" | "sd2" | "sdxl" | "sd3" | "lumina2" | "hyvid" | "ltxv" | "wan" | "hidream"
+        | "pixart" | "chroma" | "aura" | "qwen_image" | "qwen-image" | "z-image" | "zimage" => {
+            Some(ModelKind::Diffusion)
+        }
+        "t5encoder" | "t5" | "clip" => Some(ModelKind::Encoder),
+        _ => None,
+    }
+}
+
+/// What a file is for: the nearest ComfyUI-style folder above it decides, then
+/// the GGUF architecture, and anything else is a chat model. `folders` runs
+/// from the scanned root down to the file's own folder.
+pub fn classify(folders: &[&str], arch: Option<&str>) -> ModelKind {
+    folders
+        .iter()
+        .rev()
+        .find_map(|f| kind_of_folder(f))
+        .or_else(|| arch.and_then(kind_of_architecture))
+        .unwrap_or(ModelKind::Text)
+}
+
+/// `general.architecture` of a GGUF file, read from its header. It is the
+/// first key of nearly every file, so a header that opens with an array
+/// (or runs past 64 keys) is given up on rather than walked.
+fn gguf_architecture(path: &Path) -> Option<String> {
+    use std::io::{BufReader, Read, Seek, SeekFrom};
+    fn u32le(r: &mut impl Read) -> Option<u32> {
+        let mut b = [0u8; 4];
+        r.read_exact(&mut b).ok()?;
+        Some(u32::from_le_bytes(b))
+    }
+    fn u64le(r: &mut impl Read) -> Option<u64> {
+        let mut b = [0u8; 8];
+        r.read_exact(&mut b).ok()?;
+        Some(u64::from_le_bytes(b))
+    }
+    fn string(r: &mut impl Read) -> Option<String> {
+        let len = usize::try_from(u64le(r)?).ok().filter(|l| *l <= 4096)?;
+        let mut b = vec![0u8; len];
+        r.read_exact(&mut b).ok()?;
+        String::from_utf8(b).ok()
+    }
+    let mut r = BufReader::new(fs::File::open(path).ok()?);
+    let mut magic = [0u8; 4];
+    r.read_exact(&mut magic).ok()?;
+    if &magic != b"GGUF" {
+        return None;
+    }
+    u32le(&mut r)?; // version
+    u64le(&mut r)?; // tensor count
+    let keys = u64le(&mut r)?.min(64);
+    for _ in 0..keys {
+        let key = string(&mut r)?;
+        let ty = u32le(&mut r)?;
+        if key == "general.architecture" && ty == 8 {
+            return string(&mut r);
+        }
+        let skip: i64 = match ty {
+            0 | 1 | 7 => 1,
+            2 | 3 => 2,
+            4..=6 => 4,
+            10..=12 => 8,
+            8 => {
+                let len = u64le(&mut r)?;
+                i64::try_from(len).ok()?
+            }
+            _ => return None, // an array: not worth walking
+        };
+        r.seek(SeekFrom::Current(skip)).ok()?;
+    }
+    None
+}
+
+/// A folder the person added: GGUF files anywhere under it, plus safetensors
+/// files that sit in a ComfyUI-style folder (a VAE or a picture model is
+/// rarely a GGUF). The kind comes from `classify`.
+fn scan_user_folder(out: &mut Vec<ScannedModel>, seen: &mut HashSet<PathBuf>, root: &Path) {
+    let mut budget = MAX_ENTRIES_PER_ROOT;
+    let mut found: Vec<PathBuf> = Vec::new();
+    walk(root, 6, &mut budget, &mut |path| found.push(path.to_path_buf()));
+    found.sort();
+    let root_name = root.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+    for path in found {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let is_safetensors = name.to_ascii_lowercase().ends_with(".safetensors");
+        if !is_safetensors && !is_loadable_name(name) {
+            continue;
+        }
+        let rel = path.strip_prefix(root).unwrap_or(&path);
+        let mut folders: Vec<String> = vec![root_name.clone()];
+        folders.extend(
+            rel.parent()
+                .into_iter()
+                .flat_map(|p| p.components())
+                .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+        );
+        let folder_refs: Vec<&str> = folders.iter().map(String::as_str).collect();
+        let arch = if is_safetensors { None } else { gguf_architecture(&path) };
+        let kind = classify(&folder_refs, arch.as_deref());
+        // A safetensors file is only ever a companion or a picture model, and
+        // only where the folder says so; chat models are GGUF.
+        if is_safetensors && kind == ModelKind::Text {
+            continue;
+        }
+        push_kind(out, seen, &path, lmstudio_name(root, &path), "Custom folder", kind);
     }
 }
 
@@ -339,7 +488,7 @@ pub fn scan(env: &ScanEnv) -> Vec<ScannedModel> {
         if dir.join("manifests").is_dir() && dir.join("blobs").is_dir() {
             scan_ollama(&mut out, &mut seen, dir);
         }
-        scan_folder_of_ggufs(&mut out, &mut seen, dir, 4, "Custom folder", lmstudio_name);
+        scan_user_folder(&mut out, &mut seen, dir);
     }
 
     out
@@ -546,5 +695,76 @@ mod tests {
         assert!(is_loadable_name("model.gguf"));
         assert!(!is_loadable_name("model.bin"));
         assert!(!is_loadable_name("mmproj-F16.gguf"));
+    }
+
+    #[test]
+    fn comfyui_folders_decide_what_a_file_is() {
+        assert_eq!(classify(&["models", "diffusion_models"], None), ModelKind::Diffusion);
+        assert_eq!(classify(&["m", "UNet"], None), ModelKind::Diffusion);
+        assert_eq!(classify(&["m", "checkpoints", "sub"], None), ModelKind::Diffusion);
+        assert_eq!(classify(&["m", "text_encoders"], Some("qwen3")), ModelKind::Encoder);
+        assert_eq!(classify(&["m", "clip"], None), ModelKind::Encoder);
+        assert_eq!(classify(&["m", "vae"], None), ModelKind::Vae);
+        assert_eq!(classify(&["m", "loras"], None), ModelKind::Lora);
+        // The nearest folder wins.
+        assert_eq!(classify(&["unet", "text_encoders"], None), ModelKind::Encoder);
+        // No hint in the folders: the architecture decides, else it is a chat model.
+        assert_eq!(classify(&["m", "stuff"], Some("flux")), ModelKind::Diffusion);
+        assert_eq!(classify(&["m"], Some("t5encoder")), ModelKind::Encoder);
+        assert_eq!(classify(&["m"], Some("qwen3")), ModelKind::Text);
+        assert_eq!(classify(&["m"], None), ModelKind::Text);
+    }
+
+    fn gguf_with_arch(path: &Path, arch: &str, len: usize) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut b = b"GGUF".to_vec();
+        b.extend(3u32.to_le_bytes());
+        b.extend(0u64.to_le_bytes());
+        b.extend(2u64.to_le_bytes());
+        // A string key before the architecture must be skipped.
+        for (key, value) in [("general.name", "x"), ("general.architecture", arch)] {
+            b.extend((key.len() as u64).to_le_bytes());
+            b.extend(key.as_bytes());
+            b.extend(8u32.to_le_bytes());
+            b.extend((value.len() as u64).to_le_bytes());
+            b.extend(value.as_bytes());
+        }
+        b.resize(len, 0);
+        fs::write(path, b).unwrap();
+    }
+
+    #[test]
+    fn reads_the_architecture_from_a_gguf_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("m.gguf");
+        gguf_with_arch(&f, "flux", 2_000_000);
+        assert_eq!(gguf_architecture(&f).as_deref(), Some("flux"));
+        gguf(&dir.path().join("bare.gguf"), 2_000_000);
+        assert_eq!(gguf_architecture(&dir.path().join("bare.gguf")), None);
+    }
+
+    #[test]
+    fn a_comfyui_tree_is_split_by_kind_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("llm_models");
+        gguf(&root.join("diffusion_models/flux-2-klein-4b-Q4_0.gguf"), 2_000_000);
+        gguf(&root.join("text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), 2_000_000);
+        gguf_with_arch(&root.join("misc/odd-model.gguf"), "sdxl", 2_000_000);
+        gguf(&root.join("chat/llama-8b.gguf"), 2_000_000);
+        fs::create_dir_all(root.join("vae")).unwrap();
+        fs::write(root.join("vae/ae.safetensors"), vec![0u8; 2_000_000]).unwrap();
+        // A safetensors file outside a ComfyUI folder is not a model we handle.
+        fs::write(root.join("chat/other.safetensors"), vec![0u8; 2_000_000]).unwrap();
+        let mut e = env(dir.path());
+        e.extra_folders = vec![root];
+        let found = scan(&e);
+        let kind = |needle: &str| found.iter().find(|m| m.name.contains(needle)).map(|m| m.kind);
+        assert_eq!(kind("flux-2-klein"), Some(ModelKind::Diffusion));
+        assert_eq!(kind("Qwen3-4B"), Some(ModelKind::Encoder));
+        assert_eq!(kind("odd-model"), Some(ModelKind::Diffusion));
+        assert_eq!(kind("llama-8b"), Some(ModelKind::Text));
+        assert_eq!(kind("ae"), Some(ModelKind::Vae));
+        assert_eq!(kind("other"), None);
+        assert_eq!(found.len(), 5);
     }
 }

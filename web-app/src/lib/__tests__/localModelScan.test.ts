@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+const studio = vi.hoisted(() => ({
+  guessFamily: vi.fn(),
+  addLocalModel: vi.fn(),
+}))
+vi.mock('@/lib/studio/studio', () => ({ studioApi: studio }))
 import {
+  addScannedToStudio,
   groupBySource,
+  splitByKind,
   modelsOutsideFolder,
   type ScannedModel,
 } from '@/lib/localModelScan'
@@ -51,5 +59,54 @@ describe('modelsOutsideFolder', () => {
 
   it('keeps everything for an empty folder name', () => {
     expect(modelsOutsideFolder([at('C:/a.gguf')], '  ')).toHaveLength(1)
+  })
+})
+
+describe('splitByKind', () => {
+  const k = (name: string, kind?: ScannedModel['kind']): ScannedModel => ({
+    ...model(name, 'Custom folder'),
+    kind,
+  })
+
+  it('keeps encoders, VAEs and LoRAs out of the chat list', () => {
+    const split = splitByKind([
+      k('chat'),
+      k('old-scan-entry', undefined),
+      k('flux', 'diffusion'),
+      k('qwen3', 'encoder'),
+      k('ae', 'vae'),
+      k('style', 'lora'),
+    ])
+    expect(split.text.map((m) => m.name)).toEqual(['chat', 'old-scan-entry'])
+    expect(split.diffusion.map((m) => m.name)).toEqual(['flux'])
+    expect(split.companions.map((m) => m.name)).toEqual(['qwen3', 'ae'])
+    expect(split.loras.map((m) => m.name)).toEqual(['style'])
+  })
+})
+
+describe('addScannedToStudio', () => {
+  const scan: ScannedModel[] = [
+    { ...model('z', 'Custom folder'), path: 'D:/m/diffusion_models/z_image_turbo-Q3_K.gguf', kind: 'diffusion' },
+    { ...model('enc', 'Custom folder'), path: 'D:/m/text_encoders/q.gguf', kind: 'encoder' },
+    { ...model('chat', 'Custom folder'), path: 'D:/m/chat.gguf', kind: 'text' },
+  ]
+
+  it('registers in place with the family guessed from the file name and the found companions', async () => {
+    studio.guessFamily.mockResolvedValue('z-image')
+    studio.addLocalModel.mockResolvedValue({ display_name: 'z' })
+    await addScannedToStudio(scan[0], scan)
+    expect(studio.guessFamily).toHaveBeenCalledWith('', 'z_image_turbo-Q3_K.gguf')
+    expect(studio.addLocalModel).toHaveBeenCalledWith({
+      path: 'D:/m/diffusion_models/z_image_turbo-Q3_K.gguf',
+      family: 'z-image',
+      companions: ['D:/m/text_encoders/q.gguf'],
+    })
+  })
+
+  it('rejects a file whose family Studio cannot run', async () => {
+    studio.guessFamily.mockResolvedValue(null)
+    studio.addLocalModel.mockClear()
+    await expect(addScannedToStudio(scan[0], scan)).rejects.toThrow('unsupported-family')
+    expect(studio.addLocalModel).not.toHaveBeenCalled()
   })
 })

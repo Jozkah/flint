@@ -253,5 +253,9 @@
   "skippedLinkedTitle": "Atlanan modeller: {{count}}",
   "skippedLinkedBody": "Bu modeller Flint'in veri klasörünün dışını gösteren bir bağlantı üzerinden saklandığı için Flint bunları yüklemedi:",
   "skippedLinkedHowTo": "Birini kullanmak için GGUF dosyasını yoluyla içe aktarın (Flint dosyayı yerinde bırakır) veya dosyaları model klasörüne geri taşıyın.",
-  "skippedLinkedDismiss": "Kapat"
+  "skippedLinkedDismiss": "Kapat",
+  "importStudioGroup": "Picture models (added to Studio, used where they are)",
+  "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
+  "importCompanionsNote": "Text encoder and VAE files found: {{count}}. They are used with a picture model that needs them, not listed as chat models.",
+  "importStudioUnsupportedShort": "Not supported yet"
 }

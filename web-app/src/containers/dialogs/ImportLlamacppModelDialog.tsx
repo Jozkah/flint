@@ -28,9 +28,13 @@ import {
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 import {
+  addScannedToStudio,
   groupBySource,
+  splitByKind,
+  type ScannedModel,
 } from '@/lib/localModelScan'
 import { formatBytes } from '@/lib/utils'
+import { useScannedFamilies } from '@/hooks/useScannedFamilies'
 import {
   detectEmbeddingFromMetadata,
   draftValidationFailure,
@@ -41,6 +45,8 @@ import {
   type TokenizerInfo,
 } from '@/lib/ggufImport'
 import { useModelFolderScan } from '@/hooks/useModelFolderScan'
+
+const NO_MODELS: ScannedModel[] = []
 
 type ImportLlamacppModelDialogProps = {
   provider: ModelProvider
@@ -303,6 +309,28 @@ export const ImportLlamacppModelDialog = ({
 
   const { scanState, runScan, handleAddFolder, removeModelFolder, modelFolders } =
     useModelFolderScan()
+
+  // A found picture model goes to Studio, where it is; chat models become
+  // llama.cpp models through the form below.
+  const scannedFamilies = useScannedFamilies(
+    scanState.status === 'done' ? scanState.models : NO_MODELS
+  )
+  const [addingToStudio, setAddingToStudio] = useState<string | null>(null)
+  const addToStudio = async (found: ScannedModel, scan: ScannedModel[]) => {
+    setAddingToStudio(found.path)
+    try {
+      const added = await addScannedToStudio(found, scan)
+      toast.success(t('studio:discover.localAdded', { name: added.display_name }))
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message === 'unsupported-family'
+          ? t('providers:importStudioUnsupported')
+          : normalizeAppError(error)
+      )
+    } finally {
+      setAddingToStudio(null)
+    }
+  }
 
   const handleFileSelect = async (type: 'model' | 'mmproj' | 'draft') => {
     const selectedFile = await serviceHub.dialog().open({
@@ -630,7 +658,7 @@ export const ImportLlamacppModelDialog = ({
               )}
 
               {!modelFile && (
-                <div className="space-y-2">
+                <div className="space-y-2" aria-live="polite">
                   <Button
                     type="button"
                     variant="outline"
@@ -684,15 +712,17 @@ export const ImportLlamacppModelDialog = ({
                     </p>
                   )}
                   {scanState.status === 'done' &&
-                    scanState.models.length === 0 && (
+                    splitByKind(scanState.models).text.length === 0 &&
+                    splitByKind(scanState.models).diffusion.length === 0 && (
                       <p className="text-sm text-muted-foreground">
                         {t('sweep:llamaImport.noneFound')}
                       </p>
                     )}
                   {scanState.status === 'done' &&
-                    scanState.models.length > 0 && (
+                    (splitByKind(scanState.models).text.length > 0 ||
+                      splitByKind(scanState.models).diffusion.length > 0) && (
                       <div className="max-h-56 space-y-3 overflow-y-auto rounded-lg border border-border p-2">
-                        {groupBySource(scanState.models).map((group) => (
+                        {groupBySource(splitByKind(scanState.models).text).map((group) => (
                           <div key={group.source}>
                             <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
                               {group.source}
@@ -728,7 +758,56 @@ export const ImportLlamacppModelDialog = ({
                             })}
                           </div>
                         ))}
+                        {splitByKind(scanState.models).diffusion.length > 0 && (
+                          <div>
+                            <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
+                              {t('providers:importStudioGroup')}
+                            </p>
+                            {splitByKind(scanState.models).diffusion.map((found) => (
+                              <button
+                                key={found.path}
+                                type="button"
+                                onClick={() =>
+                                  void addToStudio(found, scanState.models)
+                                }
+                                disabled={
+                                  importing ||
+                                  addingToStudio !== null ||
+                                  scannedFamilies[found.path] === null
+                                }
+                                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
+                              >
+                                <MiddleText
+                                  text={found.name}
+                                  tail={16}
+                                  title={found.path}
+                                  className="flex-1"
+                                />
+                                <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                                  {addingToStudio === found.path && (
+                                    <LoaderCircle
+                                      size={12}
+                                      aria-hidden
+                                      className="motion-safe:animate-spin"
+                                    />
+                                  )}
+                                  {scannedFamilies[found.path] === null
+                                    ? t('providers:importStudioUnsupportedShort')
+                                    : formatBytes(found.size_bytes)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                    )}
+                  {scanState.status === 'done' &&
+                    splitByKind(scanState.models).companions.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('providers:importCompanionsNote', {
+                          count: splitByKind(scanState.models).companions.length,
+                        })}
+                      </p>
                     )}
                 </div>
               )}
