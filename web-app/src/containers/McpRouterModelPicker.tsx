@@ -241,7 +241,10 @@ export function McpRouterModelPicker({
                         const isSelected =
                           selectedModelId === e.model.id &&
                           selectedProvider === e.providerName
-                        const capabilities = e.model.capabilities || []
+                        // The badge already says "decision"; the icon would repeat it.
+                        const capabilities = (e.model.capabilities || []).filter(
+                          (c) => c !== 'decision'
+                        )
 
                         return (
                           <div
