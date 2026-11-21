@@ -316,10 +316,14 @@ export const ImportLlamacppModelDialog = ({
     scanState.status === 'done' ? scanState.models : NO_MODELS
   )
   const [addingToStudio, setAddingToStudio] = useState<string | null>(null)
+  // Picture files already added to Studio from this list, so their rows say so
+  // the way an imported text row does.
+  const [addedToStudio, setAddedToStudio] = useState<Set<string>>(new Set())
   const addToStudio = async (found: ScannedModel, scan: ScannedModel[]) => {
     setAddingToStudio(found.path)
     try {
       const added = await addScannedToStudio(found, scan)
+      setAddedToStudio((prev) => new Set(prev).add(found.path))
       toast.success(t('studio:discover.localAdded', { name: added.display_name }))
     } catch (error) {
       toast.error(
@@ -763,7 +767,9 @@ export const ImportLlamacppModelDialog = ({
                             <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
                               {t('providers:importStudioGroup')}
                             </p>
-                            {splitByKind(scanState.models).diffusion.map((found) => (
+                            {splitByKind(scanState.models).diffusion.map((found) => {
+                              const added = addedToStudio.has(found.path)
+                              return (
                               <button
                                 key={found.path}
                                 type="button"
@@ -772,6 +778,7 @@ export const ImportLlamacppModelDialog = ({
                                 }
                                 disabled={
                                   importing ||
+                                  added ||
                                   addingToStudio !== null ||
                                   scannedFamilies[found.path] === null
                                 }
@@ -791,12 +798,14 @@ export const ImportLlamacppModelDialog = ({
                                       className="motion-safe:animate-spin"
                                     />
                                   )}
+                                  {added && <span>{t('providers:imported')}</span>}
                                   {scannedFamilies[found.path] === null
                                     ? t('providers:importStudioUnsupportedShort')
                                     : formatBytes(found.size_bytes)}
                                 </span>
                               </button>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </div>
