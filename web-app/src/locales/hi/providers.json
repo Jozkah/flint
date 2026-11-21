@@ -28,6 +28,7 @@
   "backendHistoryFailed": "विफल",
   "chatModels": "चैट मॉडल",
   "embeddingModels": "एम्बेडिंग मॉडल",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "RAG और वेक्टर सर्च के लिए उपयोग होते हैं। एम्बेडिंग बनाते समय चुना गया मॉडल डिफ़ॉल्ट बन जाता है।",
   "embeddingModelDefault": "डिफ़ॉल्ट",
   "embeddingModelSetDefault": "डिफ़ॉल्ट एम्बेडिंग मॉडल के रूप में सेट करें",

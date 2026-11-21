@@ -124,6 +124,19 @@ function providers(): ModelProvider[] {
         model('x-ai/grok-4', 'Grok 4', ['tools', 'vision']),
       ],
     },
+    {
+      provider: 'requesty',
+      active: true,
+      api_key: 'rq-preview',
+      base_url: 'https://router.requesty.ai/v1',
+      settings: [],
+      models: [
+        model('openai/gpt-5-mini', 'GPT-5 mini', ['tools', 'vision']),
+        model('typesafe/jev-1.14.0', 'jev-1.14.0', ['decision']),
+        model('cloudflare/clef', 'clef', ['decision']),
+        model('perplexity/pplx-decider-v1.1-27b', 'pplx-decider-v1.1-27b', ['decision']),
+      ],
+    },
   ] as unknown as ModelProvider[]
 }
 

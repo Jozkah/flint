@@ -2441,6 +2441,7 @@
     "backendModelPlaceholder": "選擇模型",
     "backendModelSearch": "搜尋模型",
     "backendModelEmpty": "沒有可用的模型。請先新增供應商或載入本機模型。",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "沒有符合「{{query}}」的模型",
     "backendNoModel": "未選擇模型：在你選擇之前將使用 Jev。",
     "backendLocal": "在本機或你的區域網路上執行：決策文字不會傳送給 TypeSafe 或任何雲端服務。",
@@ -3307,7 +3308,8 @@
   "capabilityTips": {
     "web_search": "網頁搜尋",
     "embeddings": "嵌入模型（用於 RAG/向量，不用於聊天）",
-    "raw_completion": "原始補全（接續你的文字，無聊天或工具）"
+    "raw_completion": "原始補全（接續你的文字，無聊天或工具）",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "切換助理（{{shortcut}}）",
   "workProfileLabels": {

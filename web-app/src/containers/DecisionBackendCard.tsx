@@ -11,6 +11,7 @@ import {
   DECISION_PRESETS,
   JEV_BACKEND,
   findPresetModel,
+  isListedDecisionModel,
   normalizeBackend,
 } from '@/lib/decisionBackends'
 
@@ -43,7 +44,12 @@ export function DecisionBackendCard({ anchor }: { anchor?: string }) {
 
   const pickPreset = (presetId: string) => {
     if (!presetId) {
-      setBackend({ kind: 'open_model', provider: open?.provider ?? '', model: open?.model ?? '' })
+      setBackend({
+        kind: 'open_model',
+        provider: open?.provider ?? '',
+        model: open?.model ?? '',
+        ...(open?.decision ? { decision: true } : {}),
+      })
       return
     }
     const found = findPresetModel(presetId, providers)
@@ -52,6 +58,9 @@ export function DecisionBackendCard({ anchor }: { anchor?: string }) {
       provider: found?.provider ?? open?.provider ?? '',
       model: found?.model ?? open?.model ?? '',
       preset: presetId,
+      ...(isListedDecisionModel(providers, found?.provider ?? open?.provider ?? '', found?.model ?? open?.model ?? '')
+        ? { decision: true }
+        : {}),
     })
   }
 
@@ -125,8 +134,16 @@ export function DecisionBackendCard({ anchor }: { anchor?: string }) {
               providers={providers}
               selectedProvider={open.provider}
               selectedModelId={open.model}
+              includeDecisionModels
+              decisionBadge={t('common:jev.backendDecisionBadge')}
               onSelect={(provider, model) =>
-                setBackend({ kind: 'open_model', provider, model, ...(open.preset ? { preset: open.preset } : {}) })
+                setBackend({
+                  kind: 'open_model',
+                  provider,
+                  model,
+                  ...(open.preset ? { preset: open.preset } : {}),
+                  ...(isListedDecisionModel(providers, provider, model) ? { decision: true } : {}),
+                })
               }
               placeholder={t('common:jev.backendModelPlaceholder')}
               searchPlaceholder={t('common:jev.backendModelSearch')}

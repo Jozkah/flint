@@ -28,6 +28,7 @@
   "backendHistoryFailed": "Başarısız",
   "chatModels": "Sohbet Modelleri",
   "embeddingModels": "Gömme Modelleri",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "RAG ve vektör arama için kullanılır. Seçilen model, gömme işlemleri üretilirken varsayılan olur.",
   "embeddingModelDefault": "Varsayılan",
   "embeddingModelSetDefault": "Varsayılan gömme modeli olarak ayarla",

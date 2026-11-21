@@ -2533,6 +2533,7 @@
     "backendModelPlaceholder": "Vyberte model",
     "backendModelSearch": "Hledat modely",
     "backendModelEmpty": "Žádné dostupné modely. Nejprve přidejte poskytovatele nebo načtěte místní model.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Žádný model neodpovídá „{{query}}“",
     "backendNoModel": "Nevybrán žádný model: používá se Jev, dokud nějaký nevyberete.",
     "backendLocal": "Běží na tomto počítači nebo ve vaší místní síti: text rozhodnutí se neposílá do TypeSafe ani do žádné cloudové služby.",
@@ -3466,7 +3467,8 @@
   "capabilityTips": {
     "web_search": "Vyhledávání na webu",
     "embeddings": "Embedding model (pro RAG/vektory, ne pro chat)",
-    "raw_completion": "Surové dokončování (pokračuje ve vašem textu, bez chatu a nástrojů)"
+    "raw_completion": "Surové dokončování (pokračuje ve vašem textu, bez chatu a nástrojů)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Přepnout asistenta ({{shortcut}})",
   "workProfileLabels": {

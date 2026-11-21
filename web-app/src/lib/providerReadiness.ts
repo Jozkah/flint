@@ -4,6 +4,7 @@ import { classifyModelLocation } from '@/lib/modelLocation'
 import { localStorageKey } from '@/constants/localStorage'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 import { isImageOnlyModel } from '@/lib/imageOnlyModel'
+import { isDecisionOnlyModel } from '@/lib/decisionModel'
 
 type ModelLike = {
   id: string
@@ -45,6 +46,7 @@ export function isChatCapable(model: ModelLike): boolean {
   return (
     !model.embedding &&
     !isImageOnlyModel(model) &&
+    !isDecisionOnlyModel(model) &&
     !model.capabilities?.includes('embeddings') &&
     model.id !== VOICE_MODEL_ID
   )

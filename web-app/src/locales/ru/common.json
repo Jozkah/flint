@@ -2538,6 +2538,7 @@
     "backendModelPlaceholder": "Выберите модель",
     "backendModelSearch": "Поиск моделей",
     "backendModelEmpty": "Нет доступных моделей. Сначала добавьте провайдера или загрузите локальную модель.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Нет моделей по запросу «{{query}}»",
     "backendNoModel": "Модель не выбрана: используется Jev, пока вы не выберете модель.",
     "backendLocal": "Работает на этом компьютере или в вашей локальной сети: текст решения не передаётся ни в TypeSafe, ни в какой-либо облачный сервис.",
@@ -3466,7 +3467,8 @@
   "capabilityTips": {
     "web_search": "Веб-поиск",
     "embeddings": "Модель эмбеддингов (для RAG/векторов, не для чата)",
-    "raw_completion": "Сырое дополнение (продолжает ваш текст, без чата и инструментов)"
+    "raw_completion": "Сырое дополнение (продолжает ваш текст, без чата и инструментов)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Сменить ассистента ({{shortcut}})",
   "workProfileLabels": {

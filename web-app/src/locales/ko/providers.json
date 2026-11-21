@@ -28,6 +28,7 @@
   "backendHistoryFailed": "실패",
   "chatModels": "채팅 모델",
   "embeddingModels": "임베딩 모델",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "RAG와 벡터 검색에 사용됩니다. 선택한 모델이 임베딩을 생성할 때의 기본값이 됩니다.",
   "embeddingModelDefault": "기본값",
   "embeddingModelSetDefault": "기본 임베딩 모델로 설정",

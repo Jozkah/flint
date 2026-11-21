@@ -2439,6 +2439,7 @@
     "backendModelPlaceholder": "Bir model seçin",
     "backendModelSearch": "Modellerde ara",
     "backendModelEmpty": "Kullanılabilir model yok. Önce bir sağlayıcı ekleyin veya yerel bir model yükleyin.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "\"{{query}}\" ile eşleşen model yok",
     "backendNoModel": "Model seçilmedi: siz seçene kadar Jev kullanılır.",
     "backendLocal": "Bu bilgisayarda veya yerel ağınızda çalışır: karar metni TypeSafe'e veya herhangi bir bulut hizmetine gitmez.",
@@ -3319,7 +3320,8 @@
   "capabilityTips": {
     "web_search": "Web Araması",
     "embeddings": "Gömme modeli (RAG/vektörler için, sohbet için değil)",
-    "raw_completion": "Ham tamamlama (metninizi sürdürür, sohbet veya araç yok)"
+    "raw_completion": "Ham tamamlama (metninizi sürdürür, sohbet veya araç yok)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Asistanı değiştir ({{shortcut}})",
   "workProfileLabels": {

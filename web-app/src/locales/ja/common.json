@@ -2439,6 +2439,7 @@
     "backendModelPlaceholder": "モデルを選択",
     "backendModelSearch": "モデルを検索",
     "backendModelEmpty": "利用可能なモデルがありません。先にプロバイダーを追加するか、ローカルモデルを読み込んでください。",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "「{{query}}」に一致するモデルはありません",
     "backendNoModel": "モデルが未選択です。選択するまで Jev が使用されます。",
     "backendLocal": "このマシンまたはローカルネットワーク上で実行されます。判断テキストが TypeSafe やクラウドサービスに送信されることはありません。",
@@ -3302,7 +3303,8 @@
   "capabilityTips": {
     "web_search": "Web 検索",
     "embeddings": "埋め込みモデル(RAG/ベクトル用、チャット用ではありません)",
-    "raw_completion": "生の補完(入力テキストの続きを生成。チャットやツールは使用しません)"
+    "raw_completion": "生の補完(入力テキストの続きを生成。チャットやツールは使用しません)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "アシスタントを切り替え({{shortcut}})",
   "workProfileLabels": {

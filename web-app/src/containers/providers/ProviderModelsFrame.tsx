@@ -15,6 +15,7 @@ import { DialogEditModel } from '@/containers/dialogs/EditModel'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { ImportMlxModelDialog } from '@/containers/dialogs/ImportMlxModelDialog'
 import { TBox } from '@/containers/engine/EngineKit'
+import { isDecisionOnlyModel } from '@/lib/decisionModel'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import { isLocalProvider } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
@@ -88,6 +89,12 @@ export function ProviderModelsFrame({
   importingModel,
 }: ProviderModelsFrameProps) {
   const { t } = useTranslation()
+  // Models that answer typed questions rather than chat (Requesty's decision
+  // list) sit in their own section, so they are not mistaken for chat models.
+  const decisionModels = isLlamacpp ? [] : filteredModels.filter(isDecisionOnlyModel)
+  const chatEntries = decisionModels.length
+    ? modelEntries.filter((e) => e.kind !== 'model' || !isDecisionOnlyModel(e.model))
+    : modelEntries
   return (
     <Frame className="motion-safe:animate-rise-in [animation-delay:160ms]">
       <FrameHeader
@@ -188,12 +195,11 @@ export function ProviderModelsFrame({
             className="@container"
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
           >
-            {isLlamacpp &&
-              embeddingModels.length > 0 &&
-              chatModels.length > 0 &&
+            {((isLlamacpp && embeddingModels.length > 0 && chatModels.length > 0) ||
+              (decisionModels.length > 0 && chatEntries.length > 0)) &&
               sectionDivider(t('providers:chatModels'), 'mt-1 mb-1')}
             <ul className="flex flex-col">
-              {modelEntries.map((entry, modelIndex) => {
+              {chatEntries.map((entry, modelIndex) => {
                 if (entry.kind === 'group') {
                   return (
                     <li key={`group-${entry.family}`}>
@@ -286,6 +292,26 @@ export function ProviderModelsFrame({
                 })
               })}
             </ul>
+            {provider && decisionModels.length > 0 && (
+              <>
+                {sectionDivider(
+                  t('providers:decisionModels'),
+                  chatEntries.length > 0 ? 'mt-4 mb-1' : 'mt-1 mb-1'
+                )}
+                <ul className="flex flex-col">
+                  {decisionModels.map((model, modelIndex) =>
+                    renderModelRow(model, `decision-${modelIndex}`, {
+                      actions: (
+                        <>
+                          <DialogEditModel provider={provider} modelId={model.id} />
+                          <DialogDeleteModel provider={provider} modelId={model.id} />
+                        </>
+                      ),
+                    })
+                  )}
+                </ul>
+              </>
+            )}
             {isLlamacpp && provider && embeddingModels.length > 0 && (
               <>
                 {sectionDivider(t('providers:embeddingModels'), 'mt-4 mb-1')}

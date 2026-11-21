@@ -2483,6 +2483,7 @@
     "backendModelPlaceholder": "Elegir un modelo",
     "backendModelSearch": "Buscar modelos",
     "backendModelEmpty": "No hay modelos disponibles. Añada primero un proveedor o cargue un modelo local.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Ningún modelo coincide con \"{{query}}\"",
     "backendNoModel": "No se eligió ningún modelo: se usa Jev hasta que elija uno.",
     "backendLocal": "Se ejecuta en este equipo o en su red local: el texto de la decisión no se envía a TypeSafe ni a ningún servicio en la nube.",
@@ -3394,7 +3395,8 @@
   "capabilityTips": {
     "web_search": "Búsqueda web",
     "embeddings": "Modelo de embeddings (para RAG/vectores, no para chat)",
-    "raw_completion": "Completado sin formato (continúa su texto, sin chat ni herramientas)"
+    "raw_completion": "Completado sin formato (continúa su texto, sin chat ni herramientas)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Cambiar de asistente ({{shortcut}})",
   "workProfileLabels": {

@@ -2484,6 +2484,7 @@
     "backendModelPlaceholder": "Tria un model",
     "backendModelSearch": "Cerca models",
     "backendModelEmpty": "No hi ha cap model disponible. Primer afegeix un proveïdor o carrega un model local.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Cap model coincideix amb \"{{query}}\"",
     "backendNoModel": "Cap model triat: s'utilitza Jev fins que en triïs un.",
     "backendLocal": "S'executa en aquest ordinador o a la teva xarxa local: el text de la decisió no va a TypeSafe ni a cap servei al núvol.",
@@ -3393,7 +3394,8 @@
   "capabilityTips": {
     "web_search": "Cerca al web",
     "embeddings": "Model d'embedding (per a RAG/vectors, no per al xat)",
-    "raw_completion": "Completació en brut (continua el teu text, sense xat ni eines)"
+    "raw_completion": "Completació en brut (continua el teu text, sense xat ni eines)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Canvia d'assistent ({{shortcut}})",
   "workProfileLabels": {

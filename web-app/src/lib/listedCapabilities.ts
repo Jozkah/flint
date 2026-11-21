@@ -99,6 +99,44 @@ export function recordListedImageModels(
   return [...new Set(ids)]
 }
 
+/** The capabilities of a model a gateway lists only as a decision model. */
+export const DECISION_ONLY_CAPABILITIES: readonly string[] = ['decision']
+
+/**
+ * Remember the models a gateway's decision list named (Requesty's
+ * `/models/decision`, already limited to what the key may use). They answer
+ * typed questions and do not chat.
+ */
+export function recordListedDecisionModels(
+  baseUrl: string | null | undefined,
+  payload: unknown
+): string[] {
+  if (!baseUrl || !payload || typeof payload !== 'object') return []
+  const record = payload as Record<string, unknown>
+  const list = Array.isArray(payload) ? payload : record.data
+  if (!Array.isArray(list)) return []
+  const ids: string[] = []
+  for (const entry of list) {
+    const id =
+      typeof entry === 'string'
+        ? entry
+        : entry && typeof entry === 'object'
+          ? ((entry as Record<string, unknown>).id as unknown)
+          : undefined
+    if (typeof id !== 'string' || !id.trim()) continue
+    ids.push(id.trim())
+    // The same id in the chat list chats too; it only gains the decision tag.
+    const known = table.get(keyOf(baseUrl, id.trim()))
+    table.set(
+      keyOf(baseUrl, id.trim()),
+      known?.includes('completion')
+        ? [...known, ...DECISION_ONLY_CAPABILITIES]
+        : [...DECISION_ONLY_CAPABILITIES]
+    )
+  }
+  return [...new Set(ids)]
+}
+
 /** Remember the capabilities a `/models` payload named. */
 export function recordListedCapabilities(
   baseUrl: string | null | undefined,

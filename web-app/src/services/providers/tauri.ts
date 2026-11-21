@@ -32,9 +32,10 @@ import { buildProviderListRequest } from '@/lib/providerListRequest'
 import { recordListedWindows } from '@/lib/listedWindows'
 import {
   recordListedCapabilities,
+  recordListedDecisionModels,
   recordListedImageModels,
 } from '@/lib/listedCapabilities'
-import { imageModelsUrl, isRequestyProvider } from '@/lib/requesty'
+import { decisionModelsUrl, imageModelsUrl, isRequestyProvider } from '@/lib/requesty'
 import { findModelEntry } from '@/lib/detectContextWindow'
 
 type ToolSupportEngine = {
@@ -320,6 +321,24 @@ export class TauriProvidersService extends DefaultProvidersService {
               for (const id of recordListedImageModels(
                 provider.base_url,
                 await imageResponse.json()
+              )) {
+                if (!ids.includes(id)) ids.push(id)
+              }
+            }
+          } catch {
+            // Keep the chat models.
+          }
+          // Decision models approved for this key (typed questions, answered
+          // at /systemone). Same rule: extra, never fails the list.
+          const decisionUrl = decisionModelsUrl(provider.base_url)
+          try {
+            const decisionResponse = decisionUrl
+              ? await fetchTauri(decisionUrl, { method: 'GET', headers })
+              : null
+            if (decisionResponse?.ok) {
+              for (const id of recordListedDecisionModels(
+                provider.base_url,
+                await decisionResponse.json()
               )) {
                 if (!ids.includes(id)) ids.push(id)
               }

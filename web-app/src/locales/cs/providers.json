@@ -28,6 +28,7 @@
   "backendHistoryFailed": "Selhalo",
   "chatModels": "Chatové modely",
   "embeddingModels": "Embedding modely",
+  "decisionModels": "Decision Models",
   "embeddingModelsDesc": "Používají se pro RAG a vektorové vyhledávání. Vybraný model se stane výchozím při generování embeddingů.",
   "embeddingModelDefault": "Výchozí",
   "embeddingModelSetDefault": "Nastavit jako výchozí embedding model",

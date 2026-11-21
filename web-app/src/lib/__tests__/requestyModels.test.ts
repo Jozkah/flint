@@ -3,10 +3,13 @@ import {
   listedCapabilities,
   listedEntryCapabilities,
   recordListedCapabilities,
+  recordListedDecisionModels,
   recordListedImageModels,
   resetListedCapabilities,
 } from '../listedCapabilities'
-import { imageModelsUrl, isRequestyProvider } from '../requesty'
+import { decisionModelsUrl, imageModelsUrl, isRequestyProvider } from '../requesty'
+import { isDecisionOnlyModel } from '../decisionModel'
+import { isListedDecisionModel, normalizeBackend } from '../decisionBackends'
 import { initialModelCapabilities } from '../models'
 import { isImageOnlyModel } from '../imageOnlyModel'
 import { isChatCapable } from '../providerReadiness'
@@ -92,6 +95,63 @@ describe('picture models listed apart from chat ones', () => {
 
   it('leaves a model with no listing exactly as before', () => {
     expect(initialModelCapabilities('requesty', 'openai/gpt-4o', null)).toContain('completion')
+  })
+})
+
+describe('decision models listed apart from chat ones', () => {
+  beforeEach(() => resetListedCapabilities())
+
+  it('tags them decision-only and returns their ids', () => {
+    const ids = recordListedDecisionModels(BASE, {
+      object: 'list',
+      data: [{ id: 'typesafe/jev-1.14.0', api: 'decision' }, { id: ' cloudflare/clef ' }, {}],
+    })
+    expect(ids).toEqual(['typesafe/jev-1.14.0', 'cloudflare/clef'])
+    expect(listedCapabilities(BASE, 'typesafe/jev-1.14.0')).toEqual(['decision'])
+  })
+
+  it('keeps chat on a model that is also a chat model', () => {
+    recordListedCapabilities(BASE, { data: [{ id: 'openai/gpt-6-luna', supports_image_generation: true }] })
+    recordListedDecisionModels(BASE, { data: [{ id: 'openai/gpt-6-luna' }] })
+    expect(listedCapabilities(BASE, 'openai/gpt-6-luna')).toEqual(expect.arrayContaining(['completion', 'decision']))
+  })
+
+  it('handles a missing or malformed payload', () => {
+    expect(recordListedDecisionModels(BASE, null)).toEqual([])
+    expect(recordListedDecisionModels(BASE, { data: 'nope' })).toEqual([])
+    expect(recordListedDecisionModels(undefined, { data: [{ id: 'x' }] })).toEqual([])
+  })
+
+  it('starts a decision-only model without Completion and out of chat pickers', () => {
+    const caps = initialModelCapabilities('requesty', 'typesafe/jev-1.14.0', ['decision'])
+    expect(caps).not.toContain('completion')
+    expect(isDecisionOnlyModel({ capabilities: caps })).toBe(true)
+    expect(isChatCapable({ id: 'typesafe/jev-1.14.0', capabilities: caps })).toBe(false)
+  })
+
+  it('builds the decision list URL from the base', () => {
+    expect(decisionModelsUrl('https://router.requesty.ai/v1/')).toBe('https://router.requesty.ai/v1/models/decision')
+    expect(decisionModelsUrl('')).toBeNull()
+  })
+
+  it('offers them in the decision picker only, past the chat-name heuristic', () => {
+    const provider = { provider: 'requesty', api_key: 'rq-key' } as ModelProvider
+    const jev = { id: 'typesafe/jev-1.14.0', capabilities: ['decision'] } as Model
+    expect(isRouterModelSelectable(provider, jev)).toBe(false)
+    expect(isRouterModelSelectable(provider, jev, { decision: true })).toBe(true)
+    expect(isRouterModelSelectable({ provider: 'requesty' } as ModelProvider, jev, { decision: true })).toBe(false)
+  })
+
+  it('remembers a picked decision model in the backend', () => {
+    const providers = [{ provider: 'requesty', models: [{ id: 'typesafe/jev-1.14.0', capabilities: ['decision'] }, { id: 'openai/gpt-4o-mini' }] }]
+    expect(isListedDecisionModel(providers, 'requesty', 'typesafe/jev-1.14.0')).toBe(true)
+    expect(isListedDecisionModel(providers, 'requesty', 'openai/gpt-4o-mini')).toBe(false)
+    expect(
+      normalizeBackend({ kind: 'open_model', provider: 'requesty', model: 'typesafe/jev-1.14.0', decision: true })
+    ).toEqual({ kind: 'open_model', provider: 'requesty', model: 'typesafe/jev-1.14.0', decision: true })
+    expect(normalizeBackend({ kind: 'open_model', provider: 'p', model: 'm', decision: 'yes' })).toEqual({
+      kind: 'open_model', provider: 'p', model: 'm',
+    })
   })
 })
 

@@ -1,5 +1,6 @@
 import { isLocalProvider } from '@/lib/utils'
 import { isImageOnlyModel } from '@/lib/imageOnlyModel'
+import { isDecisionModel } from '@/lib/decisionModel'
 
 /**
  * Models that are a poor fit for cheap structured routing (short generateObject calls).
@@ -60,9 +61,17 @@ export function isLikelyLightweightRouterModel(model: Model): boolean {
 /** Shown in the router picker: lightweight heuristic + local or API-keyed remote. */
 export function isRouterModelSelectable(
   provider: ModelProvider,
-  model: Model
+  model: Model,
+  opts: { decision?: boolean } = {}
 ): boolean {
   if (isImageOnlyModel(model)) return false
+  // A decision model the provider approved answers typed questions: the name
+  // heuristic below is for chat models and would hide it ("jev-1.14.0" matches
+  // nothing). It is offered only where decisions are asked for.
+  if (isDecisionModel(model) && !model.capabilities?.includes('completion')) {
+    if (!opts.decision) return false
+    return !!isLocalProvider(provider.provider) || !!provider.api_key?.length
+  }
   if (!isLikelyLightweightRouterModel(model)) return false
   if (isLocalProvider(provider.provider)) return true
   return !!provider.api_key?.length

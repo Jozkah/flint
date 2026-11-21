@@ -605,7 +605,8 @@
   "capabilityTips": {
     "web_search": "Web Search",
     "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "raw_completion": "Raw completion (continues your text, no chat or tools)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Switch assistant ({{shortcut}})",
   "workProfileLabels": {
@@ -2580,6 +2581,7 @@
     "backendModelPlaceholder": "Choose a model",
     "backendModelSearch": "Search models",
     "backendModelEmpty": "No models available. Add a provider or load a local model first.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "No models match \"{{query}}\"",
     "backendNoModel": "No model chosen: Jev is used until you pick one.",
     "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",

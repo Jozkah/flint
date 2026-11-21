@@ -2395,6 +2395,7 @@
     "backendModelPlaceholder": "Pilih model",
     "backendModelSearch": "Cari model",
     "backendModelEmpty": "Tidak ada model tersedia. Tambahkan penyedia atau muat model lokal terlebih dahulu.",
+    "backendDecisionBadge": "Decision",
     "backendModelEmptySearch": "Tidak ada model yang cocok dengan \"{{query}}\"",
     "backendNoModel": "Belum ada model dipilih: Jev digunakan sampai Anda memilih satu.",
     "backendLocal": "Berjalan di komputer ini atau jaringan lokal Anda: teks keputusan tidak dikirim ke TypeSafe atau layanan cloud mana pun.",
@@ -3260,7 +3261,8 @@
   "capabilityTips": {
     "web_search": "Pencarian Web",
     "embeddings": "Model Embedding (untuk RAG/vektor, bukan obrolan)",
-    "raw_completion": "Penyelesaian mentah (melanjutkan teks Anda, tanpa obrolan atau alat)"
+    "raw_completion": "Penyelesaian mentah (melanjutkan teks Anda, tanpa obrolan atau alat)",
+    "decision": "Decision model (answers typed questions, not chat)"
   },
   "switchAssistant": "Ganti asisten ({{shortcut}})",
   "workProfileLabels": {

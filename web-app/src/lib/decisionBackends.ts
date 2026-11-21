@@ -7,7 +7,14 @@
 
 export type DecisionBackend =
   | { kind: 'jev' }
-  | { kind: 'open_model'; provider: string; model: string; preset?: string }
+  | {
+      kind: 'open_model'
+      provider: string
+      model: string
+      preset?: string
+      /** The model is a provider-approved decision model: asked at `/systemone`, not chat. */
+      decision?: boolean
+    }
 
 export const JEV_BACKEND: DecisionBackend = { kind: 'jev' }
 
@@ -50,16 +57,29 @@ export function findPresetModel(
   return undefined
 }
 
+/** Whether `model` under `provider` is a decision model the provider listed. */
+export function isListedDecisionModel(
+  providers: { provider: string; models: { id: string; capabilities?: string[] }[] }[],
+  provider: string,
+  model: string
+): boolean {
+  return !!providers
+    .find((p) => p.provider === provider)
+    ?.models.find((m) => m.id === model)
+    ?.capabilities?.includes('decision')
+}
+
 /** A persisted value back to a usable backend; anything incomplete is Jev. */
 export function normalizeBackend(v: unknown): DecisionBackend {
   if (v && typeof v === 'object' && (v as { kind?: unknown }).kind === 'open_model') {
-    const o = v as { provider?: unknown; model?: unknown; preset?: unknown }
+    const o = v as { provider?: unknown; model?: unknown; preset?: unknown; decision?: unknown }
     if (typeof o.provider === 'string' && typeof o.model === 'string') {
       return {
         kind: 'open_model',
         provider: o.provider,
         model: o.model,
         ...(typeof o.preset === 'string' ? { preset: o.preset } : {}),
+        ...(o.decision === true ? { decision: true } : {}),
       }
     }
   }
