@@ -21,7 +21,7 @@
  */
 export const TRANSCRIPT_VIEWS = ['zen', 'quiet', 'normal', 'thinking', 'verbose'] as const
 export type TranscriptView = (typeof TRANSCRIPT_VIEWS)[number]
-export const DEFAULT_TRANSCRIPT_VIEW: TranscriptView = 'normal'
+export const DEFAULT_TRANSCRIPT_VIEW: TranscriptView = 'thinking'
 
 export const isTranscriptView = (value: unknown): value is TranscriptView =>
   typeof value === 'string' &&
