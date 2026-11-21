@@ -658,7 +658,7 @@ export const ImportLlamacppModelDialog = ({
               )}
 
               {!modelFile && (
-                <div className="space-y-2">
+                <div className="space-y-2" aria-live="polite">
                   <Button
                     type="button"
                     variant="outline"
@@ -787,6 +787,7 @@ export const ImportLlamacppModelDialog = ({
                                   {addingToStudio === found.path && (
                                     <LoaderCircle
                                       size={12}
+                                      aria-hidden
                                       className="motion-safe:animate-spin"
                                     />
                                   )}

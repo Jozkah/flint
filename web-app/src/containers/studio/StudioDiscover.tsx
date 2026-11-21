@@ -317,6 +317,7 @@ export function StudioDiscover({
         <div
           className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground"
           data-testid="studio-scan-folders"
+          aria-live="polite"
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-auto text-secondary-foreground">{t('studio:discover.scanIntro')}</span>
@@ -330,7 +331,7 @@ export function StudioDiscover({
               onClick={() => void runScan()}
             >
               {scanState.status === 'scanning' && (
-                <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
+                <LoaderCircle aria-hidden className="size-3.5 motion-safe:animate-spin" />
               )}
               {t('studio:discover.scanFind')}
             </Button>
