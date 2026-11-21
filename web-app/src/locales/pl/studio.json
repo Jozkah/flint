@@ -265,6 +265,7 @@
     "programPlaceholder": "Pełna ścieżka do pliku programu aplikacji",
     "browse": "Przeglądaj…",
     "args": "Argumenty",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Wpisz {file} tam, gdzie ma być ścieżka obrazu. Jeśli go pominiesz, ścieżka zostanie dodana na końcu.",
     "save": "Zapisz i otwórz",
     "setup": "Edytuj aplikację",

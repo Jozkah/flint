@@ -262,6 +262,7 @@
     "programPlaceholder": "Ruta completa del fitxer del programa de l'aplicació",
     "browse": "Explora…",
     "args": "Arguments",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Usa {file} on va la ruta de la imatge. Si l'ometes, la ruta s'afegeix al final.",
     "save": "Desa i obre",
     "setup": "Edita l'aplicació",

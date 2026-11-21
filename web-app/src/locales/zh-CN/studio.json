@@ -256,6 +256,7 @@
     "programPlaceholder": "应用程序文件的完整路径",
     "browse": "浏览…",
     "args": "参数",
+    "argsPlaceholder": "{file}",
     "argsHelp": "在图片路径的位置使用 {file}。省略时,路径会添加到末尾。",
     "save": "保存并打开",
     "setup": "编辑应用",

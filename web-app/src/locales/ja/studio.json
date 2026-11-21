@@ -256,6 +256,7 @@
     "programPlaceholder": "アプリのプログラムファイルのフルパス",
     "browse": "参照…",
     "args": "引数",
+    "argsPlaceholder": "{file}",
     "argsHelp": "画像のパスを入れる位置に {file} を指定します。省略するとパスは末尾に追加されます。",
     "save": "保存して開く",
     "setup": "アプリを編集",

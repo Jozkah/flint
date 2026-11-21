@@ -190,7 +190,7 @@ function EditorForm({
             spellCheck={false}
             value={draft.args}
             onChange={(e) => setDraft({ ...draft, args: e.target.value })}
-            placeholder="{file}"
+            placeholder={t('studio:editor.argsPlaceholder')}
           />
           <p className="text-xs text-muted-foreground">{t('studio:editor.argsHelp')}</p>
         </div>

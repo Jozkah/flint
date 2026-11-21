@@ -256,6 +256,7 @@
     "programPlaceholder": "앱 실행 파일의 전체 경로",
     "browse": "찾아보기…",
     "args": "인수",
+    "argsPlaceholder": "{file}",
     "argsHelp": "이미지 경로가 들어갈 자리에 {file}을 쓰세요. 생략하면 경로가 끝에 추가됩니다.",
     "save": "저장 후 열기",
     "setup": "앱 편집",

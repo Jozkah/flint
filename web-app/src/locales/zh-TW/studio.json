@@ -256,6 +256,7 @@
     "programPlaceholder": "應用程式檔案的完整路徑",
     "browse": "瀏覽…",
     "args": "引數",
+    "argsPlaceholder": "{file}",
     "argsHelp": "在圖片路徑的位置使用 {file}。省略時,路徑會加到結尾。",
     "save": "儲存並開啟",
     "setup": "編輯應用程式",

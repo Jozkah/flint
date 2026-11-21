@@ -259,6 +259,7 @@
     "programPlaceholder": "Vollständiger Pfad zur Programmdatei der App",
     "browse": "Durchsuchen…",
     "args": "Argumente",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Verwende {file} an der Stelle, wo der Bildpfad stehen soll. Lässt du es weg, wird der Pfad am Ende angehängt.",
     "save": "Speichern und öffnen",
     "setup": "App bearbeiten",

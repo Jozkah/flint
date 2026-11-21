@@ -259,6 +259,7 @@
     "programPlaceholder": "Uygulamanın program dosyasının tam yolu",
     "browse": "Gözat…",
     "args": "Bağımsız değişkenler",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Resmin yolunun geleceği yere {file} yazın. Yazmazsanız yol sona eklenir.",
     "save": "Kaydet ve aç",
     "setup": "Uygulamayı düzenle",

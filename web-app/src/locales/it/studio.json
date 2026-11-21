@@ -262,6 +262,7 @@
     "programPlaceholder": "Percorso completo del file programma dell'app",
     "browse": "Sfoglia…",
     "args": "Argomenti",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Usa {file} dove va il percorso dell'immagine. Se lo ometti, il percorso viene aggiunto alla fine.",
     "save": "Salva e apri",
     "setup": "Modifica app",

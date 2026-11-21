@@ -259,6 +259,7 @@
     "programPlaceholder": "Full path to the app's program file",
     "browse": "Browse…",
     "args": "Arguments",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Use {file} where the picture's path goes. Leave it out and the path is added at the end.",
     "save": "Save and open",
     "setup": "Edit app",

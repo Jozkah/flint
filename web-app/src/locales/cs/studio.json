@@ -265,6 +265,7 @@
     "programPlaceholder": "Úplná cesta k programovému souboru aplikace",
     "browse": "Procházet…",
     "args": "Argumenty",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Na místo cesty k obrázku napište {file}. Pokud ho vynecháte, cesta se přidá na konec.",
     "save": "Uložit a otevřít",
     "setup": "Upravit aplikaci",

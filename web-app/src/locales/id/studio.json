@@ -256,6 +256,7 @@
     "programPlaceholder": "Path lengkap ke berkas program aplikasi",
     "browse": "Telusuri…",
     "args": "Argumen",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Gunakan {file} di tempat path gambar berada. Jika dihilangkan, path ditambahkan di akhir.",
     "save": "Simpan dan buka",
     "setup": "Edit aplikasi",

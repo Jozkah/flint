@@ -262,6 +262,7 @@
     "programPlaceholder": "Caminho completo do arquivo de programa do app",
     "browse": "Procurar…",
     "args": "Argumentos",
+    "argsPlaceholder": "{file}",
     "argsHelp": "Use {file} onde vai o caminho da imagem. Se omitir, o caminho é adicionado no final.",
     "save": "Salvar e abrir",
     "setup": "Editar app",
