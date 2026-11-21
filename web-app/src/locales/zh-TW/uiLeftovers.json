@@ -18,7 +18,7 @@
   "configuration": "設定",
   "modelCombobox": {
     "refresh": "重新整理模型",
-    "placeholder": "輸入或選擇模型..."
+    "placeholder": "輸入或選擇模型…"
   },
   "hubTasks": {
     "moreAria": "更多瀏覽方式",
@@ -67,7 +67,7 @@
   },
   "scope": "範圍",
   "localApi": {
-    "starting": "正在啟動伺服器...",
+    "starting": "正在啟動伺服器…",
     "startingDesc": "正在嘗試在連接埠 {{port}} 上啟動伺服器",
     "status": "伺服器狀態",
     "runningDesc": "伺服器正在執行。",

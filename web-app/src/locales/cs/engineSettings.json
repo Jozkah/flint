@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Automatické přizpůsobení: volná paměť",
     "description": "Kolik paměti (v MiB) ponechá automatické přizpůsobení na každé GPU volné pro ostatní aplikace a displej. Zvyšte, pokud systém při načteném modelu zpomaluje. Pouze lokální modely.",
-    "placeholder": "1024 nebo MiB0,MiB1,..."
+    "placeholder": "1024 nebo MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Automatické přizpůsobení: nejmenší kontext",

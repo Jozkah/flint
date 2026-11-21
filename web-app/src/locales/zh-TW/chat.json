@@ -59,9 +59,9 @@
   "webSourcesRead": "已讀取 {{count}} 個",
   "webSourcesReadFound": "已讀取 {{read}} 個 · 找到 {{found}} 個",
   "reasoning": {
-    "label": "正在推理...",
+    "label": "正在推理…",
     "thinking": "正在思考",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "顯示完整時間軸",
     "showCurrentStep": "僅顯示目前步驟",
     "thoughtForAWhile": "思考了幾秒鐘",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "重新生成標題",
-    "working": "正在為聊天命名...",
+    "working": "正在為聊天命名…",
     "done": "聊天已重新命名。",
     "empty": "目前還沒有內容可用來為此聊天命名。",
     "busy": "重新命名之前請先暫停或停止房間。",
@@ -305,7 +305,7 @@
     "noCanvas": "沒有可用於繪製圖片的畫布",
     "imageNotEncoded": "無法對圖片進行編碼"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

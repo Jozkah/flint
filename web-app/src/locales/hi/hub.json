@@ -3,7 +3,7 @@
   "newChat": "नई चैट",
   "download": "डाउनलोड",
   "downloaded": "डाउनलोड किया गया",
-  "loadingModels": "मॉडल लोड हो रहे हैं...",
+  "loadingModels": "मॉडल लोड हो रहे हैं…",
   "noModels": "कोई मॉडल नहीं मिला",
   "by": "द्वारा",
   "downloads": "डाउनलोड",
@@ -11,7 +11,7 @@
   "showVariants": "विकल्प दिखाएं",
   "useModel": "इस मॉडल का उपयोग करें",
   "tools": "उपकरण",
-  "searchPlaceholder": "Hugging Face पर मॉडल खोजें...",
+  "searchPlaceholder": "Hugging Face पर मॉडल खोजें…",
   "detail": {
     "loading": "मॉडल लोड हो रहा है…",
     "discover": "खोजें",

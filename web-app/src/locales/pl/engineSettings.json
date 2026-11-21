@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Automatyczne dopasowanie: wolna pamięć",
     "description": "Ile pamięci (w MiB) automatyczne dopasowanie pozostawia wolnej na każdym GPU dla innych aplikacji i ekranu. Zwiększ, jeśli system zwalnia, gdy model jest załadowany. Tylko modele lokalne.",
-    "placeholder": "1024 lub MiB0,MiB1,..."
+    "placeholder": "1024 lub MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Automatyczne dopasowanie: minimalny kontekst",

@@ -55,7 +55,7 @@
   },
   "picker": {
     "engine": "Motor",
-    "searchPlaceholder": "Model ara...",
+    "searchPlaceholder": "Model ara…",
     "searchAria": "Model ara",
     "clear": "Temizle",
     "noMatch": "Eşleşen model yok.",

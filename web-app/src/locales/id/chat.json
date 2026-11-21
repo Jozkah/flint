@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} dibaca",
   "webSourcesReadFound": "{{read}} dibaca · {{found}} ditemukan",
   "reasoning": {
-    "label": "Bernalar...",
+    "label": "Bernalar…",
     "thinking": "Berpikir",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Tampilkan linimasa lengkap",
     "showCurrentStep": "Tampilkan langkah saat ini saja",
     "thoughtForAWhile": "Berpikir selama beberapa detik",
@@ -161,7 +161,7 @@
   },
   "regenerateTitle": {
     "menu": "Buat ulang judul",
-    "working": "Menamai obrolan...",
+    "working": "Menamai obrolan…",
     "done": "Nama obrolan diubah.",
     "empty": "Belum ada bahan untuk menamai obrolan ini.",
     "busy": "Jeda atau hentikan ruang sebelum mengganti namanya.",
@@ -207,7 +207,7 @@
   },
   "continueSummary": {
     "menu": "Lanjutkan di obrolan baru dari ringkasan",
-    "working": "Meringkas obrolan...",
+    "working": "Meringkas obrolan…",
     "done": "Dilanjutkan di obrolan baru.",
     "cancel": "Batal",
     "errors": {
@@ -296,7 +296,7 @@
     "noCanvas": "tidak ada kanvas yang tersedia untuk menggambar gambar",
     "imageNotEncoded": "gambar tidak dapat dienkode"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

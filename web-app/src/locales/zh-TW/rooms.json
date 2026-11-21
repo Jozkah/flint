@@ -104,9 +104,9 @@
     "participantAssistant": "助理",
     "participantAssistantNone": "無（原樣使用模型）",
     "participantRoleNone": "無",
-    "participantRoleOther": "其他...",
+    "participantRoleOther": "其他…",
     "participantRoleOtherLabel": "角色，用你自己的話描述",
-    "participantAssistantNew": "新增助理...",
+    "participantAssistantNew": "新增助理…",
     "addFolder": "新增另一個資料夾",
     "participantModel": "模型",
     "toolAccess": "工具存取",
@@ -217,7 +217,7 @@
   },
   "model": {
     "placeholder": "選擇模型",
-    "search": "搜尋模型...",
+    "search": "搜尋模型…",
     "notConfigured": "{{provider}}（未設定）",
     "missing": "{{model}}（遺失）",
     "noProviders": "沒有可用的模型。請在「設定」中新增供應商。"

@@ -3,7 +3,7 @@
   "addServer": "MCP 서버 추가",
   "browserExtension": {
     "connecting": {
-      "checking": "확장 프로그램 상태 확인 중..."
+      "checking": "확장 프로그램 상태 확인 중…"
     },
     "notInstalled": {
       "title": "Flint이 브라우저에서 작업을 수행합니다",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "사용 가능한 도구 {{count}}개: {{names}}",
     "toolsAvailable_other": "사용 가능한 도구 {{count}}개: {{names}}",
     "toolsNone": "연결되었지만 이 서버는 도구를 제공하지 않습니다.",
-    "toolsLoading": "도구 목록을 불러오는 중...",
+    "toolsLoading": "도구 목록을 불러오는 중…",
     "toolsWhenConnected": "연결되면 도구를 사용할 수 있습니다.",
     "appliesToChats": "도구는 채팅에서 선택한 모델이 도구를 지원할 때만 채팅에 제공됩니다. 개별 도구는 채팅 입력의 도구 메뉴에서 끌 수 있으며, 이 설정은 모든 채팅에 적용됩니다."
   },
@@ -153,7 +153,7 @@
     "spent": "세션 예산: {{spent}} / {{limit}}자"
   },
   "noServers": "검색된 MCP 서버가 없습니다",
-  "searchPlaceholder": "MCP 서버 검색...",
+  "searchPlaceholder": "MCP 서버 검색…",
   "noSearchResults": "\"{{query}}\"와(과) 일치하는 MCP 서버가 없습니다",
   "expandServer": "서버 세부 정보 펼치기",
   "collapseServer": "서버 세부 정보 접기",
@@ -197,7 +197,7 @@
     "authenticate": "로그인",
     "reauthenticate": "다시 인증",
     "clear": "인증 해제",
-    "waiting": "브라우저 대기 중...",
+    "waiting": "브라우저 대기 중…",
     "openSignInPage": "로그인 페이지 열기",
     "needsAuth": "{{serverName}}에 인증이 필요합니다",
     "needsAuthHint": "연결하려면 이 서버에 로그인하세요.",
@@ -223,7 +223,7 @@
     "titleOne": "AI로 {{serverName}} 설명",
     "settingTitle": "AI로 설명 생성",
     "settingDesc": "각 서버의 도구 목록을 바탕으로 \"이 서버 정보\" 텍스트를 모델에게 작성하도록 요청합니다. 저장하기 전에 모든 텍스트를 직접 검토합니다.",
-    "open": "생성...",
+    "open": "생성…",
     "intro": "선택한 모델이 각 서버의 이름과 도구 목록(이름, 설명, 인수)을 받습니다. 수락하기 전에는 아무것도 저장되지 않습니다.",
     "model": "모델",
     "scope": "서버",
@@ -247,7 +247,7 @@
     "skippedNoTools": "도구를 알 수 없음. Flint가 읽을 수 있도록 서버를 한 번 켜세요",
     "status": {
       "queued": "대기 중",
-      "running": "생성하는 중...",
+      "running": "생성하는 중…",
       "done": "검토 준비됨",
       "skipped": "건너뜀: {{reason}}",
       "failed": "실패: {{reason}}"

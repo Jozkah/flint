@@ -57,7 +57,7 @@
   "previewSize": "आकार",
   "previewOrigin": "पहले यहाँ था",
   "previewClose": "बंद करें",
-  "previewLoading": "आइटम पढ़ा जा रहा है...",
+  "previewLoading": "आइटम पढ़ा जा रहा है…",
   "previewUnavailable": "सामग्री पढ़ी नहीं जा सकी। इसे खोलने के लिए आइटम को पुनर्स्थापित करें।",
   "previewCreated": "बनाया गया",
   "previewUpdated": "आखिरी बार बदला गया",
@@ -70,5 +70,5 @@
   "previewShown": "{{total}} में से {{shown}} दिखाए जा रहे हैं",
   "previewNoMessages": "कोई टेक्स्ट संदेश नहीं",
   "previewThumbnail": "पूर्वावलोकन चित्र",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

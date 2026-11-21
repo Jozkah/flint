@@ -57,7 +57,7 @@
   "previewSize": "Boyut",
   "previewOrigin": "Önceki konumu",
   "previewClose": "Kapat",
-  "previewLoading": "Öğe okunuyor...",
+  "previewLoading": "Öğe okunuyor…",
   "previewUnavailable": "İçerik okunamadı. Açmak için öğeyi geri yükleyin.",
   "previewCreated": "Oluşturulma",
   "previewUpdated": "Son değişiklik",
@@ -70,5 +70,5 @@
   "previewShown": "{{total}} içinden {{shown}} gösteriliyor",
   "previewNoMessages": "Metin mesajı yok",
   "previewThumbnail": "Önizleme resmi",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

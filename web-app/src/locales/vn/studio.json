@@ -55,7 +55,7 @@
   },
   "picker": {
     "engine": "Công cụ",
-    "searchPlaceholder": "Tìm mô hình...",
+    "searchPlaceholder": "Tìm mô hình…",
     "searchAria": "Tìm mô hình",
     "clear": "Xóa",
     "noMatch": "Không có mô hình phù hợp.",

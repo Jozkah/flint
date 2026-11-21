@@ -57,7 +57,7 @@
   "previewSize": "サイズ",
   "previewOrigin": "元の場所",
   "previewClose": "閉じる",
-  "previewLoading": "項目を読み込んでいます...",
+  "previewLoading": "項目を読み込んでいます…",
   "previewUnavailable": "内容を読み込めませんでした。項目を復元して開いてください。",
   "previewCreated": "作成日",
   "previewUpdated": "最終更新",
@@ -70,5 +70,5 @@
   "previewShown": "{{total}} 件中 {{shown}} 件を表示",
   "previewNoMessages": "テキストメッセージはありません",
   "previewThumbnail": "プレビュー画像",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

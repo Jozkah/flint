@@ -22,7 +22,7 @@
     "studio": "Studio"
   },
   "empty": "Empty archive",
-  "loading": "Loading the archive...",
+  "loading": "Loading the archive…",
   "none": "Nothing in the archive",
   "noneDesc": "Things you delete show up here.",
   "untitled": "Untitled",
@@ -58,7 +58,7 @@
   "previewSize": "Size",
   "previewOrigin": "Was at",
   "previewClose": "Close",
-  "previewLoading": "Reading the item...",
+  "previewLoading": "Reading the item…",
   "previewUnavailable": "The contents could not be read. Restore the item to open it.",
   "previewCreated": "Created",
   "previewUpdated": "Last changed",

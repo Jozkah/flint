@@ -96,7 +96,7 @@
     "noMessages": "Aún no hay mensajes.",
     "messageActions": "Acciones del mensaje",
     "forkFromHere": "Bifurcar chat desde aquí",
-    "placeholder": "Pregúntame lo que quieras...",
+    "placeholder": "Pregúntame lo que quieras…",
     "auto": "Auto",
     "model": "Modelo"
   },
@@ -831,7 +831,7 @@
     "goodEvening": "Buenas noches",
     "awaitingApproval": "Esperando aprobación: {{name}}",
     "failed": "{{name}} falló",
-    "running": "Ejecutando {{name}}...",
+    "running": "Ejecutando {{name}}…",
     "used": "Usó {{name}}",
     "androidPhone": "Teléfono Android",
     "phone": "Teléfono"
@@ -1018,7 +1018,7 @@
     "availableOnComputer": "Disponible en el ordenador.",
     "actionFailed": "La acción falló",
     "switchedTo": "Cambiado a {{name}}",
-    "searchModels": "Buscar modelos...",
+    "searchModels": "Buscar modelos…",
     "searchModelsLabel": "Buscar modelos",
     "loadingModels": "Cargando modelos…",
     "runsHere": "Se ejecuta en este ordenador",

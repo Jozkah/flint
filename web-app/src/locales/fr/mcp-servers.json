@@ -3,7 +3,7 @@
   "addServer": "Ajouter un serveur MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Vérification du statut de l'extension..."
+      "checking": "Vérification du statut de l'extension…"
     },
     "notInstalled": {
       "title": "Flint accomplit des tâches dans votre navigateur",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} outil disponible : {{names}}",
     "toolsAvailable_other": "{{count}} outils disponibles : {{names}}",
     "toolsNone": "Connecté, mais ce serveur ne propose aucun outil.",
-    "toolsLoading": "Chargement de la liste des outils...",
+    "toolsLoading": "Chargement de la liste des outils…",
     "toolsWhenConnected": "Ses outils deviennent disponibles une fois connecté.",
     "appliesToChats": "Les outils n'atteignent une conversation que si le modèle sélectionné dans cette conversation prend en charge les outils. Chaque outil peut être désactivé depuis le menu des outils de la zone de saisie, et ces interrupteurs s'appliquent à toutes les conversations.",
     "toolsAvailable_many": "{{count}} d'outils disponibles : {{names}}"
@@ -154,7 +154,7 @@
     "spent": "Budget de session : {{spent}} / {{limit}} caractères"
   },
   "noServers": "Aucun serveur MCP trouvé",
-  "searchPlaceholder": "Rechercher des serveurs MCP...",
+  "searchPlaceholder": "Rechercher des serveurs MCP…",
   "noSearchResults": "Aucun serveur MCP ne correspond à « {{query}} »",
   "expandServer": "Développer les détails du serveur",
   "collapseServer": "Réduire les détails du serveur",
@@ -198,7 +198,7 @@
     "authenticate": "Se connecter",
     "reauthenticate": "Se réauthentifier",
     "clear": "Effacer l'authentification",
-    "waiting": "En attente du navigateur...",
+    "waiting": "En attente du navigateur…",
     "openSignInPage": "Ouvrir la page de connexion",
     "needsAuth": "{{serverName}} nécessite une authentification",
     "needsAuthHint": "Connectez-vous à ce serveur pour vous y connecter.",
@@ -224,7 +224,7 @@
     "titleOne": "Décrire {{serverName}} avec l'IA",
     "settingTitle": "Générer des descriptions avec l'IA",
     "settingDesc": "Demander à un modèle de rédiger le texte « À propos de ce serveur » à partir de la liste d'outils de chaque serveur. Vous relisez chaque texte avant son enregistrement.",
-    "open": "Générer...",
+    "open": "Générer…",
     "intro": "Le modèle choisi reçoit le nom et la liste d'outils de chaque serveur (noms, descriptions, arguments). Rien n'est enregistré tant que vous ne l'acceptez pas.",
     "model": "Modèle",
     "scope": "Serveurs",
@@ -248,7 +248,7 @@
     "skippedNoTools": "outils inconnus ; activez le serveur une fois pour que Flint puisse les lire",
     "status": {
       "queued": "En attente",
-      "running": "Génération...",
+      "running": "Génération…",
       "done": "Prêt à relire",
       "skipped": "Ignoré : {{reason}}",
       "failed": "Échec : {{reason}}"

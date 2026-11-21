@@ -162,7 +162,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "मॉडल सत्यापन त्रुटि",
-    "validatingModel": "मॉडल फ़ाइल सत्यापित हो रही है...",
+    "validatingModel": "मॉडल फ़ाइल सत्यापित हो रही है…",
     "embeddingDetected": "एम्बेडिंग मॉडल मिला",
     "embeddingHint": "यह मॉडल केवल एम्बेडिंग के लिए इम्पोर्ट होगा। मल्टीमॉडल विकल्प बंद हैं।",
     "selectGguf": "GGUF फ़ाइल चुनें",
@@ -174,12 +174,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj सत्यापन त्रुटि",
-    "validatingMmproj": "MMProj फ़ाइल सत्यापित हो रही है...",
+    "validatingMmproj": "MMProj फ़ाइल सत्यापित हो रही है…",
     "selectMmproj": "MMPROJ फ़ाइल चुनें",
     "draftFile": "ड्राफ़्ट मॉडल फ़ाइल (GGUF)",
     "requiredDraft": "ड्राफ़्ट मॉडल के लिए आवश्यक",
     "draftValidationError": "ड्राफ़्ट मॉडल सत्यापन त्रुटि",
-    "validatingDraft": "ड्राफ़्ट मॉडल फ़ाइल सत्यापित हो रही है...",
+    "validatingDraft": "ड्राफ़्ट मॉडल फ़ाइल सत्यापित हो रही है…",
     "selectDraftFile": "ड्राफ़्ट GGUF फ़ाइल चुनें"
   },
   "mlxImport": {

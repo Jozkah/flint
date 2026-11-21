@@ -3,7 +3,7 @@
   "addServer": "Tambah Server MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Memeriksa status ekstensi..."
+      "checking": "Memeriksa status ekstensi…"
     },
     "notInstalled": {
       "title": "Flint menyelesaikan tugas di browser Anda",
@@ -89,7 +89,7 @@
     "notListedAfterStart": "Server dimulai tetapi tidak tercantum sebagai terhubung.",
     "toolsAvailable_other": "{{count}} alat tersedia: {{names}}",
     "toolsNone": "Terhubung, tetapi server ini tidak menawarkan alat.",
-    "toolsLoading": "Memuat daftar alat...",
+    "toolsLoading": "Memuat daftar alat…",
     "toolsWhenConnected": "Alatnya tersedia setelah terhubung.",
     "appliesToChats": "Alat hanya sampai ke obrolan jika model yang dipilih obrolan itu mendukung alat. Alat individual dapat dimatikan dari menu alat di input obrolan, dan sakelar itu berlaku untuk semua obrolan."
   },
@@ -152,7 +152,7 @@
     "spent": "Anggaran sesi: {{spent}} / {{limit}} karakter"
   },
   "noServers": "Tidak ada server MCP yang ditemukan",
-  "searchPlaceholder": "Cari server MCP...",
+  "searchPlaceholder": "Cari server MCP…",
   "noSearchResults": "Tidak ada server MCP yang cocok dengan \"{{query}}\"",
   "expandServer": "Buka detail server",
   "collapseServer": "Tutup detail server",
@@ -196,7 +196,7 @@
     "authenticate": "Sign in",
     "reauthenticate": "Autentikasi ulang",
     "clear": "Bersihkan autentikasi",
-    "waiting": "Menunggu browser...",
+    "waiting": "Menunggu browser…",
     "openSignInPage": "Buka halaman sign-in",
     "needsAuth": "{{serverName}} perlu autentikasi",
     "needsAuthHint": "Sign in ke server ini untuk terhubung.",
@@ -222,7 +222,7 @@
     "titleOne": "Deskripsikan {{serverName}} dengan AI",
     "settingTitle": "Buat deskripsi dengan AI",
     "settingDesc": "Minta model menulis teks \"Tentang server ini\" dari daftar alat setiap server. Anda meninjau setiap teks sebelum disimpan.",
-    "open": "Buat...",
+    "open": "Buat…",
     "intro": "Model yang dipilih menerima nama dan daftar alat setiap server (nama, deskripsi, argumen). Tidak ada yang disimpan sampai Anda menerimanya.",
     "model": "Model",
     "scope": "Server",
@@ -244,7 +244,7 @@
     "skippedNoTools": "alat tidak diketahui; aktifkan server sekali agar Flint dapat membacanya",
     "status": {
       "queued": "Menunggu",
-      "running": "Membuat...",
+      "running": "Membuat…",
       "done": "Siap ditinjau",
       "skipped": "Dilewati: {{reason}}",
       "failed": "Gagal: {{reason}}"

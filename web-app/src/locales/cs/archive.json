@@ -57,7 +57,7 @@
   "previewSize": "Velikost",
   "previewOrigin": "Původní umístění",
   "previewClose": "Zavřít",
-  "previewLoading": "Načítání položky...",
+  "previewLoading": "Načítání položky…",
   "previewUnavailable": "Obsah se nepodařilo načíst. Pro otevření položku obnovte.",
   "previewCreated": "Vytvořeno",
   "previewUpdated": "Naposledy změněno",
@@ -70,5 +70,5 @@
   "previewShown": "Zobrazeno {{shown}} z {{total}}",
   "previewNoMessages": "Žádné textové zprávy",
   "previewThumbnail": "Náhledový obrázek",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

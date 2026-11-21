@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Ajuste automático: memória a manter livre",
     "description": "Quanta memória (em MiB) o ajuste automático deixa livre em cada GPU para outros apps e para a tela. Aumente se o sistema ficar lento enquanto um modelo está carregado. Somente modelos locais.",
-    "placeholder": "1024 ou MiB0,MiB1,..."
+    "placeholder": "1024 ou MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Ajuste automático: contexto mínimo",

@@ -3,7 +3,7 @@
   "addServer": "Thêm máy chủ MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Đang kiểm tra trạng thái tiện ích..."
+      "checking": "Đang kiểm tra trạng thái tiện ích…"
     },
     "notInstalled": {
       "title": "Flint hoàn thành các tác vụ trong trình duyệt của bạn",
@@ -91,7 +91,7 @@
     "toolsAvailable_other": "{{count}} công cụ khả dụng: {{names}}",
     "toolsAvailable_many": "{{count}} công cụ khả dụng: {{names}}",
     "toolsNone": "Đã kết nối, nhưng máy chủ này không cung cấp công cụ nào.",
-    "toolsLoading": "Đang tải danh sách công cụ...",
+    "toolsLoading": "Đang tải danh sách công cụ…",
     "toolsWhenConnected": "Các công cụ của nó sẽ khả dụng sau khi kết nối.",
     "appliesToChats": "Công cụ chỉ đến được một cuộc trò chuyện khi mô hình được chọn của cuộc trò chuyện hỗ trợ công cụ. Từng công cụ có thể được tắt từ menu công cụ trong ô nhập chat, và các công tắc đó áp dụng cho mọi cuộc trò chuyện."
   },
@@ -154,7 +154,7 @@
     "spent": "Ngân sách phiên: {{spent}} / {{limit}} ký tự"
   },
   "noServers": "Không tìm thấy máy chủ MCP nào",
-  "searchPlaceholder": "Tìm máy chủ MCP...",
+  "searchPlaceholder": "Tìm máy chủ MCP…",
   "noSearchResults": "Không có máy chủ MCP nào khớp với \"{{query}}\"",
   "expandServer": "Mở rộng chi tiết máy chủ",
   "collapseServer": "Thu gọn chi tiết máy chủ",
@@ -198,7 +198,7 @@
     "authenticate": "Đăng nhập",
     "reauthenticate": "Xác thực lại",
     "clear": "Xóa xác thực",
-    "waiting": "Đang chờ trình duyệt...",
+    "waiting": "Đang chờ trình duyệt…",
     "openSignInPage": "Mở trang đăng nhập",
     "needsAuth": "{{serverName}} cần xác thực",
     "needsAuthHint": "Hãy đăng nhập vào máy chủ này để kết nối.",
@@ -224,7 +224,7 @@
     "titleOne": "Mô tả {{serverName}} bằng AI",
     "settingTitle": "Tạo mô tả bằng AI",
     "settingDesc": "Nhờ một mô hình viết đoạn \"Giới thiệu máy chủ này\" từ danh sách công cụ của từng máy chủ. Bạn xem lại từng đoạn trước khi lưu.",
-    "open": "Tạo...",
+    "open": "Tạo…",
     "intro": "Mô hình được chọn nhận tên và danh sách công cụ của từng máy chủ (tên, mô tả, đối số). Không có gì được lưu cho đến khi bạn chấp nhận.",
     "model": "Mô hình",
     "scope": "Máy chủ",
@@ -250,7 +250,7 @@
     "skippedNoTools": "chưa biết công cụ; hãy bật máy chủ một lần để Flint đọc được chúng",
     "status": {
       "queued": "Đang chờ",
-      "running": "Đang tạo...",
+      "running": "Đang tạo…",
       "done": "Sẵn sàng để xem lại",
       "skipped": "Đã bỏ qua: {{reason}}",
       "failed": "Thất bại: {{reason}}"

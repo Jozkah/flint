@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}}개 읽음",
   "webSourcesReadFound": "{{read}}개 읽음 · {{found}}개 발견",
   "reasoning": {
-    "label": "추론 중...",
+    "label": "추론 중…",
     "thinking": "생각 중",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "전체 타임라인 보기",
     "showCurrentStep": "현재 단계만 보기",
     "thoughtForAWhile": "몇 초 동안 생각함",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "제목 다시 생성",
-    "working": "채팅 이름 짓는 중...",
+    "working": "채팅 이름 짓는 중…",
     "done": "채팅 이름을 변경했습니다.",
     "empty": "아직 이름을 지을 만한 내용이 없습니다.",
     "busy": "이름을 바꾸기 전에 룸을 일시 중지하거나 중지하세요.",
@@ -216,7 +216,7 @@
   },
   "continueSummary": {
     "menu": "요약으로 새 채팅에서 이어가기",
-    "working": "채팅을 요약하는 중...",
+    "working": "채팅을 요약하는 중…",
     "done": "새 채팅에서 이어갔습니다.",
     "cancel": "취소",
     "errors": {
@@ -305,7 +305,7 @@
     "noCanvas": "이미지를 그릴 캔버스를 사용할 수 없습니다",
     "imageNotEncoded": "이미지를 인코딩할 수 없었습니다"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

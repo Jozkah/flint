@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Tự động khớp: bộ nhớ chừa trống",
     "description": "Lượng bộ nhớ (MiB) mà tính năng tự động khớp chừa trống trên mỗi GPU cho ứng dụng khác và màn hình. Tăng lên nếu hệ thống bị ì khi đang tải mô hình. Chỉ áp dụng cho mô hình cục bộ.",
-    "placeholder": "1024 hoặc MiB0,MiB1,..."
+    "placeholder": "1024 hoặc MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Tự động khớp: ngữ cảnh nhỏ nhất",

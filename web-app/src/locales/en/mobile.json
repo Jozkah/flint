@@ -178,7 +178,7 @@
     "noMessages": "No messages yet.",
     "messageActions": "Message actions",
     "forkFromHere": "Fork chat from here",
-    "placeholder": "Ask me anything...",
+    "placeholder": "Ask me anything…",
     "auto": "Auto",
     "model": "Model"
   },
@@ -904,7 +904,7 @@
     "goodEvening": "Good evening",
     "awaitingApproval": "Awaiting approval: {{name}}",
     "failed": "{{name}} failed",
-    "running": "Running {{name}}...",
+    "running": "Running {{name}}…",
     "used": "Used {{name}}",
     "androidPhone": "Android phone",
     "phone": "Phone"
@@ -1088,7 +1088,7 @@
     "availableOnComputer": "Available on the computer.",
     "actionFailed": "The action failed",
     "switchedTo": "Switched to {{name}}",
-    "searchModels": "Search models...",
+    "searchModels": "Search models…",
     "searchModelsLabel": "Search models",
     "loadingModels": "Loading models…",
     "runsHere": "Runs on this computer",

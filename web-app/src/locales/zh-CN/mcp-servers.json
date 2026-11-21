@@ -3,7 +3,7 @@
   "addServer": "添加 MCP 服务器",
   "browserExtension": {
     "connecting": {
-      "checking": "正在检查扩展状态..."
+      "checking": "正在检查扩展状态…"
     },
     "notInstalled": {
       "title": "Flint 在您的浏览器中完成任务",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} 个工具可用：{{names}}",
     "toolsAvailable_other": "{{count}} 个工具可用：{{names}}",
     "toolsNone": "已连接，但此服务器没有提供工具。",
-    "toolsLoading": "正在加载工具列表...",
+    "toolsLoading": "正在加载工具列表…",
     "toolsWhenConnected": "连接后其工具即可使用。",
     "appliesToChats": "仅当聊天所选模型支持工具时，工具才会到达该聊天。单个工具可以从聊天输入框的工具菜单中关闭，这些开关适用于所有聊天。"
   },
@@ -153,7 +153,7 @@
     "spent": "会话预算：{{spent}} / {{limit}} 个字符"
   },
   "noServers": "未找到 MCP 服务器",
-  "searchPlaceholder": "搜索 MCP 服务器...",
+  "searchPlaceholder": "搜索 MCP 服务器…",
   "noSearchResults": "没有与“{{query}}”匹配的 MCP 服务器",
   "expandServer": "展开服务器详情",
   "collapseServer": "收起服务器详情",
@@ -197,7 +197,7 @@
     "authenticate": "登录",
     "reauthenticate": "重新认证",
     "clear": "清除认证",
-    "waiting": "正在等待浏览器...",
+    "waiting": "正在等待浏览器…",
     "openSignInPage": "打开登录页面",
     "needsAuth": "{{serverName}} 需要认证",
     "needsAuthHint": "登录此服务器以进行连接。",
@@ -223,7 +223,7 @@
     "titleOne": "使用 AI 描述 {{serverName}}",
     "settingTitle": "使用 AI 生成描述",
     "settingDesc": "让模型根据每个服务器的工具列表撰写“关于此服务器”文本。保存之前你会审阅每段文本。",
-    "open": "生成...",
+    "open": "生成…",
     "intro": "所选模型会收到每个服务器的名称和工具列表（名称、描述、参数）。在你接受之前不会保存任何内容。",
     "model": "模型",
     "scope": "服务器",
@@ -247,7 +247,7 @@
     "skippedNoTools": "工具未知；请先开启一次服务器，以便 Flint 读取它们",
     "status": {
       "queued": "等待中",
-      "running": "正在生成...",
+      "running": "正在生成…",
       "done": "可供审阅",
       "skipped": "已跳过：{{reason}}",
       "failed": "失败：{{reason}}"

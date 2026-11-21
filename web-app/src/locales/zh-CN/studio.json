@@ -55,7 +55,7 @@
   },
   "picker": {
     "engine": "引擎",
-    "searchPlaceholder": "搜索模型...",
+    "searchPlaceholder": "搜索模型…",
     "searchAria": "搜索模型",
     "clear": "清除",
     "noMatch": "没有匹配的模型。",

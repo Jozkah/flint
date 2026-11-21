@@ -3,7 +3,7 @@
   "newChat": "Xat nou",
   "download": "Descarrega",
   "downloaded": "Descarregat",
-  "loadingModels": "S’estan carregant els models...",
+  "loadingModels": "S’estan carregant els models…",
   "noModels": "No s’han trobat models",
   "by": "Per",
   "downloads": "Descàrregues",
@@ -11,7 +11,7 @@
   "showVariants": "Mostra les variants",
   "useModel": "Utilitza aquest model",
   "tools": "Eines",
-  "searchPlaceholder": "Cerca models a Hugging Face...",
+  "searchPlaceholder": "Cerca models a Hugging Face…",
   "detail": {
     "loading": "S'està carregant el model…",
     "discover": "Descobreix",

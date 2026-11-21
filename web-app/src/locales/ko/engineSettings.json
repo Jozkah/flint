@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "자동 맞춤: 남겨 둘 메모리",
     "description": "자동 맞춤이 다른 앱과 디스플레이를 위해 각 GPU에 남겨 두는 메모리 양(MiB)입니다. 모델이 로드된 동안 시스템이 느려지면 값을 늘리세요. 로컬 모델에만 적용됩니다.",
-    "placeholder": "1024 또는 MiB0,MiB1,..."
+    "placeholder": "1024 또는 MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "자동 맞춤: 최소 컨텍스트",

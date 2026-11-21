@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Otomatik sığdırma: boş bırakılacak bellek",
     "description": "Otomatik sığdırmanın diğer uygulamalar ve ekran için her GPU'da boş bıraktığı bellek miktarı (MiB). Bir model yüklüyken sisteminiz yavaşlıyorsa artırın. Yalnızca yerel modeller.",
-    "placeholder": "1024 veya MiB0,MiB1,..."
+    "placeholder": "1024 veya MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Otomatik sığdırma: en küçük bağlam",

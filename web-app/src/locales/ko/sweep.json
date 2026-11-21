@@ -159,7 +159,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "모델 검증 오류",
-    "validatingModel": "모델 파일 검증 중...",
+    "validatingModel": "모델 파일 검증 중…",
     "embeddingDetected": "임베딩 모델 감지됨",
     "embeddingHint": "이 모델은 임베딩 전용으로 가져옵니다. 멀티모달 옵션은 비활성화됩니다.",
     "selectGguf": "GGUF 파일 선택",
@@ -171,12 +171,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj 검증 오류",
-    "validatingMmproj": "MMProj 파일 검증 중...",
+    "validatingMmproj": "MMProj 파일 검증 중…",
     "selectMmproj": "MMPROJ 파일 선택",
     "draftFile": "드래프트 모델 파일(GGUF)",
     "requiredDraft": "드래프트 모델에 필요",
     "draftValidationError": "드래프트 모델 검증 오류",
-    "validatingDraft": "드래프트 모델 파일 검증 중...",
+    "validatingDraft": "드래프트 모델 파일 검증 중…",
     "selectDraftFile": "드래프트 GGUF 파일 선택"
   },
   "mlxImport": {

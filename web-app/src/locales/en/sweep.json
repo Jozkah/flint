@@ -162,7 +162,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Model Validation Error",
-    "validatingModel": "Validating model file...",
+    "validatingModel": "Validating model file…",
     "embeddingDetected": "Embedding model detected",
     "embeddingHint": "This model will be imported for embeddings only. Multimodal options are disabled.",
     "selectGguf": "Select GGUF File",
@@ -174,12 +174,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj Validation Error",
-    "validatingMmproj": "Validating MMProj file...",
+    "validatingMmproj": "Validating MMProj file…",
     "selectMmproj": "Select MMPROJ File",
     "draftFile": "Draft Model File (GGUF)",
     "requiredDraft": "Required for Draft Model",
     "draftValidationError": "Draft Model Validation Error",
-    "validatingDraft": "Validating draft model file...",
+    "validatingDraft": "Validating draft model file…",
     "selectDraftFile": "Select Draft GGUF File"
   },
   "mlxImport": {
@@ -203,7 +203,7 @@
     "hasBeenImported": "{{name}} has been imported",
     "notListed": "{{name}} was saved, but Flint could not list it. Restart Flint, and report it if the model is still missing.",
     "import": "Import Model",
-    "importing": "Importing...",
+    "importing": "Importing…",
     "success": "Model imported successfully"
   },
   "voice": {

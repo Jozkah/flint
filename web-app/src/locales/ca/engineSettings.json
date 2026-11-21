@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Ajust automàtic: memòria lliure reservada",
     "description": "Quanta memòria (en MiB) deixa lliure l'ajust automàtic a cada GPU per a altres aplicacions i la pantalla. Augmenta-la si el sistema va lent mentre hi ha un model carregat. Només models locals.",
-    "placeholder": "1024 o MiB0,MiB1,..."
+    "placeholder": "1024 o MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Ajust automàtic: context mínim",

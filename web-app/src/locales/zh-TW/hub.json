@@ -3,7 +3,7 @@
   "newChat": "新對話",
   "download": "下載",
   "downloaded": "已下載",
-  "loadingModels": "正在載入模型...",
+  "loadingModels": "正在載入模型…",
   "noModels": "找不到模型",
   "by": "由",
   "downloads": "下載",
@@ -11,7 +11,7 @@
   "showVariants": "顯示變體",
   "useModel": "使用此模型",
   "tools": "工具",
-  "searchPlaceholder": "在 Hugging Face 上搜尋模型...",
+  "searchPlaceholder": "在 Hugging Face 上搜尋模型…",
   "detail": {
     "loading": "正在載入模型…",
     "discover": "探索",

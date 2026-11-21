@@ -3,7 +3,7 @@
   "newChat": "Yeni sohbet",
   "download": "İndir",
   "downloaded": "İndirildi",
-  "loadingModels": "Modeller yükleniyor...",
+  "loadingModels": "Modeller yükleniyor…",
   "noModels": "Model bulunamadı",
   "by": "Yapan",
   "downloads": "İndirme sayısı",
@@ -11,7 +11,7 @@
   "showVariants": "Varyantları göster",
   "useModel": "Bu modeli kullan",
   "tools": "Araçlar",
-  "searchPlaceholder": "Hugging Face'te model ara...",
+  "searchPlaceholder": "Hugging Face'te model ara…",
   "detail": {
     "loading": "Model yükleniyor…",
     "discover": "Keşfet",

@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Auto-Anpassung: freizuhaltender Speicher",
     "description": "Wie viel Speicher (in MiB) die Auto-Anpassung auf jeder GPU für andere Apps und die Anzeige frei lässt. Erhöhen Sie den Wert, wenn Ihr System träge wird, solange ein Modell geladen ist. Nur lokale Modelle.",
-    "placeholder": "1024 oder MiB0,MiB1,..."
+    "placeholder": "1024 oder MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Auto-Anpassung: kleinster Kontext",

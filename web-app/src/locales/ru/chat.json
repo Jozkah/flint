@@ -59,9 +59,9 @@
   "webSourcesRead": "Прочитано: {{count}}",
   "webSourcesReadFound": "Прочитано: {{read}} · найдено: {{found}}",
   "reasoning": {
-    "label": "Рассуждение...",
+    "label": "Рассуждение…",
     "thinking": "Размышление",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Показать всю хронологию",
     "showCurrentStep": "Показать только текущий шаг",
     "thoughtForAWhile": "Думал несколько секунд",
@@ -188,7 +188,7 @@
   },
   "regenerateTitle": {
     "menu": "Создать название заново",
-    "working": "Придумывание названия чата...",
+    "working": "Придумывание названия чата…",
     "done": "Чат переименован.",
     "empty": "Пока не из чего придумать название чата.",
     "busy": "Приостановите или остановите комнату, прежде чем переименовывать её.",
@@ -340,7 +340,7 @@
     "noCanvas": "нет доступного canvas для отрисовки изображения",
     "imageNotEncoded": "не удалось закодировать изображение"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

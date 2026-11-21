@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "自动适配：保留空闲内存",
     "description": "自动适配在每块 GPU 上为其他应用和显示输出保留的空闲内存（MiB）。如果加载模型时系统变得卡顿，请调高此值。仅适用于本地模型。",
-    "placeholder": "1024 或 MiB0,MiB1,..."
+    "placeholder": "1024 或 MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "自动适配：最小上下文",

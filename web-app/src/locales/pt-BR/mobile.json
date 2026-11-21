@@ -96,7 +96,7 @@
     "noMessages": "Nenhuma mensagem ainda.",
     "messageActions": "Ações da mensagem",
     "forkFromHere": "Bifurcar conversa a partir daqui",
-    "placeholder": "Pergunte qualquer coisa...",
+    "placeholder": "Pergunte qualquer coisa…",
     "auto": "Auto",
     "model": "Modelo"
   },
@@ -831,7 +831,7 @@
     "goodEvening": "Boa noite",
     "awaitingApproval": "Aguardando aprovação: {{name}}",
     "failed": "{{name}} falhou",
-    "running": "Executando {{name}}...",
+    "running": "Executando {{name}}…",
     "used": "Usou {{name}}",
     "androidPhone": "Celular Android",
     "phone": "Celular"
@@ -1018,7 +1018,7 @@
     "availableOnComputer": "Disponível no computador.",
     "actionFailed": "A ação falhou",
     "switchedTo": "Alterado para {{name}}",
-    "searchModels": "Pesquisar modelos...",
+    "searchModels": "Pesquisar modelos…",
     "searchModelsLabel": "Pesquisar modelos",
     "loadingModels": "Carregando modelos…",
     "runsHere": "Roda neste computador",

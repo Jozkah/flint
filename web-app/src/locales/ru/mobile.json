@@ -98,7 +98,7 @@
     "noMessages": "Сообщений пока нет.",
     "messageActions": "Действия с сообщением",
     "forkFromHere": "Создать ответвление чата отсюда",
-    "placeholder": "Спросите меня о чём угодно...",
+    "placeholder": "Спросите меня о чём угодно…",
     "auto": "Авто",
     "model": "Модель"
   },
@@ -842,7 +842,7 @@
     "goodEvening": "Добрый вечер",
     "awaitingApproval": "Ожидает одобрения: {{name}}",
     "failed": "{{name}}: ошибка",
-    "running": "Выполняется {{name}}...",
+    "running": "Выполняется {{name}}…",
     "used": "Использовано {{name}}",
     "androidPhone": "Телефон Android",
     "phone": "Телефон"
@@ -1032,7 +1032,7 @@
     "availableOnComputer": "Доступно на компьютере.",
     "actionFailed": "Действие не удалось",
     "switchedTo": "Переключено на {{name}}",
-    "searchModels": "Поиск моделей...",
+    "searchModels": "Поиск моделей…",
     "searchModelsLabel": "Поиск моделей",
     "loadingModels": "Загрузка моделей…",
     "runsHere": "Работает на этом компьютере",

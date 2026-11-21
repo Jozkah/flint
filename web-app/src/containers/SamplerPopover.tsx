@@ -319,8 +319,15 @@ export function SamplerPopover({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon-sm" asChild>
-                  <Link to={route.settings.assistant}>
-                    <Settings size={16} className="text-muted-foreground" />
+                  <Link
+                    to={route.settings.assistant}
+                    aria-label={t('common:openAssistantSettings')}
+                  >
+                    <Settings
+                      size={16}
+                      aria-hidden="true"
+                      className="text-muted-foreground"
+                    />
                   </Link>
                 </Button>
               </TooltipTrigger>

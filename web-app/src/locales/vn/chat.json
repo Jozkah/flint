@@ -59,9 +59,9 @@
   "webSourcesRead": "Đã đọc {{count}}",
   "webSourcesReadFound": "Đã đọc {{read}} · tìm thấy {{found}}",
   "reasoning": {
-    "label": "Đang suy luận...",
+    "label": "Đang suy luận…",
     "thinking": "Đang suy nghĩ",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Hiện toàn bộ dòng thời gian",
     "showCurrentStep": "Chỉ hiện bước hiện tại",
     "thoughtForAWhile": "Đã suy nghĩ vài giây",
@@ -179,7 +179,7 @@
   },
   "regenerateTitle": {
     "menu": "Tạo lại tiêu đề",
-    "working": "Đang đặt tên cho cuộc trò chuyện...",
+    "working": "Đang đặt tên cho cuộc trò chuyện…",
     "done": "Đã đổi tên cuộc trò chuyện.",
     "empty": "Chưa có gì để đặt tên cho cuộc trò chuyện này.",
     "busy": "Hãy tạm dừng hoặc dừng phòng trước khi đổi tên.",
@@ -225,7 +225,7 @@
   },
   "continueSummary": {
     "menu": "Tiếp tục trong cuộc trò chuyện mới từ bản tóm tắt",
-    "working": "Đang tóm tắt cuộc trò chuyện...",
+    "working": "Đang tóm tắt cuộc trò chuyện…",
     "done": "Đã tiếp tục trong một cuộc trò chuyện mới.",
     "cancel": "Hủy",
     "errors": {
@@ -325,7 +325,7 @@
     "noCanvas": "không có canvas để vẽ ảnh",
     "imageNotEncoded": "không thể mã hóa ảnh"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

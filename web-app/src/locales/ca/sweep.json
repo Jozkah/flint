@@ -165,7 +165,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Error de validació del model",
-    "validatingModel": "S'està validant el fitxer del model...",
+    "validatingModel": "S'està validant el fitxer del model…",
     "embeddingDetected": "S'ha detectat un model d'embedding",
     "embeddingHint": "Aquest model s'importarà només per a embeddings. Les opcions multimodals estan desactivades.",
     "selectGguf": "Selecciona un fitxer GGUF",
@@ -177,12 +177,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Error de validació de MMProj",
-    "validatingMmproj": "S'està validant el fitxer MMProj...",
+    "validatingMmproj": "S'està validant el fitxer MMProj…",
     "selectMmproj": "Selecciona un fitxer MMPROJ",
     "draftFile": "Fitxer del model draft (GGUF)",
     "requiredDraft": "Obligatori per al model draft",
     "draftValidationError": "Error de validació del model draft",
-    "validatingDraft": "S'està validant el fitxer del model draft...",
+    "validatingDraft": "S'està validant el fitxer del model draft…",
     "selectDraftFile": "Selecciona un fitxer GGUF draft"
   },
   "mlxImport": {

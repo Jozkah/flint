@@ -55,7 +55,7 @@
   },
   "picker": {
     "engine": "Mecanismo",
-    "searchPlaceholder": "Pesquisar modelos...",
+    "searchPlaceholder": "Pesquisar modelos…",
     "searchAria": "Pesquisar modelos",
     "clear": "Limpar",
     "noMatch": "Nenhum modelo encontrado.",

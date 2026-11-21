@@ -108,9 +108,9 @@
     "participantAssistant": "Assistente",
     "participantAssistantNone": "Nessuno (il modello così com'è)",
     "participantRoleNone": "Nessuno",
-    "participantRoleOther": "Altro...",
+    "participantRoleOther": "Altro…",
     "participantRoleOtherLabel": "Ruolo, con parole tue",
-    "participantAssistantNew": "Nuovo assistente...",
+    "participantAssistantNew": "Nuovo assistente…",
     "addFolder": "Aggiungi un'altra cartella",
     "participantModel": "Modello",
     "toolAccess": "Accesso agli strumenti",
@@ -221,7 +221,7 @@
   },
   "model": {
     "placeholder": "Scegli un modello",
-    "search": "Cerca modelli...",
+    "search": "Cerca modelli…",
     "notConfigured": "{{provider}} (non configurato)",
     "missing": "{{model}} (mancante)",
     "noProviders": "Nessun modello disponibile. Aggiungi un provider nelle Impostazioni."

@@ -110,9 +110,9 @@
     "participantAssistant": "Ассистент",
     "participantAssistantNone": "Нет (модель как есть)",
     "participantRoleNone": "Нет",
-    "participantRoleOther": "Другое...",
+    "participantRoleOther": "Другое…",
     "participantRoleOtherLabel": "Роль своими словами",
-    "participantAssistantNew": "Новый ассистент...",
+    "participantAssistantNew": "Новый ассистент…",
     "addFolder": "Добавить ещё одну папку",
     "participantModel": "Модель",
     "toolAccess": "Доступ к инструментам",
@@ -223,7 +223,7 @@
   },
   "model": {
     "placeholder": "Выберите модель",
-    "search": "Поиск моделей...",
+    "search": "Поиск моделей…",
     "notConfigured": "{{provider}} (не настроен)",
     "missing": "{{model}} (отсутствует)",
     "noProviders": "Нет доступных моделей. Добавьте провайдера в «Настройках»."

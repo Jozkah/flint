@@ -98,7 +98,7 @@
     "noMessages": "Zatím žádné zprávy.",
     "messageActions": "Akce se zprávou",
     "forkFromHere": "Rozvětvit chat odtud",
-    "placeholder": "Zeptejte se na cokoli...",
+    "placeholder": "Zeptejte se na cokoli…",
     "auto": "Auto",
     "model": "Model"
   },
@@ -842,7 +842,7 @@
     "goodEvening": "Dobrý večer",
     "awaitingApproval": "Čeká na schválení: {{name}}",
     "failed": "{{name}} selhalo",
-    "running": "Běží {{name}}...",
+    "running": "Běží {{name}}…",
     "used": "Použito: {{name}}",
     "androidPhone": "Telefon s Androidem",
     "phone": "Telefon"
@@ -1032,7 +1032,7 @@
     "availableOnComputer": "Dostupné na počítači.",
     "actionFailed": "Akce selhala",
     "switchedTo": "Přepnuto na {{name}}",
-    "searchModels": "Hledat modely...",
+    "searchModels": "Hledat modely…",
     "searchModelsLabel": "Hledat modely",
     "loadingModels": "Načítání modelů…",
     "runsHere": "Běží na tomto počítači",

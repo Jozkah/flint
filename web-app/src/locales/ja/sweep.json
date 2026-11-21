@@ -159,7 +159,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "モデル検証エラー",
-    "validatingModel": "モデルファイルを検証中...",
+    "validatingModel": "モデルファイルを検証中…",
     "embeddingDetected": "埋め込みモデルを検出しました",
     "embeddingHint": "このモデルは埋め込み専用としてインポートされます。マルチモーダルのオプションは無効です。",
     "selectGguf": "GGUF ファイルを選択",
@@ -171,12 +171,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj 検証エラー",
-    "validatingMmproj": "MMProj ファイルを検証中...",
+    "validatingMmproj": "MMProj ファイルを検証中…",
     "selectMmproj": "MMPROJ ファイルを選択",
     "draftFile": "ドラフトモデルファイル(GGUF)",
     "requiredDraft": "ドラフトモデルに必須",
     "draftValidationError": "ドラフトモデル検証エラー",
-    "validatingDraft": "ドラフトモデルファイルを検証中...",
+    "validatingDraft": "ドラフトモデルファイルを検証中…",
     "selectDraftFile": "ドラフト GGUF ファイルを選択"
   },
   "mlxImport": {

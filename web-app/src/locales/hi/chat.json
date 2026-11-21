@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} पढ़े गए",
   "webSourcesReadFound": "{{read}} पढ़े · {{found}} मिले",
   "reasoning": {
-    "label": "तर्क...",
+    "label": "तर्क…",
     "thinking": "सोच रहा है",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "पूरी टाइमलाइन दिखाएँ",
     "showCurrentStep": "केवल वर्तमान चरण दिखाएँ",
     "thoughtForAWhile": "कुछ सेकंड सोचा",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "शीर्षक फिर से बनाएँ",
-    "working": "चैट का नाम रखा जा रहा है...",
+    "working": "चैट का नाम रखा जा रहा है…",
     "done": "चैट का नाम बदला गया।",
     "empty": "इस चैट का नाम रखने के लिए अभी कुछ नहीं है।",
     "busy": "नाम बदलने से पहले रूम को रोकें या बंद करें।",
@@ -216,7 +216,7 @@
   },
   "continueSummary": {
     "menu": "सारांश से नई चैट में जारी रखें",
-    "working": "चैट का सारांश बनाया जा रहा है...",
+    "working": "चैट का सारांश बनाया जा रहा है…",
     "done": "नई चैट में जारी रखा गया।",
     "cancel": "रद्द करें",
     "errors": {
@@ -310,7 +310,7 @@
     "noCanvas": "चित्र बनाने के लिए कोई कैनवास उपलब्ध नहीं है",
     "imageNotEncoded": "चित्र एन्कोड नहीं किया जा सका"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

@@ -104,9 +104,9 @@
     "participantAssistant": "アシスタント",
     "participantAssistantNone": "なし (モデルそのまま)",
     "participantRoleNone": "なし",
-    "participantRoleOther": "その他...",
+    "participantRoleOther": "その他…",
     "participantRoleOtherLabel": "役割 (自由記述)",
-    "participantAssistantNew": "新しいアシスタント...",
+    "participantAssistantNew": "新しいアシスタント…",
     "addFolder": "別のフォルダーを追加",
     "participantModel": "モデル",
     "toolAccess": "ツールアクセス",
@@ -217,7 +217,7 @@
   },
   "model": {
     "placeholder": "モデルを選択",
-    "search": "モデルを検索...",
+    "search": "モデルを検索…",
     "notConfigured": "{{provider}} (未設定)",
     "missing": "{{model}} (見つかりません)",
     "noProviders": "使用できるモデルがありません。設定でプロバイダーを追加してください。"

@@ -106,9 +106,9 @@
     "participantAssistant": "असिस्टेंट",
     "participantAssistantNone": "कोई नहीं (मॉडल जैसा है)",
     "participantRoleNone": "कोई नहीं",
-    "participantRoleOther": "अन्य...",
+    "participantRoleOther": "अन्य…",
     "participantRoleOtherLabel": "भूमिका, अपने शब्दों में",
-    "participantAssistantNew": "नया असिस्टेंट...",
+    "participantAssistantNew": "नया असिस्टेंट…",
     "addFolder": "एक और फ़ोल्डर जोड़ें",
     "participantModel": "मॉडल",
     "toolAccess": "टूल एक्सेस",
@@ -219,7 +219,7 @@
   },
   "model": {
     "placeholder": "एक मॉडल चुनें",
-    "search": "मॉडल खोजें...",
+    "search": "मॉडल खोजें…",
     "notConfigured": "{{provider}} (कॉन्फ़िगर नहीं)",
     "missing": "{{model}} (गायब)",
     "noProviders": "कोई मॉडल उपलब्ध नहीं। सेटिंग में एक प्रदाता जोड़ें।"

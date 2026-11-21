@@ -55,7 +55,7 @@
   },
   "picker": {
     "engine": "엔진",
-    "searchPlaceholder": "모델 검색...",
+    "searchPlaceholder": "모델 검색…",
     "searchAria": "모델 검색",
     "clear": "지우기",
     "noMatch": "일치하는 모델이 없습니다.",

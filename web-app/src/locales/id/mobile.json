@@ -92,7 +92,7 @@
     "noMessages": "Belum ada pesan.",
     "messageActions": "Tindakan pesan",
     "forkFromHere": "Cabangkan obrolan dari sini",
-    "placeholder": "Tanyakan apa saja...",
+    "placeholder": "Tanyakan apa saja…",
     "auto": "Otomatis",
     "model": "Model"
   },
@@ -809,7 +809,7 @@
     "goodEvening": "Selamat malam",
     "awaitingApproval": "Menunggu persetujuan: {{name}}",
     "failed": "{{name}} gagal",
-    "running": "Menjalankan {{name}}...",
+    "running": "Menjalankan {{name}}…",
     "used": "Memakai {{name}}",
     "androidPhone": "Ponsel Android",
     "phone": "Ponsel"
@@ -990,7 +990,7 @@
     "availableOnComputer": "Tersedia di komputer.",
     "actionFailed": "Tindakan gagal",
     "switchedTo": "Beralih ke {{name}}",
-    "searchModels": "Cari model...",
+    "searchModels": "Cari model…",
     "searchModelsLabel": "Cari model",
     "loadingModels": "Memuat model…",
     "runsHere": "Berjalan di komputer ini",

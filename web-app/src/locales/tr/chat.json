@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} okundu",
   "webSourcesReadFound": "{{read}} okundu · {{found}} bulundu",
   "reasoning": {
-    "label": "Muhakeme...",
+    "label": "Muhakeme…",
     "thinking": "Düşünüyor",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Tüm zaman çizelgesini göster",
     "showCurrentStep": "Yalnızca geçerli adımı göster",
     "thoughtForAWhile": "Birkaç saniye düşündü",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "Başlığı yeniden oluştur",
-    "working": "Sohbete ad veriliyor...",
+    "working": "Sohbete ad veriliyor…",
     "done": "Sohbet yeniden adlandırıldı.",
     "empty": "Bu sohbete ad vermek için henüz bir şey yok.",
     "busy": "Yeniden adlandırmadan önce odayı duraklatın veya durdurun.",
@@ -310,7 +310,7 @@
     "noCanvas": "görseli çizmek için kullanılabilir bir tuval yok",
     "imageNotEncoded": "görsel kodlanamadı"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

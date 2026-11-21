@@ -18,7 +18,7 @@
   "configuration": "Konfiguracja",
   "modelCombobox": {
     "refresh": "Odśwież modele",
-    "placeholder": "Wpisz lub wybierz model..."
+    "placeholder": "Wpisz lub wybierz model…"
   },
   "hubTasks": {
     "moreAria": "Inne sposoby przeglądania",
@@ -67,7 +67,7 @@
   },
   "scope": "Zakres",
   "localApi": {
-    "starting": "Uruchamianie serwera...",
+    "starting": "Uruchamianie serwera…",
     "startingDesc": "Próba uruchomienia serwera na porcie {{port}}",
     "status": "Stan serwera",
     "runningDesc": "Serwer jest uruchomiony.",

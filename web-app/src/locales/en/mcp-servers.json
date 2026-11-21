@@ -3,7 +3,7 @@
   "addServer": "Add MCP Server",
   "browserExtension": {
     "connecting": {
-      "checking": "Checking extension status..."
+      "checking": "Checking extension status…"
     },
     "notInstalled": {
       "title": "Flint completes tasks in your browser",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} tool available: {{names}}",
     "toolsAvailable_other": "{{count}} tools available: {{names}}",
     "toolsNone": "Connected, but this server offers no tools.",
-    "toolsLoading": "Loading tool list...",
+    "toolsLoading": "Loading tool list…",
     "toolsWhenConnected": "Its tools become available once it is connected.",
     "appliesToChats": "Tools reach a chat only when the chat's selected model supports tools. Individual tools can be switched off from the tools menu in the chat input, and those switches apply to all chats."
   },
@@ -153,7 +153,7 @@
     "spent": "Session budget: {{spent}} / {{limit}} characters"
   },
   "noServers": "No MCP servers found",
-  "searchPlaceholder": "Search MCP servers...",
+  "searchPlaceholder": "Search MCP servers…",
   "noSearchResults": "No MCP servers match \"{{query}}\"",
   "expandServer": "Expand server details",
   "collapseServer": "Collapse server details",
@@ -197,7 +197,7 @@
     "authenticate": "Sign in",
     "reauthenticate": "Re-authenticate",
     "clear": "Clear authentication",
-    "waiting": "Waiting for browser...",
+    "waiting": "Waiting for browser…",
     "openSignInPage": "Open the sign-in page",
     "needsAuth": "{{serverName}} needs authentication",
     "needsAuthHint": "Sign in to this server to connect.",
@@ -223,7 +223,7 @@
     "titleOne": "Describe {{serverName}} with AI",
     "settingTitle": "Generate descriptions with AI",
     "settingDesc": "Ask a model to write the \"About this server\" text from each server's tool list. You review every text before it is saved.",
-    "open": "Generate...",
+    "open": "Generate…",
     "intro": "The chosen model receives each server's name and tool list (names, descriptions, arguments). Nothing is saved until you accept it.",
     "model": "Model",
     "scope": "Servers",
@@ -247,7 +247,7 @@
     "skippedNoTools": "tools unknown; turn the server on once so Flint can read them",
     "status": {
       "queued": "Waiting",
-      "running": "Generating...",
+      "running": "Generating…",
       "done": "Ready for review",
       "skipped": "Skipped: {{reason}}",
       "failed": "Failed: {{reason}}"

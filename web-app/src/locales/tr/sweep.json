@@ -162,7 +162,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Model Doğrulama Hatası",
-    "validatingModel": "Model dosyası doğrulanıyor...",
+    "validatingModel": "Model dosyası doğrulanıyor…",
     "embeddingDetected": "Gömme modeli algılandı",
     "embeddingHint": "Bu model yalnızca gömmeler için içe aktarılacak. Çok kipli seçenekler devre dışı.",
     "selectGguf": "GGUF Dosyası Seç",
@@ -174,12 +174,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj Doğrulama Hatası",
-    "validatingMmproj": "MMProj dosyası doğrulanıyor...",
+    "validatingMmproj": "MMProj dosyası doğrulanıyor…",
     "selectMmproj": "MMPROJ Dosyası Seç",
     "draftFile": "Taslak Model Dosyası (GGUF)",
     "requiredDraft": "Taslak model için gerekli",
     "draftValidationError": "Taslak Model Doğrulama Hatası",
-    "validatingDraft": "Taslak model dosyası doğrulanıyor...",
+    "validatingDraft": "Taslak model dosyası doğrulanıyor…",
     "selectDraftFile": "Taslak GGUF Dosyası Seç"
   },
   "mlxImport": {

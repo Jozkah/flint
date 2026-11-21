@@ -48,7 +48,7 @@
   "quickStart": "Démarrage rapide avec Flint Model",
   "quickStartDescription": "Aucune configuration requise",
   "quickStartFailed": "Une erreur s'est produite. Veuillez réessayer.",
-  "downloading": "Téléchargement de Flint Model...",
+  "downloading": "Téléchargement de Flint Model…",
   "downloadingDescription": "Veuillez patienter pendant le téléchargement du modèle. Cela peut prendre quelques minutes.",
   "orDivider": "ou",
   "localModel": "Configurer le modèle local",
