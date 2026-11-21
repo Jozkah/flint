@@ -773,7 +773,13 @@ export const ImportLlamacppModelDialog = ({
                                   title={found.path}
                                   className="flex-1"
                                 />
-                                <span className="shrink-0 text-xs text-muted-foreground">
+                                <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                                  {addingToStudio === found.path && (
+                                    <LoaderCircle
+                                      size={12}
+                                      className="motion-safe:animate-spin"
+                                    />
+                                  )}
                                   {formatBytes(found.size_bytes)}
                                 </span>
                               </button>

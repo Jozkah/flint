@@ -7,6 +7,7 @@ import {
   Download,
   Heart,
   ImageIcon,
+  LoaderCircle,
   LockKeyhole,
   Plus,
   Search,
@@ -322,6 +323,9 @@ export function StudioDiscover({
               disabled={scanState.status === 'scanning'}
               onClick={() => void runScan()}
             >
+              {scanState.status === 'scanning' && (
+                <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
+              )}
               {t('studio:discover.scanFind')}
             </Button>
           </div>
@@ -333,6 +337,7 @@ export function StudioDiscover({
                   <button
                     type="button"
                     aria-label={t('providers:importRemoveFolder', { folder })}
+                    className="-my-1 -mr-1 px-1 py-1 hover:text-foreground"
                     onClick={() => removeModelFolder(folder)}
                   >
                     <span aria-hidden>×</span>
@@ -351,7 +356,7 @@ export function StudioDiscover({
                 <span className="min-w-0 flex-1 truncate text-secondary-foreground" title={found.path}>
                   {found.name}
                 </span>
-                <span>{formatBytes(found.size_bytes)}</span>
+                <span className="tabular-nums">{formatBytes(found.size_bytes)}</span>
                 <Button
                   size="sm"
                   variant="outline"

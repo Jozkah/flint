@@ -257,5 +257,5 @@
   "skippedLinkedDismiss": "Chiudi",
   "importStudioGroup": "Picture models (added to Studio, used where they are)",
   "importStudioUnsupported": "Studio cannot run this kind of picture model yet.",
-  "importCompanionsNote": "{{count}} text encoder or VAE file(s) found. They are used with a picture model that needs them, not listed as chat models."
+  "importCompanionsNote": "Text encoder and VAE files found: {{count}}. They are used with a picture model that needs them, not listed as chat models."
 }
