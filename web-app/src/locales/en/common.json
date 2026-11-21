@@ -183,7 +183,7 @@
   "agent_tools": "Agent",
   "memory": "Memory",
   "browse": "Browse",
-  "starting": "Starting...",
+  "starting": "Starting…",
   "activeSuffix": " (Active)",
   "extensions": "Extensions",
   "attachments": "Attachments",
@@ -270,13 +270,13 @@
   "loginWith": "Log In With {{provider}}",
   "loginFailed": "Failed To Log In",
   "logout": "Log Out",
-  "loggingOut": "Logging Out...",
+  "loggingOut": "Logging Out…",
   "loggedOut": "Successfully Logged Out",
   "logoutFailed": "Failed To Log Out",
   "profile": "Profile",
   "reset": "Reset",
   "search": "Search",
-  "searchThreads": "Search chats...",
+  "searchThreads": "Search chats…",
   "toNavigate": "to navigate",
   "toSelect": "to select",
   "toClose": "to close",
@@ -561,7 +561,7 @@
   "cancelDownload": "Cancel download",
   "downloadCancelled": "Download Cancelled",
   "downloadComplete": "Download Complete",
-  "thinking": "Thinking...",
+  "thinking": "Thinking…",
   "thought": "Thought",
   "callingTool": "Calling tool",
   "completed": "Completed",
@@ -663,11 +663,11 @@
   "apiKeyRequired": "API Key is required",
   "enterTrustedHosts": "Enter trusted hosts",
   "placeholder": {
-    "chatInput": "Ask me anything..."
+    "chatInput": "Ask me anything…"
   },
   "confirm": "Confirm",
   "continue": "Continue",
-  "loading": "Loading...",
+  "loading": "Loading…",
   "settingUpJan": "Booting up Flint…",
   "registeringExtensions": "Registering extensions…",
   "loadingExtensions": "Loading extensions… ({{done}}/{{total}})",
@@ -679,7 +679,7 @@
   "temporaryChat": "Temporary Chat",
   "temporaryChatTooltip": "Temporary chat won't appear in your history",
   "noResultsFoundDesc": "We couldn't find any chats matching your search. Try a different keyword.",
-  "searchModels": "Search models...",
+  "searchModels": "Search models…",
   "dropAttachFailed": "Couldn't attach the dropped files",
   "chatPaneDrop": {
     "overlay": "Drop files to attach",
@@ -693,7 +693,7 @@
   "sortNameDesc": "Name (Z–A)",
   "sortRecent": "Recently used",
   "sortProvider": "Provider",
-  "searchStyles": "Search styles...",
+  "searchStyles": "Search styles…",
   "createAssistant": "Create Assistant",
   "enterApiKey": "Enter API Key",
   "scrollToBottom": "Scroll to bottom",
@@ -730,7 +730,7 @@
     "errorPaste": "Failed to paste JSON",
     "errorFormat": "Invalid JSON format",
     "titleAll": "Edit All Servers Configuration",
-    "placeholder": "Enter JSON configuration...",
+    "placeholder": "Enter JSON configuration…",
     "save": "Save"
   },
   "editModel": {
@@ -857,7 +857,7 @@
     "newProjectDialog": {
       "createTitle": "Create project",
       "editTitle": "Edit project",
-      "namePlaceholder": "Enter project name...",
+      "namePlaceholder": "Enter project name…",
       "alreadyExists": "Project \"{{projectName}}\" already exists",
       "createSuccess": "Project \"{{projectName}}\" created",
       "updateSuccess": "Project \"{{projectName}}\" updated"
@@ -877,7 +877,7 @@
     "editProject": "Edit collection",
     "deleteProject": "Delete collection",
     "projectName": "Collection name",
-    "enterProjectName": "Enter collection name...",
+    "enterProjectName": "Enter collection name…",
     "noProjectsAvailable": "No collections available",
     "noProjectsYet": "No collections yet",
     "noProjectsYetDesc": "A collection groups conversations and the reference files they share. Create one to get started.",
@@ -919,7 +919,7 @@
       "createTitle": "Create collection",
       "editTitle": "Edit collection",
       "nameLabel": "Collection name",
-      "namePlaceholder": "Enter collection name...",
+      "namePlaceholder": "Enter collection name…",
       "assistant": "Assistant",
       "selectAssistant": "Select an assistant (optional)",
       "noAssistant": "No assistant",
@@ -936,7 +936,7 @@
     "addGroupDialog": {
       "createTitle": "Create group",
       "editTitle": "Edit group",
-      "namePlaceholder": "Enter group name...",
+      "namePlaceholder": "Enter group name…",
       "alreadyExists": "Group \"{{projectName}}\" already exists",
       "createSuccess": "Group \"{{projectName}}\" created",
       "updateSuccess": "Group \"{{projectName}}\" updated"
@@ -956,7 +956,7 @@
     "collapseProject": "Collapse project",
     "expandProject": "Expand project",
     "update": "Update",
-    "searchProjects": "Search projects...",
+    "searchProjects": "Search projects…",
     "noProjectsFound": "No projects found",
     "tryDifferentSearch": "Try a different search term",
     "whatIsACollection": "A collection groups conversations and reference files. It does not open a folder on your computer.",
@@ -1072,7 +1072,7 @@
     },
     "modelValidationStarted": {
       "title": "Validating Model",
-      "description": "Downloaded model \"{{modelId}}\" successfully. Verifying integrity..."
+      "description": "Downloaded model \"{{modelId}}\" successfully. Verifying integrity…"
     },
     "modelValidationFailed": {
       "title": "Model Validation Failed",
@@ -2379,7 +2379,7 @@
       "root": "Scan folder",
       "rootPlaceholder": "Desktop/Coding",
       "scan": "Scan",
-      "scanning": "Scanning...",
+      "scanning": "Scanning…",
       "scanFailed": "Scan failed: {{error}}",
       "empty": "No skills or plugins found.",
       "installed": "installed",
@@ -2387,7 +2387,7 @@
       "linkHooks": "Also run my Claude Code hooks (SessionStart and UserPromptSubmit) from ~/.claude/settings.json and imported plugins. Hooks receive your prompt.",
       "overwrite": "Overwrite existing",
       "importSelected": "Import selected",
-      "importing": "Importing...",
+      "importing": "Importing…",
       "importFailed": "Import failed: {{error}}",
       "done": "Imported {{imported}}, skipped {{skipped}}",
       "doneErrors": "{{count}} error(s)",

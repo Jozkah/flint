@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Adattamento automatico: memoria da lasciare libera",
     "description": "Quanta memoria (in MiB) l'adattamento automatico lascia libera su ogni GPU per altre app e per lo schermo. Aumentala se il sistema diventa lento mentre un modello è caricato. Solo modelli locali.",
-    "placeholder": "1024 oppure MiB0,MiB1,..."
+    "placeholder": "1024 oppure MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Adattamento automatico: contesto minimo",

@@ -225,7 +225,7 @@ describe('EngineAddonPanel', () => {
     expect(panel.textContent).toMatch(/Installed: v0\.9\.0/)
     expect(panel.textContent).toMatch(/in use/)
     expect(screen.getByText('Remove')).toBeTruthy()
-    expect(screen.getByText('Install from file...')).toBeTruthy()
+    expect(screen.getByText('Install from file…')).toBeTruthy()
     api.remove.mockResolvedValue(undefined)
     api.status.mockResolvedValue(status())
     await act(async () => {
@@ -240,7 +240,7 @@ describe('EngineAddonPanel', () => {
     api.installFile.mockResolvedValue(installed)
     render(<EngineAddonPanel />)
     await act(async () => {
-      fireEvent.click(screen.getByText('Install from file...'))
+      fireEvent.click(screen.getByText('Install from file…'))
     })
     expect(api.installFile).toHaveBeenCalledWith('C:/packs/p.zip')
   })

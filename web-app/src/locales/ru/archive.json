@@ -57,7 +57,7 @@
   "previewSize": "Размер",
   "previewOrigin": "Находился в",
   "previewClose": "Закрыть",
-  "previewLoading": "Чтение элемента...",
+  "previewLoading": "Чтение элемента…",
   "previewUnavailable": "Не удалось прочитать содержимое. Восстановите элемент, чтобы открыть его.",
   "previewCreated": "Создано",
   "previewUpdated": "Последнее изменение",
@@ -70,5 +70,5 @@
   "previewShown": "Показано {{shown}} из {{total}}",
   "previewNoMessages": "Нет текстовых сообщений",
   "previewThumbnail": "Превью",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

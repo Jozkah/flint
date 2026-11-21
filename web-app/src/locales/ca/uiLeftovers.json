@@ -18,7 +18,7 @@
   "configuration": "Configuració",
   "modelCombobox": {
     "refresh": "Actualitza els models",
-    "placeholder": "Escriu o selecciona un model..."
+    "placeholder": "Escriu o selecciona un model…"
   },
   "hubTasks": {
     "moreAria": "Més maneres d’explorar",
@@ -67,7 +67,7 @@
   },
   "scope": "Àmbit",
   "localApi": {
-    "starting": "S’està iniciant el servidor...",
+    "starting": "S’està iniciant el servidor…",
     "startingDesc": "S’està intentant iniciar el servidor al port {{port}}",
     "status": "Estat del servidor",
     "runningDesc": "El servidor s’està executant.",

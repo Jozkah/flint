@@ -108,9 +108,9 @@
     "participantAssistant": "Assistent",
     "participantAssistantNone": "Cap (el model tal com és)",
     "participantRoleNone": "Cap",
-    "participantRoleOther": "Altre...",
+    "participantRoleOther": "Altre…",
     "participantRoleOtherLabel": "Rol, amb les teves paraules",
-    "participantAssistantNew": "Assistent nou...",
+    "participantAssistantNew": "Assistent nou…",
     "addFolder": "Afegeix una altra carpeta",
     "participantModel": "Model",
     "toolAccess": "Accés a eines",
@@ -221,7 +221,7 @@
   },
   "model": {
     "placeholder": "Tria un model",
-    "search": "Cerca models...",
+    "search": "Cerca models…",
     "notConfigured": "{{provider}} (no configurat)",
     "missing": "{{model}} (no hi és)",
     "noProviders": "No hi ha models disponibles. Afegeix un proveïdor a la Configuració."

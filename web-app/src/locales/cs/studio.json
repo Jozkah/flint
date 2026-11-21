@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Engine",
-    "searchPlaceholder": "Hledat modely...",
+    "searchPlaceholder": "Hledat modely…",
     "searchAria": "Hledat modely",
     "clear": "Vymazat",
     "noMatch": "Žádný model neodpovídá.",

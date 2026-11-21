@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Mesin",
-    "searchPlaceholder": "Cari model...",
+    "searchPlaceholder": "Cari model…",
     "searchAria": "Cari model",
     "clear": "Hapus",
     "noMatch": "Tidak ada model yang cocok.",

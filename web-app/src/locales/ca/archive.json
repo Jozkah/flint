@@ -57,7 +57,7 @@
   "previewSize": "Mida",
   "previewOrigin": "Estava a",
   "previewClose": "Tanca",
-  "previewLoading": "Llegint l'element...",
+  "previewLoading": "Llegint l'element…",
   "previewUnavailable": "No s'ha pogut llegir el contingut. Restaura l'element per obrir-lo.",
   "previewCreated": "Creat",
   "previewUpdated": "Darrer canvi",
@@ -70,5 +70,5 @@
   "previewShown": "Es mostren {{shown}} de {{total}}",
   "previewNoMessages": "Cap missatge de text",
   "previewThumbnail": "Imatge de previsualització",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

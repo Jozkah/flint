@@ -3,7 +3,7 @@
   "addServer": "MCPサーバーを追加",
   "browserExtension": {
     "connecting": {
-      "checking": "拡張機能の状態を確認中..."
+      "checking": "拡張機能の状態を確認中…"
     },
     "notInstalled": {
       "title": "Flintがブラウザでタスクを実行します",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} 個のツールが使用可能: {{names}}",
     "toolsAvailable_other": "{{count}} 個のツールが使用可能: {{names}}",
     "toolsNone": "接続されていますが、このサーバーはツールを提供していません。",
-    "toolsLoading": "ツール一覧を読み込んでいます...",
+    "toolsLoading": "ツール一覧を読み込んでいます…",
     "toolsWhenConnected": "接続されると、そのツールが使用可能になります。",
     "appliesToChats": "ツールがチャットに届くのは、そのチャットで選択したモデルがツールに対応している場合のみです。個々のツールは、チャット入力のツールメニューからオフにでき、その設定はすべてのチャットに適用されます。"
   },
@@ -153,7 +153,7 @@
     "spent": "セッション予算: {{spent}} / {{limit}} 文字"
   },
   "noServers": "MCPサーバーが見つかりません",
-  "searchPlaceholder": "MCP サーバーを検索...",
+  "searchPlaceholder": "MCP サーバーを検索…",
   "noSearchResults": "「{{query}}」に一致する MCP サーバーはありません",
   "expandServer": "サーバーの詳細を展開",
   "collapseServer": "サーバーの詳細を折りたたむ",
@@ -197,7 +197,7 @@
     "authenticate": "サインイン",
     "reauthenticate": "再認証",
     "clear": "認証を消去",
-    "waiting": "ブラウザーを待っています...",
+    "waiting": "ブラウザーを待っています…",
     "openSignInPage": "サインインページを開く",
     "needsAuth": "{{serverName}} には認証が必要です",
     "needsAuthHint": "接続するには、このサーバーにサインインしてください。",
@@ -223,7 +223,7 @@
     "titleOne": "AI で {{serverName}} を説明",
     "settingTitle": "AI で説明を生成",
     "settingDesc": "各サーバーのツール一覧から、「このサーバーについて」のテキストをモデルに書かせます。保存する前に、すべてのテキストを確認できます。",
-    "open": "生成...",
+    "open": "生成…",
     "intro": "選択したモデルは、各サーバーの名前とツール一覧 (名前、説明、引数) を受け取ります。承認するまで、何も保存されません。",
     "model": "モデル",
     "scope": "サーバー",
@@ -247,7 +247,7 @@
     "skippedNoTools": "ツールが不明です。Flint が読み取れるよう、一度サーバーをオンにしてください",
     "status": {
       "queued": "待機中",
-      "running": "生成中...",
+      "running": "生成中…",
       "done": "確認待ち",
       "skipped": "スキップ: {{reason}}",
       "failed": "失敗: {{reason}}"

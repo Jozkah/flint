@@ -95,7 +95,7 @@
     "noMessages": "Aucun message pour l'instant.",
     "messageActions": "Actions du message",
     "forkFromHere": "Dupliquer la discussion à partir d'ici",
-    "placeholder": "Demandez-moi n'importe quoi...",
+    "placeholder": "Demandez-moi n'importe quoi…",
     "auto": "Auto",
     "model": "Modèle",
     "loadEarlier_many": "Charger {{count}} de messages précédents"
@@ -831,7 +831,7 @@
     "goodEvening": "Bonsoir",
     "awaitingApproval": "En attente d'approbation : {{name}}",
     "failed": "{{name}} a échoué",
-    "running": "Exécution de {{name}}...",
+    "running": "Exécution de {{name}}…",
     "used": "{{name}} utilisé",
     "androidPhone": "Téléphone Android",
     "phone": "Téléphone"
@@ -1018,7 +1018,7 @@
     "availableOnComputer": "Disponible sur l'ordinateur.",
     "actionFailed": "L'action a échoué",
     "switchedTo": "Passé à {{name}}",
-    "searchModels": "Rechercher des modèles...",
+    "searchModels": "Rechercher des modèles…",
     "searchModelsLabel": "Rechercher des modèles",
     "loadingModels": "Chargement des modèles…",
     "runsHere": "S'exécute sur cet ordinateur",

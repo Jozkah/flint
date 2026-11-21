@@ -104,9 +104,9 @@
     "participantAssistant": "Asisten",
     "participantAssistantNone": "Tidak ada (model apa adanya)",
     "participantRoleNone": "Tidak ada",
-    "participantRoleOther": "Lainnya...",
+    "participantRoleOther": "Lainnya…",
     "participantRoleOtherLabel": "Peran, dengan kata-kata Anda sendiri",
-    "participantAssistantNew": "Asisten baru...",
+    "participantAssistantNew": "Asisten baru…",
     "addFolder": "Tambah folder lain",
     "participantModel": "Model",
     "toolAccess": "Akses alat",
@@ -217,7 +217,7 @@
   },
   "model": {
     "placeholder": "Pilih model",
-    "search": "Cari model...",
+    "search": "Cari model…",
     "notConfigured": "{{provider}} (belum dikonfigurasi)",
     "missing": "{{model}} (hilang)",
     "noProviders": "Tidak ada model tersedia. Tambahkan provider di Pengaturan."

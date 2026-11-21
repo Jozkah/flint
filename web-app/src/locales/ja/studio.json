@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "エンジン",
-    "searchPlaceholder": "モデルを検索...",
+    "searchPlaceholder": "モデルを検索…",
     "searchAria": "モデルを検索",
     "clear": "クリア",
     "noMatch": "一致するモデルがありません。",

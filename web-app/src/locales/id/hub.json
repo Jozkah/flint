@@ -3,7 +3,7 @@
   "newChat": "Chat baru",
   "download": "Unduh",
   "downloaded": "Telah Diunduh",
-  "loadingModels": "Memuat model...",
+  "loadingModels": "Memuat model…",
   "noModels": "Tidak ada model yang ditemukan",
   "by": "oleh",
   "downloads": "Unduhan",
@@ -11,7 +11,7 @@
   "showVariants": "Tampilkan Varian",
   "useModel": "Gunakan model ini",
   "tools": "Alat",
-  "searchPlaceholder": "Cari model di Hugging Face...",
+  "searchPlaceholder": "Cari model di Hugging Face…",
   "detail": {
     "loading": "Memuat model…",
     "discover": "Jelajahi",

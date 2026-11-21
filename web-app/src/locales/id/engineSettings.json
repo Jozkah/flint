@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "Penyesuaian otomatis: memori yang dibiarkan kosong",
     "description": "Jumlah memori (dalam MiB) yang dibiarkan kosong oleh penyesuaian otomatis di setiap GPU untuk aplikasi lain dan tampilan layar. Naikkan jika sistem terasa lambat saat model dimuat. Hanya untuk model lokal.",
-    "placeholder": "1024 atau MiB0,MiB1,..."
+    "placeholder": "1024 atau MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "Penyesuaian otomatis: konteks terkecil",

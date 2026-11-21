@@ -159,7 +159,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "模型验证错误",
-    "validatingModel": "正在验证模型文件...",
+    "validatingModel": "正在验证模型文件…",
     "embeddingDetected": "检测到嵌入模型",
     "embeddingHint": "此模型将仅作为嵌入模型导入。多模态选项已禁用。",
     "selectGguf": "选择 GGUF 文件",
@@ -171,12 +171,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "MMProj 验证错误",
-    "validatingMmproj": "正在验证 MMProj 文件...",
+    "validatingMmproj": "正在验证 MMProj 文件…",
     "selectMmproj": "选择 MMPROJ 文件",
     "draftFile": "草稿模型文件 (GGUF)",
     "requiredDraft": "草稿模型必需",
     "draftValidationError": "草稿模型验证错误",
-    "validatingDraft": "正在验证草稿模型文件...",
+    "validatingDraft": "正在验证草稿模型文件…",
     "selectDraftFile": "选择草稿 GGUF 文件"
   },
   "mlxImport": {

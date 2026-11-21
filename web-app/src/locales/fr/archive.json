@@ -70,5 +70,5 @@
   "previewShown": "{{shown}} affichés sur {{total}}",
   "previewNoMessages": "Aucun message texte",
   "previewThumbnail": "Image d'aperçu",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

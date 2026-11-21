@@ -41,7 +41,7 @@
   "fit_target": {
     "title": "自動調配：保留可用記憶體",
     "description": "自動調配在每張 GPU 上為其他應用程式與顯示輸出保留的可用記憶體（MiB）。若載入模型時系統變得遲緩，請調高此值。僅適用於本機模型。",
-    "placeholder": "1024 或 MiB0,MiB1,..."
+    "placeholder": "1024 或 MiB0,MiB1,…"
   },
   "fit_ctx": {
     "title": "自動調配：最小上下文",

@@ -57,7 +57,7 @@
   "previewSize": "大小",
   "previewOrigin": "原位置",
   "previewClose": "關閉",
-  "previewLoading": "正在讀取項目...",
+  "previewLoading": "正在讀取項目…",
   "previewUnavailable": "無法讀取內容。請還原該項目以開啟它。",
   "previewCreated": "建立時間",
   "previewUpdated": "最後變更",
@@ -70,5 +70,5 @@
   "previewShown": "顯示 {{shown}} / {{total}}",
   "previewNoMessages": "沒有文字訊息",
   "previewThumbnail": "預覽圖",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

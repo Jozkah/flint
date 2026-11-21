@@ -57,7 +57,7 @@
   "previewSize": "Kích thước",
   "previewOrigin": "Trước đây ở",
   "previewClose": "Đóng",
-  "previewLoading": "Đang đọc mục...",
+  "previewLoading": "Đang đọc mục…",
   "previewUnavailable": "Không thể đọc nội dung. Hãy khôi phục mục để mở nó.",
   "previewCreated": "Đã tạo",
   "previewUpdated": "Thay đổi lần cuối",
@@ -70,5 +70,5 @@
   "previewShown": "Hiển thị {{shown}} trên {{total}}",
   "previewNoMessages": "Không có tin nhắn văn bản",
   "previewThumbnail": "Ảnh xem trước",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

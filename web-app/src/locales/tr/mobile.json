@@ -94,7 +94,7 @@
     "noMessages": "Henüz mesaj yok.",
     "messageActions": "Mesaj eylemleri",
     "forkFromHere": "Sohbeti buradan çatalla",
-    "placeholder": "Bana her şeyi sorun...",
+    "placeholder": "Bana her şeyi sorun…",
     "auto": "Otomatik",
     "model": "Model"
   },
@@ -820,7 +820,7 @@
     "goodEvening": "İyi akşamlar",
     "awaitingApproval": "Onay bekleniyor: {{name}}",
     "failed": "{{name}} başarısız oldu",
-    "running": "{{name}} çalışıyor...",
+    "running": "{{name}} çalışıyor…",
     "used": "{{name}} kullanıldı",
     "androidPhone": "Android telefon",
     "phone": "Telefon"
@@ -1004,7 +1004,7 @@
     "availableOnComputer": "Bilgisayarda kullanılabilir.",
     "actionFailed": "Eylem başarısız oldu",
     "switchedTo": "{{name}} modeline geçildi",
-    "searchModels": "Modellerde ara...",
+    "searchModels": "Modellerde ara…",
     "searchModelsLabel": "Modellerde ara",
     "loadingModels": "Modeller yükleniyor…",
     "runsHere": "Bu bilgisayarda çalışır",

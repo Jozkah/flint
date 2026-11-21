@@ -18,7 +18,7 @@
   "configuration": "Configuration",
   "modelCombobox": {
     "refresh": "Refresh models",
-    "placeholder": "Type or select a model..."
+    "placeholder": "Type or select a model…"
   },
   "hubTasks": {
     "moreAria": "More ways to browse",
@@ -67,7 +67,7 @@
   },
   "scope": "Scope",
   "localApi": {
-    "starting": "Starting server...",
+    "starting": "Starting server…",
     "startingDesc": "Attempting to start server on port {{port}}",
     "status": "Server Status",
     "runningDesc": "The server is currently running.",

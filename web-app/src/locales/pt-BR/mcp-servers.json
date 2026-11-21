@@ -3,7 +3,7 @@
   "addServer": "Adicionar Servidor MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Verificando status da extensão..."
+      "checking": "Verificando status da extensão…"
     },
     "notInstalled": {
       "title": "Flint completa tarefas no seu navegador",
@@ -91,7 +91,7 @@
     "toolsAvailable_other": "{{count}} ferramentas disponíveis: {{names}}",
     "toolsAvailable_many": "{{count}} de ferramentas disponíveis: {{names}}",
     "toolsNone": "Conectado, mas este servidor não oferece ferramentas.",
-    "toolsLoading": "Carregando lista de ferramentas...",
+    "toolsLoading": "Carregando lista de ferramentas…",
     "toolsWhenConnected": "Suas ferramentas ficam disponíveis assim que ele estiver conectado.",
     "appliesToChats": "As ferramentas só chegam a um chat quando o modelo selecionado no chat suporta ferramentas. Ferramentas individuais podem ser desativadas no menu de ferramentas da entrada do chat, e essas opções valem para todos os chats."
   },
@@ -154,7 +154,7 @@
     "spent": "Orçamento da sessão: {{spent}} / {{limit}} caracteres"
   },
   "noServers": "Nenhum servidor MCP encontrado",
-  "searchPlaceholder": "Pesquisar servidores MCP...",
+  "searchPlaceholder": "Pesquisar servidores MCP…",
   "noSearchResults": "Nenhum servidor MCP corresponde a \"{{query}}\"",
   "expandServer": "Expandir detalhes do servidor",
   "collapseServer": "Recolher detalhes do servidor",
@@ -198,7 +198,7 @@
     "authenticate": "Fazer login",
     "reauthenticate": "Autenticar novamente",
     "clear": "Limpar autenticação",
-    "waiting": "Aguardando o navegador...",
+    "waiting": "Aguardando o navegador…",
     "openSignInPage": "Abrir a página de login",
     "needsAuth": "{{serverName}} precisa de autenticação",
     "needsAuthHint": "Faça login neste servidor para conectar.",
@@ -224,7 +224,7 @@
     "titleOne": "Descrever {{serverName}} com IA",
     "settingTitle": "Gerar descrições com IA",
     "settingDesc": "Peça a um modelo para escrever o texto \"Sobre este servidor\" a partir da lista de ferramentas de cada servidor. Você revisa cada texto antes de ele ser salvo.",
-    "open": "Gerar...",
+    "open": "Gerar…",
     "intro": "O modelo escolhido recebe o nome e a lista de ferramentas de cada servidor (nomes, descrições, argumentos). Nada é salvo até você aceitar.",
     "model": "Modelo",
     "scope": "Servidores",
@@ -250,7 +250,7 @@
     "skippedNoTools": "ferramentas desconhecidas; ative o servidor uma vez para que o Flint possa lê-las",
     "status": {
       "queued": "Aguardando",
-      "running": "Gerando...",
+      "running": "Gerando…",
       "done": "Pronta para revisão",
       "skipped": "Ignorada: {{reason}}",
       "failed": "Falhou: {{reason}}"

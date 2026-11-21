@@ -165,7 +165,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Error de validación del modelo",
-    "validatingModel": "Validando el archivo del modelo...",
+    "validatingModel": "Validando el archivo del modelo…",
     "embeddingDetected": "Modelo de embeddings detectado",
     "embeddingHint": "Este modelo se importará solo para embeddings. Las opciones multimodales están desactivadas.",
     "selectGguf": "Seleccionar archivo GGUF",
@@ -177,12 +177,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Error de validación de MMProj",
-    "validatingMmproj": "Validando el archivo MMProj...",
+    "validatingMmproj": "Validando el archivo MMProj…",
     "selectMmproj": "Seleccionar archivo MMPROJ",
     "draftFile": "Archivo del modelo borrador (GGUF)",
     "requiredDraft": "Obligatorio para el modelo borrador",
     "draftValidationError": "Error de validación del modelo borrador",
-    "validatingDraft": "Validando el archivo del modelo borrador...",
+    "validatingDraft": "Validando el archivo del modelo borrador…",
     "selectDraftFile": "Seleccionar archivo GGUF borrador"
   },
   "mlxImport": {

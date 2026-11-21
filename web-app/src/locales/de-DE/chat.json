@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} gelesen",
   "webSourcesReadFound": "{{read}} gelesen · {{found}} gefunden",
   "reasoning": {
-    "label": "Denkt nach ...",
+    "label": "Denkt nach …",
     "thinking": "Denkt nach",
-    "usingTool": "{{tool}} ...",
+    "usingTool": "{{tool}} …",
     "showFullTimeline": "Gesamten Verlauf anzeigen",
     "showCurrentStep": "Nur aktuellen Schritt anzeigen",
     "thoughtForAWhile": "Einige Sekunden nachgedacht",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "Titel neu generieren",
-    "working": "Chat wird benannt ...",
+    "working": "Chat wird benannt …",
     "done": "Chat umbenannt.",
     "empty": "Noch nichts vorhanden, woraus sich ein Name für diesen Chat ableiten ließe.",
     "busy": "Pausiere oder stoppe den Raum, bevor du ihn umbenennst.",
@@ -216,7 +216,7 @@
   },
   "continueSummary": {
     "menu": "In neuem Chat mit Zusammenfassung fortfahren",
-    "working": "Chat wird zusammengefasst...",
+    "working": "Chat wird zusammengefasst…",
     "done": "In einem neuen Chat fortgesetzt.",
     "cancel": "Abbrechen",
     "errors": {
@@ -310,7 +310,7 @@
     "noCanvas": "keine Zeichenfläche zum Zeichnen des Bildes verfügbar",
     "imageNotEncoded": "das Bild konnte nicht kodiert werden"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} 件を読み取り済み",
   "webSourcesReadFound": "{{read}} 件を読み取り済み · {{found}} 件を検出",
   "reasoning": {
-    "label": "推論中...",
+    "label": "推論中…",
     "thinking": "考え中",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "タイムライン全体を表示",
     "showCurrentStep": "現在のステップのみ表示",
     "thoughtForAWhile": "数秒間考えました",
@@ -170,7 +170,7 @@
   },
   "regenerateTitle": {
     "menu": "タイトルを再生成",
-    "working": "チャットに名前を付けています...",
+    "working": "チャットに名前を付けています…",
     "done": "チャット名を変更しました。",
     "empty": "まだチャット名の元になる内容がありません。",
     "busy": "名前を変更する前に、ルームを一時停止または停止してください。",
@@ -216,7 +216,7 @@
   },
   "continueSummary": {
     "menu": "要約から新しいチャットで続ける",
-    "working": "チャットを要約しています...",
+    "working": "チャットを要約しています…",
     "done": "新しいチャットで続けました。",
     "cancel": "キャンセル",
     "errors": {
@@ -305,7 +305,7 @@
     "noCanvas": "画像を描画するためのキャンバスが利用できません",
     "imageNotEncoded": "画像をエンコードできませんでした"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

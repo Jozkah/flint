@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Silnik",
-    "searchPlaceholder": "Szukaj modeli...",
+    "searchPlaceholder": "Szukaj modeli…",
     "searchAria": "Szukaj modeli",
     "clear": "Wyczyść",
     "noMatch": "Brak pasujących modeli.",

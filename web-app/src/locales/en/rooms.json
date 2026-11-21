@@ -106,9 +106,9 @@
     "participantAssistant": "Assistant",
     "participantAssistantNone": "None (the model as it is)",
     "participantRoleNone": "None",
-    "participantRoleOther": "Other...",
+    "participantRoleOther": "Other…",
     "participantRoleOtherLabel": "Role, in your own words",
-    "participantAssistantNew": "New assistant...",
+    "participantAssistantNew": "New assistant…",
     "addFolder": "Add another folder",
     "participantModel": "Model",
     "toolAccess": "Tool access",
@@ -219,7 +219,7 @@
   },
   "model": {
     "placeholder": "Choose a model",
-    "search": "Search models...",
+    "search": "Search models…",
     "notConfigured": "{{provider}} (not configured)",
     "missing": "{{model}} (missing)",
     "noProviders": "No models available. Add a provider in Settings."

@@ -94,7 +94,7 @@
     "noMessages": "Noch keine Nachrichten.",
     "messageActions": "Nachrichtenaktionen",
     "forkFromHere": "Chat ab hier verzweigen",
-    "placeholder": "Frag mich irgendetwas...",
+    "placeholder": "Frag mich irgendetwas…",
     "auto": "Auto",
     "model": "Modell"
   },
@@ -820,7 +820,7 @@
     "goodEvening": "Guten Abend",
     "awaitingApproval": "Wartet auf Freigabe: {{name}}",
     "failed": "{{name}} fehlgeschlagen",
-    "running": "{{name}} läuft...",
+    "running": "{{name}} läuft…",
     "used": "{{name}} verwendet",
     "androidPhone": "Android-Handy",
     "phone": "Handy"
@@ -1004,7 +1004,7 @@
     "availableOnComputer": "Am Computer verfügbar.",
     "actionFailed": "Die Aktion ist fehlgeschlagen",
     "switchedTo": "Zu {{name}} gewechselt",
-    "searchModels": "Modelle suchen...",
+    "searchModels": "Modelle suchen…",
     "searchModelsLabel": "Modelle suchen",
     "loadingModels": "Modelle werden geladen…",
     "runsHere": "Läuft auf diesem Computer",

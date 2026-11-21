@@ -575,7 +575,7 @@
   "apiKeyRequired": "API anahtarı gerekli",
   "enterTrustedHosts": "Güvenilen ana bilgisayarları girin",
   "placeholder": {
-    "chatInput": "Bana her şeyi sor..."
+    "chatInput": "Bana her şeyi sor…"
   },
   "confirm": "Onayla",
   "continue": "Devam et",
@@ -637,7 +637,7 @@
     "errorPaste": "JSON yapıştırılamadı",
     "errorFormat": "Geçersiz JSON biçimi",
     "titleAll": "Tüm Sunucuların Yapılandırmasını Düzenle",
-    "placeholder": "JSON yapılandırması girin...",
+    "placeholder": "JSON yapılandırması girin…",
     "save": "Kaydet"
   },
   "editModel": {
@@ -764,7 +764,7 @@
     "newProjectDialog": {
       "createTitle": "Proje oluştur",
       "editTitle": "Projeyi düzenle",
-      "namePlaceholder": "Proje adını girin...",
+      "namePlaceholder": "Proje adını girin…",
       "alreadyExists": "\"{{projectName}}\" projesi zaten var",
       "createSuccess": "\"{{projectName}}\" projesi oluşturuldu",
       "updateSuccess": "\"{{projectName}}\" projesi güncellendi"
@@ -784,7 +784,7 @@
     "editProject": "Projeyi Düzenle",
     "deleteProject": "Projeyi Sil",
     "projectName": "Proje Adı",
-    "enterProjectName": "Proje adı girin...",
+    "enterProjectName": "Proje adı girin…",
     "noProjectsAvailable": "Mevcut proje yok",
     "noProjectsYet": "Henüz Proje Yok",
     "noProjectsYetDesc": "Proje Ekle düğmesine tıklayarak yeni bir proje başlatın.",
@@ -826,7 +826,7 @@
       "createTitle": "Yeni Proje Oluştur",
       "editTitle": "Projeyi Düzenle",
       "nameLabel": "Proje Adı",
-      "namePlaceholder": "Proje adı girin...",
+      "namePlaceholder": "Proje adı girin…",
       "assistant": "Asistan",
       "selectAssistant": "Bir asistan seçin (isteğe bağlı)",
       "noAssistant": "Asistan yok",
@@ -843,7 +843,7 @@
     "addGroupDialog": {
       "createTitle": "Grup oluştur",
       "editTitle": "Grubu düzenle",
-      "namePlaceholder": "Grup adını girin...",
+      "namePlaceholder": "Grup adını girin…",
       "alreadyExists": "\"{{projectName}}\" grubu zaten var",
       "createSuccess": "\"{{projectName}}\" grubu oluşturuldu",
       "updateSuccess": "\"{{projectName}}\" grubu güncellendi"
@@ -863,7 +863,7 @@
     "collapseProject": "Projeyi daralt",
     "expandProject": "Projeyi genişlet",
     "update": "Güncelle",
-    "searchProjects": "Projelerde ara...",
+    "searchProjects": "Projelerde ara…",
     "noProjectsFound": "Proje bulunamadı",
     "tryDifferentSearch": "Farklı bir arama terimi deneyin",
     "whatIsACollection": "Koleksiyon, konuşmaları ve referans dosyalarını gruplar. Bilgisayarınızdaki bir klasörü açmaz.",
@@ -979,7 +979,7 @@
     },
     "modelValidationStarted": {
       "title": "Model Doğrulanıyor",
-      "description": "\"{{modelId}}\" modeli başarıyla indirildi. Bütünlük doğrulanıyor..."
+      "description": "\"{{modelId}}\" modeli başarıyla indirildi. Bütünlük doğrulanıyor…"
     },
     "modelValidationFailed": {
       "title": "Model Doğrulaması Başarısız",
@@ -2237,7 +2237,7 @@
       "root": "Klasörü tara",
       "rootPlaceholder": "Desktop/Coding",
       "scan": "Tara",
-      "scanning": "Taranıyor...",
+      "scanning": "Taranıyor…",
       "scanFailed": "Tarama başarısız: {{error}}",
       "empty": "Beceri veya eklenti bulunamadı.",
       "installed": "yüklü",
@@ -2245,7 +2245,7 @@
       "linkHooks": "~/.claude/settings.json ve içe aktarılan eklentilerdeki Claude Code kancalarımı (SessionStart ve UserPromptSubmit) da çalıştır. Kancalar isteminizi alır.",
       "overwrite": "Mevcut olanların üzerine yaz",
       "importSelected": "Seçilenleri içe aktar",
-      "importing": "İçe aktarılıyor...",
+      "importing": "İçe aktarılıyor…",
       "importFailed": "İçe aktarma başarısız: {{error}}",
       "done": "{{imported}} içe aktarıldı, {{skipped}} atlandı",
       "doneErrors": "{{count}} hata",

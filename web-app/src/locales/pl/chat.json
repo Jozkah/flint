@@ -59,9 +59,9 @@
   "webSourcesRead": "Przeczytano: {{count}}",
   "webSourcesReadFound": "Przeczytano: {{read}} · znaleziono: {{found}}",
   "reasoning": {
-    "label": "Rozumowanie...",
+    "label": "Rozumowanie…",
     "thinking": "Myślenie",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Pokaż pełną oś czasu",
     "showCurrentStep": "Pokaż tylko bieżący krok",
     "thoughtForAWhile": "Myślał przez kilka sekund",
@@ -188,7 +188,7 @@
   },
   "regenerateTitle": {
     "menu": "Wygeneruj tytuł ponownie",
-    "working": "Nadawanie nazwy czatowi...",
+    "working": "Nadawanie nazwy czatowi…",
     "done": "Zmieniono nazwę czatu.",
     "empty": "Nie ma jeszcze z czego nadać nazwy temu czatowi.",
     "busy": "Wstrzymaj lub zatrzymaj pokój przed zmianą jego nazwy.",
@@ -234,7 +234,7 @@
   },
   "continueSummary": {
     "menu": "Kontynuuj w nowym czacie na podstawie podsumowania",
-    "working": "Podsumowuję czat...",
+    "working": "Podsumowuję czat…",
     "done": "Kontynuowano w nowym czacie.",
     "cancel": "Anuluj",
     "errors": {
@@ -340,7 +340,7 @@
     "noCanvas": "brak dostępnego canvas do narysowania obrazu",
     "imageNotEncoded": "nie udało się zakodować obrazu"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

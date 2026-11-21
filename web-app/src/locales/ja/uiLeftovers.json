@@ -18,7 +18,7 @@
   "configuration": "設定",
   "modelCombobox": {
     "refresh": "モデルを更新",
-    "placeholder": "モデルを入力または選択..."
+    "placeholder": "モデルを入力または選択…"
   },
   "hubTasks": {
     "moreAria": "そのほかの探し方",
@@ -67,7 +67,7 @@
   },
   "scope": "スコープ",
   "localApi": {
-    "starting": "サーバーを起動しています...",
+    "starting": "サーバーを起動しています…",
     "startingDesc": "ポート {{port}} でサーバーの起動を試行しています",
     "status": "サーバーの状態",
     "runningDesc": "サーバーは現在稼働中です。",

@@ -104,9 +104,9 @@
     "participantAssistant": "助手",
     "participantAssistantNone": "无（原样使用模型）",
     "participantRoleNone": "无",
-    "participantRoleOther": "其他...",
+    "participantRoleOther": "其他…",
     "participantRoleOtherLabel": "角色，用你自己的话描述",
-    "participantAssistantNew": "新建助手...",
+    "participantAssistantNew": "新建助手…",
     "addFolder": "添加另一个文件夹",
     "participantModel": "模型",
     "toolAccess": "工具访问",
@@ -217,7 +217,7 @@
   },
   "model": {
     "placeholder": "选择模型",
-    "search": "搜索模型...",
+    "search": "搜索模型…",
     "notConfigured": "{{provider}}（未配置）",
     "missing": "{{model}}（缺失）",
     "noProviders": "没有可用的模型。请在“设置”中添加提供商。"

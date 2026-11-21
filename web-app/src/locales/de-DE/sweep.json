@@ -162,7 +162,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Fehler bei der Modellvalidierung",
-    "validatingModel": "Modelldatei wird validiert...",
+    "validatingModel": "Modelldatei wird validiert…",
     "embeddingDetected": "Embedding-Modell erkannt",
     "embeddingHint": "Dieses Modell wird nur für Embeddings importiert. Multimodale Optionen sind deaktiviert.",
     "selectGguf": "GGUF-Datei auswählen",
@@ -174,12 +174,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Fehler bei der MMProj-Validierung",
-    "validatingMmproj": "MMProj-Datei wird validiert...",
+    "validatingMmproj": "MMProj-Datei wird validiert…",
     "selectMmproj": "MMPROJ-Datei auswählen",
     "draftFile": "Draft-Modelldatei (GGUF)",
     "requiredDraft": "Erforderlich für Draft-Modell",
     "draftValidationError": "Fehler bei der Draft-Modell-Validierung",
-    "validatingDraft": "Draft-Modelldatei wird validiert...",
+    "validatingDraft": "Draft-Modelldatei wird validiert…",
     "selectDraftFile": "Draft-GGUF-Datei auswählen"
   },
   "mlxImport": {

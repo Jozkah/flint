@@ -159,7 +159,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Kesalahan Validasi Model",
-    "validatingModel": "Memvalidasi file model...",
+    "validatingModel": "Memvalidasi file model…",
     "embeddingDetected": "Model embedding terdeteksi",
     "embeddingHint": "Model ini akan diimpor hanya untuk embedding. Opsi multimodal dinonaktifkan.",
     "selectGguf": "Pilih File GGUF",
@@ -171,12 +171,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Kesalahan Validasi MMProj",
-    "validatingMmproj": "Memvalidasi file MMProj...",
+    "validatingMmproj": "Memvalidasi file MMProj…",
     "selectMmproj": "Pilih File MMPROJ",
     "draftFile": "File Model Draf (GGUF)",
     "requiredDraft": "Diperlukan untuk Model Draf",
     "draftValidationError": "Kesalahan Validasi Model Draf",
-    "validatingDraft": "Memvalidasi file model draf...",
+    "validatingDraft": "Memvalidasi file model draf…",
     "selectDraftFile": "Pilih File GGUF Draf"
   },
   "mlxImport": {

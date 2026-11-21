@@ -1,5 +1,5 @@
 {
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "welcome": "Hi, how are you?",
   "description": "How can I help you today?",
@@ -73,9 +73,9 @@
   "webSourcesRead": "{{count}} read",
   "webSourcesReadFound": "{{read}} read · {{found}} found",
   "reasoning": {
-    "label": "Reasoning...",
+    "label": "Reasoning…",
     "thinking": "Thinking",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Show full timeline",
     "showCurrentStep": "Show current step only",
     "thoughtForAWhile": "Thought for a few seconds",
@@ -192,7 +192,7 @@
   },
   "continueSummary": {
     "menu": "Continue in a new chat from a summary",
-    "working": "Summarizing the chat...",
+    "working": "Summarizing the chat…",
     "done": "Continued in a new chat.",
     "cancel": "Cancel",
     "errors": {
@@ -205,7 +205,7 @@
   },
   "regenerateTitle": {
     "menu": "Regenerate title",
-    "working": "Naming the chat...",
+    "working": "Naming the chat…",
     "done": "Chat renamed.",
     "empty": "Nothing to name this chat from yet.",
     "busy": "Pause or stop the room before renaming it.",

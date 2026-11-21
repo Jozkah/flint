@@ -3,7 +3,7 @@
   "addServer": "Přidat MCP server",
   "browserExtension": {
     "connecting": {
-      "checking": "Kontrola stavu rozšíření..."
+      "checking": "Kontrola stavu rozšíření…"
     },
     "notInstalled": {
       "title": "Flint dokončuje úkoly ve vašem prohlížeči",
@@ -92,7 +92,7 @@
     "toolsAvailable_many": "Dostupných nástrojů: {{count}}: {{names}}",
     "toolsAvailable_other": "Dostupných nástrojů: {{count}}: {{names}}",
     "toolsNone": "Připojeno, ale tento server nenabízí žádné nástroje.",
-    "toolsLoading": "Načítání seznamu nástrojů...",
+    "toolsLoading": "Načítání seznamu nástrojů…",
     "toolsWhenConnected": "Jeho nástroje budou dostupné po připojení.",
     "appliesToChats": "Nástroje se do chatu dostanou jen tehdy, když vybraný model chatu nástroje podporuje. Jednotlivé nástroje lze vypnout v nabídce nástrojů ve vstupu chatu a tato přepnutí platí pro všechny chaty."
   },
@@ -155,7 +155,7 @@
     "spent": "Rozpočet relace: {{spent}} / {{limit}} znaků"
   },
   "noServers": "Nebyly nalezeny žádné MCP servery",
-  "searchPlaceholder": "Hledat servery MCP...",
+  "searchPlaceholder": "Hledat servery MCP…",
   "noSearchResults": "Žádné servery MCP neodpovídají „{{query}}“",
   "expandServer": "Rozbalit podrobnosti serveru",
   "collapseServer": "Sbalit podrobnosti serveru",
@@ -199,7 +199,7 @@
     "authenticate": "Přihlásit se",
     "reauthenticate": "Ověřit znovu",
     "clear": "Vymazat ověření",
-    "waiting": "Čekání na prohlížeč...",
+    "waiting": "Čekání na prohlížeč…",
     "openSignInPage": "Otevřít přihlašovací stránku",
     "needsAuth": "{{serverName}} vyžaduje ověření",
     "needsAuthHint": "Pro připojení se k tomuto serveru přihlaste.",
@@ -225,7 +225,7 @@
     "titleOne": "Popsat {{serverName}} pomocí AI",
     "settingTitle": "Generovat popisy pomocí AI",
     "settingDesc": "Požádejte model, aby z nástrojů každého serveru napsal text „O tomto serveru“. Každý text před uložením zkontrolujete.",
-    "open": "Generovat...",
+    "open": "Generovat…",
     "intro": "Vybraný model obdrží název a seznam nástrojů každého serveru (názvy, popisy, argumenty). Nic se neuloží, dokud to nepřijmete.",
     "model": "Model",
     "scope": "Servery",
@@ -253,7 +253,7 @@
     "skippedNoTools": "nástroje nejsou známy; jednou server zapněte, aby je Flint mohl přečíst",
     "status": {
       "queued": "Čeká",
-      "running": "Generování...",
+      "running": "Generování…",
       "done": "Připraveno ke kontrole",
       "skipped": "Přeskočeno: {{reason}}",
       "failed": "Selhalo: {{reason}}"

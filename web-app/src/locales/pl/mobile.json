@@ -98,7 +98,7 @@
     "noMessages": "Brak wiadomości.",
     "messageActions": "Akcje wiadomości",
     "forkFromHere": "Rozgałęź czat stąd",
-    "placeholder": "Zapytaj o cokolwiek...",
+    "placeholder": "Zapytaj o cokolwiek…",
     "auto": "Auto",
     "model": "Model"
   },
@@ -842,7 +842,7 @@
     "goodEvening": "Dobry wieczór",
     "awaitingApproval": "Czeka na zatwierdzenie: {{name}}",
     "failed": "{{name}} nie powiodło się",
-    "running": "Uruchamianie {{name}}...",
+    "running": "Uruchamianie {{name}}…",
     "used": "Użyto {{name}}",
     "androidPhone": "Telefon z Androidem",
     "phone": "Telefon"
@@ -1032,7 +1032,7 @@
     "availableOnComputer": "Dostępne na komputerze.",
     "actionFailed": "Akcja nie powiodła się",
     "switchedTo": "Przełączono na {{name}}",
-    "searchModels": "Szukaj modeli...",
+    "searchModels": "Szukaj modeli…",
     "searchModelsLabel": "Szukaj modeli",
     "loadingModels": "Wczytywanie modeli…",
     "runsHere": "Działa na tym komputerze",

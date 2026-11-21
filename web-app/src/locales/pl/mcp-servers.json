@@ -3,7 +3,7 @@
   "addServer": "Dodaj Serwer MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Sprawdzanie statusu rozszerzenia..."
+      "checking": "Sprawdzanie statusu rozszerzenia…"
     },
     "notInstalled": {
       "title": "Flint wykonuje zadania w Twojej przeglądarce",
@@ -92,7 +92,7 @@
     "toolsAvailable_few": "Dostępne narzędzia ({{count}}): {{names}}",
     "toolsAvailable_many": "Dostępne narzędzia ({{count}}): {{names}}",
     "toolsNone": "Połączony, ale ten serwer nie oferuje narzędzi.",
-    "toolsLoading": "Wczytywanie listy narzędzi...",
+    "toolsLoading": "Wczytywanie listy narzędzi…",
     "toolsWhenConnected": "Jego narzędzia staną się dostępne po połączeniu.",
     "appliesToChats": "Narzędzia trafiają do czatu tylko wtedy, gdy wybrany model czatu obsługuje narzędzia. Poszczególne narzędzia można wyłączyć z menu narzędzi w polu wprowadzania czatu, a te przełączniki dotyczą wszystkich czatów."
   },
@@ -155,7 +155,7 @@
     "spent": "Budżet sesji: {{spent}} / {{limit}} znaków"
   },
   "noServers": "Nie znaleziono serwerów MCP",
-  "searchPlaceholder": "Szukaj serwerów MCP...",
+  "searchPlaceholder": "Szukaj serwerów MCP…",
   "noSearchResults": "Żaden serwer MCP nie pasuje do „{{query}}”",
   "expandServer": "Rozwiń szczegóły serwera",
   "collapseServer": "Zwiń szczegóły serwera",
@@ -199,7 +199,7 @@
     "authenticate": "Zaloguj się",
     "reauthenticate": "Uwierzytelnij ponownie",
     "clear": "Wyczyść uwierzytelnienie",
-    "waiting": "Oczekiwanie na przeglądarkę...",
+    "waiting": "Oczekiwanie na przeglądarkę…",
     "openSignInPage": "Otwórz stronę logowania",
     "needsAuth": "{{serverName}} wymaga uwierzytelnienia",
     "needsAuthHint": "Zaloguj się do tego serwera, aby się połączyć.",
@@ -225,7 +225,7 @@
     "titleOne": "Opisz {{serverName}} za pomocą AI",
     "settingTitle": "Generuj opisy za pomocą AI",
     "settingDesc": "Poproś model o napisanie tekstu „O tym serwerze” na podstawie listy narzędzi każdego serwera. Każdy tekst przeglądasz przed zapisaniem.",
-    "open": "Generuj...",
+    "open": "Generuj…",
     "intro": "Wybrany model otrzymuje nazwę i listę narzędzi każdego serwera (nazwy, opisy, argumenty). Nic nie jest zapisywane, dopóki tego nie zaakceptujesz.",
     "model": "Model",
     "scope": "Serwery",
@@ -253,7 +253,7 @@
     "skippedNoTools": "narzędzia nieznane; włącz serwer raz, aby Flint mógł je odczytać",
     "status": {
       "queued": "Oczekuje",
-      "running": "Generowanie...",
+      "running": "Generowanie…",
       "done": "Gotowe do przeglądu",
       "skipped": "Pominięto: {{reason}}",
       "failed": "Niepowodzenie: {{reason}}"

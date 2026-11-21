@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Движок",
-    "searchPlaceholder": "Поиск моделей...",
+    "searchPlaceholder": "Поиск моделей…",
     "searchAria": "Поиск моделей",
     "clear": "Очистить",
     "noMatch": "Подходящих моделей нет.",

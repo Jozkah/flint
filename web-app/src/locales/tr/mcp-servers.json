@@ -3,7 +3,7 @@
   "addServer": "MCP Sunucusu Ekle",
   "browserExtension": {
     "connecting": {
-      "checking": "Uzantı durumu kontrol ediliyor..."
+      "checking": "Uzantı durumu kontrol ediliyor…"
     },
     "notInstalled": {
       "title": "Flint, tarayıcınızda görevleri tamamlar",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} araç kullanılabilir: {{names}}",
     "toolsAvailable_other": "{{count}} araç kullanılabilir: {{names}}",
     "toolsNone": "Bağlı, ancak bu sunucu hiç araç sunmuyor.",
-    "toolsLoading": "Araç listesi yükleniyor...",
+    "toolsLoading": "Araç listesi yükleniyor…",
     "toolsWhenConnected": "Araçları bağlandıktan sonra kullanılabilir olur.",
     "appliesToChats": "Araçlar bir sohbete yalnızca sohbetin seçili modeli araçları destekliyorsa ulaşır. Tek tek araçlar sohbet girişindeki araçlar menüsünden kapatılabilir ve bu anahtarlar tüm sohbetler için geçerlidir."
   },
@@ -153,7 +153,7 @@
     "spent": "Oturum bütçesi: {{spent}} / {{limit}} karakter"
   },
   "noServers": "MCP sunucusu bulunamadı",
-  "searchPlaceholder": "MCP sunucularında ara...",
+  "searchPlaceholder": "MCP sunucularında ara…",
   "noSearchResults": "\"{{query}}\" ile eşleşen MCP sunucusu yok",
   "expandServer": "Sunucu ayrıntılarını genişlet",
   "collapseServer": "Sunucu ayrıntılarını daralt",
@@ -197,7 +197,7 @@
     "authenticate": "Oturum aç",
     "reauthenticate": "Yeniden oturum aç",
     "clear": "Kimlik doğrulamayı temizle",
-    "waiting": "Tarayıcı bekleniyor...",
+    "waiting": "Tarayıcı bekleniyor…",
     "openSignInPage": "Oturum açma sayfasını aç",
     "needsAuth": "{{serverName}} kimlik doğrulaması gerektiriyor",
     "needsAuthHint": "Bağlanmak için bu sunucuda oturum açın.",
@@ -223,7 +223,7 @@
     "titleOne": "{{serverName}} sunucusunu yapay zekayla açıkla",
     "settingTitle": "Yapay zekayla açıklama oluştur",
     "settingDesc": "Bir modelden, her sunucunun araç listesinden \"Bu sunucu hakkında\" metnini yazmasını isteyin. Her metni kaydedilmeden önce siz gözden geçirirsiniz.",
-    "open": "Oluştur...",
+    "open": "Oluştur…",
     "intro": "Seçilen model, her sunucunun adını ve araç listesini (adlar, açıklamalar, bağımsız değişkenler) alır. Siz kabul edene kadar hiçbir şey kaydedilmez.",
     "model": "Model",
     "scope": "Sunucular",
@@ -247,7 +247,7 @@
     "skippedNoTools": "araçlar bilinmiyor; Flint'in okuyabilmesi için sunucuyu bir kez açın",
     "status": {
       "queued": "Bekliyor",
-      "running": "Oluşturuluyor...",
+      "running": "Oluşturuluyor…",
       "done": "Gözden geçirmeye hazır",
       "skipped": "Atlandı: {{reason}}",
       "failed": "Başarısız: {{reason}}"

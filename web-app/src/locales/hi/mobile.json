@@ -94,7 +94,7 @@
     "noMessages": "अभी कोई संदेश नहीं।",
     "messageActions": "संदेश क्रियाएँ",
     "forkFromHere": "यहाँ से चैट फ़ोर्क करें",
-    "placeholder": "मुझसे कुछ भी पूछें...",
+    "placeholder": "मुझसे कुछ भी पूछें…",
     "auto": "ऑटो",
     "model": "मॉडल"
   },
@@ -820,7 +820,7 @@
     "goodEvening": "शुभ संध्या",
     "awaitingApproval": "मंज़ूरी की प्रतीक्षा में: {{name}}",
     "failed": "{{name}} विफल रहा",
-    "running": "{{name}} चल रहा है...",
+    "running": "{{name}} चल रहा है…",
     "used": "{{name}} इस्तेमाल किया",
     "androidPhone": "Android फ़ोन",
     "phone": "फ़ोन"
@@ -1004,7 +1004,7 @@
     "availableOnComputer": "कंप्यूटर पर उपलब्ध।",
     "actionFailed": "क्रिया विफल रही",
     "switchedTo": "{{name}} पर स्विच किया गया",
-    "searchModels": "मॉडल खोजें...",
+    "searchModels": "मॉडल खोजें…",
     "searchModelsLabel": "मॉडल खोजें",
     "loadingModels": "मॉडल लोड हो रहे हैं…",
     "runsHere": "इस कंप्यूटर पर चलता है",

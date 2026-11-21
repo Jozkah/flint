@@ -18,7 +18,7 @@
   "configuration": "Cấu hình",
   "modelCombobox": {
     "refresh": "Làm mới danh sách mô hình",
-    "placeholder": "Nhập hoặc chọn một mô hình..."
+    "placeholder": "Nhập hoặc chọn một mô hình…"
   },
   "hubTasks": {
     "moreAria": "Thêm cách duyệt khác",
@@ -67,7 +67,7 @@
   },
   "scope": "Phạm vi",
   "localApi": {
-    "starting": "Đang khởi động server...",
+    "starting": "Đang khởi động server…",
     "startingDesc": "Đang thử khởi động server trên cổng {{port}}",
     "status": "Trạng thái server",
     "runningDesc": "Server đang chạy.",

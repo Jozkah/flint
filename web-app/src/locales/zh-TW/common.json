@@ -144,7 +144,7 @@
   "agent_tools": "代理程式工具",
   "memory": "記憶",
   "browse": "瀏覽",
-  "starting": "正在啟動...",
+  "starting": "正在啟動…",
   "activeSuffix": " （使用中）",
   "extensions": "擴充功能",
   "attachments": "附件",
@@ -231,13 +231,13 @@
   "loginWith": "使用{{provider}}登入",
   "loginFailed": "登入失敗",
   "logout": "登出",
-  "loggingOut": "正在登出...",
+  "loggingOut": "正在登出…",
   "loggedOut": "成功登出",
   "logoutFailed": "登出失敗",
   "profile": "個人資料",
   "reset": "重設",
   "search": "搜尋",
-  "searchThreads": "搜尋聊天...",
+  "searchThreads": "搜尋聊天…",
   "toNavigate": "導覽",
   "toSelect": "選取",
   "toClose": "關閉",
@@ -522,7 +522,7 @@
   "cancelDownload": "取消下載",
   "downloadCancelled": "下載已取消",
   "downloadComplete": "下載完成",
-  "thinking": "思考中...",
+  "thinking": "思考中…",
   "thought": "思考",
   "callingTool": "呼叫工具",
   "completed": "已完成",
@@ -575,11 +575,11 @@
   "apiKeyRequired": "需要 API 金鑰",
   "enterTrustedHosts": "輸入受信任的主機",
   "placeholder": {
-    "chatInput": "問我任何事..."
+    "chatInput": "問我任何事…"
   },
   "confirm": "確認",
   "continue": "繼續",
-  "loading": "載入中...",
+  "loading": "載入中…",
   "settingUpJan": "正在啟動 Flint…",
   "registeringExtensions": "正在登錄擴充功能…",
   "loadingExtensions": "正在載入擴充功能… ({{done}}/{{total}})",
@@ -591,7 +591,7 @@
   "temporaryChat": "臨時聊天",
   "temporaryChatTooltip": "臨時聊天不會出現在您的歷史記錄中",
   "noResultsFoundDesc": "我們找不到任何符合您搜尋的聊天。請嘗試不同的關鍵字。",
-  "searchModels": "搜尋模型...",
+  "searchModels": "搜尋模型…",
   "sortModels": "排序模型",
   "filterModels": "篩選模型",
   "hideUnavailableModels": "隱藏無法使用的模型",
@@ -600,7 +600,7 @@
   "sortNameDesc": "名稱（Z–A）",
   "sortRecent": "最近使用",
   "sortProvider": "供應商",
-  "searchStyles": "搜尋樣式...",
+  "searchStyles": "搜尋樣式…",
   "createAssistant": "建立助理",
   "enterApiKey": "輸入 API 金鑰",
   "scrollToBottom": "滾動到底部",
@@ -637,7 +637,7 @@
     "errorPaste": "貼上 JSON 失敗",
     "errorFormat": "無效的 JSON 格式",
     "titleAll": "編輯所有伺服器組態",
-    "placeholder": "輸入 JSON 組態...",
+    "placeholder": "輸入 JSON 組態…",
     "save": "儲存"
   },
   "editModel": {
@@ -764,7 +764,7 @@
     "newProjectDialog": {
       "createTitle": "建立專案",
       "editTitle": "編輯專案",
-      "namePlaceholder": "輸入專案名稱...",
+      "namePlaceholder": "輸入專案名稱…",
       "alreadyExists": "專案「{{projectName}}」已存在",
       "createSuccess": "已建立專案「{{projectName}}」",
       "updateSuccess": "已更新專案「{{projectName}}」"
@@ -826,7 +826,7 @@
       "createTitle": "建立新專案",
       "editTitle": "編輯專案",
       "nameLabel": "專案名稱",
-      "namePlaceholder": "輸入專案名稱...",
+      "namePlaceholder": "輸入專案名稱…",
       "assistant": "助理",
       "selectAssistant": "選擇助理（選填）",
       "noAssistant": "沒有助理",
@@ -844,7 +844,7 @@
     "addGroupDialog": {
       "createTitle": "建立群組",
       "editTitle": "編輯群組",
-      "namePlaceholder": "輸入群組名稱...",
+      "namePlaceholder": "輸入群組名稱…",
       "alreadyExists": "群組「{{projectName}}」已存在",
       "createSuccess": "已建立群組「{{projectName}}」",
       "updateSuccess": "已更新群組「{{projectName}}」"
@@ -864,7 +864,7 @@
     "collapseProject": "收合專案",
     "expandProject": "展開專案",
     "update": "更新",
-    "searchProjects": "搜尋專案...",
+    "searchProjects": "搜尋專案…",
     "noProjectsFound": "找不到專案",
     "tryDifferentSearch": "嘗試不同的搜尋詞",
     "whatIsACollection": "集合會將對話和參考檔案歸為一組。它不會開啟你電腦上的資料夾。",
@@ -981,7 +981,7 @@
     },
     "modelValidationStarted": {
       "title": "正在驗證模型",
-      "description": "模型 \"{{modelId}}\" 下載成功。正在驗證完整性..."
+      "description": "模型 \"{{modelId}}\" 下載成功。正在驗證完整性…"
     },
     "modelValidationFailed": {
       "title": "模型驗證失敗",
@@ -2239,7 +2239,7 @@
       "root": "掃描資料夾",
       "rootPlaceholder": "Desktop/Coding",
       "scan": "掃描",
-      "scanning": "正在掃描...",
+      "scanning": "正在掃描…",
       "scanFailed": "掃描失敗：{{error}}",
       "empty": "找不到技能或外掛程式。",
       "installed": "已安裝",
@@ -2247,7 +2247,7 @@
       "linkHooks": "同時執行我在 ~/.claude/settings.json 和已匯入外掛程式中的 Claude Code 掛鉤（SessionStart 和 UserPromptSubmit）。掛鉤會收到你的提示詞。",
       "overwrite": "覆寫已有項目",
       "importSelected": "匯入所選項目",
-      "importing": "正在匯入...",
+      "importing": "正在匯入…",
       "importFailed": "匯入失敗：{{error}}",
       "done": "已匯入 {{imported}} 個，略過 {{skipped}} 個",
       "doneErrors": "{{count}} 個錯誤",

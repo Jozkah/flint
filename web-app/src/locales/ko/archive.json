@@ -57,7 +57,7 @@
   "previewSize": "크기",
   "previewOrigin": "원래 위치",
   "previewClose": "닫기",
-  "previewLoading": "항목을 읽는 중...",
+  "previewLoading": "항목을 읽는 중…",
   "previewUnavailable": "내용을 읽을 수 없습니다. 항목을 복원한 뒤 열어 보세요.",
   "previewCreated": "생성일",
   "previewUpdated": "마지막 변경",
@@ -70,5 +70,5 @@
   "previewShown": "{{total}}개 중 {{shown}}개 표시",
   "previewNoMessages": "텍스트 메시지 없음",
   "previewThumbnail": "미리 보기 이미지",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

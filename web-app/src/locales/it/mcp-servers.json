@@ -3,7 +3,7 @@
   "addServer": "Aggiungi server MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "Verifica dello stato dell'estensione..."
+      "checking": "Verifica dello stato dell'estensione…"
     },
     "notInstalled": {
       "title": "Flint completa le attività nel tuo browser",
@@ -91,7 +91,7 @@
     "toolsAvailable_other": "{{count}} strumenti disponibili: {{names}}",
     "toolsAvailable_many": "{{count}} di strumenti disponibili: {{names}}",
     "toolsNone": "Connesso, ma questo server non offre strumenti.",
-    "toolsLoading": "Caricamento dell'elenco degli strumenti...",
+    "toolsLoading": "Caricamento dell'elenco degli strumenti…",
     "toolsWhenConnected": "I suoi strumenti diventano disponibili una volta connesso.",
     "appliesToChats": "Gli strumenti raggiungono una chat solo se il modello selezionato per la chat supporta gli strumenti. I singoli strumenti possono essere disattivati dal menu strumenti nell'input della chat, e questi interruttori valgono per tutte le chat."
   },
@@ -154,7 +154,7 @@
     "spent": "Budget di sessione: {{spent}} / {{limit}} caratteri"
   },
   "noServers": "Nessun server MCP trovato",
-  "searchPlaceholder": "Cerca server MCP...",
+  "searchPlaceholder": "Cerca server MCP…",
   "noSearchResults": "Nessun server MCP corrisponde a \"{{query}}\"",
   "expandServer": "Espandi i dettagli del server",
   "collapseServer": "Comprimi i dettagli del server",
@@ -198,7 +198,7 @@
     "authenticate": "Accedi",
     "reauthenticate": "Riautentica",
     "clear": "Cancella autenticazione",
-    "waiting": "In attesa del browser...",
+    "waiting": "In attesa del browser…",
     "openSignInPage": "Apri la pagina di accesso",
     "needsAuth": "{{serverName}} richiede l'autenticazione",
     "needsAuthHint": "Accedi a questo server per connetterti.",
@@ -224,7 +224,7 @@
     "titleOne": "Descrivi {{serverName}} con l'IA",
     "settingTitle": "Genera descrizioni con l'IA",
     "settingDesc": "Chiedi a un modello di scrivere il testo \"Informazioni su questo server\" dall'elenco degli strumenti di ciascun server. Rivedi ogni testo prima che venga salvato.",
-    "open": "Genera...",
+    "open": "Genera…",
     "intro": "Il modello scelto riceve il nome e l'elenco degli strumenti di ciascun server (nomi, descrizioni, argomenti). Nulla viene salvato finché non lo accetti.",
     "model": "Modello",
     "scope": "Server",
@@ -250,7 +250,7 @@
     "skippedNoTools": "strumenti sconosciuti; attiva il server una volta perché Flint possa leggerli",
     "status": {
       "queued": "In attesa",
-      "running": "Generazione...",
+      "running": "Generazione…",
       "done": "Pronto per la revisione",
       "skipped": "Saltato: {{reason}}",
       "failed": "Non riuscito: {{reason}}"

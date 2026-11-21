@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Engine",
-    "searchPlaceholder": "Search models...",
+    "searchPlaceholder": "Search models…",
     "searchAria": "Search models",
     "clear": "Clear",
     "noMatch": "No models match.",

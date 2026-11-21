@@ -110,9 +110,9 @@
     "participantAssistant": "Asistent",
     "participantAssistantNone": "Žádný (model tak, jak je)",
     "participantRoleNone": "Žádná",
-    "participantRoleOther": "Jiná...",
+    "participantRoleOther": "Jiná…",
     "participantRoleOtherLabel": "Role vlastními slovy",
-    "participantAssistantNew": "Nový asistent...",
+    "participantAssistantNew": "Nový asistent…",
     "addFolder": "Přidat další složku",
     "participantModel": "Model",
     "toolAccess": "Přístup k nástrojům",
@@ -223,7 +223,7 @@
   },
   "model": {
     "placeholder": "Vyberte model",
-    "search": "Hledat modely...",
+    "search": "Hledat modely…",
     "notConfigured": "{{provider}} (nenakonfigurováno)",
     "missing": "{{model}} (chybí)",
     "noProviders": "Nejsou dostupné žádné modely. Přidejte poskytovatele v Nastavení."

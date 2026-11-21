@@ -92,7 +92,7 @@
     "noMessages": "まだメッセージはありません。",
     "messageActions": "メッセージ操作",
     "forkFromHere": "ここからチャットを分岐",
-    "placeholder": "何でも聞いてください...",
+    "placeholder": "何でも聞いてください…",
     "auto": "自動",
     "model": "モデル"
   },
@@ -809,7 +809,7 @@
     "goodEvening": "こんばんは",
     "awaitingApproval": "承認待ち: {{name}}",
     "failed": "{{name}} が失敗しました",
-    "running": "{{name}} を実行中...",
+    "running": "{{name}} を実行中…",
     "used": "{{name}} を使用しました",
     "androidPhone": "Android スマホ",
     "phone": "スマホ"
@@ -990,7 +990,7 @@
     "availableOnComputer": "パソコンで利用できます。",
     "actionFailed": "操作に失敗しました",
     "switchedTo": "{{name}} に切り替えました",
-    "searchModels": "モデルを検索...",
+    "searchModels": "モデルを検索…",
     "searchModelsLabel": "モデルを検索",
     "loadingModels": "モデルを読み込み中…",
     "runsHere": "このパソコンで実行",

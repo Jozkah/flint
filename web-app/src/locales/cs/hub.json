@@ -3,7 +3,7 @@
   "newChat": "Nový chat",
   "download": "Stáhnout",
   "downloaded": "Staženo",
-  "loadingModels": "Načítání modelů...",
+  "loadingModels": "Načítání modelů…",
   "noModels": "Nebyly nalezeny žádné modely",
   "by": "Od",
   "downloads": "Stahování",
@@ -11,7 +11,7 @@
   "showVariants": "Zobrazit varianty",
   "useModel": "Použít tento model",
   "tools": "Nástroje",
-  "searchPlaceholder": "Hledat modely na Hugging Face...",
+  "searchPlaceholder": "Hledat modely na Hugging Face…",
   "detail": {
     "loading": "Načítání modelu…",
     "discover": "Objevovat",

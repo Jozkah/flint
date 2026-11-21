@@ -3,7 +3,7 @@
   "addServer": "MCP Server hinzufügen",
   "browserExtension": {
     "connecting": {
-      "checking": "Erweiterungsstatus wird überprüft..."
+      "checking": "Erweiterungsstatus wird überprüft…"
     },
     "notInstalled": {
       "title": "Flint erledigt Aufgaben in Ihrem Browser",
@@ -90,7 +90,7 @@
     "toolsAvailable_one": "{{count}} Tool verfügbar: {{names}}",
     "toolsAvailable_other": "{{count}} Tools verfügbar: {{names}}",
     "toolsNone": "Verbunden, aber dieser Server bietet keine Tools an.",
-    "toolsLoading": "Tool-Liste wird geladen ...",
+    "toolsLoading": "Tool-Liste wird geladen …",
     "toolsWhenConnected": "Seine Tools stehen zur Verfügung, sobald er verbunden ist.",
     "appliesToChats": "Tools erreichen einen Chat nur, wenn das im Chat gewählte Modell Tools unterstützt. Einzelne Tools lassen sich über das Tools-Menü in der Chat-Eingabe ausschalten, und diese Schalter gelten für alle Chats."
   },
@@ -153,7 +153,7 @@
     "spent": "Sitzungsbudget: {{spent}} / {{limit}} Zeichen"
   },
   "noServers": "Keine MCP Server gefunden",
-  "searchPlaceholder": "MCP-Server durchsuchen ...",
+  "searchPlaceholder": "MCP-Server durchsuchen …",
   "noSearchResults": "Keine MCP-Server gefunden für „{{query}}“",
   "expandServer": "Serverdetails aufklappen",
   "collapseServer": "Serverdetails zuklappen",
@@ -197,7 +197,7 @@
     "authenticate": "Anmelden",
     "reauthenticate": "Erneut authentifizieren",
     "clear": "Authentifizierung löschen",
-    "waiting": "Warte auf den Browser ...",
+    "waiting": "Warte auf den Browser …",
     "openSignInPage": "Anmeldeseite öffnen",
     "needsAuth": "{{serverName}} erfordert eine Authentifizierung",
     "needsAuthHint": "Melde dich bei diesem Server an, um eine Verbindung herzustellen.",
@@ -223,7 +223,7 @@
     "titleOne": "{{serverName}} mit KI beschreiben",
     "settingTitle": "Beschreibungen mit KI generieren",
     "settingDesc": "Bitte ein Modell, den Text „Über diesen Server“ anhand der Tool-Liste jedes Servers zu schreiben. Du prüfst jeden Text, bevor er gespeichert wird.",
-    "open": "Generieren ...",
+    "open": "Generieren …",
     "intro": "Das gewählte Modell erhält Name und Tool-Liste (Namen, Beschreibungen, Argumente) jedes Servers. Es wird nichts gespeichert, bevor du es akzeptierst.",
     "model": "Modell",
     "scope": "Server",
@@ -247,7 +247,7 @@
     "skippedNoTools": "Tools unbekannt; schalte den Server einmal ein, damit Flint sie lesen kann",
     "status": {
       "queued": "Wartet",
-      "running": "Wird generiert ...",
+      "running": "Wird generiert …",
       "done": "Bereit zur Prüfung",
       "skipped": "Übersprungen: {{reason}}",
       "failed": "Fehlgeschlagen: {{reason}}"

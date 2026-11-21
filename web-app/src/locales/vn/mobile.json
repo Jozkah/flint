@@ -96,7 +96,7 @@
     "noMessages": "Chưa có tin nhắn nào.",
     "messageActions": "Thao tác với tin nhắn",
     "forkFromHere": "Tạo nhánh cuộc trò chuyện từ đây",
-    "placeholder": "Hỏi tôi bất cứ điều gì...",
+    "placeholder": "Hỏi tôi bất cứ điều gì…",
     "auto": "Tự động",
     "model": "Mô hình"
   },
@@ -831,7 +831,7 @@
     "goodEvening": "Chào buổi tối",
     "awaitingApproval": "Đang chờ phê duyệt: {{name}}",
     "failed": "{{name}} thất bại",
-    "running": "Đang chạy {{name}}...",
+    "running": "Đang chạy {{name}}…",
     "used": "Đã dùng {{name}}",
     "androidPhone": "Điện thoại Android",
     "phone": "Điện thoại"
@@ -1018,7 +1018,7 @@
     "availableOnComputer": "Khả dụng trên máy tính.",
     "actionFailed": "Hành động thất bại",
     "switchedTo": "Đã chuyển sang {{name}}",
-    "searchModels": "Tìm mô hình...",
+    "searchModels": "Tìm mô hình…",
     "searchModelsLabel": "Tìm mô hình",
     "loadingModels": "Đang tải mô hình…",
     "runsHere": "Chạy trên máy tính này",

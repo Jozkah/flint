@@ -57,7 +57,7 @@
   "previewSize": "Tamanho",
   "previewOrigin": "Estava em",
   "previewClose": "Fechar",
-  "previewLoading": "Lendo o item...",
+  "previewLoading": "Lendo o item…",
   "previewUnavailable": "Não foi possível ler o conteúdo. Restaure o item para abri-lo.",
   "previewCreated": "Criado",
   "previewUpdated": "Última alteração",
@@ -70,5 +70,5 @@
   "previewShown": "Mostrando {{shown}} de {{total}}",
   "previewNoMessages": "Sem mensagens de texto",
   "previewThumbnail": "Imagem de pré-visualização",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

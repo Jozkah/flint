@@ -94,7 +94,7 @@
     "noMessages": "還沒有訊息。",
     "messageActions": "訊息動作",
     "forkFromHere": "從此處分岔聊天",
-    "placeholder": "問我任何問題...",
+    "placeholder": "問我任何問題…",
     "auto": "自動",
     "model": "模型"
   },
@@ -820,7 +820,7 @@
     "goodEvening": "晚安",
     "awaitingApproval": "等待核准：{{name}}",
     "failed": "{{name}} 失敗",
-    "running": "正在執行 {{name}}...",
+    "running": "正在執行 {{name}}…",
     "used": "已使用 {{name}}",
     "androidPhone": "Android 手機",
     "phone": "手機"
@@ -1004,7 +1004,7 @@
     "availableOnComputer": "可在電腦上使用。",
     "actionFailed": "動作失敗",
     "switchedTo": "已切換到 {{name}}",
-    "searchModels": "搜尋模型...",
+    "searchModels": "搜尋模型…",
     "searchModelsLabel": "搜尋模型",
     "loadingModels": "正在載入模型…",
     "runsHere": "在這台電腦上執行",

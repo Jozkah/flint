@@ -57,7 +57,7 @@
   "previewSize": "Ukuran",
   "previewOrigin": "Sebelumnya di",
   "previewClose": "Tutup",
-  "previewLoading": "Membaca item...",
+  "previewLoading": "Membaca item…",
   "previewUnavailable": "Isi tidak dapat dibaca. Pulihkan item untuk membukanya.",
   "previewCreated": "Dibuat",
   "previewUpdated": "Terakhir diubah",
@@ -70,5 +70,5 @@
   "previewShown": "Menampilkan {{shown}} dari {{total}}",
   "previewNoMessages": "Tidak ada pesan teks",
   "previewThumbnail": "Gambar pratinjau",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

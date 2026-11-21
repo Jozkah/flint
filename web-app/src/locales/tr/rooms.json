@@ -106,9 +106,9 @@
     "participantAssistant": "Asistan",
     "participantAssistantNone": "Yok (model olduğu gibi)",
     "participantRoleNone": "Yok",
-    "participantRoleOther": "Diğer...",
+    "participantRoleOther": "Diğer…",
     "participantRoleOtherLabel": "Rol, kendi sözlerinizle",
-    "participantAssistantNew": "Yeni asistan...",
+    "participantAssistantNew": "Yeni asistan…",
     "addFolder": "Başka bir klasör ekle",
     "participantModel": "Model",
     "toolAccess": "Araç erişimi",
@@ -219,7 +219,7 @@
   },
   "model": {
     "placeholder": "Bir model seçin",
-    "search": "Modellerde ara...",
+    "search": "Modellerde ara…",
     "notConfigured": "{{provider}} (yapılandırılmamış)",
     "missing": "{{model}} (eksik)",
     "noProviders": "Kullanılabilir model yok. Ayarlar'dan bir sağlayıcı ekleyin."

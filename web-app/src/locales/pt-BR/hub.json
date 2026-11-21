@@ -3,7 +3,7 @@
   "newChat": "Nova conversa",
   "download": "Baixar",
   "downloaded": "Baixado",
-  "loadingModels": "Carregando modelos...",
+  "loadingModels": "Carregando modelos…",
   "noModels": "Nenhum modelo encontrado",
   "by": "Por",
   "downloads": "Downloads",
@@ -11,7 +11,7 @@
   "showVariants": "Mostrar variantes",
   "useModel": "Usar este modelo",
   "tools": "Ferramentas",
-  "searchPlaceholder": "Buscar modelos no Hugging Face...",
+  "searchPlaceholder": "Buscar modelos no Hugging Face…",
   "detail": {
     "loading": "Carregando modelo…",
     "discover": "Descobrir",

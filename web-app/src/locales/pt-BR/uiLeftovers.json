@@ -18,7 +18,7 @@
   "configuration": "Configuração",
   "modelCombobox": {
     "refresh": "Atualizar modelos",
-    "placeholder": "Digite ou selecione um modelo..."
+    "placeholder": "Digite ou selecione um modelo…"
   },
   "hubTasks": {
     "moreAria": "Mais formas de explorar",
@@ -67,7 +67,7 @@
   },
   "scope": "Escopo",
   "localApi": {
-    "starting": "Iniciando o servidor...",
+    "starting": "Iniciando o servidor…",
     "startingDesc": "Tentando iniciar o servidor na porta {{port}}",
     "status": "Status do servidor",
     "runningDesc": "O servidor está em execução.",

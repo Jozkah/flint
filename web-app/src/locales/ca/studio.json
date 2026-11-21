@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Motor",
-    "searchPlaceholder": "Cerca models...",
+    "searchPlaceholder": "Cerca models…",
     "searchAria": "Cerca models",
     "clear": "Esborra",
     "noMatch": "Cap model coincideix.",

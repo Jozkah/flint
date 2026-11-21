@@ -225,7 +225,7 @@
   },
   "continueSummary": {
     "menu": "Continuer dans une nouvelle discussion à partir d'un résumé",
-    "working": "Résumé de la discussion en cours...",
+    "working": "Résumé de la discussion en cours…",
     "done": "Poursuivie dans une nouvelle discussion.",
     "cancel": "Annuler",
     "errors": {
@@ -325,7 +325,7 @@
     "noCanvas": "aucun canevas n’est disponible pour dessiner l’image",
     "imageNotEncoded": "l’image n’a pas pu être encodée"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

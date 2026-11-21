@@ -168,7 +168,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Chyba ověření modelu",
-    "validatingModel": "Ověřuje se soubor modelu...",
+    "validatingModel": "Ověřuje se soubor modelu…",
     "embeddingDetected": "Zjištěn embedding model",
     "embeddingHint": "Tento model se importuje pouze pro embeddingy. Multimodální možnosti jsou vypnuty.",
     "selectGguf": "Vybrat soubor GGUF",
@@ -180,12 +180,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Chyba ověření MMProj",
-    "validatingMmproj": "Ověřuje se soubor MMProj...",
+    "validatingMmproj": "Ověřuje se soubor MMProj…",
     "selectMmproj": "Vybrat soubor MMPROJ",
     "draftFile": "Soubor draft modelu (GGUF)",
     "requiredDraft": "Vyžadováno pro draft model",
     "draftValidationError": "Chyba ověření draft modelu",
-    "validatingDraft": "Ověřuje se soubor draft modelu...",
+    "validatingDraft": "Ověřuje se soubor draft modelu…",
     "selectDraftFile": "Vybrat draft soubor GGUF"
   },
   "mlxImport": {

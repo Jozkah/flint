@@ -18,7 +18,7 @@
   "configuration": "Konfigurasi",
   "modelCombobox": {
     "refresh": "Segarkan model",
-    "placeholder": "Ketik atau pilih model..."
+    "placeholder": "Ketik atau pilih model…"
   },
   "hubTasks": {
     "moreAria": "Cara lain untuk menjelajah",
@@ -67,7 +67,7 @@
   },
   "scope": "Cakupan",
   "localApi": {
-    "starting": "Memulai server...",
+    "starting": "Memulai server…",
     "startingDesc": "Mencoba memulai server di port {{port}}",
     "status": "Status Server",
     "runningDesc": "Server sedang berjalan.",

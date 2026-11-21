@@ -3,7 +3,7 @@
   "addServer": "Afegeix un servidor MCP",
   "browserExtension": {
     "connecting": {
-      "checking": "S’està comprovant l’estat de l’extensió..."
+      "checking": "S’està comprovant l’estat de l’extensió…"
     },
     "notInstalled": {
       "title": "Flint completa tasques al teu navegador",
@@ -91,7 +91,7 @@
     "toolsAvailable_many": "{{count}} d'eines disponibles: {{names}}",
     "toolsAvailable_other": "{{count}} eines disponibles: {{names}}",
     "toolsNone": "Connectat, però aquest servidor no ofereix cap eina.",
-    "toolsLoading": "Carregant la llista d'eines...",
+    "toolsLoading": "Carregant la llista d'eines…",
     "toolsWhenConnected": "Les seves eines estaran disponibles quan es connecti.",
     "appliesToChats": "Les eines arriben a un xat només quan el model seleccionat del xat admet eines. Les eines individuals es poden desactivar des del menú d'eines de l'entrada del xat, i aquests canvis s'apliquen a tots els xats."
   },
@@ -154,7 +154,7 @@
     "spent": "Pressupost de la sessió: {{spent}} / {{limit}} caràcters"
   },
   "noServers": "No s’han trobat servidors MCP",
-  "searchPlaceholder": "Cerca servidors MCP...",
+  "searchPlaceholder": "Cerca servidors MCP…",
   "noSearchResults": "Cap servidor MCP coincideix amb \"{{query}}\"",
   "expandServer": "Desplega els detalls del servidor",
   "collapseServer": "Replega els detalls del servidor",
@@ -198,7 +198,7 @@
     "authenticate": "Inicia sessió",
     "reauthenticate": "Torna a autenticar",
     "clear": "Esborra l'autenticació",
-    "waiting": "Esperant el navegador...",
+    "waiting": "Esperant el navegador…",
     "openSignInPage": "Obre la pàgina d'inici de sessió",
     "needsAuth": "{{serverName}} necessita autenticació",
     "needsAuthHint": "Inicia sessió en aquest servidor per connectar-te.",
@@ -224,7 +224,7 @@
     "titleOne": "Descriu {{serverName}} amb IA",
     "settingTitle": "Genera descripcions amb IA",
     "settingDesc": "Demana a un model que escrigui el text \"Sobre aquest servidor\" a partir de la llista d'eines de cada servidor. Revises cada text abans que es desi.",
-    "open": "Genera...",
+    "open": "Genera…",
     "intro": "El model triat rep el nom i la llista d'eines de cada servidor (noms, descripcions, arguments). No es desa res fins que ho acceptis.",
     "model": "Model",
     "scope": "Servidors",
@@ -250,7 +250,7 @@
     "skippedNoTools": "eines desconegudes; activa el servidor una vegada perquè Flint les pugui llegir",
     "status": {
       "queued": "En espera",
-      "running": "Generant...",
+      "running": "Generant…",
       "done": "A punt per revisar",
       "skipped": "Omès: {{reason}}",
       "failed": "Ha fallat: {{reason}}"

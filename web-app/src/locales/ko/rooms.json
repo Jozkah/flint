@@ -104,9 +104,9 @@
     "participantAssistant": "어시스턴트",
     "participantAssistantNone": "없음(모델 그대로)",
     "participantRoleNone": "없음",
-    "participantRoleOther": "기타...",
+    "participantRoleOther": "기타…",
     "participantRoleOtherLabel": "역할(직접 표현)",
-    "participantAssistantNew": "새 어시스턴트...",
+    "participantAssistantNew": "새 어시스턴트…",
     "addFolder": "다른 폴더 추가",
     "participantModel": "모델",
     "toolAccess": "도구 접근",
@@ -217,7 +217,7 @@
   },
   "model": {
     "placeholder": "모델 선택",
-    "search": "모델 검색...",
+    "search": "모델 검색…",
     "notConfigured": "{{provider}}(구성되지 않음)",
     "missing": "{{model}}(없음)",
     "noProviders": "사용 가능한 모델이 없습니다. 설정에서 공급자를 추가하세요."

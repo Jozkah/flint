@@ -18,7 +18,7 @@
   "configuration": "Yapılandırma",
   "modelCombobox": {
     "refresh": "Modelleri yenile",
-    "placeholder": "Bir model yazın veya seçin..."
+    "placeholder": "Bir model yazın veya seçin…"
   },
   "hubTasks": {
     "moreAria": "Göz atmanın diğer yolları",
@@ -67,7 +67,7 @@
   },
   "scope": "Kapsam",
   "localApi": {
-    "starting": "Sunucu başlatılıyor...",
+    "starting": "Sunucu başlatılıyor…",
     "startingDesc": "Sunucu {{port}} bağlantı noktasında başlatılmaya çalışılıyor",
     "status": "Sunucu Durumu",
     "runningDesc": "Sunucu şu anda çalışıyor.",

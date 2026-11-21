@@ -94,7 +94,7 @@
     "noMessages": "还没有消息。",
     "messageActions": "消息操作",
     "forkFromHere": "从此处分叉聊天",
-    "placeholder": "问我任何问题...",
+    "placeholder": "问我任何问题…",
     "auto": "自动",
     "model": "模型"
   },
@@ -820,7 +820,7 @@
     "goodEvening": "晚上好",
     "awaitingApproval": "等待批准：{{name}}",
     "failed": "{{name}} 失败",
-    "running": "正在运行 {{name}}...",
+    "running": "正在运行 {{name}}…",
     "used": "已使用 {{name}}",
     "androidPhone": "Android 手机",
     "phone": "手机"
@@ -1004,7 +1004,7 @@
     "availableOnComputer": "可在电脑上使用。",
     "actionFailed": "操作失败",
     "switchedTo": "已切换到 {{name}}",
-    "searchModels": "搜索模型...",
+    "searchModels": "搜索模型…",
     "searchModelsLabel": "搜索模型",
     "loadingModels": "正在加载模型…",
     "runsHere": "在这台电脑上运行",

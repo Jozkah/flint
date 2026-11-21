@@ -96,7 +96,7 @@
     "noMessages": "Encara no hi ha missatges.",
     "messageActions": "Accions del missatge",
     "forkFromHere": "Bifurca el xat des d'aquí",
-    "placeholder": "Pregunta'm el que vulguis...",
+    "placeholder": "Pregunta'm el que vulguis…",
     "auto": "Auto",
     "model": "Model"
   },
@@ -831,7 +831,7 @@
     "goodEvening": "Bon vespre",
     "awaitingApproval": "Esperant aprovació: {{name}}",
     "failed": "{{name}} ha fallat",
-    "running": "Executant {{name}}...",
+    "running": "Executant {{name}}…",
     "used": "S'ha utilitzat {{name}}",
     "androidPhone": "Mòbil Android",
     "phone": "Mòbil"
@@ -1018,7 +1018,7 @@
     "availableOnComputer": "Disponible a l'ordinador.",
     "actionFailed": "L'acció ha fallat",
     "switchedTo": "S'ha canviat a {{name}}",
-    "searchModels": "Cerca models...",
+    "searchModels": "Cerca models…",
     "searchModelsLabel": "Cerca models",
     "loadingModels": "S'estan carregant els models…",
     "runsHere": "S'executa en aquest ordinador",

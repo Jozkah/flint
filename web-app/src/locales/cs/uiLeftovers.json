@@ -18,7 +18,7 @@
   "configuration": "Konfigurace",
   "modelCombobox": {
     "refresh": "Obnovit modely",
-    "placeholder": "Zadejte nebo vyberte model..."
+    "placeholder": "Zadejte nebo vyberte model…"
   },
   "hubTasks": {
     "moreAria": "Další způsoby procházení",
@@ -67,7 +67,7 @@
   },
   "scope": "Rozsah",
   "localApi": {
-    "starting": "Spouští se server...",
+    "starting": "Spouští se server…",
     "startingDesc": "Pokus o spuštění serveru na portu {{port}}",
     "status": "Stav serveru",
     "runningDesc": "Server právě běží.",

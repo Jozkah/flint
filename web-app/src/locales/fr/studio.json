@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Moteur",
-    "searchPlaceholder": "Rechercher des modèles...",
+    "searchPlaceholder": "Rechercher des modèles…",
     "searchAria": "Rechercher des modèles",
     "clear": "Effacer",
     "noMatch": "Aucun modèle ne correspond.",

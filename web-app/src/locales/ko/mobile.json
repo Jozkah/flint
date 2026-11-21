@@ -92,7 +92,7 @@
     "noMessages": "아직 메시지가 없습니다.",
     "messageActions": "메시지 작업",
     "forkFromHere": "여기서 채팅 분기",
-    "placeholder": "무엇이든 물어보세요...",
+    "placeholder": "무엇이든 물어보세요…",
     "auto": "자동",
     "model": "모델"
   },
@@ -809,7 +809,7 @@
     "goodEvening": "좋은 저녁입니다",
     "awaitingApproval": "승인 대기 중: {{name}}",
     "failed": "{{name}} 실패",
-    "running": "{{name}} 실행 중...",
+    "running": "{{name}} 실행 중…",
     "used": "{{name}} 사용함",
     "androidPhone": "Android 휴대폰",
     "phone": "휴대폰"
@@ -990,7 +990,7 @@
     "availableOnComputer": "컴퓨터에서 사용할 수 있습니다.",
     "actionFailed": "작업에 실패했습니다",
     "switchedTo": "{{name}}(으)로 전환했습니다",
-    "searchModels": "모델 검색...",
+    "searchModels": "모델 검색…",
     "searchModelsLabel": "모델 검색",
     "loadingModels": "모델을 불러오는 중…",
     "runsHere": "이 컴퓨터에서 실행",

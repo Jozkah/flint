@@ -59,9 +59,9 @@
   "webSourcesRead": "{{count}} llegides",
   "webSourcesReadFound": "{{read}} llegides · {{found}} trobades",
   "reasoning": {
-    "label": "Raonant...",
+    "label": "Raonant…",
     "thinking": "Pensant",
-    "usingTool": "{{tool}}...",
+    "usingTool": "{{tool}}…",
     "showFullTimeline": "Mostra la cronologia completa",
     "showCurrentStep": "Mostra només el pas actual",
     "thoughtForAWhile": "Ha pensat uns segons",
@@ -179,7 +179,7 @@
   },
   "regenerateTitle": {
     "menu": "Regenera el títol",
-    "working": "Posant nom al xat...",
+    "working": "Posant nom al xat…",
     "done": "S'ha canviat el nom del xat.",
     "empty": "Encara no hi ha res per posar nom a aquest xat.",
     "busy": "Posa en pausa o atura la sala abans de canviar-li el nom.",
@@ -225,7 +225,7 @@
   },
   "continueSummary": {
     "menu": "Continua en un xat nou a partir d'un resum",
-    "working": "S'està resumint el xat...",
+    "working": "S'està resumint el xat…",
     "done": "S'ha continuat en un xat nou.",
     "cancel": "Cancel·la",
     "errors": {
@@ -325,7 +325,7 @@
     "noCanvas": "no hi ha cap canvas disponible per dibuixar la imatge",
     "imageNotEncoded": "no s'ha pogut codificar la imatge"
   },
-  "growingTheMind": "Growing the Mind...",
+  "growingTheMind": "Growing the Mind…",
   "copyMessageFailed": "Could not copy the message.",
   "messageItem": {
     "generationFailed": "Generation failed",

@@ -165,7 +165,7 @@
     "required": "Required",
     "change": "Change",
     "modelValidationError": "Lỗi xác thực mô hình",
-    "validatingModel": "Đang xác thực tệp mô hình...",
+    "validatingModel": "Đang xác thực tệp mô hình…",
     "embeddingDetected": "Đã phát hiện mô hình embedding",
     "embeddingHint": "Mô hình này sẽ chỉ được nhập cho embedding. Các tùy chọn đa phương thức bị tắt.",
     "selectGguf": "Chọn tệp GGUF",
@@ -177,12 +177,12 @@
     "vision": "Vision",
     "audio": "Audio",
     "mmprojValidationError": "Lỗi xác thực MMProj",
-    "validatingMmproj": "Đang xác thực tệp MMProj...",
+    "validatingMmproj": "Đang xác thực tệp MMProj…",
     "selectMmproj": "Chọn tệp MMPROJ",
     "draftFile": "Tệp mô hình nháp (GGUF)",
     "requiredDraft": "Bắt buộc cho mô hình nháp",
     "draftValidationError": "Lỗi xác thực mô hình nháp",
-    "validatingDraft": "Đang xác thực tệp mô hình nháp...",
+    "validatingDraft": "Đang xác thực tệp mô hình nháp…",
     "selectDraftFile": "Chọn tệp GGUF nháp"
   },
   "mlxImport": {

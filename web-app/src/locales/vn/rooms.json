@@ -108,9 +108,9 @@
     "participantAssistant": "Trợ lý",
     "participantAssistantNone": "Không (mô hình nguyên bản)",
     "participantRoleNone": "Không",
-    "participantRoleOther": "Khác...",
+    "participantRoleOther": "Khác…",
     "participantRoleOtherLabel": "Vai trò, theo cách của bạn",
-    "participantAssistantNew": "Trợ lý mới...",
+    "participantAssistantNew": "Trợ lý mới…",
     "addFolder": "Thêm thư mục khác",
     "participantModel": "Mô hình",
     "toolAccess": "Quyền dùng công cụ",
@@ -221,7 +221,7 @@
   },
   "model": {
     "placeholder": "Chọn một mô hình",
-    "search": "Tìm mô hình...",
+    "search": "Tìm mô hình…",
     "notConfigured": "{{provider}} (chưa cấu hình)",
     "missing": "{{model}} (thiếu)",
     "noProviders": "Không có mô hình nào khả dụng. Hãy thêm nhà cung cấp trong Cài đặt."

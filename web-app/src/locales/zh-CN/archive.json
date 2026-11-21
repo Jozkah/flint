@@ -57,7 +57,7 @@
   "previewSize": "大小",
   "previewOrigin": "原位置",
   "previewClose": "关闭",
-  "previewLoading": "正在读取项目...",
+  "previewLoading": "正在读取项目…",
   "previewUnavailable": "无法读取内容。请恢复该项目以打开它。",
   "previewCreated": "创建时间",
   "previewUpdated": "最后更改",
@@ -70,5 +70,5 @@
   "previewShown": "显示 {{shown}} / {{total}}",
   "previewNoMessages": "没有文本消息",
   "previewThumbnail": "预览图",
-  "loading": "Loading the archive..."
+  "loading": "Loading the archive…"
 }

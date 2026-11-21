@@ -145,7 +145,7 @@
   "agent_tools": "Công cụ tác tử",
   "memory": "Bộ nhớ",
   "browse": "Duyệt",
-  "starting": "Đang khởi động...",
+  "starting": "Đang khởi động…",
   "activeSuffix": " (Đang dùng)",
   "extensions": "Tiện ích mở rộng",
   "attachments": "Tệp đính kèm",
@@ -232,13 +232,13 @@
   "loginWith": "Đăng Nhập Bằng {{provider}}",
   "loginFailed": "Đăng Nhập Thất Bại",
   "logout": "Đăng Xuất",
-  "loggingOut": "Đang Đăng Xuất...",
+  "loggingOut": "Đang Đăng Xuất…",
   "loggedOut": "Đăng Xuất Thành Công",
   "logoutFailed": "Đăng Xuất Thất Bại",
   "profile": "Hồ Sơ",
   "reset": "Đặt lại",
   "search": "Tìm kiếm",
-  "searchThreads": "Tìm cuộc trò chuyện...",
+  "searchThreads": "Tìm cuộc trò chuyện…",
   "toNavigate": "để di chuyển",
   "toSelect": "để chọn",
   "toClose": "để đóng",
@@ -531,7 +531,7 @@
   "cancelDownload": "Hủy tải xuống",
   "downloadCancelled": "Đã hủy tải xuống",
   "downloadComplete": "Tải xuống hoàn tất",
-  "thinking": "Đang suy nghĩ...",
+  "thinking": "Đang suy nghĩ…",
   "thought": "Suy nghĩ",
   "callingTool": "Đang gọi công cụ",
   "completed": "Đã hoàn thành",
@@ -584,11 +584,11 @@
   "apiKeyRequired": "Yêu cầu khóa API",
   "enterTrustedHosts": "Nhập máy chủ đáng tin cậy",
   "placeholder": {
-    "chatInput": "Hỏi tôi bất cứ điều gì..."
+    "chatInput": "Hỏi tôi bất cứ điều gì…"
   },
   "confirm": "Xác nhận",
   "continue": "Tiếp tục",
-  "loading": "Đang tải...",
+  "loading": "Đang tải…",
   "settingUpJan": "Đang khởi động Flint…",
   "registeringExtensions": "Đang đăng ký tiện ích mở rộng…",
   "loadingExtensions": "Đang tải tiện ích mở rộng… ({{done}}/{{total}})",
@@ -600,7 +600,7 @@
   "temporaryChat": "Trò chuyện tạm thời",
   "temporaryChatTooltip": "Trò chuyện tạm thời sẽ không xuất hiện trong lịch sử của bạn",
   "noResultsFoundDesc": "Chúng tôi không thể tìm thấy bất kỳ cuộc trò chuyện nào phù hợp với tìm kiếm của bạn. Hãy thử một từ khóa khác.",
-  "searchModels": "Tìm kiếm mô hình...",
+  "searchModels": "Tìm kiếm mô hình…",
   "sortModels": "Sắp xếp mô hình",
   "filterModels": "Lọc mô hình",
   "hideUnavailableModels": "Ẩn các mô hình không khả dụng",
@@ -609,7 +609,7 @@
   "sortNameDesc": "Tên (Z–A)",
   "sortRecent": "Dùng gần đây",
   "sortProvider": "Nhà cung cấp",
-  "searchStyles": "Tìm kiếm kiểu...",
+  "searchStyles": "Tìm kiếm kiểu…",
   "createAssistant": "Tạo trợ lý",
   "enterApiKey": "Nhập khóa API",
   "scrollToBottom": "Cuộn xuống dưới cùng",
@@ -646,7 +646,7 @@
     "errorPaste": "Không thể dán JSON",
     "errorFormat": "Định dạng JSON không hợp lệ",
     "titleAll": "Chỉnh sửa tất cả cấu hình máy chủ",
-    "placeholder": "Nhập cấu hình JSON...",
+    "placeholder": "Nhập cấu hình JSON…",
     "save": "Lưu"
   },
   "editModel": {
@@ -773,7 +773,7 @@
     "newProjectDialog": {
       "createTitle": "Tạo dự án",
       "editTitle": "Sửa dự án",
-      "namePlaceholder": "Nhập tên dự án...",
+      "namePlaceholder": "Nhập tên dự án…",
       "alreadyExists": "Dự án \"{{projectName}}\" đã tồn tại",
       "createSuccess": "Đã tạo dự án \"{{projectName}}\"",
       "updateSuccess": "Đã cập nhật dự án \"{{projectName}}\""
@@ -835,7 +835,7 @@
       "createTitle": "Tạo dự án mới",
       "editTitle": "Chỉnh sửa dự án",
       "nameLabel": "Tên dự án",
-      "namePlaceholder": "Nhập tên dự án...",
+      "namePlaceholder": "Nhập tên dự án…",
       "assistant": "Trợ lý",
       "selectAssistant": "Chọn một trợ lý (tùy chọn)",
       "noAssistant": "Không có trợ lý",
@@ -853,7 +853,7 @@
     "addGroupDialog": {
       "createTitle": "Tạo nhóm",
       "editTitle": "Sửa nhóm",
-      "namePlaceholder": "Nhập tên nhóm...",
+      "namePlaceholder": "Nhập tên nhóm…",
       "alreadyExists": "Nhóm \"{{projectName}}\" đã tồn tại",
       "createSuccess": "Đã tạo nhóm \"{{projectName}}\"",
       "updateSuccess": "Đã cập nhật nhóm \"{{projectName}}\""
@@ -873,7 +873,7 @@
     "collapseProject": "Thu gọn dự án",
     "expandProject": "Mở rộng dự án",
     "update": "Cập nhật",
-    "searchProjects": "Tìm kiếm dự án...",
+    "searchProjects": "Tìm kiếm dự án…",
     "noProjectsFound": "Không tìm thấy dự án nào",
     "tryDifferentSearch": "Thử từ khóa tìm kiếm khác",
     "whatIsACollection": "Một bộ sưu tập nhóm các cuộc trò chuyện và tệp tham khảo. Nó không mở thư mục trên máy tính của bạn.",
@@ -990,7 +990,7 @@
     },
     "modelValidationStarted": {
       "title": "Đang xác thực mô hình",
-      "description": "Đã tải xuống mô hình \"{{modelId}}\" thành công. Đang xác minh tính toàn vẹn..."
+      "description": "Đã tải xuống mô hình \"{{modelId}}\" thành công. Đang xác minh tính toàn vẹn…"
     },
     "modelValidationFailed": {
       "title": "Xác thực mô hình thất bại",
@@ -2281,7 +2281,7 @@
       "root": "Quét thư mục",
       "rootPlaceholder": "Desktop/Coding",
       "scan": "Quét",
-      "scanning": "Đang quét...",
+      "scanning": "Đang quét…",
       "scanFailed": "Quét thất bại: {{error}}",
       "empty": "Không tìm thấy kỹ năng hay plugin.",
       "installed": "đã cài",
@@ -2289,7 +2289,7 @@
       "linkHooks": "Cũng chạy các hook Claude Code của tôi (SessionStart và UserPromptSubmit) từ ~/.claude/settings.json và các plugin đã nhập. Hook nhận prompt của bạn.",
       "overwrite": "Ghi đè mục hiện có",
       "importSelected": "Nhập mục đã chọn",
-      "importing": "Đang nhập...",
+      "importing": "Đang nhập…",
       "importFailed": "Nhập thất bại: {{error}}",
       "done": "Đã nhập {{imported}}, bỏ qua {{skipped}}",
       "doneErrors": "{{count}} lỗi",

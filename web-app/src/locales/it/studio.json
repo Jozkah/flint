@@ -59,7 +59,7 @@
   },
   "picker": {
     "engine": "Motore",
-    "searchPlaceholder": "Cerca modelli...",
+    "searchPlaceholder": "Cerca modelli…",
     "searchAria": "Cerca modelli",
     "clear": "Cancella",
     "noMatch": "Nessun modello corrisponde.",
