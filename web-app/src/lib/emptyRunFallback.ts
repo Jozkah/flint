@@ -183,5 +183,12 @@ export function emptyRunFallback(
     if (!detail) return i18n.t('chat:emptyRun.noReply')
     return i18n.t('chat:emptyRun.noReplyDetail', detail)
   }
-  return i18n.t('chat:emptyRun.noReplyToolError', { tool: toolName, error: clip(lastError) })
+  // The tool error says why the work stopped; how the model's last step ended
+  // says whether it then answered nothing or never got to answer.
+  const toolError = i18n.t('chat:emptyRun.noReplyToolError', {
+    tool: toolName,
+    error: clip(lastError),
+  })
+  const ended = stepEndDetail(stepEnd)
+  return ended ? `${toolError} ${i18n.t('chat:emptyRun.stepEnded', ended)}` : toolError
 }
