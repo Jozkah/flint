@@ -62,6 +62,16 @@ type Model = {
   cachedInputCostPerMillion?: number
   /** USD per million cache-write input tokens. Unset = the input price. */
   cacheWriteCostPerMillion?: number
+  /**
+   * Tokens the model can hold in one request. Set in Edit Model (typed by the
+   * user or filled from models.dev); Chat, Cowork and Rooms read it from the
+   * model in use, ahead of an assistant's own Max Context Tokens.
+   */
+  contextWindow?: number
+  /** Most tokens the model may write in one reply; read like `contextWindow`. */
+  maxOutputTokens?: number
+  /** Set when `contextWindow` / `maxOutputTokens` were filled from models.dev. */
+  limitsSource?: 'models.dev'
   /** The user set this model's capabilities; probes must not add to them. */
   _userConfiguredCapabilities?: boolean
   /** 'vision' was added by the mmproj probe, not by the user. */

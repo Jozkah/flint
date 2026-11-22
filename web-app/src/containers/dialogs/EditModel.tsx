@@ -13,8 +13,11 @@ import { Button } from '@/components/ui/button'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { validateDisplayName } from '@/lib/modelDisplayName'
 import { getModelDisplayName } from '@/lib/utils'
+import { modelContextWindow, modelMaxOutputTokens } from '@/lib/modelLimits'
+import { lookupModelsDev } from '@/lib/modelsDev'
 import {
   Eye,
+  Globe,
   Headphones,
   LoaderCircle,
   Pencil,
@@ -141,6 +144,67 @@ export const DialogEditModel = ({
       cachedParsed !== selectedModel?.cachedInputCostPerMillion ||
       writeParsed !== selectedModel?.cacheWriteCostPerMillion)
 
+  // Token limits. Blank = unknown; anything else must be a whole number > 0.
+  const limitText = (n: number | null) => (n == null ? '' : String(n))
+  const [contextText, setContextText] = useState('')
+  const [outputText, setOutputText] = useState('')
+  const [limitsSource, setLimitsSource] = useState<'models.dev' | undefined>()
+  const [lookup, setLookup] = useState<
+    | { state: 'idle' }
+    | { state: 'loading' }
+    | { state: 'found'; match: string }
+    | { state: 'none' }
+    | { state: 'failed' }
+  >({ state: 'idle' })
+  const storedContext = modelContextWindow(selectedModel)
+  const storedOutput = modelMaxOutputTokens(selectedModel)
+  useEffect(() => {
+    setContextText(limitText(storedContext))
+    setOutputText(limitText(storedOutput))
+    setLimitsSource(selectedModel?.limitsSource)
+    setLookup({ state: 'idle' })
+  }, [selectedModel?.id, storedContext, storedOutput, selectedModel?.limitsSource])
+  const parseLimit = (s: string): number | undefined | 'bad' => {
+    if (s.trim() === '') return undefined
+    const n = Number(s)
+    return Number.isInteger(n) && n > 0 ? n : 'bad'
+  }
+  const ctxLimit = parseLimit(contextText)
+  const outLimit = parseLimit(outputText)
+  const limitsValid = ctxLimit !== 'bad' && outLimit !== 'bad'
+  const limitsChanged =
+    limitsValid &&
+    (ctxLimit !== (storedContext ?? undefined) ||
+      outLimit !== (storedOutput ?? undefined) ||
+      limitsSource !== selectedModel?.limitsSource)
+
+  // Typing over a models.dev value makes it the own value of the user again.
+  const editLimit = (set: (v: string) => void) => (value: string) => {
+    set(value)
+    setLimitsSource(undefined)
+    setLookup((prev) => (prev.state === 'found' ? { state: 'idle' } : prev))
+  }
+
+  // One GET of the public models.dev list; nothing about the user or their
+  // models is sent. Fills only what it finds and leaves the rest as typed.
+  const handleLookup = async () => {
+    if (!selectedModel) return
+    setLookup({ state: 'loading' })
+    try {
+      const match = await lookupModelsDev(provider.provider, selectedModel.id)
+      if (!match) {
+        setLookup({ state: 'none' })
+        return
+      }
+      if (match.contextWindow != null) setContextText(String(match.contextWindow))
+      if (match.maxOutputTokens != null) setOutputText(String(match.maxOutputTokens))
+      setLimitsSource('models.dev')
+      setLookup({ state: 'found', match: `${match.provider} / ${match.modelId}` })
+    } catch {
+      setLookup({ state: 'failed' })
+    }
+  }
+
   // Update model capabilities - only update local state
   const handleCapabilityChange = (capability: string, enabled: boolean) => {
     setCapabilities((prev) => ({
@@ -159,12 +223,12 @@ export const DialogEditModel = ({
     const nameChanged = displayName !== originalDisplayName
     const capabilitiesChanged =
       JSON.stringify(capabilities) !== JSON.stringify(originalCapabilities)
-    return nameChanged || capabilitiesChanged || costsChanged
+    return nameChanged || capabilitiesChanged || costsChanged || limitsChanged
   }
 
   // Handle save changes
   const handleSaveChanges = async () => {
-    if (!selectedModel?.id || isLoading || !validation.ok || !costsValid) return
+    if (!selectedModel?.id || isLoading || !validation.ok || !costsValid || !limitsValid) return
 
     setIsLoading(true)
     try {
@@ -192,6 +256,15 @@ export const DialogEditModel = ({
         modelUpdate.outputCostPerMillion = outputParsed as number | undefined
         modelUpdate.cachedInputCostPerMillion = cachedParsed as number | undefined
         modelUpdate.cacheWriteCostPerMillion = writeParsed as number | undefined
+      }
+
+      if (limitsChanged) {
+        modelUpdate.contextWindow = ctxLimit as number | undefined
+        modelUpdate.maxOutputTokens = outLimit as number | undefined
+        modelUpdate.limitsSource =
+          ctxLimit === undefined && outLimit === undefined
+            ? undefined
+            : limitsSource
       }
 
       // Update the model in the provider models array
@@ -234,6 +307,10 @@ export const DialogEditModel = ({
       setOutputCost(costText(selectedModel?.outputCostPerMillion))
       setCachedCost(costText(selectedModel?.cachedInputCostPerMillion))
       setWriteCost(costText(selectedModel?.cacheWriteCostPerMillion))
+      setContextText(limitText(storedContext))
+      setOutputText(limitText(storedOutput))
+      setLimitsSource(selectedModel?.limitsSource)
+      setLookup({ state: 'idle' })
     }
     setIsOpen(open)
   }
@@ -389,6 +466,98 @@ export const DialogEditModel = ({
           )}
         </div>
 
+        <div className="py-1">
+          <h3 className="mb-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
+            {t('providers:editModel.limits.title')}
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="context-window" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.limits.context')}
+              </label>
+              <Input
+                id="context-window"
+                name="context-window"
+                autoComplete="off"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={contextText}
+                onChange={(e) => editLimit(setContextText)(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={ctxLimit === 'bad'}
+                className="tabular-nums"
+              />
+            </div>
+            <div>
+              <label htmlFor="max-output-tokens" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.limits.output')}
+              </label>
+              <Input
+                id="max-output-tokens"
+                name="max-output-tokens"
+                autoComplete="off"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={outputText}
+                onChange={(e) => editLimit(setOutputText)(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={outLimit === 'bad'}
+                className="tabular-nums"
+              />
+            </div>
+          </div>
+          {limitsValid ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('providers:editModel.limits.help')}
+            </p>
+          ) : (
+            <p
+              role="alert"
+              className="mt-1 inline-flex items-start gap-1 text-xs text-destructive"
+            >
+              <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+              {t('providers:editModel.limits.invalid')}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="pointer-coarse:h-11"
+              onClick={handleLookup}
+              disabled={isLoading || lookup.state === 'loading'}
+            >
+              {lookup.state === 'loading' ? (
+                <LoaderCircle className="motion-safe:animate-spin" aria-hidden />
+              ) : (
+                <Globe aria-hidden />
+              )}
+              {lookup.state === 'loading'
+                ? t('providers:editModel.limits.lookingUp')
+                : t('providers:editModel.limits.lookUp')}
+            </Button>
+            {limitsSource === 'models.dev' && (
+              <span className="rounded-sm bg-accent px-1.5 py-0.5 text-xs text-muted-foreground">
+                {t('providers:editModel.limits.fromModelsDev')}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+            {lookup.state === 'found'
+              ? t('providers:editModel.limits.found', { match: lookup.match })
+              : lookup.state === 'none'
+                ? t('providers:editModel.limits.notFound')
+                : lookup.state === 'failed'
+                  ? t('providers:editModel.limits.failed')
+                  : t('providers:editModel.limits.lookupHelp')}
+          </p>
+        </div>
+
         {/* Warning Banner */}
         <div className="rounded-md border border-border bg-warning-tint p-3">
           <div className="flex items-start gap-3">
@@ -486,7 +655,7 @@ export const DialogEditModel = ({
         <div className={`flex justify-end ${STICKY_DIALOG_FOOTER}`}>
           <Button
             onClick={handleSaveChanges}
-            disabled={!hasUnsavedChanges() || !validation.ok || !costsValid || isLoading}
+            disabled={!hasUnsavedChanges() || !validation.ok || !costsValid || !limitsValid || isLoading}
             size="sm"
             className="pointer-coarse:h-11"
           >

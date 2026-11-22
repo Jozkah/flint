@@ -149,6 +149,20 @@
     "warning": {
       "title": "주의 사항",
       "description": "모델 기능을 수정하면 성능과 동작에 영향을 줄 수 있습니다. 잘못된 설정은 예기치 않은 오류를 발생시킬 수 있습니다."
+    },
+    "limits": {
+      "title": "토큰 한도",
+      "context": "컨텍스트 창(토큰)",
+      "output": "최대 출력 토큰",
+      "help": "이 모델의 속성으로, 선택되어 있는 동안 채팅, Cowork, 룸에서 사용됩니다. 모르면 비워 두세요.",
+      "lookUp": "models.dev에서 채우기",
+      "lookingUp": "찾는 중…",
+      "lookupHelp": "네트워크로 models.dev의 공개 모델 목록을 내려받아(처음 한 번 약 7 MB, 이후 일주일간 캐시) 이 모델의 한도를 채웁니다. 사용자나 모델에 대한 정보는 전송되지 않습니다.",
+      "found": "models.dev에서 채웠습니다({{match}}). 덮어쓰려면 숫자를 수정한 뒤 저장하세요.",
+      "notFound": "models.dev에 이 모델의 한도가 없습니다. 직접 입력하세요.",
+      "failed": "models.dev에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
+      "invalid": "한도는 0보다 큰 정수여야 합니다. 한도를 모르면 입력란을 비우세요.",
+      "fromModelsDev": "models.dev 제공"
     }
   },
   "addProvider": "공급자 추가",

@@ -311,7 +311,12 @@
     "placeholder": "Maximale Kontext-Tokens",
     "useDefault": "{{window}} verwenden (sicherer Standard)",
     "continue": "Fortfahren",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "lookUp": "Auf models.dev nachschlagen",
+    "lookingUp": "Suche läuft…",
+    "lookupHelp": "Lädt die öffentliche Liste von models.dev über das Netzwerk (einmalig etwa 7 MB) und trägt die bekannten Fenster ein. Es werden keine Daten über diesen Raum gesendet.",
+    "lookupDone": "{{found}} von {{total}} Modellen von models.dev übernommen. Prüfe die Zahlen und fahre dann fort.",
+    "lookupFailed": "models.dev ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."
   },
   "controls": {
     "label": "Raumsteuerung",

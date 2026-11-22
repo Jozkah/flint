@@ -149,6 +149,20 @@
     "warning": {
       "title": "Procedi con cautela",
       "description": "La modifica delle funzionalità del modello potrebbe influire sulle prestazioni e sulle funzioni. Impostazioni errate potrebbero causare comportamenti imprevisti o errori."
+    },
+    "limits": {
+      "title": "Limiti di token",
+      "context": "Finestra di contesto (token)",
+      "output": "Token di output max",
+      "help": "Proprietà di questo modello, usate in Chat, Cowork e Stanze ogni volta che è selezionato. Lascia vuoto se sconosciuto.",
+      "lookUp": "Compila da models.dev",
+      "lookingUp": "Ricerca in corso…",
+      "lookupHelp": "Scarica dalla rete l'elenco pubblico dei modelli di models.dev (circa 7 MB una volta, poi in cache per una settimana) e compila i limiti di questo modello. Non viene inviato nulla su di te o sui tuoi modelli.",
+      "found": "Compilato da models.dev ({{match}}). Modifica i numeri per sostituirli, poi salva.",
+      "notFound": "models.dev non ha limiti per questo modello. Inseriscili a mano.",
+      "failed": "Impossibile raggiungere models.dev. Controlla la connessione e riprova.",
+      "invalid": "I limiti devono essere numeri interi maggiori di 0. Svuota il campo se il limite è sconosciuto.",
+      "fromModelsDev": "Da models.dev"
     }
   },
   "addProvider": "Aggiungi provider",

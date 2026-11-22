@@ -317,7 +317,12 @@
     "placeholder": "Max. počet tokenů kontextu",
     "useDefault": "Použít {{window}} (bezpečná výchozí hodnota)",
     "continue": "Pokračovat",
-    "cancel": "Zrušit"
+    "cancel": "Zrušit",
+    "lookUp": "Vyhledat na models.dev",
+    "lookingUp": "Hledám…",
+    "lookupHelp": "Stáhne po síti veřejný seznam z models.dev (jednou asi 7 MB) a vyplní známá okna. Neodesílají se žádné údaje o této místnosti.",
+    "lookupDone": "Z models.dev vyplněno {{found}} z {{total}} modelů. Zkontrolujte čísla a pokračujte.",
+    "lookupFailed": "Služba models.dev není dostupná. Zkontrolujte připojení a zkuste to znovu."
   },
   "controls": {
     "label": "Ovládání místnosti",

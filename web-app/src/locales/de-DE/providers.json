@@ -149,6 +149,20 @@
     "warning": {
       "title": "Mit Vorsicht fortfahren",
       "description": "Das Ändern von Modellfunktionen kann Leistung und Funktionalität beeinträchtigen. Falsche Einstellungen können zu unerwartetem Verhalten oder Fehlern führen."
+    },
+    "limits": {
+      "title": "Token-Limits",
+      "context": "Kontextfenster (Tokens)",
+      "output": "Max. Ausgabe-Tokens",
+      "help": "Eigenschaften dieses Modells, die in Chat, Cowork und Räumen gelten, sobald es ausgewählt ist. Leer lassen, wenn unbekannt.",
+      "lookUp": "Von models.dev übernehmen",
+      "lookingUp": "Suche läuft…",
+      "lookupHelp": "Lädt die öffentliche Modellliste von models.dev über das Netzwerk (einmalig etwa 7 MB, danach eine Woche zwischengespeichert) und trägt die Limits dieses Modells ein. Es werden keine Daten über dich oder deine Modelle gesendet.",
+      "found": "Von models.dev übernommen ({{match}}). Passe die Zahlen an, um sie zu überschreiben, und speichere dann.",
+      "notFound": "models.dev kennt keine Limits für dieses Modell. Trage sie von Hand ein.",
+      "failed": "models.dev ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
+      "invalid": "Limits müssen ganze Zahlen über 0 sein. Leere das Feld, wenn das Limit unbekannt ist.",
+      "fromModelsDev": "Von models.dev"
     }
   },
   "addProvider": "Anbieter hinzufügen",

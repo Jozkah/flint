@@ -317,7 +317,12 @@
     "placeholder": "Maks. tokeny kontekstu",
     "useDefault": "Użyj {{window}} (bezpieczna wartość domyślna)",
     "continue": "Kontynuuj",
-    "cancel": "Anuluj"
+    "cancel": "Anuluj",
+    "lookUp": "Wyszukaj w models.dev",
+    "lookingUp": "Szukam…",
+    "lookupHelp": "Pobiera przez sieć publiczną listę z models.dev (jednorazowo ok. 7 MB) i uzupełnia znane okna. Nie są wysyłane żadne dane o tym pokoju.",
+    "lookupDone": "Uzupełniono {{found}} z {{total}} modeli z models.dev. Sprawdź liczby i kontynuuj.",
+    "lookupFailed": "Nie można połączyć się z models.dev. Sprawdź połączenie i spróbuj ponownie."
   },
   "controls": {
     "label": "Sterowanie pokojem",

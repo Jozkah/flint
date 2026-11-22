@@ -314,7 +314,12 @@
     "placeholder": "Tokens de contexte max.",
     "useDefault": "Utiliser {{window}} (valeur par défaut sûre)",
     "continue": "Continuer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "lookUp": "Rechercher sur models.dev",
+    "lookingUp": "Recherche…",
+    "lookupHelp": "Télécharge la liste publique de models.dev via le réseau (environ 7 Mo une fois) et renseigne les fenêtres connues. Rien sur ce salon n'est envoyé.",
+    "lookupDone": "{{found}} modèle(s) sur {{total}} renseigné(s) depuis models.dev. Vérifiez les nombres, puis continuez.",
+    "lookupFailed": "Impossible de joindre models.dev. Vérifiez votre connexion et réessayez."
   },
   "controls": {
     "label": "Commandes de la salle",

@@ -311,7 +311,12 @@
     "placeholder": "En Yüksek Bağlam Token'ı",
     "useDefault": "{{window}} kullan (güvenli varsayılan)",
     "continue": "Devam et",
-    "cancel": "İptal"
+    "cancel": "İptal",
+    "lookUp": "models.dev'de ara",
+    "lookingUp": "Aranıyor…",
+    "lookupHelp": "models.dev'in herkese açık listesini ağ üzerinden indirir (bir kez yaklaşık 7 MB) ve bildiği pencereleri doldurur. Bu odayla ilgili hiçbir şey gönderilmez.",
+    "lookupDone": "{{total}} modelin {{found}} tanesi models.dev'den dolduruldu. Sayıları kontrol edip devam edin.",
+    "lookupFailed": "models.dev'e ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin."
   },
   "controls": {
     "label": "Oda kontrolleri",

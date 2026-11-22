@@ -131,14 +131,44 @@ describe('useModelProvider migrate', () => {
   const migrate = useModelProvider.persist.getOptions().migrate!
 
   it('declares the current persisted version', () => {
-    expect(useModelProvider.persist.getOptions().version).toBe(26)
+    expect(useModelProvider.persist.getOptions().version).toBe(27)
   })
 
-  for (let version = 0; version <= 25; version++) {
+  for (let version = 0; version <= 26; version++) {
     it(`migrates a version ${version} state`, () => {
       expect(migrate(fixture(), version)).toMatchSnapshot()
     })
   }
+
+  it('moves a saved Max Context Tokens onto the model contextWindow at v27', () => {
+    const withLimits = () => ({
+      providers: [
+        {
+          provider: 'openai',
+          active: true,
+          settings: [],
+          models: [
+            { id: 'saved', settings: { max_context_tokens: setting('max_context_tokens', 32768) } },
+            { id: 'zero', settings: { max_context_tokens: setting('max_context_tokens', 0) } },
+            { id: 'kept', contextWindow: 1000, settings: { max_context_tokens: setting('max_context_tokens', 32768) } },
+            { id: 'out', settings: { max_output_tokens: setting('max_output_tokens', '4096') } },
+            { id: 'bare' },
+          ],
+        },
+      ],
+    })
+    type Out = { providers: Array<{ models: Array<{ id: string; contextWindow?: number; maxOutputTokens?: number }> }> }
+    const models = (migrate(withLimits(), 26) as unknown as Out).providers[0].models
+    const by = (id: string) => models.find((m) => m.id === id)!
+    expect(by('saved').contextWindow).toBe(32768)
+    expect(by('zero').contextWindow).toBeUndefined()
+    expect(by('kept').contextWindow).toBe(1000)
+    expect(by('out').maxOutputTokens).toBe(4096)
+    expect(by('bare').contextWindow).toBeUndefined()
+    // Already at v27: untouched.
+    const current = (migrate(withLimits(), 27) as unknown as Out).providers[0].models
+    expect(current.find((m) => m.id === 'saved')!.contextWindow).toBeUndefined()
+  })
 
   it('keeps a context size of 8192 the user chose after v12, clears the seeded one', () => {
     const ctxOf = (state: unknown, id: string) =>

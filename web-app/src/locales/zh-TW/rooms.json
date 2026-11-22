@@ -309,7 +309,12 @@
     "placeholder": "最大上下文 Token 數",
     "useDefault": "使用 {{window}}（安全預設值）",
     "continue": "繼續",
-    "cancel": "取消"
+    "cancel": "取消",
+    "lookUp": "在 models.dev 查詢",
+    "lookingUp": "查詢中…",
+    "lookupHelp": "透過網路下載 models.dev 的公開清單(首次約 7 MB),並填入已知的視窗大小。不會傳送任何關於此房間的資訊。",
+    "lookupDone": "已從 models.dev 填入 {{total}} 個模型中的 {{found}} 個。請檢查數字後繼續。",
+    "lookupFailed": "無法連線至 models.dev。請檢查網路後再試。"
   },
   "controls": {
     "label": "房間控制",

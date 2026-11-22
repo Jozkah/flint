@@ -420,7 +420,7 @@ export const useModelProvider = create<ModelProviderState>()(
         providers: state.providers.map(stripProviderSecrets),
       }),
       migrate: migrateProviderState,
-      version: 26,
+      version: 27,
     }
   )
 )

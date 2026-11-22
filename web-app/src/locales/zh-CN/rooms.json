@@ -309,7 +309,12 @@
     "placeholder": "最大上下文 Token 数",
     "useDefault": "使用 {{window}}（安全默认值）",
     "continue": "继续",
-    "cancel": "取消"
+    "cancel": "取消",
+    "lookUp": "在 models.dev 查找",
+    "lookingUp": "查找中…",
+    "lookupHelp": "通过网络下载 models.dev 的公开列表(首次约 7 MB),并填入已知的窗口大小。不会发送任何关于此房间的信息。",
+    "lookupDone": "已从 models.dev 填充 {{total}} 个模型中的 {{found}} 个。请检查数字后继续。",
+    "lookupFailed": "无法连接 models.dev。请检查网络后重试。"
   },
   "controls": {
     "label": "房间控制",

@@ -314,7 +314,12 @@
     "placeholder": "Máx. de tokens de contexto",
     "useDefault": "Usar {{window}} (padrão seguro)",
     "continue": "Continuar",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "lookUp": "Buscar no models.dev",
+    "lookingUp": "Buscando…",
+    "lookupHelp": "Baixa a lista pública do models.dev pela rede (cerca de 7 MB uma vez) e preenche as janelas que conhece. Nada sobre esta sala é enviado.",
+    "lookupDone": "{{found}} de {{total}} modelos preenchidos pelo models.dev. Confira os números e continue.",
+    "lookupFailed": "Não foi possível acessar o models.dev. Verifique sua conexão e tente novamente."
   },
   "controls": {
     "label": "Controles da sala",

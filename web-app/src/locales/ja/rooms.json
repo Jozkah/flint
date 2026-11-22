@@ -309,7 +309,12 @@
     "placeholder": "最大コンテキストトークン数",
     "useDefault": "{{window}} を使用 (安全な既定値)",
     "continue": "続ける",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "lookUp": "models.dev で調べる",
+    "lookingUp": "検索中…",
+    "lookupHelp": "ネットワーク経由で models.dev の公開一覧を取得し(初回のみ約 7 MB)、分かっているウィンドウを入力します。このルームに関する情報は送信されません。",
+    "lookupDone": "{{total}} 個中 {{found}} 個のモデルを models.dev から入力しました。数値を確認して続行してください。",
+    "lookupFailed": "models.dev に接続できませんでした。接続を確認して、もう一度お試しください。"
   },
   "controls": {
     "label": "ルームの操作",

@@ -157,6 +157,7 @@ describe('saveMaxContextTokens', () => {
     saveMaxContextTokens(on('mystery'), 16000)
     const m = useModelProvider.getState().providers[0].models.find((x) => x.id === 'mystery')
     expect(m?.settings?.max_context_tokens?.controller_props?.value).toBe(16000)
+    expect(m?.contextWindow).toBe(16000)
     const live: ProviderLookup = (n) => useModelProvider.getState().getProviderByName(n)
     expect(hasUnknownWindow(on('mystery'), live)).toBe(false)
   })

@@ -154,7 +154,7 @@
     "autoCompactAt": "Auto-compact at {{percent}}%",
     "autoCompactOff": "Auto-compact is off",
     "autoCompact": "Auto-compact",
-    "autoCompactNeedsWindow": "Auto-compact needs a context size. Set Max Context Tokens for this model.",
+    "autoCompactNeedsWindow": "Auto-compact needs a context size. Set the context window for this model in Edit Model (Settings > Model Providers).",
     "changes": "Changes",
     "changesSession": "Diff sizes are known for edits made since Flint started.",
     "newFile": "New file",
