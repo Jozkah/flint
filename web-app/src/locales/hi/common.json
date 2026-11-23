@@ -51,6 +51,7 @@
     "chatFolders": "फ़ोल्डर",
     "chatFoldersTitle": "इस चैट के फ़ोल्डर",
     "chatFoldersBody": "चैट के टूल इन फ़ोल्डरों को पढ़ सकते हैं। लिखना चैट के अपने सैंडबॉक्स में ही रहता है।",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "कोई फ़ोल्डर नहीं जुड़ा।",
     "addFolder": "फ़ोल्डर जोड़ें",
     "chatFolderCount": "फ़ोल्डर: {{count}}",

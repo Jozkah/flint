@@ -51,6 +51,7 @@
     "chatFolders": "Carpetas",
     "chatFoldersTitle": "Carpetas de este chat",
     "chatFoldersBody": "Las herramientas del chat pueden leer estas carpetas. Las escrituras quedan en su propio entorno aislado.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "No hay carpetas adjuntas.",
     "addFolder": "Añadir carpeta",
     "chatFolderCount": "Carpetas: {{count}}",

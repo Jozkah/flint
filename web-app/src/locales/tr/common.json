@@ -51,6 +51,7 @@
     "chatFolders": "Klasörler",
     "chatFoldersTitle": "Bu sohbetin klasörleri",
     "chatFoldersBody": "Sohbetin araçları bu klasörleri okuyabilir. Yazmalar sohbetin kendi korumalı alanında kalır.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Bağlı klasör yok.",
     "addFolder": "Klasör ekle",
     "chatFolderCount": "Klasörler: {{count}}",

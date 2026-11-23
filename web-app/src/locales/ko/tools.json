@@ -98,6 +98,7 @@
     "waitingModel": "모델을 기다리는 중…",
     "stillWaitingModel": "아직 모델을 기다리는 중…",
     "modelSlow": "모델 응답이 오래 걸리고 있습니다…",
+    "noReplyToResults": "No reply to the tool results yet. Stop to cancel, or keep waiting.",
     "readingResults": "도구 결과를 읽는 중…",
     "thinking": "Thinking…",
     "stillThinking": "아직 생각 중…",

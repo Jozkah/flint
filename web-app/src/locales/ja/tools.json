@@ -98,6 +98,7 @@
     "waitingModel": "モデルを待機中…",
     "stillWaitingModel": "モデルをまだ待機中…",
     "modelSlow": "モデルの応答に時間がかかっています…",
+    "noReplyToResults": "No reply to the tool results yet. Stop to cancel, or keep waiting.",
     "readingResults": "ツールの結果を読み取り中…",
     "thinking": "Thinking…",
     "stillThinking": "まだ考え中…",

@@ -51,6 +51,7 @@
     "chatFolders": "Carpetes",
     "chatFoldersTitle": "Carpetes d'aquest xat",
     "chatFoldersBody": "Les eines del xat poden llegir aquestes carpetes. Les escriptures queden a la seva pròpia zona aïllada.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "No hi ha carpetes adjuntes.",
     "addFolder": "Afegeix una carpeta",
     "chatFolderCount": "Carpetes: {{count}}",

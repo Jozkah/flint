@@ -51,6 +51,7 @@
     "chatFolders": "資料夾",
     "chatFoldersTitle": "此聊天的資料夾",
     "chatFoldersBody": "聊天的工具可以讀取這些資料夾。寫入仍留在聊天自己的沙盒中。",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "未附加資料夾。",
     "addFolder": "新增資料夾",
     "chatFolderCount": "資料夾：{{count}}",

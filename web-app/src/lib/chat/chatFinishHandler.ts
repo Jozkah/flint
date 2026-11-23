@@ -33,6 +33,7 @@ import { requestToolApproval } from '@/lib/chat/requestToolApproval'
 import { runChatToolLoop, type ChatToolOutput } from '@/lib/chat/chatToolLoop'
 import { maybeAutoTitleChat } from '@/lib/chat/chatAutoTitle'
 import { stepEndDetail } from '@/lib/emptyRunFallback'
+import { markTurnStopped } from '@/lib/chatSteering'
 
 /*
  * What a Chat conversation does when a reply finishes (`onFinish`) and when
@@ -374,6 +375,8 @@ export function createChatFinishHandler(deps: ChatFinishDeps) {
       }
     }
     runChatToolLoop(deps, finishedMessages, message.id)
+    // After the loop call, which releases its own controller: see markTurnStopped.
+    if (isAbort) markTurnStopped(deps.toolCallAbortController)
 
     if (!isAbort) {
       maybeAutoTitleChat(threadId, titleAbortRef)

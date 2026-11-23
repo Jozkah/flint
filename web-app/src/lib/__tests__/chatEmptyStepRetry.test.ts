@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Chat } from '@ai-sdk/react'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
-import { chatFollowUp, toolLoopAborted } from '../chatSteering'
+import { chatFollowUp, markTurnStopped, toolLoopAborted } from '../chatSteering'
 
 const chunk = (c: Record<string, unknown>) => c as unknown as UIMessageChunk
 const streamOf = (chunks: UIMessageChunk[]) =>
@@ -42,12 +42,30 @@ const answer = [
  * call and then drops its controller (chatToolLoop.ts) while the model's next
  * request is already under way.
  */
-async function runTurn(steps: UIMessageChunk[][], idPrefix: string) {
+async function runTurn(
+  steps: UIMessageChunk[][],
+  idPrefix: string,
+  { hangAfterTool = false, stopAfterMs = 0 } = {}
+) {
   const toolAbort: { current: AbortController | null } = { current: null }
   const requests: UIMessage[][] = []
   const transport: ChatTransport<UIMessage> = {
-    sendMessages: async ({ messages }) => {
+    sendMessages: async ({ messages, abortSignal }) => {
       requests.push(structuredClone(messages))
+      if (hangAfterTool && requests.length > 1) {
+        // A reply that never comes; Stop ends it the way streamText does: an
+        // abort part, then a clean close.
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.enqueue(chunk({ type: 'start' }))
+            controller.enqueue(chunk({ type: 'start-step' }))
+            abortSignal?.addEventListener('abort', () => {
+              controller.enqueue(chunk({ type: 'abort' }))
+              controller.close()
+            })
+          },
+        })
+      }
       return streamOf(steps[Math.min(requests.length - 1, steps.length - 1)])
     },
     reconnectToStream: async () => null,
@@ -64,7 +82,9 @@ async function runTurn(steps: UIMessageChunk[][], idPrefix: string) {
         takeSteering: () => [],
         send: () => {},
       }),
-    onFinish: ({ message }) => {
+    onFinish: ({ message, isAbort }) => {
+      // As createChatFinishHandler does, after its tool-loop call.
+      if (isAbort) markTurnStopped(toolAbort)
       const call = message.parts.find(
         (p) => p.type === 'tool-read_text_file' && (p as { state?: string }).state === 'input-available'
       )
@@ -82,7 +102,12 @@ async function runTurn(steps: UIMessageChunk[][], idPrefix: string) {
       })()
     },
   })
-  await chat.sendMessage({ text: 'read it' })
+  const sent = chat.sendMessage({ text: 'read it' })
+  if (stopAfterMs) {
+    await new Promise((r) => setTimeout(r, stopAfterMs))
+    await chat.stop()
+  }
+  await sent
   // Let the SDK's chained follow-up requests settle.
   for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 5))
   return { requests, chat }
@@ -102,6 +127,17 @@ describe('a model step that answers nothing after a tool result', () => {
   it('gives up after two retries when the model keeps answering nothing', async () => {
     const { requests } = await runTurn([toolStep, emptyStep], 'giveup')
     expect(requests).toHaveLength(4)
+  })
+
+  it('Stop on a reply that never comes ends the run: no request follows it', async () => {
+    const { requests, chat } = await runTurn([toolStep], 'stop', {
+      hangAfterTool: true,
+      stopAfterMs: 200,
+    })
+    // 1: the user turn; 2: after the tool result, hung and stopped. Nothing
+    // is sent in answer to the stop (the empty-step retry used to be).
+    expect(requests).toHaveLength(2)
+    expect(chat.status).toBe('ready')
   })
 
   it('does not resubmit after Stop aborted the tool loop', async () => {

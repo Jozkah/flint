@@ -2,6 +2,7 @@ import { FolderIcon, FolderPlus, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { useThreads } from '@/hooks/useThreads'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { chatFoldersOf, setChatFolders } from '@/lib/chatFolders'
@@ -15,6 +16,8 @@ export function ChatFoldersChip({ threadId }: { threadId: string }) {
   const { t } = useTranslation()
   const thread = useThreads((s) => s.threads[threadId])
   const folders = chatFoldersOf(thread)
+  // The chat reads these folders with its agent tools; off, it has none.
+  const agentToolsOff = useAgentToolsConfig((s) => !s.agentToolsEnabled)
   if (!thread) return null
 
   const add = async () => {
@@ -53,6 +56,14 @@ export function ChatFoldersChip({ threadId }: { threadId: string }) {
         <p className="mb-2 text-xs text-muted-foreground">
           {t('common:groups.chatFoldersBody')}
         </p>
+        {agentToolsOff && (
+          <p
+            data-testid="chat-folders-tools-off"
+            className="mb-2 text-xs text-warning"
+          >
+            {t('common:groups.chatFoldersToolsOff')}
+          </p>
+        )}
         {folders.length === 0 ? (
           <p className="mb-2 text-xs text-muted-foreground">
             {t('common:groups.chatFoldersEmpty')}

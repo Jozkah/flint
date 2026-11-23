@@ -51,6 +51,7 @@
     "chatFolders": "Foldery",
     "chatFoldersTitle": "Foldery tego czatu",
     "chatFoldersBody": "Narzędzia czatu mogą czytać te foldery. Zapisy pozostają w jego własnej piaskownicy.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Brak dołączonych folderów.",
     "addFolder": "Dodaj folder",
     "chatFolderCount": "Foldery: {{count}}",

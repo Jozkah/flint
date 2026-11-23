@@ -98,6 +98,7 @@
     "waitingModel": "Menunggu model…",
     "stillWaitingModel": "Masih menunggu model…",
     "modelSlow": "Model memakan waktu cukup lama…",
+    "noReplyToResults": "No reply to the tool results yet. Stop to cancel, or keep waiting.",
     "readingResults": "Membaca hasil alat…",
     "thinking": "Thinking…",
     "stillThinking": "Masih berpikir…",

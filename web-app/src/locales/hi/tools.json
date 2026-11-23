@@ -98,6 +98,7 @@
     "waitingModel": "मॉडल की प्रतीक्षा है…",
     "stillWaitingModel": "अब भी मॉडल की प्रतीक्षा है…",
     "modelSlow": "मॉडल को समय लग रहा है…",
+    "noReplyToResults": "No reply to the tool results yet. Stop to cancel, or keep waiting.",
     "readingResults": "टूल परिणाम पढ़े जा रहे हैं…",
     "thinking": "Thinking…",
     "stillThinking": "अब भी सोच रहा है…",

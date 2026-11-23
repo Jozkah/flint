@@ -51,6 +51,7 @@
     "chatFolders": "フォルダー",
     "chatFoldersTitle": "このチャットのフォルダー",
     "chatFoldersBody": "チャットのツールはこれらのフォルダーを読み取れます。書き込みはチャット専用のサンドボックスに残ります。",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "フォルダーは追加されていません。",
     "addFolder": "フォルダーを追加",
     "chatFolderCount": "フォルダー: {{count}}",
