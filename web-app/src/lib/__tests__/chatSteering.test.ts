@@ -5,6 +5,7 @@ import {
   holdQueueThenStop,
   nextChatTurn,
   stopChatTurn,
+  toolLoopAborted,
   withdrawApprovalsForSteering,
 } from '../chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -262,7 +263,7 @@ describe('stopChatTurn (Stop on a running tool call)', () => {
     expect(order).toEqual(['delegation', 'stream'])
     // The cancelled call then lands as a finished tool round; the SDK asks
     // whether to resubmit, as ThreadConversation computes it.
-    const aborted = !toolAbort.current || toolAbort.current.signal.aborted
+    const aborted = toolLoopAborted(toolAbort)
     const send = vi.fn()
     expect(
       chatFollowUp({

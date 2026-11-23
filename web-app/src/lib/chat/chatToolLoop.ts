@@ -82,6 +82,18 @@ import {
  * still lands on a finished message and the AI SDK's auto-resubmit fires.
  */
 
+/**
+ * The loop is over: drop its controller so nothing reads a finished loop as a
+ * live one. A controller that was aborted stays, so a late "resubmit?" check
+ * still sees the Stop (the next loop replaces it).
+ */
+function releaseToolAbort(
+  ref: MutableRefObject<AbortController | null>,
+  signal: AbortSignal
+): void {
+  if (!signal.aborted && ref.current?.signal === signal) ref.current = null
+}
+
 export type ChatToolOutput = UseChatHelpers<UIMessage>['addToolOutput']
 
 export type ChatToolLoopDeps = {
@@ -664,7 +676,7 @@ export function runChatToolLoop(
     useToolCallRuntime.getState().settleRemaining(threadId)
     sessionData.tools = []
     toolApprovalPromises.current.clear()
-    toolCallAbortController.current = null
+    releaseToolAbort(toolCallAbortController, signal)
     useAppState.getState().setThreadBusy(threadId, false)
   })().catch((error) => {
     if (error.name !== 'AbortError') {
@@ -673,7 +685,7 @@ export function runChatToolLoop(
     useToolCallRuntime.getState().settleRemaining(threadId)
     sessionData.tools = []
     toolApprovalPromises.current.clear()
-    toolCallAbortController.current = null
+    releaseToolAbort(toolCallAbortController, signal)
     useAppState.getState().setThreadBusy(threadId, false)
   })
 }
