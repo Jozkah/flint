@@ -163,6 +163,16 @@
       "failed": "models.dev に接続できませんでした。接続を確認して、もう一度お試しください。",
       "invalid": "上限は 0 より大きい整数で入力してください。不明な場合は欄を空にしてください。",
       "fromModelsDev": "models.dev より"
+    },
+    "apiFormat": {
+      "title": "API 形式",
+      "auto": "自動",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "このモデルを呼び出す OpenAI 形式の API。自動では OpenAI と Azure は Responses、それ以外は Chat Completions を使い、エンドポイントが無い場合は一度だけ切り替えます。推論の要約には Responses が必要です。",
+      "detected": "検出: {{format}}",
+      "reset": "検出結果をリセット",
+      "switched": "{{model}} はここで {{from}} を受け付けませんでした。{{to}} に切り替え、このモデルに保存しました。"
     }
   },
   "addProvider": "プロバイダーを追加",

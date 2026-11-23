@@ -283,13 +283,25 @@ export const useModelProvider = create<ModelProviderState>()(
         set((state) => {
           const providers = state.providers.map((provider) => {
             if (provider.provider === providerName) {
-              return {
+              const next = {
                 ...provider,
                 ...data,
                 ...(Array.isArray(data.models)
                   ? { models: uniqueModelsById(data.models) }
                   : {}),
               }
+              // The API a request proved works belongs to the endpoint that
+              // answered it; a new Base URL starts from Automatic again.
+              return urlChanged
+                ? {
+                    ...next,
+                    models: next.models.map((m) => {
+                      const rest = { ...m }
+                      delete rest.detectedApiFormat
+                      return rest
+                    }),
+                  }
+                : next
             }
             return provider
           })

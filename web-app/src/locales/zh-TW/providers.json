@@ -163,6 +163,16 @@
       "failed": "無法連線至 models.dev。請檢查網路後再試。",
       "invalid": "限制必須是大於 0 的整數。限制未知時請清空此欄位。",
       "fromModelsDev": "來自 models.dev"
+    },
+    "apiFormat": {
+      "title": "API 格式",
+      "auto": "自動",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "呼叫此模型所用的 OpenAI 風格 API。自動模式在 OpenAI 和 Azure 上使用 Responses，其他情況使用 Chat Completions，端點不存在時會切換一次。推理摘要需要 Responses。",
+      "detected": "已偵測：{{format}}",
+      "reset": "重設偵測結果",
+      "switched": "{{model}} 在此不接受 {{from}}。已切換到 {{to}} 並為此模型儲存。"
     }
   },
   "addProvider": "新增提供者",

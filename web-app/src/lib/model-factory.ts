@@ -55,6 +55,10 @@ import {
   type LanguageModelMiddleware,
 } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { isGenuineOpenAIHost, resolveApiFormat, type ApiFormat } from '@/lib/apiFormat'
+import { withApiFormatFallback } from '@/lib/apiFormatFallback'
+import { requestUrlOf } from '@/lib/model/transportErrors'
+import { rememberApiFormat } from '@/lib/apiFormatMemory'
 import {
   createOpenAICompatible,
   MetadataExtractor,
@@ -572,6 +576,46 @@ export function usesCustomOpenAIEndpoint(baseUrl: string | undefined): boolean {
 }
 
 /**
+ * Parameters are merged into the body in Chat Completions spelling. On the
+ * Responses API the cap is `max_output_tokens` and the effort lives in
+ * `reasoning` (with a summary, which only Responses returns). Fields already
+ * in the Responses spelling are left alone.
+ */
+export function withResponsesBodyShim(
+  baseFetch: typeof globalThis.fetch
+): typeof globalThis.fetch {
+  return async (input, init) => {
+    if (
+      typeof init?.body === 'string' &&
+      /[/]responses([?]|$)/.test(requestUrlOf(input))
+    ) {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>
+        let changed = false
+        if ('max_tokens' in body) {
+          if (!('max_output_tokens' in body)) body.max_output_tokens = body.max_tokens
+          delete body.max_tokens
+          changed = true
+        }
+        if (typeof body.reasoning_effort === 'string') {
+          body.reasoning = {
+            effort: body.reasoning_effort,
+            summary: 'auto',
+            ...((body.reasoning as object | undefined) ?? {}),
+          }
+          delete body.reasoning_effort
+          changed = true
+        }
+        if (changed) init = { ...init, body: JSON.stringify(body) }
+      } catch {
+        // Not JSON: sent as it is.
+      }
+    }
+    return baseFetch(input, init)
+  }
+}
+
+/**
  * Factory for creating language models based on provider type.
  * Supports native AI SDK providers (Anthropic, Google) and OpenAI-compatible providers.
  */
@@ -594,7 +638,7 @@ export class ModelFactory {
       // /deployments, or an api-version query) only speak Chat Completions
       // and keep the compatible route below. janhq/jan#9206.
       if (isAzureV1Endpoint(provider.base_url)) {
-        return this.createOpenAIModel(modelId, provider, parameters)
+        return this.createOpenAIStyleModel(modelId, provider, parameters)
       }
     }
     parameters = stripUnsupportedSamplers(parameters, provider, modelId)
@@ -617,13 +661,9 @@ export class ModelFactory {
         return this.createAnthropicModel(modelId, provider, parameters)
 
       case 'openai':
-        // Only OpenAI itself is known to serve /responses. A different Base URL
-        // is a gateway or proxy, and most of those implement chat completions
-        // only ("Unknown endpoint"), so it goes the compatible route.
-        if (usesCustomOpenAIEndpoint(provider.base_url)) {
-          return this.createOpenAICompatibleModel(modelId, provider, parameters)
-        }
-        return this.createOpenAIModel(modelId, provider, parameters)
+        // Which API (Responses or Chat Completions) is decided per model; see
+        // lib/apiFormat.ts. A gateway Base URL defaults to Chat Completions.
+        return this.createOpenAIStyleModel(modelId, provider, parameters)
       case 'google':
       case 'gemini':
         return this.createGoogleModel(modelId, provider, parameters)
@@ -639,7 +679,7 @@ export class ModelFactory {
         // These take no sampling parameters from the caller, but the
         // conversation they belong to must still reach the transport, or the
         // request is sent unattributed and its prompt snapshot is dropped.
-        return this.createOpenAICompatibleModel(
+        return this.createOpenAIStyleModel(
           modelId,
           provider,
           dispatchOnly(parameters)
@@ -655,8 +695,57 @@ export class ModelFactory {
         return this.createXaiModel(modelId, provider, parameters)
 
       default:
-        return this.createOpenAICompatibleModel(modelId, provider, parameters)
+        return this.createOpenAIStyleModel(modelId, provider, parameters)
     }
+  }
+
+  /**
+   * An OpenAI-style provider's model on the API the model should use: the
+   * user's choice, else what a past request proved, else the default for the
+   * host (see lib/apiFormat.ts). Unless the user forced the format, a request
+   * that fails because the endpoint is missing is retried once on the other API
+   * and the working one is remembered for the model.
+   */
+  private static createOpenAIStyleModel(
+    modelId: string,
+    provider: ProviderObject,
+    parameters: Record<string, unknown> = {}
+  ): LanguageModel {
+    const isAzure = provider.provider.toLowerCase() === 'azure'
+    const azureV1 = isAzure && isAzureV1Endpoint(provider.base_url)
+    const genuine =
+      azureV1 ||
+      (provider.provider === 'openai' && isGenuineOpenAIHost(provider.base_url)) ||
+      (provider.provider !== 'openai' &&
+        !isAzure &&
+        !!provider.base_url?.trim() &&
+        isGenuineOpenAIHost(provider.base_url))
+    const model = provider.models?.find((m) => m.id === modelId)
+    const decision = resolveApiFormat({
+      baseUrl: genuine ? undefined : provider.base_url,
+      modelId,
+      model,
+      canServeResponses: !isAzure || azureV1,
+      azureV1,
+    })
+    const build = (format: ApiFormat): LanguageModel => {
+      if (format === 'responses') {
+        // Only OpenAI may fall back to its own default Base URL.
+        if (!isAzure && provider.provider !== 'openai') requireAzureEndpoint(provider)
+        return this.createOpenAIModel(modelId, provider, parameters, 'responses')
+      }
+      return genuine
+        ? this.createOpenAIModel(modelId, provider, parameters, 'chat')
+        : this.createOpenAICompatibleModel(modelId, provider, parameters)
+    }
+    const primary = build(decision.format)
+    if (decision.source === 'override' || (isAzure && !azureV1)) return primary
+    return withApiFormatFallback(primary, {
+      format: decision.format,
+      buildAlternate: build,
+      onSwitched: (format, from) =>
+        rememberApiFormat(provider.provider, modelId, format, from),
+    })
   }
 
   /**
@@ -920,7 +1009,8 @@ export class ModelFactory {
   private static createOpenAIModel(
     modelId: string,
     provider: ProviderObject,
-    parameters: Record<string, unknown> = {}
+    parameters: Record<string, unknown> = {},
+    mode: 'responses' | 'chat' = 'responses'
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
@@ -929,15 +1019,20 @@ export class ModelFactory {
     applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
+    // The shim sits under the parameter merge, so it sees the final body.
+    const baseFetch =
+      mode === 'responses'
+        ? withResponsesBodyShim(getRuntimeFetch())
+        : getRuntimeFetch()
     const fetchImpl =
       keyChain.length > 1
         ? createApiKeyRotatingFetch(
-            getRuntimeFetch(),
+            baseFetch,
             keyChain,
             parameters,
             'authorization-bearer'
           )
-        : createCustomFetch(getRuntimeFetch(), parameters)
+        : createCustomFetch(baseFetch, parameters)
 
     const openai = createOpenAI({
       apiKey: requireRemoteApiKey(provider, keyChain),
@@ -951,7 +1046,7 @@ export class ModelFactory {
     // that returns reasoning summaries. Custom OpenAI-compatible providers route
     // through createOpenAICompatibleModel, not here, so this cannot hit a proxy
     // that only implements /chat/completions.
-    return openai.responses(modelId)
+    return mode === 'chat' ? openai.chat(modelId) : openai.responses(modelId)
   }
 
   /**

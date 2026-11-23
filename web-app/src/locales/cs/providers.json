@@ -163,6 +163,16 @@
       "failed": "Služba models.dev není dostupná. Zkontrolujte připojení a zkuste to znovu.",
       "invalid": "Limity musí být celá čísla větší než 0. Pokud limit neznáte, pole vyprázdněte.",
       "fromModelsDev": "Z models.dev"
+    },
+    "apiFormat": {
+      "title": "Formát API",
+      "auto": "Automaticky",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "Přes které API ve stylu OpenAI se model volá. Automaticky používá Responses u OpenAI a Azure, jinde Chat Completions, a jednou přepne, pokud endpoint chybí. Souhrny uvažování vyžadují Responses.",
+      "detected": "Zjištěno: {{format}}",
+      "reset": "Zrušit zjištění",
+      "switched": "{{model}} zde nepřijal {{from}}. Přepnuto na {{to}} a uloženo pro tento model."
     }
   },
   "addProvider": "Přidat poskytovatele",
