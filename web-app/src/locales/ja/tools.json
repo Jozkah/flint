@@ -129,7 +129,9 @@
       "openPath": "画面上で開く",
       "skillWrite": "スキルを保存",
       "memoryWrite": "メモリに保存",
-      "default": "このコンピューターを変更"
+      "default": "このコンピューターを変更",
+      "studioGenerate": "Studio で画像を作成",
+      "studioOpen": "エディターで画像を開く"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "その番号のプロセスは実行されていません",
     "kill": "プロセス {{pid}} を終了します:{{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "サービス {{name}} を{{verb}}します({{display}}、現在 {{status}})"
+    "serviceDetail": "サービス {{name}} を{{verb}}します({{display}}、現在 {{status}})",
+    "studioGenerate": "{{model}} で {{size}} の画像を生成します。枚数: {{count}}。グラフィックスカードを使用し、1 分以上かかることがあります。\n{{prompt}}",
+    "studioOpen": "画像 {{id}} を {{program}} で開きます:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

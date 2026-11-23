@@ -619,7 +619,7 @@ pub(crate) async fn execute_text(
                 "message": "The browser is opened by the Flint desktop app; this surface                             cannot open one. Give the user the address instead.",
             }),
         ),
-        "image_gen" | "image_edit" | "image_view" => crate::access::result_json(
+        "image_gen" | "image_edit" | "image_view" | "studio_list_generations" | "studio_generate_image" | "studio_open_in_editor" => crate::access::result_json(
             "unavailable",
             serde_json::json!({
                 "message": "Images are made by the image engine in the Flint desktop app;                             this surface has no access to it. Tell the user what you                             wanted to generate.",

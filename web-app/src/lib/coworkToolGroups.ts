@@ -59,8 +59,16 @@ export const TOOL_GROUPS: Readonly<Record<ToolGroupId, GroupSpec>> = {
       /\b(screen|desktop|mouse|keyboard|cursor|windows?|clipboard|paste|notify|notification|remind|explorer|finder|reveal|open (the |this |that )?(file|folder|directory))\b/i,
   },
   images: {
-    tools: ['image_gen', 'image_edit', 'image_view', 'ocr'],
-    subject: 'make, edit or look at pictures; OCR',
+    tools: [
+      'image_gen',
+      'image_edit',
+      'image_view',
+      'studio_list_generations',
+      'studio_generate_image',
+      'studio_open_in_editor',
+      'ocr',
+    ],
+    subject: 'make, edit or look at pictures; list Studio generations; OCR',
     trigger:
       /\b(images?|pictures?|photos?|png|jpe?g|webp|gif|svg|logo|icon|illustration|draw|ocr|wallpaper)\b/i,
   },

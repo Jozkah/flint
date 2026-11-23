@@ -129,7 +129,9 @@
       "openPath": "Auf dem Bildschirm öffnen",
       "skillWrite": "Skill speichern",
       "memoryWrite": "Im Gedächtnis speichern",
-      "default": "Diesen Computer ändern"
+      "default": "Diesen Computer ändern",
+      "studioGenerate": "Bild in Studio erzeugen",
+      "studioOpen": "Bild im Editor öffnen"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "es läuft kein Prozess mit dieser Nummer",
     "kill": "Prozess {{pid}} beenden: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} Dienst {{name}} ({{display}}, derzeit {{status}})"
+    "serviceDetail": "{{verb}} Dienst {{name}} ({{display}}, derzeit {{status}})",
+    "studioGenerate": "Mit {{model}} in {{size}} erzeugen, Anzahl der Bilder: {{count}}. Das nutzt die Grafikkarte und kann eine Minute oder länger dauern.\n{{prompt}}",
+    "studioOpen": "Bild {{id}} in {{program}} öffnen:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

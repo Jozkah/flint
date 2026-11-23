@@ -948,6 +948,26 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Studio's gallery as the agent sees it: list what was made (with the
+    // files' absolute paths), make a picture, open one in the editor the user
+    // set up. The desktop answers them, so `Read` and no path here; what
+    // protects the user is the question the desktop asks before a picture is
+    // generated or an external app is started (web-app `HOST_ASKED`).
+    BuiltinTool {
+        name: "studio_list_generations",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "studio_generate_image",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "studio_open_in_editor",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // The interactive confined browser (browser/session.rs). `Write` so it is
     // withheld in plan mode and run one call at a time; the gate classifies
     // each call (looking runs, acting is gated like a write, open and
@@ -1046,12 +1066,21 @@ pub fn is_image_tool(name: &str) -> bool {
     matches!(name, "image_gen" | "image_edit" | "image_view")
 }
 
+/// The Studio gallery tools (`studio_*`). The desktop answers them; the
+/// generating one and the one that starts an editor are put to the user first.
+pub fn is_studio_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "studio_list_generations" | "studio_generate_image" | "studio_open_in_editor"
+    )
+}
+
 /// Host tools a headless surface can only answer with "unavailable", so it
 /// should not advertise them at all. `request_access` is left out: the CLI
 /// answers it through its own prompt. `list_plugins` reads the desktop's
 /// store; the CLI lists plugins in its system prompt instead.
 pub fn is_desktop_only_tool(name: &str) -> bool {
-    matches!(name, "open_in_browser" | "list_plugins") || is_image_tool(name) || is_browser_tool(name)
+    matches!(name, "open_in_browser" | "list_plugins") || is_image_tool(name) || is_studio_tool(name) || is_browser_tool(name)
 }
 
 /// Tools the desktop answers itself (a prompt, or a store only the app can
@@ -1061,6 +1090,7 @@ pub fn is_host_tool(name: &str) -> bool {
         name,
         "request_access" | "list_plugins" | "open_in_browser"
     ) || is_image_tool(name)
+        || is_studio_tool(name)
         || is_browser_tool(name)
 }
 
@@ -1181,7 +1211,8 @@ mod tests {
         // + browser, the interactive confined browser.
         // + ocr, text out of an image or PDF with the OS engine.
         // + apply_patch, a multi-file patch gated path by path.
-        assert_eq!(BUILTIN_TOOLS.len(), 59);
+        // + studio_list_generations, studio_generate_image and studio_open_in_editor, which the desktop answers itself.
+        assert_eq!(BUILTIN_TOOLS.len(), 62);
     }
 
     #[test]
@@ -1218,6 +1249,23 @@ mod tests {
         }
         assert!(!is_browser_tool("open_in_browser"));
         assert!(!is_browser_tool("web_fetch"));
+    }
+
+    #[test]
+    fn studio_tools_are_desktop_answered_host_tools_with_no_paths() {
+        for name in ["studio_list_generations", "studio_generate_image", "studio_open_in_editor"] {
+            let t = lookup(name).expect("registered");
+            assert_eq!(t.capability, Capability::Read, "{name}");
+            assert!(t.path_args.is_empty(), "{name}");
+            assert!(is_studio_tool(name) && is_host_tool(name), "{name}");
+            // A headless surface has no Studio, so it must not advertise them.
+            assert!(is_desktop_only_tool(name), "{name}");
+            // The desktop asks the user in its web layer; the backend's
+            // always-ask list is for tools the backend itself runs.
+            assert!(!is_always_ask(name), "{name}");
+            assert!(!is_workspace_tool(name) && !is_mailbox_tool(name), "{name}");
+        }
+        assert!(!is_studio_tool("image_gen") && !is_studio_tool("read"));
     }
 
     #[test]

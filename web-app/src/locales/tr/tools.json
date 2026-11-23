@@ -129,7 +129,9 @@
       "openPath": "Ekranda aç",
       "skillWrite": "Beceriyi kaydet",
       "memoryWrite": "Belleğe kaydet",
-      "default": "Bu bilgisayarı değiştir"
+      "default": "Bu bilgisayarı değiştir",
+      "studioGenerate": "Studio'da resim oluştur",
+      "studioOpen": "Resmi düzenleyicinde aç"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "bu numaralı işlem çalışmıyor",
     "kill": "{{pid}} işlemini sonlandır: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{name}} hizmeti için {{verb}} ({{display}}, şu an {{status}})"
+    "serviceDetail": "{{name}} hizmeti için {{verb}} ({{display}}, şu an {{status}})",
+    "studioGenerate": "{{model}} ile {{size}} boyutunda oluştur, resim sayısı: {{count}}. Ekran kartını kullanır ve bir dakika veya daha uzun sürebilir.\n{{prompt}}",
+    "studioOpen": "{{id}} resmini {{program}} ile aç:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

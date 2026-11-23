@@ -129,7 +129,9 @@
       "openPath": "Buka di layar",
       "skillWrite": "Simpan skill",
       "memoryWrite": "Simpan ke memori",
-      "default": "Ubah komputer ini"
+      "default": "Ubah komputer ini",
+      "studioGenerate": "Buat gambar di Studio",
+      "studioOpen": "Buka gambar di editor Anda"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "tidak ada proses dengan nomor itu yang berjalan",
     "kill": "Akhiri proses {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} layanan {{name}} ({{display}}, sekarang {{status}})"
+    "serviceDetail": "{{verb}} layanan {{name}} ({{display}}, sekarang {{status}})",
+    "studioGenerate": "Buat dengan {{model}} pada {{size}}, jumlah gambar: {{count}}. Ini memakai kartu grafis dan bisa memakan waktu satu menit atau lebih.\n{{prompt}}",
+    "studioOpen": "Buka gambar {{id}} di {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

@@ -129,7 +129,9 @@
       "openPath": "Ouvrir à l’écran",
       "skillWrite": "Enregistrer une compétence",
       "memoryWrite": "Enregistrer en mémoire",
-      "default": "Modifier cet ordinateur"
+      "default": "Modifier cet ordinateur",
+      "studioGenerate": "Créer une image dans Studio",
+      "studioOpen": "Ouvrir une image dans votre éditeur"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "aucun processus avec ce numéro n’est en cours d’exécution",
     "kill": "Terminer le processus {{pid}} : {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} le service {{name}} ({{display}}, actuellement {{status}})"
+    "serviceDetail": "{{verb}} le service {{name}} ({{display}}, actuellement {{status}})",
+    "studioGenerate": "Générer avec {{model}} en {{size}}, nombre d’images : {{count}}. Cela utilise la carte graphique et peut prendre une minute ou plus.\n{{prompt}}",
+    "studioOpen": "Ouvrir l’image {{id}} dans {{program}} :\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

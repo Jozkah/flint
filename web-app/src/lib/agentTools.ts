@@ -51,6 +51,15 @@ import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
 import { IMAGE_TOOL_NAMES, isImageTool, runImageTool } from '@/lib/chatImageTools'
+import {
+  STUDIO_TOOL_NAMES,
+  describeStudioCall,
+  isStudioTool,
+  runStudioTool,
+  studioInputError,
+  studioPrecheck,
+  studioReadFolders,
+} from '@/lib/studio/agentStudio'
 import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
 import { similarToolCall } from '@/lib/similarToolCall'
 import {
@@ -116,6 +125,8 @@ export const AGENT_TOOL_NAMES = new Set([
   // Make, change and look at pictures with the image model loaded in Studio.
   // See `runImageTool`.
   ...IMAGE_TOOL_NAMES,
+  // List, make and open Studio's pictures. See `lib/studio/agentStudio.ts`.
+  ...STUDIO_TOOL_NAMES,
   // Read and drive the built-in browser pane. Answered by the desktop, and
   // gated there (domain prompt, action approval): see lib/browserAgent.ts.
   ...BROWSER_TOOL_NAMES,
@@ -400,6 +411,7 @@ export function agentToolInputError(
   toolName: string,
   input: unknown
 ): string | null {
+  if (isStudioTool(toolName)) return studioInputError(toolName, input)
   if (
     toolName !== 'bash' ||
     !input ||
@@ -645,6 +657,8 @@ const HOST_CONTEXT: Record<string, string> = {
   clipboard: 'clipboard',
   computer: 'computer',
   open_path: 'openPath',
+  studio_generate_image: 'studioGenerate',
+  studio_open_in_editor: 'studioOpen',
   skill_write: 'skillWrite',
   memory_write: 'memoryWrite',
 }
@@ -701,6 +715,7 @@ export async function describeHostAction(
       button: String(a.button ?? 'left'),
     })
   }
+  if (isStudioTool(toolName)) return describeStudioCall(toolName, input)
   if (toolName === 'clipboard') {
     if (a.action === 'write') {
       const text = String(a.text ?? '')
@@ -951,6 +966,12 @@ export async function executeAgentTool(
     }
 
     if (HOST_ASKED.has(toolName) && hostCallNeedsAsking(toolName, input)) {
+      // A call that is going to be refused anyway (no model installed, no
+      // editor set up, a size the model cannot make) is not put to the person.
+      if (isStudioTool(toolName)) {
+        const refusal = await studioPrecheck(toolName, input)
+        if (refusal) return { error: refusal }
+      }
       // The id the question is asked under is the id the backend is told, so
       // its guard can see that a person answered.
       const callId = options.callId ?? `${toolName}-${Date.now()}`
@@ -1018,6 +1039,9 @@ export async function executeAgentTool(
     }
     if (toolName === 'open_in_browser') return runOpenInBrowser(input)
     if (isImageTool(toolName)) return runImageTool(toolName, input, threadId)
+    if (isStudioTool(toolName)) {
+      return runStudioTool(toolName, input, threadId, { signal: options.signal })
+    }
     if (toolName === 'list_plugins') {
       return { content: await listPluginsForModel(options.readOnlyProject) }
     }
@@ -1055,7 +1079,7 @@ export async function executeAgentTool(
             options.callId,
             options.undoRun,
             options.actor,
-            extraProjectsOf(options),
+            extraProjectsOf(options, threadId),
             approvalOf(options)
           )
     const resources = result.resources ?? undefined
@@ -1195,7 +1219,7 @@ async function runStreaming(
     callId: options.callId,
     undoRun: options.undoRun,
     actor: options.actor,
-    extraProjects: extraProjectsOf(options),
+    extraProjects: extraProjectsOf(options, threadId),
     approval: approvalOf(options),
   })
 }
@@ -1207,11 +1231,22 @@ async function runStreaming(
 const approvalOf = (options: AgentToolOptions): ApprovalSource | undefined =>
   options.approvalSource ?? (options.callId ? approvalSourceFor(options.callId) : undefined)
 
-/** The extra folders as the binding takes them: absent when there are none. */
-const extraProjectsOf = (options: AgentToolOptions): string[] | undefined =>
-  options.extraProjects && options.extraProjects.length > 0
-    ? [...options.extraProjects]
-    : undefined
+/**
+ * The extra folders as the binding takes them: absent when there are none.
+ * Besides the folders the user attached, a conversation that was handed
+ * Studio's gallery paths (`studio_list_generations`, `studio_generate_image`)
+ * gets that one gallery folder as one more read-only folder, so the file tools
+ * can open the pictures it was told about. That is the only grant: the data
+ * folder around it stays refused, and the folder is never writable.
+ */
+const extraProjectsOf = (
+  options: AgentToolOptions,
+  threadId?: string
+): string[] | undefined => {
+  const studio = threadId ? studioReadFolders(threadId) : []
+  const all = [...(options.extraProjects ?? []), ...studio]
+  return all.length > 0 ? [...new Set(all)] : undefined
+}
 
 /**
  * The diff a `write` or `edit` call would make, for its approval prompt

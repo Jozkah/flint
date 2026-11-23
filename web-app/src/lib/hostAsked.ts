@@ -14,6 +14,10 @@ export const HOST_ASKED = new Set([
   'clipboard',
   'computer',
   'open_path',
+  // Spends the graphics card and writes the gallery / starts the user's editor.
+  // Listing the gallery (`studio_list_generations`) only reads and is not here.
+  'studio_generate_image',
+  'studio_open_in_editor',
   // Persist instructions that later sessions read back (audit O06-030).
   'skill_write',
   'memory_write',

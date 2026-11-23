@@ -442,7 +442,7 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         // has it. What fences it is the per-call approval, not the disk.
         "stop_session" => vec![capability::FS_READ],
         // Answered by the desktop: a prompt, and Flint's plugin state.
-        "request_access" | "list_plugins" | "open_in_browser" | "image_gen" | "image_edit" | "image_view" => vec![capability::FS_READ],
+        "request_access" | "list_plugins" | "open_in_browser" | "image_gen" | "image_edit" | "image_view" | "studio_list_generations" | "studio_generate_image" | "studio_open_in_editor" => vec![capability::FS_READ],
         // Answered by the desktop's web layer, or refused plainly elsewhere.
         n if crate::tools::is_browser_tool(n) => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision

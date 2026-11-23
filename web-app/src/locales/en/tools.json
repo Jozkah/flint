@@ -129,7 +129,9 @@
       "openPath": "Open on screen",
       "skillWrite": "Save a skill",
       "memoryWrite": "Save to memory",
-      "default": "Change this computer"
+      "default": "Change this computer",
+      "studioGenerate": "Make a picture in Studio",
+      "studioOpen": "Open a picture in your editor"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "no process with that number is running",
     "kill": "End process {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} service {{name}} ({{display}}, now {{status}})"
+    "serviceDetail": "{{verb}} service {{name}} ({{display}}, now {{status}})",
+    "studioGenerate": "Generate with {{model}} at {{size}}, number of pictures: {{count}}. This uses your graphics card and can take a minute or more.\n{{prompt}}",
+    "studioOpen": "Open picture {{id}} in {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

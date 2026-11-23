@@ -129,7 +129,9 @@
       "openPath": "Otevřít na obrazovce",
       "skillWrite": "Uložit dovednost",
       "memoryWrite": "Uložit do paměti",
-      "default": "Změnit tento počítač"
+      "default": "Změnit tento počítač",
+      "studioGenerate": "Vytvořit obrázek ve Studiu",
+      "studioOpen": "Otevřít obrázek v editoru"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "žádný proces s tímto číslem neběží",
     "kill": "Ukončit proces {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} službu {{name}} ({{display}}, nyní {{status}})"
+    "serviceDetail": "{{verb}} službu {{name}} ({{display}}, nyní {{status}})",
+    "studioGenerate": "Vygenerovat s modelem {{model}} v rozlišení {{size}}, počet obrázků: {{count}}. Využije grafickou kartu a může trvat minutu i déle.\n{{prompt}}",
+    "studioOpen": "Otevřít obrázek {{id}} v programu {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",
