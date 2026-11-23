@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useMCPServers } from '@/hooks/useMCPServers'
+import { useAppState } from '@/hooks/useAppState'
 import {
   bumpMcpGeneration,
   diffMcpSnapshots,
@@ -10,6 +11,7 @@ import {
   mcpServersLine,
   mcpStartingNote,
   snapshotMcpTools,
+  syncMcpStore,
 } from '../mcpLiveTools'
 
 const tool = (name: string, server: string) => ({
@@ -160,5 +162,39 @@ describe('the changed note and the environment line', () => {
 
   it('says none only when there really are no servers', () => {
     expect(mcpServersLine({})).toBe('MCP servers in this session: none.')
+  })
+})
+
+describe('syncMcpStore', () => {
+  beforeEach(() => {
+    useAppState.setState({ tools: [], mcpToolNames: new Set<string>() })
+  })
+
+  it('leaves the store alone when the same tools are synced again', () => {
+    const tools = [tool('read', 'fs'), tool('search', 'web')]
+    syncMcpStore(tools)
+    const names = useAppState.getState().mcpToolNames
+    syncMcpStore(tools)
+    expect(useAppState.getState().mcpToolNames).toBe(names)
+  })
+
+  it('does not rewrite the store when two servers expose the same tool name', () => {
+    // The store keeps one entry per name, so a repeat is not a change. A
+    // rewrite here re-ran the tool refresh in a loop that never ended.
+    const tools = [tool('search', 'a'), tool('search', 'b'), tool('read', 'a')]
+    syncMcpStore(tools)
+    const names = useAppState.getState().mcpToolNames
+    expect(names.size).toBe(2)
+    syncMcpStore(tools)
+    syncMcpStore(tools)
+    expect(useAppState.getState().mcpToolNames).toBe(names)
+  })
+
+  it('still rewrites the store when a tool is added', () => {
+    syncMcpStore([tool('search', 'a'), tool('search', 'b')])
+    const before = useAppState.getState().mcpToolNames
+    syncMcpStore([tool('search', 'a'), tool('search', 'b'), tool('read', 'a')])
+    expect(useAppState.getState().mcpToolNames).not.toBe(before)
+    expect(useAppState.getState().mcpToolNames.has('read')).toBe(true)
   })
 })

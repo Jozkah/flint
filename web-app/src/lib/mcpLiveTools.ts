@@ -360,8 +360,13 @@ export function syncMcpStore(tools: readonly MCPTool[]): void {
   const state = useAppState.getState?.()
   if (!state) return
   const names = tools.map((t) => t.name)
+  // Two servers can expose the same tool name: the store holds a Set, so its
+  // size is the number of distinct names, not `names.length`. Comparing those
+  // two never matched, so every sync rewrote the store, which re-ran the tool
+  // refresh that syncs again, without end.
+  const distinct = new Set(names)
   const same =
-    state.mcpToolNames.size === names.length &&
+    state.mcpToolNames.size === distinct.size &&
     names.every((n) => state.mcpToolNames.has(n)) &&
     state.tools.length === tools.length
   if (same) return
