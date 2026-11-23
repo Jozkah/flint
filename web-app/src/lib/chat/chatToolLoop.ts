@@ -1,3 +1,4 @@
+import { mcpFailureText } from '@/lib/mcpToolResult'
 import type { MutableRefObject } from 'react'
 import type { UIMessage, UseChatHelpers } from '@ai-sdk/react'
 import type { ServiceHub } from '@/services'
@@ -626,12 +627,16 @@ export function runChatToolLoop(
             : JSON.stringify(result.content ?? ''),
         })
 
-        if (result.error) {
+        // An MCP tool's `isError` result is a failure too: it was recorded as
+        // a success, so its card read "Used 1 tool" and the model's error
+        // text arrived as ordinary output.
+        const failureText = mcpFailureText(result)
+        if (failureText !== undefined) {
           await persistToolOutput({
             state: 'output-error',
             tool: toolCall.toolName,
             toolCallId: toolCall.toolCallId,
-            errorText: `Error: ${result.error}`,
+            errorText: `Error: ${failureText}`,
           })
         } else {
           await persistToolOutput({
