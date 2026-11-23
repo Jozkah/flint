@@ -62,10 +62,31 @@ export type AttachmentProcessingResult = {
 /** The internal marker for a failure with no message; shown through i18n. */
 const UNKNOWN_ATTACHMENT_ERROR = 'Unknown error'
 
+/**
+ * A Rust error enum crosses the bridge as JSON text, `{"ParseError":"Could
+ * not read this PDF"}`, and arrives as an Error or string whose message is that
+ * text. Parsed here so the person reads the sentence, not the braces; text
+ * that is not JSON is returned as it is.
+ */
+const unwrapJsonText = (text: string): string => {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return text
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object') {
+      const out = formatAttachmentError(parsed)
+      if (out && out !== 'Unknown error' && !out.trim().startsWith('{')) return out
+    }
+  } catch {
+    // Not JSON after all.
+  }
+  return text
+}
+
 const formatAttachmentError = (err: unknown): string => {
   if (!err) return 'Unknown error'
-  if (err instanceof Error) return err.message || err.toString()
-  if (typeof err === 'string') return err
+  if (err instanceof Error) return unwrapJsonText(err.message || err.toString())
+  if (typeof err === 'string') return unwrapJsonText(err)
   if (Array.isArray(err)) {
     const parts = err.map((e) => formatAttachmentError(e)).filter(Boolean)
     return parts.length
@@ -93,6 +114,15 @@ const formatAttachmentError = (err: unknown): string => {
     }
     if (typeof obj.code === 'string' && obj.code.trim().length > 0) {
       return obj.code
+    }
+    // A Rust enum variant with a message: `{ "ParseError": "..." }`.
+    const values = Object.values(obj)
+    if (
+      values.length === 1 &&
+      typeof values[0] === 'string' &&
+      values[0].trim().length > 0
+    ) {
+      return values[0]
     }
     try {
       return JSON.stringify(obj)

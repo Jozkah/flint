@@ -494,6 +494,18 @@ describe("attachment failure wording", () => {
     expect(describeAttachmentFailure({ weird: 1 })).toBe("Unknown error")
     expect(describeAttachmentFailure(new Error("disk full"))).toBe("disk full")
   })
+
+  it("reads the sentence out of a backend error enum sent as JSON text", () => {
+    const sentence = "Could not read this PDF. It may be corrupted."
+    const json = JSON.stringify({ ParseError: sentence })
+    // Both the toast on the failed file and the one for the unsent message.
+    expect(describeAttachmentFailure(new Error(json))).toBe(sentence)
+    expect(describeAttachmentFailure(json)).toBe(sentence)
+    expect(describeAttachmentFailure({ ParseError: sentence })).toBe(sentence)
+    expect(describeAttachmentFailure(new Error('{"a":1,"b":2}'))).toBe(
+      "Unknown error"
+    )
+  })
 })
 
 describe('resolveDocumentMode', () => {
