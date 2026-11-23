@@ -13,6 +13,7 @@
     "unknown": "Model motoru beklenmeyen bir hata bildirdi.",
     "MODEL_LOAD_FAILED": "Model yüklenemedi.",
     "MODEL_ARCH_NOT_SUPPORTED": "Bu modelin mimarisi mevcut motor tarafından desteklenmiyor. Motoru Ayarlar'dan güncellemek destek sağlayabilir.",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "Bu modelin mimarisi ({{architecture}}) paketlenmiş llama.cpp ({{tag}}) tarafından desteklenmiyor. Daha yeni bir motor gerekli.",
     "MODEL_LOAD_TIMED_OUT": "Modelin yüklenmesi çok uzun sürdüğü için işlem durduruldu. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
     "MISSING_SHARED_LIBRARY": "Motorun ihtiyaç duyduğu bir kitaplık eksik olduğundan motor başlatılamıyor.",
     "GPU_DRIVER_TOO_OLD": "GPU sürücünüz bu motor için çok eski. Sürücüyü güncellemek veya Ayarlar'dan CPU motoruna geçmek sorunu çözecektir.",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "GPU sürücüsü çöktü",
   "gpuCrashCpuFallbackQuestion": "Bu model yüklenirken GPU sürücüsü çöktü. Bunun yerine CPU'da yüklensin mi? Daha yavaş çalışır.",
   "gpuCrashCpuFallbackConfirm": "CPU'da yükle",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "Bu model çalışmayabilir",
+  "unsupportedArchDescription": "Bu modelin mimarisi ({{architecture}}) paketlenmiş llama.cpp ({{tag}}) tarafından desteklenmiyor. Daha yeni bir motor gerekli.",
+  "unsupportedArchDownload": "Yine de indir",
+  "unsupportedArchCancel": "İptal"
 }

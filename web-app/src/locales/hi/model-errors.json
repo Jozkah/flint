@@ -13,6 +13,7 @@
     "unknown": "मॉडल इंजन ने एक अप्रत्याशित त्रुटि बताई।",
     "MODEL_LOAD_FAILED": "मॉडल लोड नहीं हो सका।",
     "MODEL_ARCH_NOT_SUPPORTED": "इस मॉडल का आर्किटेक्चर मौजूदा इंजन द्वारा समर्थित नहीं है। सेटिंग से इंजन अपडेट करने पर समर्थन जुड़ सकता है।",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "इस मॉडल का आर्किटेक्चर ({{architecture}}) बंडल किए गए llama.cpp ({{tag}}) द्वारा समर्थित नहीं है। नया इंजन चाहिए।",
     "MODEL_LOAD_TIMED_OUT": "मॉडल को लोड होने में बहुत समय लगा और उसे रोक दिया गया। छोटा मॉडल या छोटा कॉन्टेक्स्ट आकार आमतौर पर मदद करता है।",
     "MISSING_SHARED_LIBRARY": "इंजन को चाहिए वाली एक लाइब्रेरी गायब है, इसलिए वह शुरू नहीं हो सकता।",
     "GPU_DRIVER_TOO_OLD": "आपका GPU ड्राइवर इस इंजन के लिए बहुत पुराना है। ड्राइवर अपडेट करने या सेटिंग में CPU इंजन पर जाने से यह ठीक होगा।",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "GPU ड्राइवर क्रैश हो गया",
   "gpuCrashCpuFallbackQuestion": "इस मॉडल को लोड करते समय GPU ड्राइवर क्रैश हो गया। क्या इसे CPU पर लोड करें? यह धीमा चलेगा।",
   "gpuCrashCpuFallbackConfirm": "CPU पर लोड करें",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "यह मॉडल शायद न चले",
+  "unsupportedArchDescription": "इस मॉडल का आर्किटेक्चर ({{architecture}}) बंडल किए गए llama.cpp ({{tag}}) द्वारा समर्थित नहीं है। नया इंजन चाहिए।",
+  "unsupportedArchDownload": "फिर भी डाउनलोड करें",
+  "unsupportedArchCancel": "रद्द करें"
 }

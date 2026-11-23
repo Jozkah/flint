@@ -1,4 +1,5 @@
 import { i18n } from '@/i18n/react-i18next-compat'
+import { LLAMA_CPP_ARCHITECTURES_TAG } from '@/lib/llamaArchitectures.generated'
 
 /**
  * Mirrors `ErrorCode` in `tauri-plugin-llamacpp/src/error.rs`. The Rust side has
@@ -37,6 +38,10 @@ export interface EngineError {
   /** Raw engine output. Technical, shown only in a details area. */
   details?: string
   missingLibraries?: string[]
+  /** `general.architecture` of the model, for MODEL_ARCH_NOT_SUPPORTED. */
+  architecture?: string
+  /** The llama.cpp release the engine was built from. */
+  engineTag?: string
 }
 
 const KNOWN_CODES: ReadonlySet<string> = new Set(ENGINE_ERROR_CODES)
@@ -49,6 +54,8 @@ function readEngineErrorObject(value: unknown): EngineError | undefined {
     message?: unknown
     details?: unknown
     missing_libraries?: unknown
+    architecture?: unknown
+    engine_tag?: unknown
   }
   if (typeof record.code !== 'string' || !KNOWN_CODES.has(record.code)) {
     return undefined
@@ -65,6 +72,12 @@ function readEngineErrorObject(value: unknown): EngineError | undefined {
     ...(typeof record.message === 'string' ? { message: record.message } : {}),
     ...(typeof record.details === 'string' ? { details: record.details } : {}),
     ...(missingLibraries?.length ? { missingLibraries } : {}),
+    ...(typeof record.architecture === 'string' && record.architecture.trim()
+      ? { architecture: record.architecture.trim() }
+      : {}),
+    ...(typeof record.engine_tag === 'string' && record.engine_tag.trim()
+      ? { engineTag: record.engine_tag.trim() }
+      : {}),
   }
 }
 
@@ -154,7 +167,17 @@ export function describeEngineError(error: unknown): string {
   const engineError = parseEngineError(error)
 
   if (engineError) {
-    const parts = [i18n.t(`model-errors:engine.${engineError.code}`)]
+    // An unsupported architecture names itself and the engine it was tried on.
+    const named =
+      engineError.code === 'MODEL_ARCH_NOT_SUPPORTED' && engineError.architecture
+    const parts = [
+      named
+        ? i18n.t('model-errors:engine.MODEL_ARCH_NOT_SUPPORTED_NAMED', {
+            architecture: engineError.architecture,
+            tag: engineError.engineTag ?? LLAMA_CPP_ARCHITECTURES_TAG,
+          })
+        : i18n.t(`model-errors:engine.${engineError.code}`),
+    ]
     if (engineError.missingLibraries?.length) {
       parts.push(
         i18n.t('model-errors:engineMissingLibraries', {

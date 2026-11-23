@@ -13,6 +13,7 @@
     "unknown": "Engine model melaporkan error tak terduga.",
     "MODEL_LOAD_FAILED": "Model tidak dapat dimuat.",
     "MODEL_ARCH_NOT_SUPPORTED": "Arsitektur model ini tidak didukung oleh engine saat ini. Memperbarui engine dari Pengaturan mungkin menambah dukungan.",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "Arsitektur model ini ({{architecture}}) tidak didukung oleh llama.cpp bawaan ({{tag}}). Diperlukan engine yang lebih baru.",
     "MODEL_LOAD_TIMED_OUT": "Model terlalu lama dimuat dan dihentikan. Model yang lebih kecil atau ukuran konteks yang lebih kecil biasanya membantu.",
     "MISSING_SHARED_LIBRARY": "Library yang dibutuhkan engine tidak ada, sehingga tidak dapat dimulai.",
     "GPU_DRIVER_TOO_OLD": "Driver GPU Anda terlalu lama untuk engine ini. Memperbarui driver, atau beralih ke engine CPU di Pengaturan, akan memperbaikinya.",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "Driver GPU mengalami crash",
   "gpuCrashCpuFallbackQuestion": "Driver GPU crash saat memuat model ini. Muat di CPU saja? Akan berjalan lebih lambat.",
   "gpuCrashCpuFallbackConfirm": "Muat di CPU",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "Model ini mungkin tidak bisa berjalan",
+  "unsupportedArchDescription": "Arsitektur model ini ({{architecture}}) tidak didukung oleh llama.cpp bawaan ({{tag}}). Diperlukan engine yang lebih baru.",
+  "unsupportedArchDownload": "Tetap unduh",
+  "unsupportedArchCancel": "Batal"
 }

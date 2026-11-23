@@ -497,6 +497,37 @@ fn explain_with(
     }
 }
 
+/// Reads `general.architecture` from the model's own GGUF header, so the
+/// message names the architecture the file declares rather than whatever the
+/// engine's log happened to quote.
+async fn name_unsupported_architecture(
+    state: &LlamacppState,
+    port: u16,
+    model_id: &str,
+    err: LlamacppError,
+) -> LlamacppError {
+    if !matches!(err.code, ErrorCode::ModelArchNotSupported) {
+        return err;
+    }
+    let preset = {
+        let guard = state.engine.lock().await;
+        guard.as_ref().filter(|h| h.port == port).map(|h| h.preset_path.clone())
+    };
+    let ini = match preset.filter(|p| !p.as_os_str().is_empty()) {
+        Some(path) => tokio::fs::read_to_string(&path).await.ok(),
+        None => None,
+    };
+    let path = ini.and_then(|ini| crate::engine::preset::section_value(&ini, model_id, "model"));
+    let header = match path {
+        Some(path) => crate::gguf::utils::read_gguf_metadata_internal(path)
+            .await
+            .ok()
+            .and_then(|m| m.metadata.get("general.architecture").cloned()),
+        None => None,
+    };
+    err.with_architecture(header)
+}
+
 /// [`explain_with`] for the worker on `port`, reading what it printed since
 /// `mark` and its preset file.
 async fn explain_load_failure(
@@ -506,6 +537,7 @@ async fn explain_load_failure(
     mark: Option<crate::engine::worker::FitMark>,
     err: LlamacppError,
 ) -> LlamacppError {
+    let err = name_unsupported_architecture(state, port, model_id, err).await;
     let Some(mark) = mark else { return err };
     let (mut line, mut preset) = fit_failure_since(state, port, mark).await;
     if line.is_none() && matches!(err.code, ErrorCode::ModelLoadFailed | ErrorCode::OutOfMemory) {

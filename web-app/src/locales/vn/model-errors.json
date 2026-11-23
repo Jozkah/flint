@@ -13,6 +13,7 @@
     "unknown": "Engine mô hình báo một lỗi không mong đợi.",
     "MODEL_LOAD_FAILED": "Không thể tải mô hình.",
     "MODEL_ARCH_NOT_SUPPORTED": "Kiến trúc của mô hình này không được engine hiện tại hỗ trợ. Cập nhật engine từ Cài đặt có thể bổ sung hỗ trợ.",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "Kiến trúc của mô hình này ({{architecture}}) không được llama.cpp đi kèm ({{tag}}) hỗ trợ. Cần một engine mới hơn.",
     "MODEL_LOAD_TIMED_OUT": "Mô hình tải quá lâu nên đã bị dừng. Thường thì dùng mô hình nhỏ hơn hoặc kích thước ngữ cảnh nhỏ hơn sẽ giúp ích.",
     "MISSING_SHARED_LIBRARY": "Thiếu một thư viện mà engine cần, nên nó không thể khởi động.",
     "GPU_DRIVER_TOO_OLD": "Trình điều khiển GPU của bạn quá cũ so với engine này. Cập nhật trình điều khiển, hoặc chuyển sang engine CPU trong Cài đặt, sẽ khắc phục việc này.",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "Trình điều khiển GPU bị lỗi",
   "gpuCrashCpuFallbackQuestion": "Trình điều khiển GPU bị lỗi khi tải mô hình này. Tải trên CPU thay thế? Sẽ chạy chậm hơn.",
   "gpuCrashCpuFallbackConfirm": "Tải trên CPU",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "Mô hình này có thể không chạy được",
+  "unsupportedArchDescription": "Kiến trúc của mô hình này ({{architecture}}) không được llama.cpp đi kèm ({{tag}}) hỗ trợ. Cần một engine mới hơn.",
+  "unsupportedArchDownload": "Vẫn tải xuống",
+  "unsupportedArchCancel": "Hủy"
 }

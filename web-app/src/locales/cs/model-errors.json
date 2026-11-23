@@ -13,6 +13,7 @@
     "unknown": "Engine modelu nahlásil neočekávanou chybu.",
     "MODEL_LOAD_FAILED": "Model se nepodařilo načíst.",
     "MODEL_ARCH_NOT_SUPPORTED": "Architektura tohoto modelu není současným enginem podporována. Aktualizace enginu v Nastavení může podporu přidat.",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "Architektura tohoto modelu ({{architecture}}) není podporována přibaleným llama.cpp ({{tag}}). Je potřeba novější engine.",
     "MODEL_LOAD_TIMED_OUT": "Načítání modelu trvalo příliš dlouho a bylo zastaveno. Obvykle pomůže menší model nebo menší velikost kontextu.",
     "MISSING_SHARED_LIBRARY": "Chybí knihovna, kterou engine potřebuje, takže se nemůže spustit.",
     "GPU_DRIVER_TOO_OLD": "Ovladač vaší grafické karty je pro tento engine příliš starý. Pomůže aktualizace ovladače nebo přepnutí na engine pro CPU v Nastavení.",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "Ovladač GPU spadl",
   "gpuCrashCpuFallbackQuestion": "Ovladač GPU spadl při načítání tohoto modelu. Načíst ho místo toho na CPU? Poběží pomaleji.",
   "gpuCrashCpuFallbackConfirm": "Načíst na CPU",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "Tento model nemusí fungovat",
+  "unsupportedArchDescription": "Architektura tohoto modelu ({{architecture}}) není podporována přibaleným llama.cpp ({{tag}}). Je potřeba novější engine.",
+  "unsupportedArchDownload": "Přesto stáhnout",
+  "unsupportedArchCancel": "Zrušit"
 }

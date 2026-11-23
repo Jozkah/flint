@@ -6,6 +6,7 @@
 import type { SpecDraftKind } from '@janhq/core'
 import { startHuggingFaceBundle } from '@/hooks/useHuggingFaceDownloads'
 import { chooseDraft, chooseMmproj, type HuggingFaceFileGroup } from '@/lib/huggingface'
+import { findUnsupportedArchitecture } from '@/lib/unsupportedArchitecture'
 import { recordHuggingFaceInstall } from '@/lib/huggingfaceRegistry'
 import type { DownloadFinish } from '@/lib/interruptedDownloads'
 import { ExtensionManager } from '@/lib/extension'
@@ -33,8 +34,22 @@ export async function startGgufBundle(input: {
   /** An update: the installed copy is removed before the new one goes in. */
   replace?: boolean
   models: Pick<ModelsService, 'deleteModel' | 'pullModel'>
+  /**
+   * Asked before anything is downloaded when the model's header names an
+   * architecture the bundled engine cannot load. Resolving false cancels the
+   * download. Left out, no check is made.
+   */
+  confirmUnsupported?: (architecture: string) => Promise<boolean>
 }): Promise<void> {
   const { bundleId, repo, revision, modelId, group, groups, token, replace, models } = input
+  if (input.confirmUnsupported) {
+    const architecture = await findUnsupportedArchitecture({
+      repo,
+      revision,
+      filename: group.primary.name,
+    })
+    if (architecture && !(await input.confirmUnsupported(architecture))) return
+  }
   const mmproj = chooseMmproj(groups)
   const draft = chooseDraft(groups, group)
   const bundleFiles = [...group.files, ...(mmproj?.files ?? []), ...(draft?.files ?? [])]
