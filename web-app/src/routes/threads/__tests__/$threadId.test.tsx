@@ -1409,10 +1409,12 @@ describe('ThreadDetail route', () => {
     expect(sessionStorage.getItem('initial-message-thread-1')).toBeNull()
   })
 
-  it('clears queue on unmount', () => {
+  it('holds the queue on unmount instead of dropping what the user typed', () => {
     const { unmount } = renderComponent()
+    h.messageQueueState.holdQueue.mockClear()
     unmount()
-    expect(h.messageQueueState.clearQueue).toHaveBeenCalledWith('thread-1')
+    expect(h.messageQueueState.holdQueue).toHaveBeenCalledWith('thread-1')
+    expect(h.messageQueueState.clearQueue).not.toHaveBeenCalled()
   })
 
   it('updates RAG tool availability based on thread/model capabilities', async () => {

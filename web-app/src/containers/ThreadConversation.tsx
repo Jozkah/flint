@@ -957,10 +957,13 @@ export function ThreadConversation({
     t,
   })
 
-  // Clear the queue when navigating away from this thread
+  // Leaving the thread keeps what was queued, held: it was typed for a run
+  // that may still be going, and dropping it left no trace that it was never
+  // sent. Back on the thread it shows as a held chip to send or discard; none
+  // goes out on its own. A deleted thread's queue is cleared with the thread.
   useEffect(() => {
     return () => {
-      useMessageQueue.getState().clearQueue(threadId)
+      useMessageQueue.getState().holdQueue(threadId)
     }
   }, [threadId])
 

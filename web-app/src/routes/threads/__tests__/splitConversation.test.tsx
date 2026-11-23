@@ -124,7 +124,7 @@ const h = vi.hoisted(() => {
       clearPendingForThread: vi.fn(),
       requestApproval: vi.fn().mockResolvedValue(true),
     } as any,
-    messageQueueState: { dequeue: vi.fn(() => null), clearQueue: vi.fn() },
+    messageQueueState: { dequeue: vi.fn(() => null), clearQueue: vi.fn(), holdQueue: vi.fn() },
   }
 })
 
