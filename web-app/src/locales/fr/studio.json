@@ -142,7 +142,17 @@
     "startingSize": "Démarrage… {{size}} à télécharger",
     "progress": "{{bytes}} sur {{total}}",
     "downloading": "Téléchargement…",
-    "button": "Télécharger ({{size}})"
+    "button": "Télécharger ({{size}})",
+    "file": "Fichier {{index}} sur {{count}} : {{name}}",
+    "source": "Depuis {{repo}} ({{size}})",
+    "waiting": "Impossible de joindre Hugging Face : {{reason}}.",
+    "failedTitle": "Le téléchargement n’a pas abouti",
+    "failedFile": "{{name}} ({{size}}) depuis {{repo}}",
+    "retry": "Réessayer",
+    "copyLink": "Copier le lien",
+    "copyPath": "Copier l’emplacement",
+    "copied": "Copié",
+    "manualHint": "Pour récupérer un fichier vous-même, copiez son lien, téléchargez-le dans votre navigateur ou un gestionnaire de téléchargement, puis enregistrez-le à l’emplacement indiqué. Réessayer reprend à partir de ce qui est déjà sur le disque."
   },
   "phase": {
     "queued": "En attente",

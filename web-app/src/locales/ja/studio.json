@@ -136,7 +136,17 @@
     "startingSize": "開始中… ダウンロード {{size}}",
     "progress": "{{bytes}} / {{total}}",
     "downloading": "ダウンロード中…",
-    "button": "ダウンロード（{{size}}）"
+    "button": "ダウンロード（{{size}}）",
+    "file": "ファイル {{index}}/{{count}}: {{name}}",
+    "source": "取得元: {{repo}}（{{size}}）",
+    "waiting": "Hugging Face に接続できません: {{reason}}。",
+    "failedTitle": "ダウンロードが完了しませんでした",
+    "failedFile": "{{name}}（{{size}}）— {{repo}}",
+    "retry": "再試行",
+    "copyLink": "リンクをコピー",
+    "copyPath": "保存先をコピー",
+    "copied": "コピーしました",
+    "manualHint": "ファイルを自分で取得するには、リンクをコピーし、ブラウザーやダウンロードマネージャーでダウンロードして、表示されている保存先に置いてください。再試行すると、すでにディスクにある分から続きを取得します。"
   },
   "phase": {
     "queued": "待機中",

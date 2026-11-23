@@ -142,7 +142,17 @@
     "startingSize": "Avvio… {{size}} da scaricare",
     "progress": "{{bytes}} di {{total}}",
     "downloading": "Download in corso…",
-    "button": "Scarica ({{size}})"
+    "button": "Scarica ({{size}})",
+    "file": "File {{index}} di {{count}}: {{name}}",
+    "source": "Da {{repo}} ({{size}})",
+    "waiting": "Impossibile raggiungere Hugging Face: {{reason}}.",
+    "failedTitle": "Il download non è terminato",
+    "failedFile": "{{name}} ({{size}}) da {{repo}}",
+    "retry": "Riprova",
+    "copyLink": "Copia il link",
+    "copyPath": "Copia il percorso di salvataggio",
+    "copied": "Copiato",
+    "manualHint": "Per scaricare un file da solo, copia il suo link, scaricalo dal browser o con un gestore di download e salvalo nel percorso indicato. Riprovare riparte da ciò che è già sul disco."
   },
   "phase": {
     "queued": "In attesa",

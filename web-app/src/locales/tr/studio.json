@@ -139,7 +139,17 @@
     "startingSize": "Başlatılıyor… {{size}} indirilecek",
     "progress": "{{bytes}} / {{total}}",
     "downloading": "İndiriliyor…",
-    "button": "İndir ({{size}})"
+    "button": "İndir ({{size}})",
+    "file": "Dosya {{index}} / {{count}}: {{name}}",
+    "source": "Kaynak: {{repo}} ({{size}})",
+    "waiting": "Hugging Face’e ulaşılamadı: {{reason}}.",
+    "failedTitle": "İndirme tamamlanmadı",
+    "failedFile": "{{name}} ({{size}}), {{repo}}",
+    "retry": "Yeniden dene",
+    "copyLink": "Bağlantıyı kopyala",
+    "copyPath": "Kayıt konumunu kopyala",
+    "copied": "Kopyalandı",
+    "manualHint": "Bir dosyayı kendiniz indirmek için bağlantısını kopyalayın, tarayıcınızda veya bir indirme yöneticisiyle indirin ve gösterilen konuma kaydedin. Yeniden denemek diskte olanlardan devam eder."
   },
   "phase": {
     "queued": "Bekliyor",

@@ -139,7 +139,17 @@
     "startingSize": "Starting… {{size}} to download",
     "progress": "{{bytes}} of {{total}}",
     "downloading": "Downloading…",
-    "button": "Download ({{size}})"
+    "button": "Download ({{size}})",
+    "file": "File {{index}} of {{count}}: {{name}}",
+    "source": "From {{repo}} ({{size}})",
+    "waiting": "Could not reach Hugging Face: {{reason}}.",
+    "failedTitle": "The download did not finish",
+    "failedFile": "{{name}} ({{size}}) from {{repo}}",
+    "retry": "Try again",
+    "copyLink": "Copy link",
+    "copyPath": "Copy save location",
+    "copied": "Copied",
+    "manualHint": "To fetch a file yourself, copy its link, download it in your browser or a download manager, and save it at the location shown. Trying again continues from what is already on disk."
   },
   "phase": {
     "queued": "Waiting",

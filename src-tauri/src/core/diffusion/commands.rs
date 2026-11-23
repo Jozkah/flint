@@ -8,7 +8,7 @@ use super::gallery::{self, GalleryItem};
 use super::runtime::{self, Generated, ImageParams, ResidentInfo, VideoParams};
 use serde::Serialize;
 use std::path::Path;
-use tauri::Runtime;
+use tauri::{Emitter, Runtime};
 
 /// Imported adapters live in Studio's own directory, separate from model weights.
 #[tauri::command(async)]
@@ -105,10 +105,55 @@ pub async fn diffusion_install_engine<R: Runtime>(
     engine::install(&app, backend).await.map(|_| ())
 }
 
-/// Download every file of a model, one after another, through the Hugging Face
-/// downloader (so it resumes, retries and reports progress like any model).
-/// Progress arrives as `huggingface-download-progress` under the task ids
-/// `diffusion:<model>:<index>`.
+/// One file of a model that did not come down, for the Studio download card.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileFailure {
+    pub index: usize,
+    pub repo: String,
+    pub filename: String,
+    pub size: u64,
+    /// Where the file is fetched from, so it can be downloaded by hand.
+    pub url: String,
+    /// Where Flint expects the finished file.
+    pub path: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadFailed {
+    model_id: String,
+    files: Vec<FileFailure>,
+}
+
+/// The error text for a model with failed files: one line per file, naming it.
+fn failure_summary(display_name: &str, total: usize, failures: &[FileFailure]) -> String {
+    let lines = failures
+        .iter()
+        .map(|f| {
+            format!(
+                "file {} of {} ({} from {}): {}",
+                f.index + 1,
+                total,
+                f.filename,
+                f.repo,
+                f.error
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("
+");
+    format!("{display_name} could not be downloaded completely.
+{lines}")
+}
+
+/// Download every file of a model through the Hugging Face downloader (so it
+/// resumes, retries and reports progress like any model). A file that fails
+/// does not stop the others; the files that did not come down are named in the
+/// error and in a `diffusion-download-failed` event, with the URL and
+/// destination of each. Progress arrives as `huggingface-download-progress`
+/// under the task ids `diffusion:<model>:<index>`.
 #[tauri::command]
 pub async fn diffusion_download_model<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -119,21 +164,29 @@ pub async fn diffusion_download_model<R: Runtime>(
         return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
     }
     let def = catalog::model(&model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
+    let mut failures: Vec<FileFailure> = Vec::new();
     for (index, file) in def.files.iter().enumerate() {
-        if std::fs::metadata(runtime::model_file_path(&app, file))
-            .map(|m| m.len() == file.size)
-            .unwrap_or(false)
-        {
+        let path = runtime::model_file_path(&app, file);
+        if std::fs::metadata(&path).map(|m| m.len() == file.size).unwrap_or(false) {
             continue;
         }
+        let fail = |error: String| FileFailure {
+            index,
+            repo: file.repo.to_string(),
+            filename: file.filename.to_string(),
+            size: file.size,
+            url: file.url().unwrap_or_default(),
+            path: path.display().to_string(),
+            error,
+        };
         if file.repo.starts_with(custom::LOCAL_REPO_PREFIX) {
-            return Err(format!(
-                "{} is not at {} any more. Put the file back, or remove the model and add it again.",
-                def.display_name,
-                runtime::model_file_path(&app, file).display()
-            ));
+            failures.push(fail(format!(
+                "it is not at {} any more. Put the file back, or remove the model and add it again.",
+                path.display()
+            )));
+            continue;
         }
-        crate::core::huggingface::huggingface_download_model(
+        let result = crate::core::huggingface::huggingface_download_model(
             app.clone(),
             format!("diffusion:{}:{index}", def.id),
             file.repo.to_string(),
@@ -141,12 +194,26 @@ pub async fn diffusion_download_model<R: Runtime>(
             Some(file.size),
             Some(file.sha256.to_string()),
             token.clone(),
-            None,
+            file.revision().map(str::to_string),
             None,
         )
-        .await?;
+        .await;
+        if let Err(error) = result {
+            // A pause is the person's own choice, not a failure to report.
+            if error == "Download paused" {
+                return Err(error);
+            }
+            failures.push(fail(error));
+        }
     }
-    Ok(())
+    if failures.is_empty() {
+        return Ok(());
+    }
+    let _ = app.emit(
+        "diffusion-download-failed",
+        DownloadFailed { model_id: def.id.to_string(), files: failures.clone() },
+    );
+    Err(failure_summary(def.display_name, def.files.len(), &failures))
 }
 
 fn offload_from(text: Option<&str>) -> Offload {
@@ -507,4 +574,37 @@ pub async fn diffusion_remove_custom_model<R: Runtime>(
         }
     }
     custom::remove(&app, &model_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_download_names_each_file_that_did_not_come_down() {
+        let failures = vec![
+            FileFailure {
+                index: 0,
+                repo: "unsloth/Z-Image-Turbo-GGUF".into(),
+                filename: "z-image-turbo-Q4_K_M.gguf".into(),
+                size: 5,
+                url: "https://huggingface.co/x".into(),
+                path: "C:/m".into(),
+                error: "Hugging Face answered 503".into(),
+            },
+            FileFailure {
+                index: 2,
+                repo: "unsloth/Qwen3-4B-Instruct-2507-GGUF".into(),
+                filename: "q.gguf".into(),
+                size: 5,
+                url: String::new(),
+                path: String::new(),
+                error: "no space".into(),
+            },
+        ];
+        let text = failure_summary("Z-Image Turbo", 3, &failures);
+        assert!(text.starts_with("Z-Image Turbo could not be downloaded completely."));
+        assert!(text.contains("file 1 of 3 (z-image-turbo-Q4_K_M.gguf from unsloth/Z-Image-Turbo-GGUF): Hugging Face answered 503"));
+        assert!(text.contains("file 3 of 3 (q.gguf from unsloth/Qwen3-4B-Instruct-2507-GGUF): no space"));
+    }
 }

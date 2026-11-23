@@ -142,7 +142,17 @@
     "startingSize": "Començant… {{size}} per baixar",
     "progress": "{{bytes}} de {{total}}",
     "downloading": "Baixant…",
-    "button": "Baixa ({{size}})"
+    "button": "Baixa ({{size}})",
+    "file": "Fitxer {{index}} de {{count}}: {{name}}",
+    "source": "De {{repo}} ({{size}})",
+    "waiting": "No s’ha pogut connectar amb Hugging Face: {{reason}}.",
+    "failedTitle": "La baixada no ha acabat",
+    "failedFile": "{{name}} ({{size}}) de {{repo}}",
+    "retry": "Torna-ho a provar",
+    "copyLink": "Copia l’enllaç",
+    "copyPath": "Copia la ubicació de desament",
+    "copied": "Copiat",
+    "manualHint": "Per baixar un fitxer pel teu compte, copia’n l’enllaç, baixa’l amb el navegador o un gestor de baixades i desa’l a la ubicació indicada. Tornar-ho a provar continua des del que ja hi ha al disc."
   },
   "phase": {
     "queued": "Esperant",

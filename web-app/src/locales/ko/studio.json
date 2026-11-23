@@ -136,7 +136,17 @@
     "startingSize": "시작하는 중… {{size}} 다운로드 예정",
     "progress": "{{total}} 중 {{bytes}}",
     "downloading": "다운로드 중…",
-    "button": "다운로드 ({{size}})"
+    "button": "다운로드 ({{size}})",
+    "file": "파일 {{index}}/{{count}}: {{name}}",
+    "source": "출처: {{repo}} ({{size}})",
+    "waiting": "Hugging Face에 연결할 수 없습니다: {{reason}}.",
+    "failedTitle": "다운로드가 끝나지 않았습니다",
+    "failedFile": "{{name}} ({{size}}) — {{repo}}",
+    "retry": "다시 시도",
+    "copyLink": "링크 복사",
+    "copyPath": "저장 위치 복사",
+    "copied": "복사됨",
+    "manualHint": "파일을 직접 받으려면 링크를 복사해 브라우저나 다운로드 관리자로 받은 뒤 표시된 위치에 저장하세요. 다시 시도하면 디스크에 이미 있는 부분부터 이어서 받습니다."
   },
   "phase": {
     "queued": "대기 중",

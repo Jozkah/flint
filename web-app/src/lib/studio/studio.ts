@@ -41,6 +41,19 @@ export type StudioModel = {
   family?: string | null
 }
 
+/** A file of a model that did not come down, with what is needed to fetch it by hand. */
+export type StudioDownloadFailure = {
+  index: number
+  repo: string
+  filename: string
+  size: number
+  /** Where the file is fetched from. */
+  url: string
+  /** Where Flint expects the finished file. */
+  path: string
+  error: string
+}
+
 export type StudioResident = { model_id: string; kind: StudioKind; busy: boolean }
 
 export type StudioLora = { name: string; multiplier: number }

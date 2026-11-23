@@ -142,7 +142,17 @@
     "startingSize": "Iniciando… {{size}} por descargar",
     "progress": "{{bytes}} de {{total}}",
     "downloading": "Descargando…",
-    "button": "Descargar ({{size}})"
+    "button": "Descargar ({{size}})",
+    "file": "Archivo {{index}} de {{count}}: {{name}}",
+    "source": "Desde {{repo}} ({{size}})",
+    "waiting": "No se pudo conectar con Hugging Face: {{reason}}.",
+    "failedTitle": "La descarga no terminó",
+    "failedFile": "{{name}} ({{size}}) de {{repo}}",
+    "retry": "Reintentar",
+    "copyLink": "Copiar enlace",
+    "copyPath": "Copiar ubicación de guardado",
+    "copied": "Copiado",
+    "manualHint": "Para obtener un archivo por tu cuenta, copia su enlace, descárgalo en el navegador o con un gestor de descargas y guárdalo en la ubicación indicada. Reintentar continúa desde lo que ya está en el disco."
   },
   "phase": {
     "queued": "En espera",

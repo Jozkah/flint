@@ -127,12 +127,31 @@ pub struct FileDef {
     pub sha256: &'static str,
 }
 
+/// Files whose pinned size and checksum are not what the repository's `main`
+/// serves any more, and the commit that still has them. Unsloth replaced
+/// `z-image-turbo-Q4_K_M.gguf` (5,017,613,376 bytes) with a smaller file on
+/// 2026-10-29, which left a download of `main` unable to ever match the pin.
+const PINNED_REVISIONS: &[(&str, &str, &str)] = &[(
+    "unsloth/Z-Image-Turbo-GGUF",
+    "z-image-turbo-Q4_K_M.gguf",
+    "6c80814333b7b6a70a2e5b469a7c6437ce65de0f",
+)];
+
 impl FileDef {
+    /// The commit to download from when `main` no longer serves this exact
+    /// file, so the pinned size and SHA-256 keep matching what arrives.
+    pub fn revision(&self) -> Option<&'static str> {
+        PINNED_REVISIONS
+            .iter()
+            .find(|(repo, filename, _)| *repo == self.repo && *filename == self.filename)
+            .map(|(_, _, revision)| *revision)
+    }
+
     /// On the Hugging Face endpoint in force (huggingface.co or the mirror).
     pub fn url(&self) -> Result<String, String> {
         use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
         let mut parts: Vec<&str> = self.repo.split('/').collect();
-        parts.extend(["resolve", "main"]);
+        parts.extend(["resolve", self.revision().unwrap_or("main")]);
         parts.extend(self.filename.split('/'));
         Ok(endpoint_url(&hf_endpoint()?, &parts)?.to_string())
     }
@@ -279,6 +298,19 @@ pub fn all_models() -> Vec<&'static ModelDef> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_replaced_upstream_file_is_fetched_from_its_pinned_commit() {
+        let weights = &Z_IMAGE_TURBO.files[0];
+        let revision = weights.revision().expect("the replaced file is pinned");
+        assert_eq!(revision.len(), 40);
+        assert!(revision.chars().all(|c| c.is_ascii_hexdigit()));
+        let url = weights.url().unwrap();
+        assert!(url.contains(&format!("/resolve/{revision}/")), "{url}");
+        // The files still on `main` stay there.
+        assert_eq!(Z_IMAGE_TURBO.files[1].revision(), None);
+        assert!(Z_IMAGE_TURBO.files[1].url().unwrap().contains("/resolve/main/"));
+    }
 
     #[test]
     fn every_asset_has_a_real_looking_checksum() {

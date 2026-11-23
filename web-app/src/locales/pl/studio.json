@@ -145,7 +145,17 @@
     "startingSize": "Uruchamianie… do pobrania {{size}}",
     "progress": "{{bytes}} z {{total}}",
     "downloading": "Pobieranie…",
-    "button": "Pobierz ({{size}})"
+    "button": "Pobierz ({{size}})",
+    "file": "Plik {{index}} z {{count}}: {{name}}",
+    "source": "Z {{repo}} ({{size}})",
+    "waiting": "Nie można połączyć się z Hugging Face: {{reason}}.",
+    "failedTitle": "Pobieranie nie zakończyło się",
+    "failedFile": "{{name}} ({{size}}) z {{repo}}",
+    "retry": "Spróbuj ponownie",
+    "copyLink": "Kopiuj link",
+    "copyPath": "Kopiuj miejsce zapisu",
+    "copied": "Skopiowano",
+    "manualHint": "Aby pobrać plik samodzielnie, skopiuj jego link, pobierz go w przeglądarce lub menedżerze pobierania i zapisz w podanym miejscu. Ponowna próba kontynuuje od tego, co jest już na dysku."
   },
   "phase": {
     "queued": "Oczekiwanie",
