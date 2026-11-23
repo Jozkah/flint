@@ -45,6 +45,19 @@ fn manifest_for(files: &[(&str, &[u8])]) -> PackManifest {
     }
 }
 
+#[test]
+fn the_toolkit_comes_from_the_installed_manifest() {
+    let dir = std::env::temp_dir().join(format!("flint-toolkit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    assert_eq!(toolkit_of(&dir), None, "no manifest");
+    let manifest = serde_json::to_vec(&manifest_for(&[])).unwrap();
+    std::fs::write(dir.join(MANIFEST_FILE), manifest).unwrap();
+    assert_eq!(toolkit_of(&dir).as_deref(), Some("13.0"));
+    std::fs::write(dir.join(MANIFEST_FILE), b"{\"kind\":\"cuda13\"}").unwrap();
+    assert_eq!(toolkit_of(&dir), None, "a manifest that names none");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 enum Entry<'a> {
     File(&'a str, &'a [u8]),
     Dir(&'a str),
