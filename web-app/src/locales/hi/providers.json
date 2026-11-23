@@ -163,6 +163,16 @@
       "failed": "models.dev तक नहीं पहुँचा जा सका। अपना कनेक्शन जाँचें और फिर कोशिश करें।",
       "invalid": "सीमाएँ 0 से बड़ी पूर्ण संख्याएँ होनी चाहिए। सीमा अज्ञात हो तो फ़ील्ड खाली करें।",
       "fromModelsDev": "models.dev से"
+    },
+    "apiFormat": {
+      "title": "API फ़ॉर्मेट",
+      "auto": "स्वचालित",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "यह मॉडल किस OpenAI-शैली API से कॉल होता है। स्वचालित में OpenAI और Azure पर Responses और बाकी जगह Chat Completions इस्तेमाल होता है, और एंडपॉइंट न मिलने पर एक बार बदल जाता है। तर्क-सारांश के लिए Responses चाहिए।",
+      "detected": "पहचाना गया: {{format}}",
+      "reset": "पहचान रीसेट करें",
+      "switched": "{{model}} ने यहाँ {{from}} स्वीकार नहीं किया। {{to}} पर बदला गया और इस मॉडल के लिए सहेजा गया।"
     }
   },
   "addProvider": "प्रदाता जोड़ें",

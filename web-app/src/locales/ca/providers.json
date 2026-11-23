@@ -163,6 +163,16 @@
       "failed": "No s'ha pogut contactar amb models.dev. Revisa la connexió i torna-ho a provar.",
       "invalid": "Els límits han de ser nombres enters més grans que 0. Buida el camp si el límit no es coneix.",
       "fromModelsDev": "Des de models.dev"
+    },
+    "apiFormat": {
+      "title": "Format de l’API",
+      "auto": "Automàtic",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "L’API d’estil OpenAI amb què es crida aquest model. Automàtic fa servir Responses a OpenAI i Azure i Chat Completions a la resta, i canvia una vegada si falta l’endpoint. Els resums de raonament necessiten Responses.",
+      "detected": "Detectat: {{format}}",
+      "reset": "Restableix la detecció",
+      "switched": "{{model}} no ha acceptat {{from}} aquí. Canviat a {{to}} i desat per a aquest model."
     }
   },
   "addProvider": "Afegeix un proveïdor",

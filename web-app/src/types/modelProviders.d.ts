@@ -70,6 +70,14 @@ type Model = {
   contextWindow?: number
   /** Most tokens the model may write in one reply; read like `contextWindow`. */
   maxOutputTokens?: number
+  /**
+   * Which OpenAI-style API the model is called through. Missing = 'auto': the
+   * host decides (OpenAI and Azure: Responses, everything else: Chat
+   * Completions). See lib/apiFormat.ts.
+   */
+  apiFormat?: 'auto' | 'chat' | 'responses'
+  /** The API a request proved this model works on, set by the automatic switch. */
+  detectedApiFormat?: 'chat' | 'responses'
   /** Set when `contextWindow` / `maxOutputTokens` were filled from models.dev. */
   limitsSource?: 'models.dev'
   /** The user set this model's capabilities; probes must not add to them. */

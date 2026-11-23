@@ -163,6 +163,16 @@
       "failed": "Không thể kết nối models.dev. Hãy kiểm tra kết nối và thử lại.",
       "invalid": "Giới hạn phải là số nguyên lớn hơn 0. Xóa trống ô nếu chưa biết giới hạn.",
       "fromModelsDev": "Từ models.dev"
+    },
+    "apiFormat": {
+      "title": "Định dạng API",
+      "auto": "Tự động",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "API kiểu OpenAI dùng để gọi mô hình này. Tự động dùng Responses với OpenAI và Azure, còn lại dùng Chat Completions, và chuyển một lần nếu thiếu endpoint. Bản tóm tắt suy luận cần Responses.",
+      "detected": "Đã phát hiện: {{format}}",
+      "reset": "Đặt lại phát hiện",
+      "switched": "{{model}} không chấp nhận {{from}} ở đây. Đã chuyển sang {{to}} và lưu cho mô hình này."
     }
   },
   "addProvider": "Thêm nhà cung cấp",

@@ -163,6 +163,16 @@
       "failed": "Tidak dapat menjangkau models.dev. Periksa koneksi Anda dan coba lagi.",
       "invalid": "Batas harus berupa bilangan bulat di atas 0. Kosongkan kolom jika batas tidak diketahui.",
       "fromModelsDev": "Dari models.dev"
+    },
+    "apiFormat": {
+      "title": "Format API",
+      "auto": "Otomatis",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "API bergaya OpenAI yang dipakai untuk model ini. Otomatis memakai Responses di OpenAI dan Azure dan Chat Completions di tempat lain, lalu beralih sekali jika endpoint tidak ada. Ringkasan penalaran memerlukan Responses.",
+      "detected": "Terdeteksi: {{format}}",
+      "reset": "Reset deteksi",
+      "switched": "{{model}} tidak menerima {{from}} di sini. Beralih ke {{to}} dan disimpan untuk model ini."
     }
   },
   "addProvider": "Tambah Penyedia",

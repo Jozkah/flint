@@ -163,6 +163,16 @@
       "failed": "models.dev ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
       "invalid": "Limits müssen ganze Zahlen über 0 sein. Leere das Feld, wenn das Limit unbekannt ist.",
       "fromModelsDev": "Von models.dev"
+    },
+    "apiFormat": {
+      "title": "API-Format",
+      "auto": "Automatisch",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "Über welche OpenAI-artige API dieses Modell aufgerufen wird. Automatisch nutzt Responses bei OpenAI und Azure, sonst Chat Completions, und wechselt einmal, wenn der Endpunkt fehlt. Reasoning-Zusammenfassungen brauchen Responses.",
+      "detected": "Erkannt: {{format}}",
+      "reset": "Erkennung zurücksetzen",
+      "switched": "{{model}} hat {{from}} hier nicht akzeptiert. Auf {{to}} umgestellt und für dieses Modell gespeichert."
     }
   },
   "addProvider": "Anbieter hinzufügen",

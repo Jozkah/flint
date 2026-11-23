@@ -163,6 +163,16 @@
       "failed": "models.dev'e ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.",
       "invalid": "Sınırlar 0'dan büyük tam sayılar olmalıdır. Sınır bilinmiyorsa alanı boşaltın.",
       "fromModelsDev": "models.dev'den"
+    },
+    "apiFormat": {
+      "title": "API biçimi",
+      "auto": "Otomatik",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "Bu modelin hangi OpenAI tarzı API ile çağrılacağı. Otomatik, OpenAI ve Azure’da Responses, diğerlerinde Chat Completions kullanır; uç nokta yoksa bir kez geçiş yapar. Akıl yürütme özetleri Responses ister.",
+      "detected": "Algılandı: {{format}}",
+      "reset": "Algılananı sıfırla",
+      "switched": "{{model}} burada {{from}} biçimini kabul etmedi. {{to}} biçimine geçildi ve bu model için kaydedildi."
     }
   },
   "addProvider": "Sağlayıcı Ekle",

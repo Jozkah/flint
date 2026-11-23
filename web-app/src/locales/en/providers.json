@@ -176,6 +176,16 @@
       "failed": "Could not reach models.dev. Check your connection and try again.",
       "invalid": "Limits must be whole numbers above 0. Clear a field if the limit is unknown.",
       "fromModelsDev": "From models.dev"
+    },
+    "apiFormat": {
+      "title": "API format",
+      "auto": "Automatic",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "Which OpenAI-style API this model is called through. Automatic uses Responses on OpenAI and Azure and Chat Completions everywhere else, and switches once if the endpoint is missing. Reasoning summaries need Responses.",
+      "detected": "Detected: {{format}}",
+      "reset": "Reset detected",
+      "switched": "{{model}} did not accept {{from}} here. Switched to {{to}} and kept it for this model."
     }
   },
   "addProvider": "Add Provider",

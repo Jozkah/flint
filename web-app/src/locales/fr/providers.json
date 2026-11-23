@@ -163,6 +163,16 @@
       "failed": "Impossible de joindre models.dev. Vérifiez votre connexion et réessayez.",
       "invalid": "Les limites doivent être des nombres entiers supérieurs à 0. Videz le champ si la limite est inconnue.",
       "fromModelsDev": "Depuis models.dev"
+    },
+    "apiFormat": {
+      "title": "Format d’API",
+      "auto": "Automatique",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "L’API de type OpenAI utilisée pour ce modèle. Automatique emploie Responses sur OpenAI et Azure, Chat Completions ailleurs, et bascule une fois si le point de terminaison manque. Les résumés de raisonnement exigent Responses.",
+      "detected": "Détecté : {{format}}",
+      "reset": "Réinitialiser la détection",
+      "switched": "{{model}} n’a pas accepté {{from}} ici. Passé à {{to}} et conservé pour ce modèle."
     }
   },
   "addProvider": "Ajouter un fournisseur",

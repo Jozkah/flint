@@ -163,6 +163,16 @@
       "failed": "models.dev에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
       "invalid": "한도는 0보다 큰 정수여야 합니다. 한도를 모르면 입력란을 비우세요.",
       "fromModelsDev": "models.dev 제공"
+    },
+    "apiFormat": {
+      "title": "API 형식",
+      "auto": "자동",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "이 모델을 호출하는 OpenAI 방식 API입니다. 자동은 OpenAI와 Azure에서 Responses, 그 외에는 Chat Completions를 사용하고, 엔드포인트가 없으면 한 번 전환합니다. 추론 요약에는 Responses가 필요합니다.",
+      "detected": "감지됨: {{format}}",
+      "reset": "감지 초기화",
+      "switched": "{{model}}이(가) 여기서 {{from}}을(를) 받지 않았습니다. {{to}}(으)로 전환하고 이 모델에 저장했습니다."
     }
   },
   "addProvider": "공급자 추가",

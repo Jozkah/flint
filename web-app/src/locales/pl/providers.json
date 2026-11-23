@@ -163,6 +163,16 @@
       "failed": "Nie można połączyć się z models.dev. Sprawdź połączenie i spróbuj ponownie.",
       "invalid": "Limity muszą być liczbami całkowitymi większymi od 0. Wyczyść pole, jeśli limit jest nieznany.",
       "fromModelsDev": "Z models.dev"
+    },
+    "apiFormat": {
+      "title": "Format API",
+      "auto": "Automatycznie",
+      "chat": "Chat Completions",
+      "responses": "Responses",
+      "help": "Przez które API w stylu OpenAI wywoływany jest model. Automatycznie używa Responses w OpenAI i Azure, a gdzie indziej Chat Completions, i raz przełącza, gdy brakuje endpointu. Podsumowania rozumowania wymagają Responses.",
+      "detected": "Wykryto: {{format}}",
+      "reset": "Zresetuj wykrycie",
+      "switched": "{{model}} nie przyjął tu {{from}}. Przełączono na {{to}} i zapamiętano dla tego modelu."
     }
   },
   "addProvider": "Dodaj Dostawcę",

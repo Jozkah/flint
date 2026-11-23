@@ -15,6 +15,24 @@ import { validateDisplayName } from '@/lib/modelDisplayName'
 import { getModelDisplayName } from '@/lib/utils'
 import { modelContextWindow, modelMaxOutputTokens } from '@/lib/modelLimits'
 import { lookupModelsDev } from '@/lib/modelsDev'
+import { Select } from '@/components/ui/select'
+import {
+  isApiFormat,
+  type ApiFormat,
+  type ApiFormatSetting,
+} from '@/lib/apiFormat'
+
+/** Providers with their own wire API, which have no Chat/Responses choice. */
+const NATIVE_API_PROVIDERS = new Set([
+  'llamacpp',
+  'mlx',
+  'anthropic',
+  'google',
+  'gemini',
+  'bedrock',
+  'mistral',
+  'xai',
+])
 import {
   Eye,
   Globe,
@@ -205,6 +223,28 @@ export const DialogEditModel = ({
     }
   }
 
+  // API format: Automatic / Chat Completions / Responses, plus the format an
+  // earlier request proved (resettable). Only OpenAI-style providers have the
+  // choice; the others speak their own API.
+  const showApiFormat = !NATIVE_API_PROVIDERS.has(provider.provider.toLowerCase())
+  const storedApiFormat: ApiFormatSetting = isApiFormat(selectedModel?.apiFormat)
+    ? selectedModel.apiFormat
+    : 'auto'
+  const storedDetected = isApiFormat(selectedModel?.detectedApiFormat)
+    ? selectedModel.detectedApiFormat
+    : undefined
+  const [apiFormat, setApiFormat] = useState<ApiFormatSetting>('auto')
+  const [detectedFormat, setDetectedFormat] = useState<ApiFormat | undefined>()
+  useEffect(() => {
+    setApiFormat(storedApiFormat)
+    setDetectedFormat(storedDetected)
+  }, [selectedModel?.id, storedApiFormat, storedDetected])
+  const apiFormatChanged =
+    showApiFormat &&
+    (apiFormat !== storedApiFormat || detectedFormat !== storedDetected)
+  const formatName = (f: ApiFormat) =>
+    t(`providers:editModel.apiFormat.${f}`)
+
   // Update model capabilities - only update local state
   const handleCapabilityChange = (capability: string, enabled: boolean) => {
     setCapabilities((prev) => ({
@@ -223,7 +263,13 @@ export const DialogEditModel = ({
     const nameChanged = displayName !== originalDisplayName
     const capabilitiesChanged =
       JSON.stringify(capabilities) !== JSON.stringify(originalCapabilities)
-    return nameChanged || capabilitiesChanged || costsChanged || limitsChanged
+    return (
+      nameChanged ||
+      capabilitiesChanged ||
+      costsChanged ||
+      limitsChanged ||
+      apiFormatChanged
+    )
   }
 
   // Handle save changes
@@ -265,6 +311,12 @@ export const DialogEditModel = ({
           ctxLimit === undefined && outLimit === undefined
             ? undefined
             : limitsSource
+      }
+
+      if (apiFormatChanged) {
+        // Automatic is stored as no value at all, like the other optional fields.
+        modelUpdate.apiFormat = apiFormat === 'auto' ? undefined : apiFormat
+        modelUpdate.detectedApiFormat = detectedFormat
       }
 
       // Update the model in the provider models array
@@ -311,6 +363,8 @@ export const DialogEditModel = ({
       setOutputText(limitText(storedOutput))
       setLimitsSource(selectedModel?.limitsSource)
       setLookup({ state: 'idle' })
+      setApiFormat(storedApiFormat)
+      setDetectedFormat(storedDetected)
     }
     setIsOpen(open)
   }
@@ -557,6 +611,50 @@ export const DialogEditModel = ({
                   : t('providers:editModel.limits.lookupHelp')}
           </p>
         </div>
+
+        {showApiFormat && (
+          <div className="py-1">
+            <h3 className="mb-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
+              <label htmlFor="api-format">
+                {t('providers:editModel.apiFormat.title')}
+              </label>
+            </h3>
+            <Select
+              id="api-format"
+              value={apiFormat}
+              onChange={(e) => setApiFormat(e.target.value as ApiFormatSetting)}
+              disabled={isLoading}
+            >
+              <option value="auto">{t('providers:editModel.apiFormat.auto')}</option>
+              <option value="chat">{t('providers:editModel.apiFormat.chat')}</option>
+              <option value="responses">
+                {t('providers:editModel.apiFormat.responses')}
+              </option>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('providers:editModel.apiFormat.help')}
+            </p>
+            {detectedFormat && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-sm bg-accent px-1.5 py-0.5 text-xs text-muted-foreground">
+                  {t('providers:editModel.apiFormat.detected', {
+                    format: formatName(detectedFormat),
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  onClick={() => setDetectedFormat(undefined)}
+                  disabled={isLoading}
+                >
+                  {t('providers:editModel.apiFormat.reset')}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Warning Banner */}
         <div className="rounded-md border border-border bg-warning-tint p-3">
