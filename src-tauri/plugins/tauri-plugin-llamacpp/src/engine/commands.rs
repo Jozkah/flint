@@ -521,6 +521,7 @@ pub struct EngineDevice {
 /// llama.cpp itself keeps the first device it registers for a PCI id, and the
 /// add-on's CUDA is registered ahead of Vulkan, so CUDA wins, then the vendor
 /// backends, then Vulkan.
+#[cfg(feature = "tauri")]
 fn backend_rank(id: &str) -> u8 {
     let lower = id.to_ascii_lowercase();
     [("cuda", 0), ("rocm", 1), ("hip", 1), ("sycl", 2), ("metal", 3), ("vulkan", 4)]
@@ -535,6 +536,7 @@ fn backend_rank(id: &str) -> u8 {
 /// the name and total memory match; two identical cards stay two because the
 /// backend with the most of them decides how many there are. Lone devices, and
 /// a card only one backend can see, are untouched.
+#[cfg(feature = "tauri")]
 fn dedupe_devices(devices: Vec<EngineDevice>) -> Vec<EngineDevice> {
     let mut keep = vec![false; devices.len()];
     let mut done: Vec<(String, u64)> = Vec::new();
@@ -945,10 +947,12 @@ pub async fn erase_thread_slot_state(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "tauri")]
     fn dev(id: &str, name: &str, mem: u64) -> EngineDevice {
         EngineDevice { id: id.into(), name: name.into(), mem, free: mem / 2 }
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn a_card_listed_by_cuda_and_vulkan_counts_once() {
         let listed = vec![
@@ -959,6 +963,7 @@ mod tests {
         assert_eq!(ids, ["CUDA0"]);
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn the_preferred_backend_wins_whatever_the_listing_order() {
         let listed = vec![
@@ -969,6 +974,7 @@ mod tests {
         assert_eq!(ids, ["CUDA0"]);
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn two_identical_cards_stay_two() {
         let listed = vec![
@@ -981,6 +987,7 @@ mod tests {
         assert_eq!(ids, ["CUDA0", "CUDA1"]);
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn a_card_cuda_cannot_drive_stays_on_vulkan() {
         // A second identical card hidden from the CUDA add-on (too old for it).
@@ -993,6 +1000,7 @@ mod tests {
         assert_eq!(ids, ["CUDA0", "Vulkan0"]);
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn different_cards_and_vulkan_only_machines_are_untouched() {
         let listed = vec![
