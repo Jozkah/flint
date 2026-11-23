@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -13,6 +14,7 @@ import { useUnknownWindowPrompt } from '@/hooks/useUnknownWindowPrompt'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { modelKey } from '@/lib/modelReplace'
+import { lookupModelsDev, type ModelsDevMatch } from '@/lib/modelsDev'
 import { FALLBACK_CONTEXT_WINDOW } from '@/lib/rooms/context'
 import {
   distinctModels,
@@ -32,10 +34,17 @@ export function UnknownWindowDialog() {
   const answer = useUnknownWindowPrompt((s) => s.answer)
   const [values, setValues] = useState<Record<string, string>>({})
   const [useDefault, setUseDefault] = useState<Record<string, boolean>>({})
+  // Limits models.dev gave for a model, saved together with the window.
+  const [found, setFound] = useState<Record<string, ModelsDevMatch>>({})
+  const [lookup, setLookup] = useState<'idle' | 'loading' | 'done' | 'failed'>(
+    'idle'
+  )
 
   useEffect(() => {
     setValues({})
     setUseDefault({})
+    setFound({})
+    setLookup('idle')
   }, [request])
 
   if (!request) return null
@@ -49,11 +58,56 @@ export function UnknownWindowDialog() {
     for (const m of models) {
       const key = modelKey(m)
       const n = useDefault[key] ? null : usableContextValue(values[key])
-      if (n != null) saveMaxContextTokens(m, n)
+      const hit = found[key]
+      // models.dev's reply cap and source go with its window only while the
+      // user has not typed a different window over it.
+      const fromDev = hit && hit.contextWindow === n
+      if (n != null)
+        saveMaxContextTokens(
+          m,
+          n,
+          fromDev
+            ? {
+                ...(hit.maxOutputTokens != null
+                  ? { maxOutputTokens: hit.maxOutputTokens }
+                  : {}),
+                limitsSource: 'models.dev',
+              }
+            : undefined
+        )
       else accepted.push(m)
     }
     rememberAcceptedWindows(accepted)
     answer(true)
+  }
+
+  // One GET of the public model list; nothing about the room or its models is
+  // sent. Fills a window for each model it knows and leaves the others alone.
+  const lookUp = async () => {
+    setLookup('loading')
+    try {
+      const hits = await Promise.all(
+        models.map(async (m) => [
+          modelKey(m),
+          await lookupModelsDev(m.provider, m.id),
+        ] as const)
+      )
+      const next: Record<string, ModelsDevMatch> = {}
+      const filled: Record<string, string> = {}
+      for (const [key, hit] of hits) {
+        if (hit?.contextWindow == null) continue
+        next[key] = hit
+        filled[key] = String(hit.contextWindow)
+      }
+      setFound(next)
+      setValues((prev) => ({ ...prev, ...filled }))
+      setUseDefault((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => !(k in filled)))
+      )
+      setLookup('done')
+    } catch {
+      setLookup('failed')
+    }
   }
 
   return (
@@ -109,6 +163,32 @@ export function UnknownWindowDialog() {
               </div>
             )
           })}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start"
+            disabled={lookup === 'loading'}
+            onClick={lookUp}
+          >
+            {lookup === 'loading' && (
+              <LoaderCircle className="motion-safe:animate-spin" aria-hidden />
+            )}
+            {lookup === 'loading'
+              ? t('rooms:unknownWindow.lookingUp')
+              : t('rooms:unknownWindow.lookUp')}
+          </Button>
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {lookup === 'done'
+              ? t('rooms:unknownWindow.lookupDone', {
+                  found: Object.keys(found).length,
+                  total: models.length,
+                })
+              : lookup === 'failed'
+                ? t('rooms:unknownWindow.lookupFailed')
+                : t('rooms:unknownWindow.lookupHelp')}
+          </p>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => answer(false)}>

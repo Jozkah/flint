@@ -149,6 +149,20 @@
     "warning": {
       "title": "Prossiga com Cautela",
       "description": "Modificar capacidades do modelo pode afetar desempenho e funcionalidade. Configurações incorretas podem causar comportamento inesperado ou erros."
+    },
+    "limits": {
+      "title": "Limites de tokens",
+      "context": "Janela de contexto (tokens)",
+      "output": "Máx. de tokens de saída",
+      "help": "Propriedades deste modelo, usadas em Chat, Cowork e Salas sempre que ele estiver selecionado. Deixe em branco se não souber.",
+      "lookUp": "Preencher pelo models.dev",
+      "lookingUp": "Buscando…",
+      "lookupHelp": "Baixa a lista pública de modelos do models.dev pela rede (cerca de 7 MB uma vez, depois em cache por uma semana) e preenche os limites deste modelo. Nada sobre você ou seus modelos é enviado.",
+      "found": "Preenchido pelo models.dev ({{match}}). Edite os números para substituí-los e salve.",
+      "notFound": "O models.dev não tem limites para este modelo. Digite-os manualmente.",
+      "failed": "Não foi possível acessar o models.dev. Verifique sua conexão e tente novamente.",
+      "invalid": "Os limites devem ser números inteiros maiores que 0. Limpe o campo se o limite for desconhecido.",
+      "fromModelsDev": "Do models.dev"
     }
   },
   "addProvider": "Adicionar Provedor",

@@ -54,11 +54,8 @@
   "importedTooltip": "Imported from a local file. Removing it from Flint will not delete the file on disk.",
   "importModelSuccess": "Model {{provider}} has been imported successfully.",
   "importModelError": "Failed to import model:",
-
   "importScanHint": "Looks in LM Studio, Ollama, the Hugging Face cache, llama.cpp and GPT4All. Nothing is copied until you import.",
-
   "importAddFolder": "Add a folder of models",
-
   "importRemoveFolder": "Remove folder {{folder}}",
   "stop": "Stop",
   "start": "Start",
@@ -165,6 +162,20 @@
     "warning": {
       "title": "Proceed with Caution",
       "description": "Modifying model capabilities may affect performance and functionality. Incorrect settings could cause unexpected behavior or errors."
+    },
+    "limits": {
+      "title": "Token limits",
+      "context": "Context window (tokens)",
+      "output": "Max output tokens",
+      "help": "Facts about this model, used in Chat, Cowork and Rooms whenever it is selected. Leave blank if unknown.",
+      "lookUp": "Fill from models.dev",
+      "lookingUp": "Looking up…",
+      "lookupHelp": "Fetches the public models.dev model list over the network (about 7 MB once, then cached for a week) and fills in this model's limits. Nothing about you or your models is sent.",
+      "found": "Filled from models.dev ({{match}}). Edit the numbers to override them, then save.",
+      "notFound": "models.dev has no limits for this model. Enter them by hand.",
+      "failed": "Could not reach models.dev. Check your connection and try again.",
+      "invalid": "Limits must be whole numbers above 0. Clear a field if the limit is unknown.",
+      "fromModelsDev": "From models.dev"
     }
   },
   "addProvider": "Add Provider",

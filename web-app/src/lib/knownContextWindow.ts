@@ -16,6 +16,7 @@
  */
 import { resolveModelCapabilities } from '@/lib/modelCapabilities'
 import { serverReportedLimit } from '@/lib/contextLimitRecovery'
+import { modelMetadata, modelOverride } from '@/lib/modelLimits'
 import { listedWindow } from '@/lib/listedWindows'
 
 type ModelLike = { id?: string | null; settings?: unknown } & Record<
@@ -43,7 +44,7 @@ export function knownContextWindowDetail(
   if (!modelId) return { tokens: null, bundled: false }
   // Split as the capability hook does: the settings block is the user's
   // decision, the rest is what the provider said.
-  const { settings, ...metadata } = model
+  const metadata = modelMetadata(model)
   const learned = serverReportedLimit({
     provider: provider?.provider ?? '',
     baseUrl: provider?.base_url ?? '',
@@ -51,7 +52,7 @@ export function knownContextWindowDetail(
   })
   const caps = resolveModelCapabilities({
     modelId,
-    override: settings ? { settings } : null,
+    override: modelOverride(model),
     serverReported: learned ? { n_ctx: learned.contextTokens } : null,
     providerMetadata: metadata,
     providerDefault: provider ?? null,

@@ -309,7 +309,12 @@
     "placeholder": "최대 컨텍스트 토큰",
     "useDefault": "{{window}} 사용(안전한 기본값)",
     "continue": "계속",
-    "cancel": "취소"
+    "cancel": "취소",
+    "lookUp": "models.dev에서 찾기",
+    "lookingUp": "찾는 중…",
+    "lookupHelp": "네트워크로 models.dev의 공개 목록을 내려받아(처음 한 번 약 7 MB) 알려진 창 크기를 채웁니다. 이 룸에 대한 정보는 전송되지 않습니다.",
+    "lookupDone": "모델 {{total}}개 중 {{found}}개를 models.dev에서 채웠습니다. 숫자를 확인한 뒤 계속하세요.",
+    "lookupFailed": "models.dev에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요."
   },
   "controls": {
     "label": "룸 컨트롤",

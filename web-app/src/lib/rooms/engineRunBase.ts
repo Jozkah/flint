@@ -5,8 +5,10 @@ import {
   contextWindowFor,
   defaultProviderLookup,
   preflightParticipants,
+  resolveModel,
   type ProviderLookup,
 } from './availability'
+import { modelMaxOutputTokens } from '@/lib/modelLimits'
 import { buildSystemPrompt, isProjectable, type SpeakerIdentity } from './context'
 import { checkLimits, clampLimits, breachNote, type LimitBreach } from './limits'
 import { toRoomPersistenceError } from './persistence'
@@ -167,8 +169,16 @@ export class RoomRunBase {
     })
   }
 
-  maxOutputTokens(): number {
-    return clampLimits(this.room.limits).maxOutputTokensPerTurn
+  /**
+   * The reply cap for one call: the room's per-turn limit, held to the most the
+   * model itself can write when its entry says (Edit Model).
+   */
+  maxOutputTokens(model?: RoomModelRef): number {
+    const room = clampLimits(this.room.limits).maxOutputTokensPerTurn
+    const own = model
+      ? modelMaxOutputTokens(resolveModel(model, this.lookup).model)
+      : null
+    return own != null ? Math.min(room, own) : room
   }
 
   contextWindow(model: RoomModelRef): number {

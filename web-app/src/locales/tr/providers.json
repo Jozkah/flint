@@ -149,6 +149,20 @@
     "warning": {
       "title": "Dikkatli İlerleyin",
       "description": "Model yeteneklerini değiştirmek performansı ve işlevselliği etkileyebilir. Yanlış ayarlar beklenmeyen davranışlara veya hatalara yol açabilir."
+    },
+    "limits": {
+      "title": "Token sınırları",
+      "context": "Bağlam penceresi (token)",
+      "output": "Maks. çıktı tokeni",
+      "help": "Bu modelin özellikleri; seçili olduğunda Sohbet, Cowork ve Odalar'da kullanılır. Bilinmiyorsa boş bırakın.",
+      "lookUp": "models.dev'den doldur",
+      "lookingUp": "Aranıyor…",
+      "lookupHelp": "models.dev'in herkese açık model listesini ağ üzerinden indirir (bir kez yaklaşık 7 MB, sonra bir hafta önbellekte) ve bu modelin sınırlarını doldurur. Sizinle veya modellerinizle ilgili hiçbir şey gönderilmez.",
+      "found": "models.dev'den dolduruldu ({{match}}). Değiştirmek için sayıları düzenleyin, sonra kaydedin.",
+      "notFound": "models.dev'de bu model için sınır yok. Elle girin.",
+      "failed": "models.dev'e ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.",
+      "invalid": "Sınırlar 0'dan büyük tam sayılar olmalıdır. Sınır bilinmiyorsa alanı boşaltın.",
+      "fromModelsDev": "models.dev'den"
     }
   },
   "addProvider": "Sağlayıcı Ekle",

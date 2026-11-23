@@ -149,6 +149,20 @@
     "warning": {
       "title": "Ves amb compte",
       "description": "Modificar les capacitats del model pot afectar el rendiment i la funcionalitat. Una configuració incorrecta pot provocar comportaments inesperats o errors."
+    },
+    "limits": {
+      "title": "Límits de tokens",
+      "context": "Finestra de context (tokens)",
+      "output": "Màx. de tokens de sortida",
+      "help": "Propietats d'aquest model, usades a Chat, Cowork i Sales sempre que està seleccionat. Deixa-ho buit si no es coneix.",
+      "lookUp": "Omple des de models.dev",
+      "lookingUp": "Cercant…",
+      "lookupHelp": "Descarrega la llista pública de models de models.dev per la xarxa (uns 7 MB una vegada, després a la memòria cau una setmana) i omple els límits d'aquest model. No s'envia res sobre tu ni sobre els teus models.",
+      "found": "Omplert des de models.dev ({{match}}). Edita els números per substituir-los i desa.",
+      "notFound": "models.dev no té límits per a aquest model. Introdueix-los a mà.",
+      "failed": "No s'ha pogut contactar amb models.dev. Revisa la connexió i torna-ho a provar.",
+      "invalid": "Els límits han de ser nombres enters més grans que 0. Buida el camp si el límit no es coneix.",
+      "fromModelsDev": "Des de models.dev"
     }
   },
   "addProvider": "Afegeix un proveïdor",

@@ -112,7 +112,7 @@ export class RoomRunTurns extends RoomRunBase {
         })
       }
       const window = this.contextWindow(model)
-      const maxOut = Math.min(wanted, this.maxOutputTokens())
+      const maxOut = Math.min(wanted, this.maxOutputTokens(model))
       const system =
         'You summarise discussions faithfully and neutrally. Keep every participant\'s distinct position and any disagreement, ' +
         'what the user asked for or decided, votes and their outcome, open questions and who was asked to act. ' +
@@ -201,7 +201,7 @@ export class RoomRunTurns extends RoomRunBase {
         : {}),
       instruction,
       contextWindow: window,
-      maxOutputTokens: this.maxOutputTokens(),
+      maxOutputTokens: this.maxOutputTokens(model),
       shrink,
       threshold: compaction.threshold,
       headroomTokens: tools ? this.growthHeadroom(tools.id, tools.access, window) : 0,
@@ -515,7 +515,7 @@ export class RoomRunTurns extends RoomRunBase {
         : {}),
       system: built.system,
       messages: built.messages,
-      maxOutputTokens: this.maxOutputTokens(),
+      maxOutputTokens: this.maxOutputTokens(args.model),
       ...(toolContext
         ? { contextBudget: { window: this.contextWindow(args.model) } }
         : {}),

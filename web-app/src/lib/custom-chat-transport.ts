@@ -176,6 +176,7 @@ import { transcodeWebpImages } from '@/lib/imageTranscode'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { mergeRequestParams } from '@/lib/chat/transport/requestParams'
+import { withModelLimits } from '@/lib/modelLimits'
 import { recordGeneration } from '@/stores/engine-activity-store'
 import { canRecoverFromOverflow, sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
 import { isValidToolName, normalizeToolInputSchema, normalizeToolSet } from '@/lib/chat/transport/toolSchema'
@@ -771,6 +772,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   // Only off-thread (no threadId / thread not yet in store) do we fall back to
   // the global current assistant.
   private getActiveInferenceParams(): Record<string, unknown> {
+    // The selected model's own limits come first, read on every call, so a
+    // model switched to mid-conversation brings its own window and reply cap.
+    // The assistant's values only cover a model that has none.
+    return withModelLimits(
+      this.getAssistantInferenceParams(),
+      this.getModelSelection().selectedModel
+    )
+  }
+
+  private getAssistantInferenceParams(): Record<string, unknown> {
     const thread = this.threadId
       ? useThreads.getState().threads[this.threadId]
       : undefined

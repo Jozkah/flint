@@ -1,10 +1,10 @@
 import { resolveAutoCompact } from '@/lib/compaction'
-import { usableContextValue } from '@/lib/modelCapabilities'
 import {
   DEFAULT_COMPACTION_POLICY,
   getCompactionPolicy,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
+import { modelContextWindow } from '@/lib/modelLimits'
 import { resolveModel, type ProviderLookup } from './availability'
 import type { RoomModelRef } from './types'
 
@@ -52,7 +52,7 @@ export function roomCompactionSettingsFor(
     ...(policy.summaryMaxTokens != null && policy.summaryMaxTokens > 0
       ? { summaryMaxTokens: policy.summaryMaxTokens }
       : {}),
-    window: usableContextValue(settingValue(settings, 'max_context_tokens')) ?? null,
+    window: modelContextWindow(resolveModel(ref, lookup).model),
   }
 }
 

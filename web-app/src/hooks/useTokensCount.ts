@@ -22,6 +22,7 @@ import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
 import { useThreads } from './useThreads'
 import { useAssistant } from './useAssistant'
+import { modelContextWindow } from '@/lib/modelLimits'
 import { cappedContextWindow } from '@/lib/contextEstimate'
 import { estimateTokens, inlineFilesText } from '@/lib/context-manager'
 import { fixedPromptTokens } from '@/lib/contextBreakdown'
@@ -218,13 +219,17 @@ export const useTokensCount = (
   // Match the transport: an existing thread uses its assigned assistant;
   // surfaces with their own session IDs use the selected assistant instead.
   const threadAssistant = thread?.assistants?.[0]
-  const contextCap = usableContextValue(
-    thread
-      ? threadAssistant?.id === 'model-only'
-        ? undefined
-        : threadAssistant?.parameters?.max_context_tokens
-      : assistantCap
-  )
+  // The model's own window comes first (as in the transport); the assistant's
+  // cap is the fallback for a model without one.
+  const contextCap =
+    modelContextWindow(selectedModel) ??
+    usableContextValue(
+      thread
+        ? threadAssistant?.id === 'model-only'
+          ? undefined
+          : threadAssistant?.parameters?.max_context_tokens
+        : assistantCap
+    )
   // Populated per-chunk while a llama.cpp turn is streaming (timings_per_token);
   // cleared on stream start/finish/error, so its presence means "live now".
   const liveStats = useAppState((s) =>

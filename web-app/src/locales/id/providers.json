@@ -149,6 +149,20 @@
     "warning": {
       "title": "Lanjutkan dengan Hati-hati",
       "description": "Memodifikasi kemampuan model dapat mempengaruhi kinerja dan fungsionalitas. Pengaturan yang salah dapat menyebabkan perilaku atau kesalahan yang tidak terduga."
+    },
+    "limits": {
+      "title": "Batas token",
+      "context": "Jendela konteks (token)",
+      "output": "Maks. token keluaran",
+      "help": "Properti model ini, dipakai di Chat, Cowork, dan Ruang setiap kali model dipilih. Kosongkan jika tidak diketahui.",
+      "lookUp": "Isi dari models.dev",
+      "lookingUp": "Mencari…",
+      "lookupHelp": "Mengunduh daftar model publik models.dev lewat jaringan (sekitar 7 MB sekali, lalu disimpan sepekan) dan mengisi batas model ini. Tidak ada data tentang Anda atau model Anda yang dikirim.",
+      "found": "Diisi dari models.dev ({{match}}). Ubah angkanya untuk menimpa, lalu simpan.",
+      "notFound": "models.dev tidak punya batas untuk model ini. Masukkan secara manual.",
+      "failed": "Tidak dapat menjangkau models.dev. Periksa koneksi Anda dan coba lagi.",
+      "invalid": "Batas harus berupa bilangan bulat di atas 0. Kosongkan kolom jika batas tidak diketahui.",
+      "fromModelsDev": "Dari models.dev"
     }
   },
   "addProvider": "Tambah Penyedia",

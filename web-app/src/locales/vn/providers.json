@@ -149,6 +149,20 @@
     "warning": {
       "title": "Hãy Thận Trọng",
       "description": "Việc sửa đổi khả năng của mô hình có thể ảnh hưởng đến hiệu suất và chức năng. Cài đặt không chính xác có thể gây ra hành vi hoặc lỗi không mong muốn."
+    },
+    "limits": {
+      "title": "Giới hạn token",
+      "context": "Cửa sổ ngữ cảnh (token)",
+      "output": "Token đầu ra tối đa",
+      "help": "Thuộc tính của mô hình này, dùng trong Chat, Cowork và Phòng mỗi khi mô hình được chọn. Để trống nếu chưa biết.",
+      "lookUp": "Điền từ models.dev",
+      "lookingUp": "Đang tìm…",
+      "lookupHelp": "Tải danh sách mô hình công khai của models.dev qua mạng (khoảng 7 MB một lần, sau đó lưu đệm một tuần) và điền giới hạn của mô hình này. Không có dữ liệu nào về bạn hay mô hình của bạn được gửi đi.",
+      "found": "Đã điền từ models.dev ({{match}}). Sửa các số để ghi đè, rồi lưu.",
+      "notFound": "models.dev không có giới hạn cho mô hình này. Hãy nhập thủ công.",
+      "failed": "Không thể kết nối models.dev. Hãy kiểm tra kết nối và thử lại.",
+      "invalid": "Giới hạn phải là số nguyên lớn hơn 0. Xóa trống ô nếu chưa biết giới hạn.",
+      "fromModelsDev": "Từ models.dev"
     }
   },
   "addProvider": "Thêm nhà cung cấp",

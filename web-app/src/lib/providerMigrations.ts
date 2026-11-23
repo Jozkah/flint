@@ -629,5 +629,31 @@ export function migrateProviderState(
     })
   }
 
+  if (version <= 26 && state?.providers) {
+    // Token limits are properties of the model. A window a model already kept
+    // in its Max Context Tokens setting (what Rooms saved there) becomes the
+    // model's own `contextWindow`; the setting is left as it was. A per-model
+    // output cap has no older home, so only an explicit setting moves.
+    state.providers.forEach((provider) => {
+      provider.models?.forEach((model) => {
+        const settings = model.settings as
+          | Record<string, { controller_props?: { value?: unknown } } | undefined>
+          | undefined
+        if (model.contextWindow == null) {
+          const ctx = usableContextValue(
+            settings?.max_context_tokens?.controller_props?.value
+          )
+          if (ctx != null) model.contextWindow = ctx
+        }
+        if (model.maxOutputTokens == null) {
+          const out = usableContextValue(
+            settings?.max_output_tokens?.controller_props?.value
+          )
+          if (out != null) model.maxOutputTokens = out
+        }
+      })
+    })
+  }
+
   return state
 }

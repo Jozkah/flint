@@ -74,10 +74,16 @@ export function resetAcceptedWindows() {
 }
 
 /**
- * Save a Max Context Tokens value on a model, the way the model settings
- * sheet does (the key is client-side only, so the provider store is the record).
+ * Save a context window on a model: its own `contextWindow` (what Chat, Cowork
+ * and Rooms read) and the Max Context Tokens setting, the way the model
+ * settings sheet does (the key is client-side only, so the provider store is
+ * the record). `extra` carries a reply cap found alongside it by models.dev.
  */
-export function saveMaxContextTokens(ref: ModelRef, value: number) {
+export function saveMaxContextTokens(
+  ref: ModelRef,
+  value: number,
+  extra?: { maxOutputTokens?: number; limitsSource?: 'models.dev' }
+) {
   const store = useModelProvider.getState()
   const provider = store.getProviderByName(ref.provider)
   if (!provider) return
@@ -85,6 +91,11 @@ export function saveMaxContextTokens(ref: ModelRef, value: number) {
     m.id === ref.id
       ? {
           ...m,
+          contextWindow: value,
+          ...(extra?.maxOutputTokens != null
+            ? { maxOutputTokens: extra.maxOutputTokens }
+            : {}),
+          ...(extra?.limitsSource ? { limitsSource: extra.limitsSource } : {}),
           settings: {
             ...m.settings,
             max_context_tokens: {

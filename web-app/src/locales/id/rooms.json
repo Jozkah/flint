@@ -309,7 +309,12 @@
     "placeholder": "Maks Token Konteks",
     "useDefault": "Pakai {{window}} (default aman)",
     "continue": "Lanjutkan",
-    "cancel": "Batal"
+    "cancel": "Batal",
+    "lookUp": "Cari di models.dev",
+    "lookingUp": "Mencari…",
+    "lookupHelp": "Mengunduh daftar publik models.dev lewat jaringan (sekitar 7 MB sekali) dan mengisi jendela yang diketahui. Tidak ada data tentang ruang ini yang dikirim.",
+    "lookupDone": "{{found}} dari {{total}} model diisi dari models.dev. Periksa angkanya, lalu lanjutkan.",
+    "lookupFailed": "Tidak dapat menjangkau models.dev. Periksa koneksi Anda dan coba lagi."
   },
   "controls": {
     "label": "Kontrol ruang",

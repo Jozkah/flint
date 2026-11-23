@@ -34648,3 +34648,225 @@ exports[`useModelProvider migrate > migrates a version 25 state 1`] = `
   "selectedProvider": "llamacpp",
 }
 `;
+
+exports[`useModelProvider migrate > migrates a version 26 state 1`] = `
+{
+  "deletedModels": [
+    "legacy-model",
+    {
+      "id": "gpt-x",
+      "provider": "openai",
+    },
+    {
+      "provider": "openai",
+    },
+    42,
+    null,
+  ],
+  "providers": [
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "",
+      "explore_models_url": "",
+      "models": [
+        {
+          "capabilities": [
+            "completion",
+            "tools",
+          ],
+          "id": "bare",
+          "settings": {},
+        },
+        {
+          "id": "bare",
+          "settings": undefined,
+        },
+        {
+          "id": "with-template",
+          "settings": {
+            "auto_increase_ctx_len": true,
+            "chatTemplate": "tpl",
+            "ctx_len": {
+              "controller_props": {
+                "value": 8192,
+              },
+            },
+          },
+        },
+        {
+          "id": "odd-ctx",
+          "settings": {
+            "batch_size": {
+              "controller_props": {
+                "value": 1,
+              },
+            },
+            "ctx_len": {
+              "controller_props": {
+                "value": "not-a-number",
+              },
+            },
+          },
+        },
+        {
+          "id": "keep-ctx",
+          "settings": {
+            "ctx_len": {
+              "controller_props": {
+                "value": 4096,
+              },
+            },
+          },
+        },
+      ],
+      "provider": "llamacpp",
+      "settings": [
+        {
+          "controller_props": {
+            "value": true,
+          },
+          "controller_type": "input",
+          "description": "cont_batching",
+          "key": "cont_batching",
+          "title": "cont_batching",
+        },
+        {
+          "controller_props": {
+            "value": true,
+          },
+          "controller_type": "input",
+          "description": "flash_attn",
+          "key": "flash_attn",
+          "title": "flash_attn",
+        },
+        {
+          "controller_props": {
+            "value": 8192,
+          },
+          "controller_type": "input",
+          "description": "ctx_len",
+          "key": "ctx_len",
+          "title": "ctx_len",
+        },
+        {
+          "controller_props": {
+            "value": false,
+          },
+          "controller_type": "input",
+          "description": "auto_unload",
+          "key": "auto_unload",
+          "title": "auto_unload",
+        },
+      ],
+    },
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "https://api.anthropic.com",
+      "explore_models_url": "",
+      "models": [],
+      "provider": "anthropic",
+      "settings": [
+        {
+          "controller_props": {
+            "value": "https://api.anthropic.com",
+          },
+          "controller_type": "input",
+          "description": "base-url",
+          "key": "base-url",
+          "title": "base-url",
+        },
+      ],
+    },
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "https://api.cohere.ai/compatibility",
+      "explore_models_url": "",
+      "models": [],
+      "provider": "cohere",
+      "settings": [
+        {
+          "controller_props": {
+            "value": "https://api.cohere.ai/compatibility",
+          },
+          "controller_type": "input",
+          "description": "base-url",
+          "key": "base-url",
+          "title": "base-url",
+        },
+      ],
+    },
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "https://api.mistral.ai",
+      "explore_models_url": "",
+      "models": [],
+      "provider": "mistral",
+      "settings": [
+        {
+          "controller_props": {
+            "value": "https://api.mistral.ai",
+          },
+          "controller_type": "input",
+          "description": "base-url",
+          "key": "base-url",
+          "title": "base-url",
+        },
+      ],
+    },
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "https://your-resource-name.openai.azure.com/openai/v1",
+      "explore_models_url": "",
+      "models": [],
+      "provider": "azure",
+      "settings": [
+        {
+          "controller_props": {
+            "value": "https://your-resource-name.openai.azure.com/openai/v1",
+          },
+          "controller_type": "input",
+          "description": "base-url",
+          "key": "base-url",
+          "title": "base-url",
+        },
+      ],
+    },
+    {
+      "active": true,
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "explore_models_url": "",
+      "models": [
+        {
+          "capabilities": [
+            "tools",
+          ],
+          "id": "gpt-x",
+        },
+        {
+          "id": "gpt-y",
+        },
+      ],
+      "provider": "openai",
+      "settings": [
+        {
+          "controller_props": {
+            "value": "https://api.openai.com/v1",
+          },
+          "controller_type": "input",
+          "description": "base-url",
+          "key": "base-url",
+          "title": "base-url",
+        },
+      ],
+    },
+  ],
+  "selectedModel": null,
+  "selectedProvider": "llamacpp",
+}
+`;

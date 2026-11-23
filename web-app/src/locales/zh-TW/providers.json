@@ -149,6 +149,20 @@
     "warning": {
       "title": "請謹慎操作",
       "description": "修改模型功能可能會影響效能和功能。錯誤的設定可能導致意外行為或錯誤。"
+    },
+    "limits": {
+      "title": "Token 限制",
+      "context": "上下文視窗(token)",
+      "output": "最大輸出 token",
+      "help": "此模型的固有屬性,選取它時會在聊天、Cowork 和房間中使用。未知時請留空。",
+      "lookUp": "從 models.dev 填入",
+      "lookingUp": "查詢中…",
+      "lookupHelp": "透過網路下載 models.dev 的公開模型清單(首次約 7 MB,之後快取一週),並填入此模型的限制。不會傳送任何關於你或你的模型的資訊。",
+      "found": "已從 models.dev 填入({{match}})。修改數字即可覆蓋,然後儲存。",
+      "notFound": "models.dev 沒有此模型的限制。請手動輸入。",
+      "failed": "無法連線至 models.dev。請檢查網路後再試。",
+      "invalid": "限制必須是大於 0 的整數。限制未知時請清空此欄位。",
+      "fromModelsDev": "來自 models.dev"
     }
   },
   "addProvider": "新增提供者",

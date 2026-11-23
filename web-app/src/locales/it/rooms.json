@@ -314,7 +314,12 @@
     "placeholder": "Token di contesto massimi",
     "useDefault": "Usa {{window}} (predefinito sicuro)",
     "continue": "Continua",
-    "cancel": "Annulla"
+    "cancel": "Annulla",
+    "lookUp": "Cerca su models.dev",
+    "lookingUp": "Ricerca in corso…",
+    "lookupHelp": "Scarica dalla rete l'elenco pubblico di models.dev (circa 7 MB una volta) e compila le finestre che conosce. Non viene inviato nulla su questa stanza.",
+    "lookupDone": "Compilati {{found}} modelli su {{total}} da models.dev. Controlla i numeri, poi continua.",
+    "lookupFailed": "Impossibile raggiungere models.dev. Controlla la connessione e riprova."
   },
   "controls": {
     "label": "Controlli della stanza",

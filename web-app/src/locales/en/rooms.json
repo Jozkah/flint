@@ -306,12 +306,17 @@
   },
   "unknownWindow": {
     "title": "Context window unknown",
-    "description": "{{subject}} uses models whose context window Flint can't determine. Set Max Context Tokens for each, or use the safe default of {{window}} tokens, which keeps long discussions compacting early.",
+    "description": "{{subject}} uses models whose context window Flint can't determine. Set a context window for each (it is saved on the model, so you are not asked again), look them up on models.dev, or use the safe default of {{window}} tokens, which keeps long discussions compacting early.",
     "usedBy": "Used by: {{names}}",
     "placeholder": "Max Context Tokens",
     "useDefault": "Use {{window}} (safe default)",
     "continue": "Continue",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "lookUp": "Look up on models.dev",
+    "lookingUp": "Looking up…",
+    "lookupHelp": "Fetches the public models.dev list over the network (about 7 MB once) and fills in the windows it knows. Nothing about this room is sent.",
+    "lookupDone": "Filled {{found}} of {{total}} models from models.dev. Check the numbers, then continue.",
+    "lookupFailed": "Could not reach models.dev. Check your connection and try again."
   },
   "controls": {
     "label": "Room controls",

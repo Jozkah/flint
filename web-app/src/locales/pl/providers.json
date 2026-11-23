@@ -149,6 +149,20 @@
     "warning": {
       "title": "Zachowaj Ostrożność",
       "description": "Modyfikowanie możliwości modelu może wpłynąć na wydajność i funkcjonalność. Nieprawidłowe ustawienia mogą spowodować nieoczekiwane zachowanie lub błędy."
+    },
+    "limits": {
+      "title": "Limity tokenów",
+      "context": "Okno kontekstu (tokeny)",
+      "output": "Maks. tokenów wyjściowych",
+      "help": "Właściwości tego modelu, używane w Czacie, Cowork i Pokojach, gdy jest wybrany. Zostaw puste, jeśli nieznane.",
+      "lookUp": "Uzupełnij z models.dev",
+      "lookingUp": "Szukam…",
+      "lookupHelp": "Pobiera przez sieć publiczną listę modeli z models.dev (jednorazowo ok. 7 MB, potem tydzień w pamięci podręcznej) i uzupełnia limity tego modelu. Nie są wysyłane żadne dane o Tobie ani Twoich modelach.",
+      "found": "Uzupełniono z models.dev ({{match}}). Zmień liczby, aby je nadpisać, i zapisz.",
+      "notFound": "models.dev nie ma limitów dla tego modelu. Wpisz je ręcznie.",
+      "failed": "Nie można połączyć się z models.dev. Sprawdź połączenie i spróbuj ponownie.",
+      "invalid": "Limity muszą być liczbami całkowitymi większymi od 0. Wyczyść pole, jeśli limit jest nieznany.",
+      "fromModelsDev": "Z models.dev"
     }
   },
   "addProvider": "Dodaj Dostawcę",

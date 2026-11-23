@@ -314,7 +314,12 @@
     "placeholder": "Tokens màxims de context",
     "useDefault": "Usa {{window}} (valor segur per defecte)",
     "continue": "Continua",
-    "cancel": "Cancel·la"
+    "cancel": "Cancel·la",
+    "lookUp": "Cerca a models.dev",
+    "lookingUp": "Cercant…",
+    "lookupHelp": "Descarrega la llista pública de models.dev per la xarxa (uns 7 MB una vegada) i omple les finestres que coneix. No s'envia res sobre aquesta sala.",
+    "lookupDone": "S'han omplert {{found}} de {{total}} models des de models.dev. Revisa els números i continua.",
+    "lookupFailed": "No s'ha pogut contactar amb models.dev. Revisa la connexió i torna-ho a provar."
   },
   "controls": {
     "label": "Controls de la sala",

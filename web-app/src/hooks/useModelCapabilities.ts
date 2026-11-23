@@ -15,6 +15,7 @@ import {
   type ModelCapabilities,
 } from '@/lib/modelCapabilities'
 import { getLocalPropsExtension } from '@/lib/llamacppRouterProps'
+import { modelMetadata, modelOverride } from '@/lib/modelLimits'
 import { reconcileServerLimit } from '@/lib/contextLimitRecovery'
 
 type ModelLike = { id?: string | null } & Record<string, unknown>
@@ -55,13 +56,13 @@ export function useModelCapabilities(
   // the same object as both would make every discovery report itself as a
   // user override, which is the one thing the source field exists to tell
   // apart.
-  const { settings, ...metadata } = model
+  const metadata = modelMetadata(model)
   // What the server said when it last refused a request from this exact
   // endpoint. For a local OpenAI-compatible server that reports no metadata at
   // all, this is frequently the only real answer that exists.
   const inputs = {
     modelId,
-    override: settings ? { settings } : null,
+    override: modelOverride(model),
     providerMetadata: metadata,
     localRuntime: runtime,
     providerDefault: provider,

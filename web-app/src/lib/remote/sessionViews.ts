@@ -16,6 +16,7 @@ import type { CoworkEndingKind, RemoteMessage, SessionKind, StreamSnapshot } fro
 import { useAssistant } from '@/hooks/useAssistant'
 import { resolveModelCapabilities } from '@/lib/modelCapabilities'
 import { serverReportedLimit } from '@/lib/contextLimitRecovery'
+import { modelMetadata, modelOverride } from '@/lib/modelLimits'
 import { coworkWindow } from '@/lib/coworkBudget'
 import type { LiveReply } from './live'
 import { removeReasoningContent } from '@/utils/reasoning'
@@ -32,11 +33,11 @@ export function coworkContextOf(session: CoworkSession): { usedTokens: number; w
   const model = ref ? provider?.models.find((m) => m.id === ref.id) : undefined
   let windowTokens: number | null = null
   if (model && ref) {
-    const { settings, ...metadata } = model as unknown as Record<string, unknown>
+    const metadata = modelMetadata(model as unknown as Record<string, unknown>)
     const learned = serverReportedLimit({ provider: ref.provider, baseUrl: (provider as { base_url?: string } | undefined)?.base_url ?? '', model: ref.id })
     const caps = resolveModelCapabilities({
       modelId: ref.id,
-      override: settings ? { settings } : null,
+      override: modelOverride(model as never),
       serverReported: learned ? { n_ctx: learned.contextTokens } : null,
       providerMetadata: metadata,
       localRuntime: null,

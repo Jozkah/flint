@@ -1353,7 +1353,7 @@
     "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
     "btwFailed": "Could not answer the side question."
   },
-  "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
+  "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set the context window for this model in Settings > Model Providers > Edit Model (pencil icon), or fill it from models.dev there, so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
   "ollamaWindowTruncating": "Ollama runs {{model}} with a {{tokens}}-token context and silently drops the oldest messages beyond it. Flint now compacts against that size. To keep more history, raise it on the Ollama server: set OLLAMA_CONTEXT_LENGTH, or add PARAMETER num_ctx to the model's Modelfile.",
   "compaction": {
     "working": "Compacting the conversation…",
@@ -3388,7 +3388,7 @@
     "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
     "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
     "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
+    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up. Set it in Edit Model (Settings > Model Providers), or fill it from models.dev there.",
     "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
     "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
     "mcpNone": "No MCP servers are configured.",

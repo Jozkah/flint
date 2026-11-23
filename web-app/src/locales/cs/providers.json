@@ -149,6 +149,20 @@
     "warning": {
       "title": "Postupujte opatrně",
       "description": "Úprava schopností modelu může ovlivnit výkon a funkčnost. Nesprávné nastavení může způsobit neočekávané chování nebo chyby."
+    },
+    "limits": {
+      "title": "Limity tokenů",
+      "context": "Kontextové okno (tokeny)",
+      "output": "Max. výstupních tokenů",
+      "help": "Vlastnosti tohoto modelu, které se použijí v Chatu, Coworku a Místnostech, kdykoli je vybrán. Nechte prázdné, pokud nejsou známy.",
+      "lookUp": "Vyplnit z models.dev",
+      "lookingUp": "Hledám…",
+      "lookupHelp": "Stáhne po síti veřejný seznam modelů z models.dev (jednou asi 7 MB, poté týden v mezipaměti) a vyplní limity tohoto modelu. Neodesílají se žádné údaje o vás ani o vašich modelech.",
+      "found": "Vyplněno z models.dev ({{match}}). Čísla upravte, chcete-li je přepsat, a uložte.",
+      "notFound": "models.dev pro tento model žádné limity nemá. Zadejte je ručně.",
+      "failed": "Služba models.dev není dostupná. Zkontrolujte připojení a zkuste to znovu.",
+      "invalid": "Limity musí být celá čísla větší než 0. Pokud limit neznáte, pole vyprázdněte.",
+      "fromModelsDev": "Z models.dev"
     }
   },
   "addProvider": "Přidat poskytovatele",

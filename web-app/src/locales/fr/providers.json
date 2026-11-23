@@ -149,6 +149,20 @@
     "warning": {
       "title": "Procéder avec prudence",
       "description": "La modification des capacités du modèle peut affecter les performances et les fonctionnalités. Des paramètres incorrects pourraient entraîner un comportement inattendu ou des erreurs."
+    },
+    "limits": {
+      "title": "Limites de jetons",
+      "context": "Fenêtre de contexte (jetons)",
+      "output": "Jetons de sortie max.",
+      "help": "Propriétés de ce modèle, utilisées dans Chat, Cowork et les salons dès qu'il est sélectionné. Laissez vide si inconnu.",
+      "lookUp": "Remplir depuis models.dev",
+      "lookingUp": "Recherche…",
+      "lookupHelp": "Télécharge la liste publique de modèles de models.dev via le réseau (environ 7 Mo une fois, puis en cache pendant une semaine) et renseigne les limites de ce modèle. Rien sur vous ni sur vos modèles n'est envoyé.",
+      "found": "Rempli depuis models.dev ({{match}}). Modifiez les nombres pour les remplacer, puis enregistrez.",
+      "notFound": "models.dev n'a pas de limites pour ce modèle. Saisissez-les à la main.",
+      "failed": "Impossible de joindre models.dev. Vérifiez votre connexion et réessayez.",
+      "invalid": "Les limites doivent être des nombres entiers supérieurs à 0. Videz le champ si la limite est inconnue.",
+      "fromModelsDev": "Depuis models.dev"
     }
   },
   "addProvider": "Ajouter un fournisseur",

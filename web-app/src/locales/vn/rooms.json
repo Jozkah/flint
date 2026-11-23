@@ -314,7 +314,12 @@
     "placeholder": "Số token ngữ cảnh tối đa",
     "useDefault": "Dùng {{window}} (mặc định an toàn)",
     "continue": "Tiếp tục",
-    "cancel": "Hủy"
+    "cancel": "Hủy",
+    "lookUp": "Tra trên models.dev",
+    "lookingUp": "Đang tìm…",
+    "lookupHelp": "Tải danh sách công khai của models.dev qua mạng (khoảng 7 MB một lần) và điền các cửa sổ đã biết. Không có dữ liệu nào về phòng này được gửi đi.",
+    "lookupDone": "Đã điền {{found}} trên {{total}} mô hình từ models.dev. Kiểm tra các số rồi tiếp tục.",
+    "lookupFailed": "Không thể kết nối models.dev. Hãy kiểm tra kết nối và thử lại."
   },
   "controls": {
     "label": "Điều khiển phòng",
