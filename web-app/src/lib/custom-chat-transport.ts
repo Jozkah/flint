@@ -1,3 +1,7 @@
+import {
+  buildContinuationMessages,
+  continuationStrategy,
+} from '@/lib/chat/transport/continuation'
 import { hasAgentToolImages } from '@/lib/toolOutputImages'
 import { pluginInventoryLine } from '@/lib/pluginInventory'
 import { skillCatalogBlock } from '@/lib/skillCatalog'
@@ -2135,9 +2139,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // prefill so the model resumes from where it left off rather than regenerating.
     const continueContent = this.continueFromContent
     this.continueFromContent = null
+    const strategy = continuationStrategy(provider)
     const modelMessages = continueContent
-      ? [
-          ...baseMessages,
+      ? buildContinuationMessages(
+          baseMessages,
           {
             role: 'assistant' as const,
             content: [
@@ -2154,7 +2159,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 : []),
             ],
           },
-        ]
+          strategy
+        )
       : baseMessages
 
     const latestMessage = effectiveMessages[effectiveMessages.length - 1]
@@ -2661,7 +2667,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // very first text-delta so the new message immediately shows it and the
     // user sees a seamless continuation rather than an empty box.
     const continuedStream = continueContent
-      ? prependContinuationToUIStream(uiStream, continueContent)
+      ? prependContinuationToUIStream(uiStream, continueContent, {
+          // A resume that starts a new turn needs spacing between the pieces.
+          joinFirstDelta: strategy === 'user-turn',
+        })
       : uiStream
 
     // A call to the shell while the composer has it switched off is not in

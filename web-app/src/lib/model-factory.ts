@@ -56,6 +56,10 @@ import {
 } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import {
+  continuationStrategy,
+  withContinueFinalMessage,
+} from '@/lib/chat/transport/continuation'
+import {
   createOpenAICompatible,
   MetadataExtractor,
   OpenAICompatibleChatLanguageModel,
@@ -1151,6 +1155,12 @@ export class ModelFactory {
     // regardless of the toggle; other providers honor the global setting.
     if (provider.provider === 'groq' || shouldStripReasoningFromContext()) {
       fetchImpl = withAssistantReasoningStripped(fetchImpl)
+    }
+
+    // A reply resumed from a prefill must be told so, or a vLLM-style server
+    // writes the answer again from the top.
+    if (continuationStrategy(provider) === 'prefill-flag') {
+      fetchImpl = withContinueFinalMessage(fetchImpl)
     }
 
     // OpenRouter needs reasoning_details replayed with tool results (Gemini 3

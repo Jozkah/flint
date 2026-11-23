@@ -299,10 +299,10 @@ describe('CustomChatTransport assistant completion (continuation prefill)', () =
     streamTextCalls.length = 0
     h.disabledTools = []
     h.servers = ['srv']
-    h.providerId = 'openai'
+    h.providerId = 'my-vllm'
     h.assistantParameters = null
     h.getModelProps.mockReset()
-    provider.provider = 'openai'
+    provider.provider = 'my-vllm'
     provider.settings = []
     selectedModel.id = 'gpt'
     selectedModel.capabilities = ['tools']
@@ -317,6 +317,32 @@ describe('CustomChatTransport assistant completion (continuation prefill)', () =
     assistant('a1', 'here goes'),
     user('u2', 'continue'),
   ]
+
+  it('resumes from a user turn for a provider that cannot prefill', async () => {
+    h.providerId = 'openai'
+    provider.provider = 'openai'
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+    transport.setContinueFromContent('Roses are red,')
+    await drain(await send(transport, history))
+
+    const messages = streamTextCalls[0].messages as Array<{
+      role: string
+      content: unknown
+    }>
+    expect(messages[messages.length - 2].role).toBe('assistant')
+    expect(messages[messages.length - 2].content).toEqual([
+      { type: 'text', text: 'Roses are red,' },
+    ])
+    expect(messages[messages.length - 1]).toEqual({
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: 'Continue exactly where you left off, without repeating anything.',
+        },
+      ],
+    })
+  })
 
   it('appends the partial content as a trailing assistant prefill message', async () => {
     const transport = new CustomChatTransport('you are jan', 'thread-1')
