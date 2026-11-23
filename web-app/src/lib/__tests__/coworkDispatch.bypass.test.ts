@@ -76,6 +76,18 @@ describe('Bypass means no prompt for host tools', () => {
   })
 })
 
+describe('Stop reaches a Studio call', () => {
+  it('hands the run signal to studio_generate_image so Stop can cancel the engine', async () => {
+    const run = new AbortController()
+    await dispatchCoworkTool(
+      { toolCallId: 's1', toolName: 'studio_generate_image', input: { prompt: 'a bike' } },
+      ctx('bypass'),
+      run.signal
+    )
+    expect(executeAgentTool.mock.calls[0][3].signal).toBe(run.signal)
+  })
+})
+
 describe('what Bypass still refuses, and why', () => {
   it('keeps a run that started in Review read-only, whatever the session says now', async () => {
     const c = ctx('review', { liveMode: () => 'bypass' as CoworkMode })

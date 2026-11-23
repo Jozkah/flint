@@ -36,6 +36,7 @@ import {
   chatAgentToolRefusal,
   executeAgentTool,
 } from '@/lib/agentTools'
+import { withStudioStop } from '@/lib/chat/toolStopControl'
 import { browserCallOptions } from '@/lib/browserAgent'
 import { hostCallOptions } from '@/lib/hostAsked'
 import { secretCallOptions } from '@/lib/secretWrite'
@@ -419,7 +420,15 @@ export function runChatToolLoop(
         } else if (chatAgentToolRefusal(toolName)) {
           result = { error: chatAgentToolRefusal(toolName) ?? '' }
         } else if (AGENT_TOOL_NAMES.has(toolName)) {
-          const agentResult = await executeAgentTool(
+          // A Studio picture can take minutes and the reply has finished, so
+          // the composer's Stop shows only if a cancel is registered here.
+          // Stop aborts this loop's signal, which the tool passes to the engine.
+          const agentResult = await withStudioStop(
+            threadId,
+            toolName,
+            () => toolCallAbortController.current?.abort(),
+            () =>
+          executeAgentTool(
             toolName,
             toolCall.input,
             threadId,
@@ -449,6 +458,7 @@ export function runChatToolLoop(
                   .getState()
                   .appendOutput(toolCall.toolCallId, text),
             }
+          )
           )
           // The diff is display-only, so it goes to the runtime store rather
           // than into `result`: anything in `result` reaches the model, and a
