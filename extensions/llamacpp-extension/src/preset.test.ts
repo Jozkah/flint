@@ -43,8 +43,23 @@ vi.mock('@janhq/core', () => ({
   joinPath: vi.fn(async (parts: string[]) => parts.join('/')),
 }))
 
+const writtenYamls: Record<string, unknown> = {}
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (_cmd: string, args: { path: string }) => modelYamls[args.path]),
+  invoke: vi.fn(async (cmd: string, args: { path?: string; savePath?: string; data?: unknown }) => {
+    if (cmd === 'write_yaml') {
+      writtenYamls[args.savePath as string] = args.data
+      return undefined
+    }
+    return modelYamls[args.path as string]
+  }),
+}))
+
+const headers: Record<string, { metadata: Record<string, string> }> = {}
+vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
+  readGgufMetadata: vi.fn(async (p: string) => {
+    if (!(p in headers)) throw new Error('no header')
+    return headers[p]
+  }),
 }))
 
 import {
@@ -65,6 +80,8 @@ beforeEach(() => {
   for (const k of Object.keys(writtenFiles)) delete writtenFiles[k]
   for (const k of Object.keys(modelYamls)) delete modelYamls[k]
   existingPaths.clear()
+  for (const k of Object.keys(writtenYamls)) delete writtenYamls[k]
+  for (const k of Object.keys(headers)) delete headers[k]
 })
 
 function setupModel(id: string, yaml: Record<string, unknown>) {
@@ -411,6 +428,51 @@ describe('generatePreset 0.4.0 keys', () => {
     expect(writtenFiles['/p/router.preset.ini']).toContain(
       'reasoning-preserve = false'
     )
+  })
+})
+
+describe('generatePreset expert count backfill', () => {
+  const section = (ini: string, id: string) => ini.split(`[${id}]`)[1]?.split(/\r?\n\[/)[0] ?? ''
+
+  it('reads expert_count from the GGUF header when model.yml has none', async () => {
+    setupModel('moe', { moe_cache_mib: 4096 })
+    existingPaths.add('/jan/models/moe/model.gguf')
+    headers['/jan/models/moe/model.gguf'] = {
+      metadata: { 'general.architecture': 'qwen3moe', 'qwen3moe.expert_count': '128' },
+    }
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).toContain('moe-cache-mib = 4096')
+    // Kept, so the header is not read again on the next build.
+    expect(writtenYamls['/p/models/moe/model.yml']).toMatchObject({ expert_count: 128, expert_check_v: 1 })
+  })
+
+  it('treats a dense model as dense and still records that', async () => {
+    setupModel('dense', { moe_cache_mib: 4096 })
+    existingPaths.add('/jan/models/dense/model.gguf')
+    headers['/jan/models/dense/model.gguf'] = { metadata: { 'general.architecture': 'llama' } }
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+    expect(writtenYamls['/p/models/dense/model.yml']).toMatchObject({ expert_count: 0 })
+  })
+
+  it('does not read the header when the cache is not asked for or the count is known', async () => {
+    const { readGgufMetadata } = await import('@janhq/tauri-plugin-llamacpp-api')
+    vi.mocked(readGgufMetadata).mockClear()
+    setupModel('off', {})
+    setupModel('known', { moe_cache_mib: 4096, expert_count: 8 })
+    existingPaths.add('/jan/models/off/model.gguf')
+    existingPaths.add('/jan/models/known/model.gguf')
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(readGgufMetadata).not.toHaveBeenCalled()
+  })
+
+  it('leaves the model as it was when the header cannot be read', async () => {
+    setupModel('moe', { moe_cache_mib: 4096 })
+    existingPaths.add('/jan/models/moe/model.gguf')
+    await generatePreset('/p', '/jan', CONFIG)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('[moe]')
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('moe-cache-mib')
+    expect(writtenYamls['/p/models/moe/model.yml']).toBeUndefined()
   })
 })
 
