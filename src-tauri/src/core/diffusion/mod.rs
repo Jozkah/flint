@@ -26,6 +26,7 @@ pub mod custom;
 pub mod engine;
 pub mod external;
 pub mod installation;
+pub mod present;
 pub mod gallery;
 pub mod progress;
 pub mod runtime;

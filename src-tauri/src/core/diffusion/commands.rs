@@ -5,6 +5,7 @@ use super::catalog::{self, Backend, Kind, ModelDef};
 use super::custom::{self, CustomModel, Family};
 use super::engine;
 use super::gallery::{self, GalleryItem};
+use super::present::{self, Settled};
 use super::runtime::{self, Generated, ImageParams, ResidentInfo, VideoParams};
 use serde::Serialize;
 use std::path::Path;
@@ -148,6 +149,63 @@ fn failure_summary(display_name: &str, total: usize, failures: &[FileFailure]) -
 {lines}")
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MovedAside {
+    model_id: String,
+    filename: String,
+    from: String,
+    to: String,
+}
+
+/// [`present::settle_existing`] off the async runtime, since hashing a
+/// multi-GB file would otherwise hold a worker thread. Progress goes out as
+/// the same event a download uses, under the file's own task id.
+async fn settle_existing_blocking<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    model_id: &str,
+    index: usize,
+    path: &Path,
+    file: &catalog::FileDef,
+) -> Settled {
+    let handle = app.clone();
+    let task_id = format!("diffusion:{model_id}:{index}");
+    let path = path.to_path_buf();
+    let (size, sha256) = (file.size, file.sha256);
+    let allow_move = !file.repo.starts_with(custom::LOCAL_REPO_PREFIX);
+    let work = tauri::async_runtime::spawn_blocking(move || {
+        let mut last = std::time::Instant::now();
+        present::settle_existing(&path, size, sha256, allow_move, |done, total| {
+            if done == total || last.elapsed() >= std::time::Duration::from_millis(250) {
+                last = std::time::Instant::now();
+                let _ = handle.emit(
+                    "huggingface-download-progress",
+                    crate::core::huggingface::HuggingFaceDownloadProgress {
+                        task_id: task_id.clone(),
+                        downloaded: done,
+                        total: Some(total),
+                        retry_in_ms: None,
+                        attempt: None,
+                        reason: None,
+                    },
+                );
+            }
+        })
+    })
+    .await;
+    match work {
+        Ok(Ok(settled)) => settled,
+        Ok(Err(error)) => {
+            log::warn!("could not check {}: {error}", file.filename);
+            Settled::Missing
+        }
+        Err(error) => {
+            log::warn!("checking {} failed: {error}", file.filename);
+            Settled::Missing
+        }
+    }
+}
+
 /// Download every file of a model through the Hugging Face downloader (so it
 /// resumes, retries and reports progress like any model). A file that fails
 /// does not stop the others; the files that did not come down are named in the
@@ -167,8 +225,21 @@ pub async fn diffusion_download_model<R: Runtime>(
     let mut failures: Vec<FileFailure> = Vec::new();
     for (index, file) in def.files.iter().enumerate() {
         let path = runtime::model_file_path(&app, file);
-        if std::fs::metadata(&path).map(|m| m.len() == file.size).unwrap_or(false) {
-            continue;
+        match settle_existing_blocking(&app, def.id, index, &path, file).await {
+            Settled::Ready => continue,
+            Settled::Missing => {}
+            Settled::MovedAside(to) => {
+                log::warn!("{} did not match the catalog; kept as {}", path.display(), to.display());
+                let _ = app.emit(
+                    "diffusion-file-moved-aside",
+                    MovedAside {
+                        model_id: def.id.to_string(),
+                        filename: file.filename.to_string(),
+                        from: path.display().to_string(),
+                        to: to.display().to_string(),
+                    },
+                );
+            }
         }
         let fail = |error: String| FileFailure {
             index,
