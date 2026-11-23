@@ -578,6 +578,10 @@ function StreamdownViewComponent({
 
   return (
     <Streamdown
+      // A diagram already drawn keeps the colours it was drawn with: toggling
+      // light/dark left dark boxes with pale arrows on a light card until the
+      // app was reloaded. A new key draws them again with the new theme.
+      key={isDark ? 'dark' : 'light'}
       mode={isStreaming ? 'streaming' : 'static'}
       parseIncompleteMarkdown={isStreaming ?? false}
       animate={animate}
