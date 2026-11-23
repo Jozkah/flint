@@ -5,13 +5,13 @@ import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
-import { Progress } from '@/components/ui/progress'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useStudio } from '@/hooks/useStudio'
 import { type CloudTarget } from '@/lib/studio/cloud'
 import { formatModelBytes } from '@/lib/huggingface'
 import { type StudioKind, type StudioModel } from '@/lib/studio/studio'
 import { EnginePicker } from '@/containers/studio/panels/EnginePicker'
+import { DownloadStatus } from '@/containers/studio/panels/DownloadStatus'
 import { PanelButton } from '@/containers/studio/panels/PanelButton'
 import { modelTint, rise } from '@/containers/studio/studioHelpers'
 import { Form } from '@/containers/studio/studioTypes'
@@ -48,10 +48,6 @@ export function ModelPanel({
   const hosted = targets.find((t) => t.key === form.cloud)
   const resident = status?.resident?.model_id === model.id
   const downloading = download?.modelId === model.id
-  const percent =
-    downloading && download.total
-      ? Math.round((download.bytes / download.total) * 100)
-      : 0
   const engineReady = !!status?.engineBackend
   const running = !!job
   const name = hosted ? hosted.model.name : model.display_name
@@ -123,23 +119,7 @@ export function ModelPanel({
           )}
           <Chip mono>{noun}</Chip>
         </div>
-        {!hosted && downloading && (
-          <div className="space-y-1.5">
-            <Progress value={percent} />
-            <p className="text-xs text-muted-foreground">
-              {download.bytes <= 0
-                ? download.total > 0
-                  ? t('studio:download.startingSize', { size: formatModelBytes(download.total) })
-                  : t('studio:download.starting')
-                : download.total > 0
-                  ? t('studio:download.progress', {
-                      bytes: formatModelBytes(download.bytes),
-                      total: formatModelBytes(download.total),
-                    })
-                  : formatModelBytes(download.bytes)}
-            </p>
-          </div>
-        )}
+        {!hosted && <DownloadStatus model={model} />}
         {!hosted &&
           (!model.installed ? (
             <Button size="sm" disabled={downloading} onClick={() => void downloadModel(model)}>

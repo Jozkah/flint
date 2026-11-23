@@ -10,6 +10,7 @@ import {
   studioApi,
   type EngineBuild,
   type GalleryItem,
+  type StudioDownloadFailure,
   type StudioKind,
   type StudioModel,
   type StudioStatus,
@@ -41,7 +42,17 @@ type StudioState = {
   status: StudioStatus | null
   error: string | null
   installing: { stage: string; downloaded: number; total: number } | null
-  download: { modelId: string; bytes: number; total: number } | null
+  download: {
+    modelId: string
+    bytes: number
+    total: number
+    /** Which file of the model is coming down now. */
+    fileIndex: number
+    /** Set while the file waits to try again after a failed attempt. */
+    retry?: { at: number; attempt: number; reason: string }
+  } | null
+  /** The files of a model that did not come down, kept until the next try. */
+  downloadFailure: { modelId: string; files: StudioDownloadFailure[] } | null
   gallery: Record<StudioKind, GalleryItem[]>
   job: Job | null
   jobPrompt: string
@@ -89,7 +100,16 @@ function listenOnce(): void {
   listen('diffusion-state', () => {
     void useStudio.getState().refresh()
   }),
-  listen<{ taskId: string; downloaded: number }>('huggingface-download-progress', ({ payload }) => {
+  listen<{ modelId: string; files: StudioDownloadFailure[] }>('diffusion-download-failed', ({ payload }) => {
+    useStudio.setState({ downloadFailure: { modelId: payload.modelId, files: payload.files } })
+  }),
+  listen<{
+    taskId: string
+    downloaded: number
+    retryInMs?: number
+    attempt?: number
+    reason?: string
+  }>('huggingface-download-progress', ({ payload }) => {
     // The downloader serialises this event in camelCase.
     const task = parseDownloadTask(payload.taskId)
     if (!task) return
@@ -100,6 +120,11 @@ function listenOnce(): void {
         modelId: model.id,
         bytes: downloadedBytes(model.files, task.index, payload.downloaded),
         total: model.totalBytes,
+        fileIndex: task.index,
+        retry:
+          payload.retryInMs != null
+            ? { at: Date.now() + payload.retryInMs, attempt: payload.attempt ?? 1, reason: payload.reason ?? '' }
+            : undefined,
       },
     })
   }),
@@ -119,6 +144,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   error: null,
   installing: null,
   download: null,
+  downloadFailure: null,
   gallery: { image: [], video: [] },
   job: null,
   jobPrompt: '',
@@ -156,14 +182,20 @@ export const useStudio = create<StudioState>((set, get) => ({
 
   downloadModel: async (model) => {
     void allowNotifications()
-    set({ error: null, download: { modelId: model.id, bytes: 0, total: model.totalBytes } })
+    set({
+      error: null,
+      downloadFailure: null,
+      download: { modelId: model.id, bytes: 0, total: model.totalBytes, fileIndex: 0 },
+    })
     try {
       await studioApi.downloadModel(model.id, useGeneralSetting.getState().huggingfaceToken)
       notifyInBackground(
         i18n.t('common:studioToast.modelDownloaded', { name: model.display_name })
       )
     } catch (error) {
-      set({ error: message(error) })
+      // The files that failed are listed on the model's own card; only an
+      // error with no such list (an unsupported system, say) goes to the page.
+      if (get().downloadFailure?.modelId !== model.id) set({ error: message(error) })
     } finally {
       set({ download: null })
       await get().refresh()

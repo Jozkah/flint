@@ -139,7 +139,17 @@
     "startingSize": "Wird gestartet… {{size}} herunterzuladen",
     "progress": "{{bytes}} von {{total}}",
     "downloading": "Wird heruntergeladen…",
-    "button": "Herunterladen ({{size}})"
+    "button": "Herunterladen ({{size}})",
+    "file": "Datei {{index}} von {{count}}: {{name}}",
+    "source": "Von {{repo}} ({{size}})",
+    "waiting": "Hugging Face war nicht erreichbar: {{reason}}.",
+    "failedTitle": "Der Download wurde nicht abgeschlossen",
+    "failedFile": "{{name}} ({{size}}) von {{repo}}",
+    "retry": "Erneut versuchen",
+    "copyLink": "Link kopieren",
+    "copyPath": "Speicherort kopieren",
+    "copied": "Kopiert",
+    "manualHint": "Um eine Datei selbst zu laden, kopieren Sie ihren Link, laden Sie sie im Browser oder mit einem Download-Manager herunter und speichern Sie sie am angezeigten Ort. Ein neuer Versuch setzt bei dem fort, was schon auf dem Datenträger liegt."
   },
   "phase": {
     "queued": "Wartet",

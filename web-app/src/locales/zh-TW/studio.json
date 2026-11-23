@@ -136,7 +136,17 @@
     "startingSize": "正在開始… 待下載 {{size}}",
     "progress": "{{bytes}} / {{total}}",
     "downloading": "正在下載…",
-    "button": "下載（{{size}}）"
+    "button": "下載（{{size}}）",
+    "file": "檔案 {{index}}/{{count}}：{{name}}",
+    "source": "來源：{{repo}}（{{size}}）",
+    "waiting": "無法連線到 Hugging Face：{{reason}}。",
+    "failedTitle": "下載未完成",
+    "failedFile": "{{name}}（{{size}}），來自 {{repo}}",
+    "retry": "重試",
+    "copyLink": "複製連結",
+    "copyPath": "複製儲存位置",
+    "copied": "已複製",
+    "manualHint": "如需自行下載檔案，請複製其連結，用瀏覽器或下載工具下載，並儲存到所示位置。重試會從磁碟上已有的部分繼續。"
   },
   "phase": {
     "queued": "等待中",

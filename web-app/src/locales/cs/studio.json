@@ -145,7 +145,17 @@
     "startingSize": "Spouštění… ke stažení {{size}}",
     "progress": "{{bytes}} z {{total}}",
     "downloading": "Stahování…",
-    "button": "Stáhnout ({{size}})"
+    "button": "Stáhnout ({{size}})",
+    "file": "Soubor {{index}} z {{count}}: {{name}}",
+    "source": "Z {{repo}} ({{size}})",
+    "waiting": "Hugging Face není dostupný: {{reason}}.",
+    "failedTitle": "Stahování se nedokončilo",
+    "failedFile": "{{name}} ({{size}}) z {{repo}}",
+    "retry": "Zkusit znovu",
+    "copyLink": "Kopírovat odkaz",
+    "copyPath": "Kopírovat umístění",
+    "copied": "Zkopírováno",
+    "manualHint": "Chcete-li soubor stáhnout sami, zkopírujte jeho odkaz, stáhněte jej v prohlížeči nebo správci stahování a uložte na zobrazené místo. Další pokus naváže na to, co už je na disku."
   },
   "phase": {
     "queued": "Čekání",

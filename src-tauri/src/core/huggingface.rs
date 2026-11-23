@@ -158,6 +158,9 @@ pub struct HuggingFaceDownloadProgress {
     /// The failed attempt count behind `retry_in_ms`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt: Option<u32>,
+    /// Why the last attempt failed, in plain words, while waiting to retry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -681,6 +684,15 @@ pub async fn huggingface_cancel_download(task_id: String) -> Result<(), String> 
 /// A connection that sends nothing for this long is treated as dropped and
 /// retried, instead of leaving a multi-gigabyte download hanging on bad wifi.
 const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The stall window; short under test so a silent fake server is quick to hit.
+fn stall_timeout() -> std::time::Duration {
+    if cfg!(test) {
+        std::time::Duration::from_millis(400)
+    } else {
+        STALL_TIMEOUT
+    }
+}
 /// Consecutive failed attempts retried on the quick backoff. After these the
 /// download keeps trying at a steady pace until it recovers or is paused.
 const QUICK_RETRIES: u32 = 5;
@@ -1051,6 +1063,9 @@ const FREE_SPACE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3
 enum Attempt {
     Finished,
     Paused,
+    /// 401 or 403 while sending a token: it may be expired or revoked, which
+    /// fails even public files, so the caller tries once without it.
+    Denied(String),
     /// The connection failed or went quiet. `made_progress` says whether any
     /// bytes arrived before it did, which resets the count of failures.
     Retry {
@@ -1071,6 +1086,7 @@ async fn download_attempt<R: Runtime>(
     task_id: &str,
     part_path: &std::path::Path,
     expected_size: Option<u64>,
+    token_sent: bool,
     cancel: &AtomicBool,
 ) -> Result<Attempt, String> {
     let existing = tokio::fs::metadata(part_path)
@@ -1088,7 +1104,7 @@ async fn download_attempt<R: Runtime>(
         }
     }
     let response = tokio::select! {
-        sent = tokio::time::timeout(STALL_TIMEOUT, request.send()) => match sent {
+        sent = tokio::time::timeout(stall_timeout(), request.send()) => match sent {
             Ok(Ok(response)) => response,
             Ok(Err(e)) => {
                 let chain = error_chain(&e);
@@ -1107,7 +1123,7 @@ async fn download_attempt<R: Runtime>(
                     made_progress: false,
                     reason: format!(
                         "No response from Hugging Face for {} seconds",
-                        STALL_TIMEOUT.as_secs()
+                        stall_timeout().as_secs()
                     ),
                     retry_after: None,
                 })
@@ -1132,6 +1148,9 @@ async fn download_attempt<R: Runtime>(
             retry_after: retry_after_of(response.headers()),
         });
     }
+    if token_sent && status == reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(Attempt::Denied(response_error(response).await));
+    }
     if !status.is_success() {
         return Err(response_error(response).await);
     }
@@ -1145,6 +1164,16 @@ async fn download_attempt<R: Runtime>(
         .content_length()
         .map(|remaining| start.saturating_add(remaining))
         .or(expected_size);
+    // The server says the file is a different size than this build expects:
+    // it was replaced upstream. Every retry would fetch the same wrong file,
+    // so say so now instead of looping on it for ever.
+    if let (Some(declared), Some(expected)) = (response.content_length().map(|n| start.saturating_add(n)), expected_size) {
+        if declared != expected {
+            return Err(format!(
+                "Hugging Face serves this file as {declared} bytes, but {expected} bytes were expected. The file was changed or replaced on Hugging Face since this version of Flint was built; update Flint, or download the file by hand and place it in the model folder."
+            ));
+        }
+    }
     let mut output = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
@@ -1166,13 +1195,14 @@ async fn download_attempt<R: Runtime>(
                 total,
                 retry_in_ms: None,
                 attempt: None,
+                reason: None,
             },
         );
     };
 
     loop {
         let next = tokio::select! {
-            next = tokio::time::timeout(STALL_TIMEOUT, stream.next()) => Some(next),
+            next = tokio::time::timeout(stall_timeout(), stream.next()) => Some(next),
             _ = cancelled(cancel) => None,
         };
         if cancel.load(Ordering::Relaxed) {
@@ -1188,7 +1218,7 @@ async fn download_attempt<R: Runtime>(
                     made_progress: downloaded > start,
                     reason: format!(
                         "No data from Hugging Face for {} seconds",
-                        STALL_TIMEOUT.as_secs()
+                        stall_timeout().as_secs()
                     ),
                     retry_after: None,
                 });
@@ -1235,6 +1265,118 @@ async fn download_attempt<R: Runtime>(
     // true byte count.
     emit_progress(downloaded);
     Ok(Attempt::Finished)
+}
+
+/// Checks a finished `.part` against the size and SHA-256 the caller pinned.
+/// A file that fails is removed (resuming a wrong file only fails again) and
+/// the error names the file and both values, so the cause can be told apart:
+/// a short or long file, or the right size with other bytes.
+async fn verify_part(
+    part_path: &PathBuf,
+    repo: &str,
+    filename: &str,
+    expected_size: Option<u64>,
+    expected_sha256: Option<&str>,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
+    if let Some(size) = expected_size {
+        let actual = tokio::fs::metadata(part_path)
+            .await
+            .map_err(|e| format!("Could not verify model size: {e}"))?
+            .len();
+        if actual != size {
+            // A part that is the wrong size will be the wrong size again on
+            // resume; keeping it would loop the user on the same error.
+            discard_part(part_path).await;
+            return Err(format!(
+                "{filename} from {repo} came to {actual} bytes, but {size} bytes were expected. The partial download was discarded; start it again."
+            ));
+        }
+    }
+    if let Some(expected) = expected_sha256
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let actual = sha256_file(part_path, cancel).await?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            discard_part(part_path).await;
+            log::warn!(
+                "SHA-256 mismatch for {repo}/{filename}: expected {expected}, got {actual}"
+            );
+            return Err(format!(
+                "{filename} from {repo} downloaded in full but failed its SHA-256 check (expected {expected}, got {actual}), so the bytes are not the file Flint expects (corrupted in transit, altered by a proxy or antivirus, or replaced upstream). The partial download was discarded; start it again."
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// One pass of the retry loop: a request for the rest of the file, then what
+/// it means for the loop. A rejected token is dropped once (an expired token
+/// makes Hugging Face refuse even public files); a second refusal is final.
+#[allow(clippy::too_many_arguments)]
+async fn fetch_step<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    client: &reqwest::Client,
+    url: &Url,
+    task_id: &str,
+    part_path: &std::path::Path,
+    expected_size: Option<u64>,
+    token_sent: bool,
+    anonymous: &AtomicBool,
+    cancel: &AtomicBool,
+) -> Result<Step, String> {
+    let existing = tokio::fs::metadata(part_path)
+        .await
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+    if existing > 0 && expected_size == Some(existing) {
+        return Ok(Step::Done);
+    }
+    Ok(
+        match download_attempt(app, client, url, task_id, part_path, expected_size, token_sent, cancel).await? {
+            Attempt::Paused => Step::Paused,
+            Attempt::Denied(message) => {
+                if anonymous.swap(true, Ordering::Relaxed) {
+                    return Err(message);
+                }
+                Step::Retry {
+                    made_progress: false,
+                    reason: "Hugging Face refused the saved token (it may be expired or revoked); trying without it".to_string(),
+                    retry_after: None,
+                }
+            }
+            Attempt::Retry {
+                made_progress,
+                reason,
+                retry_after,
+            } => Step::Retry {
+                made_progress,
+                reason,
+                retry_after,
+            },
+            // The server may end the stream cleanly but short of the size it
+            // listed: the connection was cut, so go on.
+            Attempt::Finished => {
+                let now = tokio::fs::metadata(part_path)
+                    .await
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                if expected_size.is_none_or(|size| now >= size) {
+                    Step::Done
+                } else {
+                    Step::Retry {
+                        made_progress: now > existing,
+                        reason: format!(
+                            "The connection closed after {now} of {} bytes",
+                            expected_size.unwrap_or(0)
+                        ),
+                        retry_after: None,
+                    }
+                }
+            }
+        },
+    )
 }
 
 /// Limits how often a download reports progress. A fast link delivers
@@ -1364,58 +1506,27 @@ pub async fn huggingface_download_model<R: Runtime>(
             }
         }
         let client = hf_client(token.as_deref())?;
+        // Built only when the token is turned down (see `fetch_step`).
+        let anonymous = AtomicBool::new(false);
+        let token_sent = token.as_deref().is_some_and(|value| !value.trim().is_empty());
         let attempt = || async {
-            let existing = tokio::fs::metadata(&part_path)
-                .await
-                .map(|meta| meta.len())
-                .unwrap_or(0);
-            if existing > 0 && expected_size == Some(existing) {
-                return Ok(Step::Done);
-            }
-            Ok(
-                match download_attempt(
-                    &app,
-                    &client,
-                    &url,
-                    &task_id,
-                    &part_path,
-                    expected_size,
-                    &cancel,
-                )
-                .await?
-                {
-                    Attempt::Paused => Step::Paused,
-                    Attempt::Retry {
-                        made_progress,
-                        reason,
-                        retry_after,
-                    } => Step::Retry {
-                        made_progress,
-                        reason,
-                        retry_after,
-                    },
-                    // The server may end the stream cleanly but short of the
-                    // size it listed: the connection was cut, so go on.
-                    Attempt::Finished => {
-                        let now = tokio::fs::metadata(&part_path)
-                            .await
-                            .map(|meta| meta.len())
-                            .unwrap_or(0);
-                        if expected_size.is_none_or(|size| now >= size) {
-                            Step::Done
-                        } else {
-                            Step::Retry {
-                                made_progress: now > existing,
-                                reason: format!(
-                                    "The connection closed after {now} of {} bytes",
-                                    expected_size.unwrap_or(0)
-                                ),
-                                retry_after: None,
-                            }
-                        }
-                    }
-                },
+            let client = if anonymous.load(Ordering::Relaxed) {
+                hf_client(None)?
+            } else {
+                client.clone()
+            };
+            fetch_step(
+                &app,
+                &client,
+                &url,
+                &task_id,
+                &part_path,
+                expected_size,
+                token_sent && !anonymous.load(Ordering::Relaxed),
+                &anonymous,
+                &cancel,
             )
+            .await
         };
         retry_until_done(&cancel, attempt, tokio::time::sleep, |failures, wait, reason| {
             log::warn!(
@@ -1435,39 +1546,13 @@ pub async fn huggingface_download_model<R: Runtime>(
                     total: expected_size,
                     retry_in_ms: Some(wait.as_millis() as u64),
                     attempt: Some(failures),
+                    reason: Some(reason.to_string()),
                 },
             );
         })
         .await?;
 
-        if let Some(size) = expected_size {
-            let actual = tokio::fs::metadata(&part_path)
-                .await
-                .map_err(|e| format!("Could not verify model size: {e}"))?
-                .len();
-            if actual != size {
-                // A part that is the wrong size will be the wrong size again on
-                // resume; keeping it would loop the user on the same error.
-                discard_part(&part_path).await;
-                return Err(format!(
-                    "Downloaded file size mismatch: expected {size} bytes, got {actual}. The partial download was discarded; start it again."
-                ));
-            }
-        }
-        if let Some(expected) = expected_sha256
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let actual = sha256_file(&part_path, &cancel).await?;
-            if !actual.eq_ignore_ascii_case(expected) {
-                discard_part(&part_path).await;
-                return Err(
-                    "Downloaded file failed SHA-256 verification. The partial download was discarded; start it again."
-                        .to_string(),
-                );
-            }
-        }
+        verify_part(&part_path, &repo, &filename, expected_size, expected_sha256.as_deref(), &cancel).await?;
         if cancel.load(Ordering::Relaxed) {
             return Err("Download paused".to_string());
         }
@@ -1972,5 +2057,325 @@ mod tests {
         // Another file is never held up.
         let other = std::path::Path::new("lock-test/other.gguf.part");
         assert!(lock_part_for_writing(other, &AtomicBool::new(false)).await.is_ok());
+    }
+
+    // ---- a fake Hugging Face with controllable faults -------------------
+
+    /// What the fake server does with one request.
+    #[derive(Clone)]
+    enum Reply {
+        /// `status`, then `body`. `cut` closes the connection after that many
+        /// body bytes; `stall` goes silent after them instead.
+        File { status: u16, body: Vec<u8>, cut: Option<usize>, stall: Option<usize> },
+        Redirect(String),
+        Status { code: u16, retry_after: Option<u64> },
+    }
+
+    struct Request {
+        path: String,
+        range_from: Option<u64>,
+        authorization: bool,
+    }
+
+    struct Fake {
+        base: String,
+        log: Arc<std::sync::Mutex<Vec<(String, Option<u64>, bool)>>>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    impl Fake {
+        fn requests(&self) -> Vec<(String, Option<u64>, bool)> {
+            self.log.lock().unwrap().clone()
+        }
+    }
+
+    async fn fake_server<F>(handler: F) -> Fake
+    where
+        F: Fn(&Request, usize) -> Reply + Send + Sync + 'static,
+    {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let handler = Arc::new(handler);
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let task = {
+            let log = log.clone();
+            tokio::spawn(async move {
+                loop {
+                    let Ok((mut socket, _)) = listener.accept().await else { return };
+                    let handler = handler.clone();
+                    let log = log.clone();
+                    let counter = counter.clone();
+                    tokio::spawn(async move {
+                        let mut head = Vec::new();
+                        let mut byte = [0u8; 1];
+                        while !head.ends_with(b"\r\n\r\n") {
+                            if socket.read(&mut byte).await.unwrap_or(0) == 0 {
+                                return;
+                            }
+                            head.push(byte[0]);
+                        }
+                        let text = String::from_utf8_lossy(&head).to_string();
+                        let path = text.split_whitespace().nth(1).unwrap_or("/").to_string();
+                        let lower = text.to_ascii_lowercase();
+                        let range_from = lower
+                            .lines()
+                            .find_map(|l| l.strip_prefix("range: bytes="))
+                            .and_then(|r| r.trim().trim_end_matches('-').parse::<u64>().ok());
+                        let request = Request { path, range_from, authorization: lower.contains("authorization:") };
+                        log.lock().unwrap().push((request.path.clone(), range_from, request.authorization));
+                        let n = counter.fetch_add(1, Ordering::SeqCst);
+                        match handler(&request, n) {
+                            Reply::Redirect(to) => {
+                                let _ = socket
+                                    .write_all(format!("HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes())
+                                    .await;
+                            }
+                            Reply::Status { code, retry_after } => {
+                                let extra = retry_after.map(|s| format!("Retry-After: {s}\r\n")).unwrap_or_default();
+                                let _ = socket
+                                    .write_all(format!("HTTP/1.1 {code} X\r\n{extra}Content-Length: 0\r\nConnection: close\r\n\r\n").as_bytes())
+                                    .await;
+                            }
+                            Reply::File { status, body, cut, stall } => {
+                                let _ = socket
+                                    .write_all(format!("HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).as_bytes())
+                                    .await;
+                                let send = cut.or(stall).unwrap_or(body.len()).min(body.len());
+                                let _ = socket.write_all(&body[..send]).await;
+                                let _ = socket.flush().await;
+                                if stall.is_some() {
+                                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                                }
+                            }
+                        }
+                    });
+                }
+            })
+        };
+        Fake { base, log, task }
+    }
+
+    fn content(len: usize) -> Vec<u8> {
+        (0..len).map(|i| (i * 31 % 251) as u8).collect()
+    }
+
+    /// The whole file, or the part from the request's `Range`.
+    fn serve(data: &[u8], request: &Request, honour_range: bool) -> (u16, Vec<u8>) {
+        match request.range_from.filter(|_| honour_range) {
+            Some(from) => (206, data[(from as usize).min(data.len())..].to_vec()),
+            None => (200, data.to_vec()),
+        }
+    }
+
+    /// Runs the real step and retry loop against `url`, with no waiting.
+    /// Returns the result, the file on disk, and the reasons for each wait.
+    async fn run_loop(url: &str, expected_size: Option<u64>) -> (Result<(), String>, Option<Vec<u8>>, Vec<String>) {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("model.gguf.part");
+        let app = tauri::test::mock_app();
+        let handle = app.handle().clone();
+        let url = Url::parse(url).unwrap();
+        let cancel = AtomicBool::new(false);
+        let anonymous = AtomicBool::new(false);
+        let client = reqwest::Client::new();
+        let waits = std::sync::Mutex::new(Vec::new());
+        let result = retry_until_done(
+            &cancel,
+            || async {
+                fetch_step(&handle, &client, &url, "t", &part, expected_size, false, &anonymous, &cancel).await
+            },
+            |_| async {},
+            |_, _, reason| waits.lock().unwrap().push(reason.to_string()),
+        )
+        .await;
+        let bytes = std::fs::read(&part).ok();
+        let waits = waits.into_inner().unwrap();
+        (result, bytes, waits)
+    }
+
+    #[tokio::test]
+    async fn a_connection_dropped_mid_body_resumes_with_a_range_request() {
+        let data = content(100_000);
+        let served = data.clone();
+        let server = fake_server(move |request, n| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: (n == 0).then_some(30_000), stall: None }
+        })
+        .await;
+        let (result, bytes, waits) = run_loop(&format!("{}/f", server.base), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert_eq!(waits.len(), 1);
+        let requests = server.requests();
+        assert_eq!(requests[0].1, None);
+        assert_eq!(requests[1].1, Some(30_000));
+    }
+
+    #[tokio::test]
+    async fn a_stalled_connection_is_timed_out_and_resumed() {
+        let data = content(50_000);
+        let served = data.clone();
+        let server = fake_server(move |request, n| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: (n == 0).then_some(10_000) }
+        })
+        .await;
+        let (result, bytes, waits) = run_loop(&format!("{}/f", server.base), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert!(waits[0].contains("No data from Hugging Face"), "{waits:?}");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_range_restarts_cleanly_instead_of_appending() {
+        let data = content(80_000);
+        let served = data.clone();
+        let server = fake_server(move |request, n| {
+            let (status, body) = serve(&served, request, false);
+            Reply::File { status, body, cut: (n < 2).then_some(20_000 * (n + 1)), stall: None }
+        })
+        .await;
+        let (result, bytes, _) = run_loop(&format!("{}/f", server.base), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+    }
+
+    #[tokio::test]
+    async fn rate_limiting_is_waited_out_and_the_wait_is_reported() {
+        let data = content(10_000);
+        let served = data.clone();
+        let server = fake_server(move |request, n| {
+            if n < 2 {
+                return Reply::Status { code: 429, retry_after: Some(3) };
+            }
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        let (result, bytes, waits) = run_loop(&format!("{}/f", server.base), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert_eq!(waits.len(), 2);
+        assert!(waits[0].contains("429"), "{waits:?}");
+    }
+
+    #[tokio::test]
+    async fn every_retry_resolves_the_redirect_again() {
+        let data = content(60_000);
+        let served = data.clone();
+        let server = fake_server(move |request, n| {
+            if request.path == "/f" {
+                // A fresh signed address each time; the old ones are dead.
+                return Reply::Redirect(format!("/cdn/{n}"));
+            }
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: (request.path == "/cdn/0").then_some(25_000), stall: None }
+        })
+        .await;
+        let (result, bytes, _) = run_loop(&format!("{}/f", server.base), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        let resolves = server.requests().iter().filter(|r| r.0 == "/f").count();
+        assert_eq!(resolves, 2, "the resume went back to the file address");
+    }
+
+    #[tokio::test]
+    async fn a_file_the_server_serves_at_another_size_fails_at_once_naming_both_sizes() {
+        let data = content(40_000);
+        let served = data.clone();
+        let server = fake_server(move |request, _| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        // The caller was built for a bigger file: this is what a replaced
+        // upstream file looks like, and it used to retry for ever.
+        let (result, _, waits) = run_loop(&format!("{}/f", server.base), Some(50_000)).await;
+        let error = result.unwrap_err();
+        assert!(error.contains("40000 bytes") && error.contains("50000 bytes were expected"), "{error}");
+        assert!(waits.is_empty());
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_refused_token_is_dropped_once_and_a_public_file_still_downloads() {
+        let data = content(20_000);
+        let served = data.clone();
+        let server = fake_server(move |request, _| {
+            if request.authorization {
+                return Reply::Status { code: 401, retry_after: None };
+            }
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.part");
+        let app = tauri::test::mock_app();
+        let handle = app.handle().clone();
+        let url = Url::parse(&format!("{}/f", server.base)).unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::AUTHORIZATION, "Bearer stale".parse().unwrap());
+        let with_token = reqwest::Client::builder().default_headers(headers).build().unwrap();
+        let without = reqwest::Client::new();
+        let cancel = AtomicBool::new(false);
+        let anonymous = AtomicBool::new(false);
+        let waits = std::sync::Mutex::new(Vec::new());
+        retry_until_done(
+            &cancel,
+            || async {
+                let sent = !anonymous.load(Ordering::Relaxed);
+                let client = if sent { &with_token } else { &without };
+                fetch_step(&handle, client, &url, "t", &part, Some(20_000), sent, &anonymous, &cancel).await
+            },
+            |_| async {},
+            |_, _, reason| waits.lock().unwrap().push(reason.to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(&part).unwrap(), data);
+        assert!(waits.lock().unwrap()[0].contains("refused the saved token"));
+    }
+
+    #[tokio::test]
+    async fn a_gated_file_fails_at_once_with_the_access_message() {
+        let server = fake_server(|_, _| Reply::Status { code: 403, retry_after: None }).await;
+        let (result, _, waits) = run_loop(&format!("{}/f", server.base), Some(10)).await;
+        assert!(result.unwrap_err().contains("denied access"));
+        assert!(waits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_right_sized_file_with_a_wrong_last_byte_is_named_and_discarded() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        let mut data = content(5_000);
+        let expected = format!("{:x}", Sha256::digest(&data));
+        *data.last_mut().unwrap() ^= 0xff;
+        std::fs::write(&part, &data).unwrap();
+        let error = verify_part(&part, "o/r", "m.gguf", Some(5_000), Some(&expected), &AtomicBool::new(false))
+            .await
+            .unwrap_err();
+        assert!(error.contains("m.gguf from o/r") && error.contains(&expected), "{error}");
+        assert!(error.contains("expected") && error.contains("got "), "{error}");
+        assert!(!part.exists());
+    }
+
+    #[tokio::test]
+    async fn a_file_of_the_wrong_size_is_named_with_both_sizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        std::fs::write(&part, content(10)).unwrap();
+        let error = verify_part(&part, "o/r", "m.gguf", Some(20), None, &AtomicBool::new(false))
+            .await
+            .unwrap_err();
+        assert!(error.contains("m.gguf from o/r") && error.contains("10 bytes") && error.contains("20 bytes"), "{error}");
     }
 }

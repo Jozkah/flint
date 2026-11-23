@@ -136,7 +136,17 @@
     "startingSize": "Memulai… {{size}} untuk diunduh",
     "progress": "{{bytes}} dari {{total}}",
     "downloading": "Mengunduh…",
-    "button": "Unduh ({{size}})"
+    "button": "Unduh ({{size}})",
+    "file": "Berkas {{index}} dari {{count}}: {{name}}",
+    "source": "Dari {{repo}} ({{size}})",
+    "waiting": "Tidak dapat menjangkau Hugging Face: {{reason}}.",
+    "failedTitle": "Unduhan belum selesai",
+    "failedFile": "{{name}} ({{size}}) dari {{repo}}",
+    "retry": "Coba lagi",
+    "copyLink": "Salin tautan",
+    "copyPath": "Salin lokasi penyimpanan",
+    "copied": "Disalin",
+    "manualHint": "Untuk mengunduh berkas sendiri, salin tautannya, unduh lewat peramban atau pengelola unduhan, lalu simpan di lokasi yang ditampilkan. Mencoba lagi melanjutkan dari yang sudah ada di disk."
   },
   "phase": {
     "queued": "Menunggu",

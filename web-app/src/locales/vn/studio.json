@@ -142,7 +142,17 @@
     "startingSize": "Đang bắt đầu… cần tải {{size}}",
     "progress": "{{bytes}} / {{total}}",
     "downloading": "Đang tải xuống…",
-    "button": "Tải xuống ({{size}})"
+    "button": "Tải xuống ({{size}})",
+    "file": "Tệp {{index}}/{{count}}: {{name}}",
+    "source": "Từ {{repo}} ({{size}})",
+    "waiting": "Không kết nối được Hugging Face: {{reason}}.",
+    "failedTitle": "Tải xuống chưa hoàn tất",
+    "failedFile": "{{name}} ({{size}}) từ {{repo}}",
+    "retry": "Thử lại",
+    "copyLink": "Sao chép liên kết",
+    "copyPath": "Sao chép vị trí lưu",
+    "copied": "Đã sao chép",
+    "manualHint": "Để tự tải một tệp, hãy sao chép liên kết, tải bằng trình duyệt hoặc trình quản lý tải xuống rồi lưu vào vị trí hiển thị. Thử lại sẽ tiếp tục từ phần đã có trên ổ đĩa."
   },
   "phase": {
     "queued": "Đang chờ",
