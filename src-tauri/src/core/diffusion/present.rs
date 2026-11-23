@@ -73,10 +73,14 @@ fn mismatch_path(path: &Path) -> PathBuf {
     if !first.exists() {
         return first;
     }
-    (1u32..)
-        .map(|i| with_suffix(path, &format!(".mismatch.{i}")))
-        .find(|p| !p.exists())
-        .expect("an unused name exists")
+    let mut n = 1u32;
+    loop {
+        let candidate = with_suffix(path, &format!(".mismatch.{n}"));
+        if !candidate.exists() || n == u32::MAX {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 /// Decide what to do about whatever is at `path`. Blocking: hashes the file.
