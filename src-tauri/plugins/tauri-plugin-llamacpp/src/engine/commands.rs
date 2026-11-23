@@ -304,7 +304,15 @@ pub async fn start_engine<R: tauri::Runtime>(
             return Err(e);
         }
     };
-    if let Some(v) = handle.cuda_toolkit {
+    // A worker without CUDA of its own reports no toolkit even when the add-on
+    // it loaded has one; the add-on's manifest knows.
+    let toolkit = handle.cuda_toolkit.or_else(|| {
+        addon
+            .as_deref()
+            .and_then(super::addon::toolkit_of)
+            .and_then(|text| CudaVersion::parse(&text))
+    });
+    if let Some(v) = toolkit {
         let _ = versions.toolkit.set(v);
     }
     // Detached: NVML can be slow to load, and start_engine holds the engine lock.
@@ -509,6 +517,69 @@ pub struct EngineDevice {
     pub free: u64,
 }
 
+/// How much a backend is preferred when it and another list the same GPU.
+/// llama.cpp itself keeps the first device it registers for a PCI id, and the
+/// add-on's CUDA is registered ahead of Vulkan, so CUDA wins, then the vendor
+/// backends, then Vulkan.
+#[cfg(feature = "tauri")]
+fn backend_rank(id: &str) -> u8 {
+    let lower = id.to_ascii_lowercase();
+    [("cuda", 0), ("rocm", 1), ("hip", 1), ("sycl", 2), ("metal", 3), ("vulkan", 4)]
+        .iter()
+        .find(|(prefix, _)| lower.starts_with(prefix))
+        .map_or(5, |(_, rank)| *rank)
+}
+
+/// One entry per physical GPU. ggml lists a card once per backend that can
+/// drive it (CUDA0 and Vulkan0 for the same RTX), and counting both doubles
+/// its memory in everything that sums the list. A device is the same card when
+/// the name and total memory match; two identical cards stay two because the
+/// backend with the most of them decides how many there are. Lone devices, and
+/// a card only one backend can see, are untouched.
+#[cfg(feature = "tauri")]
+fn dedupe_devices(devices: Vec<EngineDevice>) -> Vec<EngineDevice> {
+    let mut keep = vec![false; devices.len()];
+    let mut done: Vec<(String, u64)> = Vec::new();
+    for device in &devices {
+        let key = (device.name.clone(), device.mem);
+        if done.contains(&key) {
+            continue;
+        }
+        done.push(key.clone());
+        // Backends in preference order, each with the entries it lists.
+        let mut by_rank: Vec<(u8, Vec<usize>)> = Vec::new();
+        for (i, other) in devices.iter().enumerate() {
+            if other.name != key.0 || other.mem != key.1 {
+                continue;
+            }
+            let rank = backend_rank(&other.id);
+            match by_rank.iter_mut().find(|(r, _)| *r == rank) {
+                Some((_, list)) => list.push(i),
+                None => by_rank.push((rank, vec![i])),
+            }
+        }
+        by_rank.sort_by_key(|(rank, _)| *rank);
+        // As many cards as the backend that sees the most of them; the
+        // preferred backend names the ones it can drive, the rest are filled
+        // from the next backends in turn.
+        let cards = by_rank.iter().map(|(_, list)| list.len()).max().unwrap_or(0);
+        let mut chosen = 0usize;
+        for (_, list) in &by_rank {
+            for &i in list {
+                if chosen < cards {
+                    keep[i] = true;
+                    chosen += 1;
+                }
+            }
+        }
+    }
+    devices
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(device, keep)| keep.then_some(device))
+        .collect()
+}
+
 /// Enumerates the devices the shipped engine can offload to.
 ///
 /// Runs the worker with `--list-devices` rather than asking a live one: the
@@ -563,12 +634,14 @@ async fn list_devices(
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    serde_json::from_slice(&out.stdout).map_err(|e| {
-        format!(
-            "unreadable device list: {e} (output: {})",
-            String::from_utf8_lossy(&out.stdout).trim()
-        )
-    })
+    serde_json::from_slice(&out.stdout)
+        .map(dedupe_devices)
+        .map_err(|e| {
+            format!(
+                "unreadable device list: {e} (output: {})",
+                String::from_utf8_lossy(&out.stdout).trim()
+            )
+        })
 }
 
 /// Reload outcome, for the caller's log line. All four lists together name
@@ -873,6 +946,72 @@ pub async fn erase_thread_slot_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "tauri")]
+    fn dev(id: &str, name: &str, mem: u64) -> EngineDevice {
+        EngineDevice { id: id.into(), name: name.into(), mem, free: mem / 2 }
+    }
+
+    #[cfg(feature = "tauri")]
+    #[test]
+    fn a_card_listed_by_cuda_and_vulkan_counts_once() {
+        let listed = vec![
+            dev("CUDA0", "NVIDIA GeForce RTX 5080", 16303),
+            dev("Vulkan0", "NVIDIA GeForce RTX 5080", 16303),
+        ];
+        let ids: Vec<_> = dedupe_devices(listed).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["CUDA0"]);
+    }
+
+    #[cfg(feature = "tauri")]
+    #[test]
+    fn the_preferred_backend_wins_whatever_the_listing_order() {
+        let listed = vec![
+            dev("Vulkan0", "NVIDIA GeForce RTX 5080", 16303),
+            dev("CUDA0", "NVIDIA GeForce RTX 5080", 16303),
+        ];
+        let ids: Vec<_> = dedupe_devices(listed).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["CUDA0"]);
+    }
+
+    #[cfg(feature = "tauri")]
+    #[test]
+    fn two_identical_cards_stay_two() {
+        let listed = vec![
+            dev("CUDA0", "RTX 5080", 16303),
+            dev("CUDA1", "RTX 5080", 16303),
+            dev("Vulkan0", "RTX 5080", 16303),
+            dev("Vulkan1", "RTX 5080", 16303),
+        ];
+        let ids: Vec<_> = dedupe_devices(listed).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["CUDA0", "CUDA1"]);
+    }
+
+    #[cfg(feature = "tauri")]
+    #[test]
+    fn a_card_cuda_cannot_drive_stays_on_vulkan() {
+        // A second identical card hidden from the CUDA add-on (too old for it).
+        let listed = vec![
+            dev("CUDA0", "RTX 5080", 16303),
+            dev("Vulkan0", "RTX 5080", 16303),
+            dev("Vulkan1", "RTX 5080", 16303),
+        ];
+        let ids: Vec<_> = dedupe_devices(listed).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["CUDA0", "Vulkan0"]);
+    }
+
+    #[cfg(feature = "tauri")]
+    #[test]
+    fn different_cards_and_vulkan_only_machines_are_untouched() {
+        let listed = vec![
+            dev("Vulkan0", "AMD Radeon RX 7900", 24560),
+            dev("Vulkan1", "NVIDIA GeForce GTX 1060", 6144),
+            dev("CUDA0", "NVIDIA GeForce RTX 5080", 16303),
+            dev("Vulkan2", "NVIDIA GeForce RTX 5080", 16303),
+        ];
+        let ids: Vec<_> = dedupe_devices(listed).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["Vulkan0", "Vulkan1", "CUDA0"]);
+    }
 
     fn idle_child() -> tokio::process::Child {
         #[cfg(windows)]

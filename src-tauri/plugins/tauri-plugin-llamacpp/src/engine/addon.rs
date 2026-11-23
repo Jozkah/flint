@@ -550,6 +550,15 @@ pub struct InstalledAddon {
 }
 
 /// `<root>/<kind>-<tag>`.
+/// The CUDA toolkit an installed add-on was built with, from its manifest. The
+/// worker that loads it is the bundled one, which carries no toolkit of its
+/// own, so this is where the version the driver check needs comes from.
+pub fn toolkit_of(dir: &Path) -> Option<String> {
+    let bytes = fs::read(dir.join(MANIFEST_FILE)).ok()?;
+    let manifest: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    manifest.get("cuda_toolkit")?.as_str().map(str::to_string)
+}
+
 pub fn install_dir(root: &Path, kind: &str, tag: &str) -> PathBuf {
     root.join(format!("{kind}-{tag}"))
 }
