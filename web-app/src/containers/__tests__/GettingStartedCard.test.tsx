@@ -7,7 +7,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
-import { GettingStartedCard } from '../GettingStartedCard'
+import {
+  GettingStartedCard,
+  clipRecentTitle,
+  RECENT_TITLE_MAX,
+} from '../GettingStartedCard'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
@@ -47,6 +51,16 @@ describe('GettingStartedCard', () => {
       to: '/threads/$threadId',
       params: { threadId: 'b' },
     })
+  })
+
+  it('cuts a long chat title in the resume link so it cannot run past the card', () => {
+    expect(clipRecentTitle('A short title')).toBe('A short title')
+    const url = 'https://example.com/' + 'x'.repeat(300)
+    const clipped = clipRecentTitle(url)
+    expect(Array.from(clipped)).toHaveLength(RECENT_TITLE_MAX)
+    expect(clipped.endsWith('…')).toBe(true)
+    // Not through the middle of a character.
+    expect(clipRecentTitle('🚀'.repeat(200))).toBe('🚀'.repeat(RECENT_TITLE_MAX - 1) + '…')
   })
 
   it('marks observed steps from real state and only confirmed steps from the user', () => {
