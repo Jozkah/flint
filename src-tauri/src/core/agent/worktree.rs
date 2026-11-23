@@ -779,7 +779,17 @@ pub fn ensure_with(
         &["rev-parse", "--verify", &format!("refs/heads/{branch}")],
     )
     .is_ok();
-    if branch_exists {
+    // A branch that is already there is somebody's and refuses, with one
+    // exception: the empty branch an earlier attempt of this process made when
+    // `worktree add -b` created it and then failed (a lock held by a concurrent
+    // git, say), and could not remove again. Refusing that one would make the
+    // retry that follows a lock conflict fail for good. It is taken over only
+    // if this process recorded it, and only while it is still empty and
+    // checked out nowhere.
+    let adopt = branch_exists
+        && was_left_by_failed_add(repo, &branch)
+        && is_unused_leftover(repo, &branch, &head);
+    if branch_exists && !adopt {
         return Err(format!(
             "branch {branch} already exists; remove it or use another session"
         ));
@@ -791,7 +801,28 @@ pub fn ensure_with(
     }
     let path_str = path.to_string_lossy().to_string();
     crate::core::agent::vcs::refuse_filter_programs(repo)?;
-    run(repo, &["worktree", "add", "-b", &branch, &path_str, &head])?;
+    let added = if adopt {
+        run(repo, &["worktree", "add", &path_str, &branch])
+    } else {
+        run(repo, &["worktree", "add", "-b", &branch, &path_str, &head])
+    };
+    if let Err(error) = added {
+        // `worktree add -b` creates the branch first; a failure after that
+        // leaves it behind. Drop it again when nothing is on it, so the next
+        // attempt starts clean instead of finding a branch it did not expect.
+        if !adopt && is_unused_leftover(repo, &branch, &head) {
+            let removed = (0..3).any(|attempt| {
+                if attempt > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                run(repo, &["branch", "-D", &branch]).is_ok()
+            });
+            if !removed {
+                remember_leftover(repo, &branch);
+            }
+        }
+        return Err(error);
+    }
     notes.extend(copy_worktreeinclude(repo, &path));
 
     Ok(WorktreeRecord {
@@ -804,6 +835,39 @@ pub fn ensure_with(
         base_branch,
         notes,
     })
+}
+
+/// Branches this process made and could not take back after a failed
+/// `worktree add -b`, keyed by repository and name.
+static LEFT_BY_FAILED_ADD: std::sync::Mutex<Vec<(PathBuf, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn remember_leftover(repo: &Path, branch: &str) {
+    if let Ok(mut left) = LEFT_BY_FAILED_ADD.lock() {
+        left.push((repo.to_path_buf(), branch.to_string()));
+    }
+}
+
+fn was_left_by_failed_add(repo: &Path, branch: &str) -> bool {
+    LEFT_BY_FAILED_ADD
+        .lock()
+        .map(|left| left.iter().any(|(r, b)| r == repo && b == branch))
+        .unwrap_or(false)
+}
+
+/// A local branch that points at `head` and is not checked out in any worktree:
+/// it holds nothing a session did, so reusing or deleting it loses nothing.
+fn is_unused_leftover(repo: &Path, branch: &str, head: &str) -> bool {
+    match run(repo, &["rev-parse", "--verify", &format!("refs/heads/{branch}^{{commit}}")]) {
+        Ok(tip) if tip.trim() == head.trim() => {}
+        _ => return false,
+    }
+    match run(repo, &["worktree", "list", "--porcelain"]) {
+        Ok(listing) => {
+            let held = format!("branch refs/heads/{branch}");
+            !listing.lines().any(|l| l.trim() == held)
+        }
+        Err(_) => false,
+    }
 }
 
 /// Find the worktree a reopened session was working in, and only find it:
@@ -2317,6 +2381,58 @@ a.txt
         git_in(&f.repo, &["commit", "-q", "-am", "third"]);
         git_conflicting(&f.repo, &["revert", "--no-edit", "HEAD~1"]);
         assert_created_despite(&f, "revert", "sess-revert");
+    }
+
+    /// What a concurrent git leaves when `worktree add -b` makes the branch and
+    /// then fails on a lock: the session's branch, at the base commit, with no
+    /// worktree. The retry used to be refused with "already exists" forever.
+    #[test]
+    fn a_retry_takes_over_the_empty_branch_a_failed_attempt_left() {
+        let f = fixture();
+        let options = EnsureOptions { title: Some("Fix the parser".to_string()), base: None };
+        let branch = planned_branch("s-retry", options.title.as_deref());
+        git_in(&f.repo, &["branch", &branch, "main"]);
+        remember_leftover(&f.repo, &branch);
+        let record = ensure_with(&f.repo, &f.worktrees, "s-retry", &options).expect("adopts the leftover");
+        assert_eq!(record.branch, branch);
+        assert!(PathBuf::from(&record.path).is_dir());
+    }
+
+    #[test]
+    fn a_branch_nobody_recorded_is_refused_even_when_empty() {
+        let f = fixture();
+        let options = EnsureOptions { title: Some("Fix the parser".to_string()), base: None };
+        let branch = planned_branch("s-user", options.title.as_deref());
+        git_in(&f.repo, &["branch", &branch, "main"]);
+        let error = ensure_with(&f.repo, &f.worktrees, "s-user", &options).unwrap_err();
+        assert!(error.contains("already exists"), "{error}");
+    }
+
+    #[test]
+    fn a_branch_with_work_on_it_is_still_refused() {
+        let f = fixture();
+        let options = EnsureOptions { title: Some("Fix the parser".to_string()), base: None };
+        let branch = planned_branch("s-work", options.title.as_deref());
+        git_in(&f.repo, &["checkout", "-q", "-b", &branch]);
+        std::fs::write(f.repo.join("b.txt"), "mine").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "work"]);
+        git_in(&f.repo, &["checkout", "-q", "main"]);
+        remember_leftover(&f.repo, &branch);
+        let error = ensure_with(&f.repo, &f.worktrees, "s-work", &options).unwrap_err();
+        assert!(error.contains("already exists"), "{error}");
+    }
+
+    #[test]
+    fn a_branch_checked_out_elsewhere_is_still_refused() {
+        let f = fixture();
+        let options = EnsureOptions { title: Some("Fix the parser".to_string()), base: None };
+        let branch = planned_branch("s-held", options.title.as_deref());
+        let other = f.worktrees.join("elsewhere");
+        git_in(&f.repo, &["worktree", "add", "-q", "-b", &branch, other.to_str().unwrap(), "main"]);
+        remember_leftover(&f.repo, &branch);
+        let error = ensure_with(&f.repo, &f.worktrees, "s-held", &options).unwrap_err();
+        assert!(error.contains("already exists"), "{error}");
     }
 
     #[test]

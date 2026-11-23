@@ -166,9 +166,7 @@ pub fn model_file_path<R: Runtime>(
 /// Whether every file of `def` is present at its full size.
 pub fn model_installed<R: Runtime>(app: &tauri::AppHandle<R>, def: &ModelDef) -> bool {
     def.files.iter().all(|f| {
-        std::fs::metadata(model_file_path(app, f))
-            .map(|m| m.len() == f.size)
-            .unwrap_or(false)
+        super::present::file_ready(&model_file_path(app, f), f.size, f.sha256)
     })
 }
 
