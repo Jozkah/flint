@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { AddonStatus } from '@/services/engineAddon'
+import { TYPICAL_PACK_MB, formatPackBytes } from '@/services/engineAddon'
 
 const here = vi.hoisted(() => ({ available: true }))
 const api = vi.hoisted(() => ({
@@ -140,6 +141,23 @@ describe('offerView', () => {
   })
   it('a build without the signing key never offers', () => {
     expect(offerView({ ...base, status: status({ supported: false, signing_configured: false }) })).toBeNull()
+  })
+})
+
+describe('pack size', () => {
+  it('labels decimal megabytes the way the release page does', () => {
+    expect(formatPackBytes(531_000_000)).toBe('531 MB')
+    expect(formatPackBytes(1_240_000_000)).toBe('1.24 GB')
+    expect(formatPackBytes(Number.NaN)).toBe('')
+  })
+
+  it('shows the typical size until the manifest is read', async () => {
+    expect(TYPICAL_PACK_MB).toBe(531)
+    reset(status())
+    api.status.mockResolvedValue(status())
+    render(<EngineAddonOffer />)
+    const card = await screen.findByTestId('engine-addon-offer')
+    expect(card.textContent).toContain('531 MB')
   })
 })
 

@@ -70,8 +70,21 @@ export interface AddonProgress {
 
 export const ADDON_PROGRESS_EVENT = 'engine-addon-progress'
 
-/** The CUDA pack's download size when the manifest could not be read yet. */
-export const TYPICAL_PACK_MB = 410
+/**
+ * The CUDA pack's download size, in decimal megabytes like the zip's size on
+ * its release page, for when the manifest could not be read yet.
+ */
+export const TYPICAL_PACK_MB = 531
+
+/**
+ * A download size as a download page shows it: decimal units, so a 531 MB file
+ * does not read as 506.7 MB. (`formatBytes` counts in 1024s under MB labels.)
+ */
+export function formatPackBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`
+  return `${Math.round(bytes / 1e6)} MB`
+}
 
 export const addonsAvailableHere = (): boolean =>
   typeof IS_TAURI !== 'undefined' && IS_TAURI && !isServedByFlint() && !IS_MACOS

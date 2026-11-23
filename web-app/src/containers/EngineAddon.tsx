@@ -20,6 +20,7 @@ import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Icon } from '@/components/ui/icon'
 import {
   TYPICAL_PACK_MB,
+  formatPackBytes,
   addonsAvailableHere,
   hasUsableAddon,
   type AddonFailure,
@@ -55,15 +56,15 @@ function progressLine(t: T, p: AddonProgress | null): { text: string; percent: n
   const percent = p.total > 0 ? Math.floor((p.received / p.total) * 100) : 0
   return {
     text: t('engine:addon.downloading', {
-      received: formatBytes(p.received),
-      total: formatBytes(p.total),
+      received: formatPackBytes(p.received),
+      total: formatPackBytes(p.total),
     }),
     percent,
   }
 }
 
 function packSize(remoteBytes: number | undefined): string {
-  return formatBytes(remoteBytes ?? TYPICAL_PACK_MB * 1024 * 1024)
+  return formatPackBytes(remoteBytes ?? TYPICAL_PACK_MB * 1e6)
 }
 
 /** Keeps the add-on status fresh and notes the first local model load. */
