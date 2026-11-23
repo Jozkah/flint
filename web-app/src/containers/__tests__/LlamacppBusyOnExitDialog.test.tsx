@@ -5,6 +5,11 @@ import '@testing-library/jest-dom'
 const hoisted = vi.hoisted(() => ({
   invoke: vi.fn(async () => undefined),
   listeners: {} as Record<string, (event: { payload: unknown }) => void>,
+  persist: vi.fn(async () => undefined),
+}))
+
+vi.mock('@/lib/persistInterruptedReplies', () => ({
+  persistInterruptedReplies: hoisted.persist,
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: hoisted.invoke }))
@@ -43,5 +48,23 @@ describe('LlamacppBusyOnExitDialog', () => {
     fireEvent.click(await screen.findByText('common:cancel'))
     expect(hoisted.invoke).toHaveBeenCalledWith('cancel_exit')
     expect(hoisted.invoke).not.toHaveBeenCalledWith('confirm_exit')
+  })
+
+  it('saves the replies still streaming before Force quit exits', async () => {
+    render(<LlamacppBusyOnExitDialog />)
+    await waitFor(() =>
+      expect(hoisted.listeners['llamacpp-busy-on-exit']).toBeDefined()
+    )
+    act(() => {
+      hoisted.listeners['llamacpp-busy-on-exit']({ payload: ['model-a'] })
+    })
+    fireEvent.click(await screen.findByText('common:llamacppBusyOnExit.forceQuit'))
+    await waitFor(() =>
+      expect(hoisted.invoke).toHaveBeenCalledWith('confirm_exit')
+    )
+    expect(hoisted.persist).toHaveBeenCalledTimes(1)
+    expect(hoisted.persist.mock.invocationCallOrder[0]).toBeLessThan(
+      hoisted.invoke.mock.invocationCallOrder.at(-1)!
+    )
   })
 })

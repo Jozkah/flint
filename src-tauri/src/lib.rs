@@ -862,6 +862,16 @@ fn ensure_main_window_for_exit_dialog<R: tauri::Runtime>(app_handle: &tauri::App
     }
 }
 
+/// Quit from the exit gate. The webview saves what it holds first (replies
+/// still streaming, as interrupted; deferred stores): the close handler leaves
+/// that flush to here, since it stops every streaming reply.
+#[cfg(not(feature = "cli"))]
+async fn quit_after_flush<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>, exit_code: i32) {
+    flush_webview_before_exit(app_handle).await;
+    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+    app_handle.exit(exit_code);
+}
+
 #[cfg(not(feature = "cli"))]
 async fn handle_graceful_exit<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -898,8 +908,7 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
                     log::info!("{}: exit cancelled by the user", source);
                     return;
                 }
-                SHUTTING_DOWN.store(true, Ordering::SeqCst);
-                app_handle.exit(exit_code);
+                quit_after_flush(&app_handle, exit_code).await;
                 return;
             }
             Ok(Some(busy)) => {
@@ -925,8 +934,7 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
                     }
                     if let Err(e) = app_handle.emit("llamacpp-busy-on-exit", &busy) {
                         log::warn!("emit llamacpp-busy-on-exit failed: {}", e);
-                        SHUTTING_DOWN.store(true, Ordering::SeqCst);
-                        app_handle.exit(exit_code);
+                        quit_after_flush(&app_handle, exit_code).await;
                         return;
                     }
                     emitted = true;
@@ -937,8 +945,7 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
             }
             Err(e) => {
                 log::warn!("{}: try_graceful_stop_engine failed: {}", source, e);
-                SHUTTING_DOWN.store(true, Ordering::SeqCst);
-                app_handle.exit(exit_code);
+                quit_after_flush(&app_handle, exit_code).await;
                 return;
             }
         }
@@ -1722,6 +1729,25 @@ pub fn run_app(app: tauri::App) {
                     api.prevent_close();
                     let app_handle = app.clone();
                     tauri::async_runtime::spawn(async move {
+                        // Ask about a busy model first, while the window is
+                        // still open. The flush stops every streaming reply
+                        // (it saves them as interrupted), and closing the
+                        // window drops the stream too: either way the engine
+                        // cancels the reply, and the exit check then finds it
+                        // idle and quits. The flush runs only once the app
+                        // really quits (handle_graceful_exit does it).
+                        if is_llamacpp_engine_running(&app_handle)
+                            && !GRACEFUL_IN_PROGRESS.swap(true, Ordering::SeqCst)
+                        {
+                            EXIT_CANCELLED.store(false, Ordering::SeqCst);
+                            let _ = app_handle.emit("llamacpp-close-attempt", ());
+                            handle_graceful_exit(app_handle.clone(), "CloseRequested", 0).await;
+                            GRACEFUL_IN_PROGRESS.store(false, Ordering::SeqCst);
+                            // Still running means the user cancelled: the next
+                            // close must flush and ask again.
+                            CLOSE_FLUSHED.store(false, Ordering::SeqCst);
+                            return;
+                        }
                         flush_webview_before_exit(&app_handle).await;
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.close();
@@ -1861,5 +1887,27 @@ mod startup_guard_tests {
             SOURCE.matches("ensure_main_window_for_exit_dialog(&app_handle)").count() >= 2,
             "handle_graceful_exit no longer restores the window for the busy dialog"
         );
+    }
+
+    #[test]
+    fn close_asks_about_a_busy_model_before_destroying_the_window() {
+        // The webview flush stops every streaming reply and destroying the main
+        // window drops the stream, so the busy check has to run before both.
+        let close_branch = SOURCE
+            .split("WindowEvent::CloseRequested { api, .. }")
+            .nth(1)
+            .expect("CloseRequested handler")
+            .split("RunEvent::Reopen")
+            .next()
+            .unwrap();
+        let ask = close_branch
+            .find(["handle_graceful_exit(app_handle.clone(), ", "\"CloseRequested\""].concat().as_str())
+            .expect("the close handler no longer asks about a busy model");
+        let flush = close_branch
+            .find("flush_webview_before_exit(&app_handle)")
+            .expect("the close handler flushes the webview");
+        let close = close_branch.find("window.close()").expect("the close handler closes the window");
+        assert!(ask < flush, "the busy check must come before the flush stops the replies");
+        assert!(ask < close, "the busy check must come before the window is closed");
     }
 }

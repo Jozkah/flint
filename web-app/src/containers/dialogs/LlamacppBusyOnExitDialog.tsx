@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { useAppState } from '@/hooks/useAppState'
 import { isPlatformTauri } from '@/lib/platform/utils'
+import { persistInterruptedReplies } from '@/lib/persistInterruptedReplies'
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,9 @@ export default function LlamacppBusyOnExitDialog() {
   const handleForceQuit = async () => {
     setForcing(true)
     try {
+      // The close no longer flushes before asking, so save the replies still
+      // streaming (as interrupted) before they are stopped. Never rejects.
+      await persistInterruptedReplies()
       const state = useAppState.getState()
       Object.values(state.abortControllers).forEach((ctrl) => {
         try {
