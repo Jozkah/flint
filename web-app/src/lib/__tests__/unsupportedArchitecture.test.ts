@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -24,10 +24,12 @@ vi.mock('@/hooks/useHuggingFaceDownloads', () => ({
 
 describe('the bundled architecture list', () => {
   it('matches the llama.cpp tag the app pins', () => {
-    const buildRs = readFileSync(
-      resolve(process.cwd(), '../src-tauri/plugins/tauri-plugin-llamacpp/build.rs'),
-      'utf8'
-    )
+    // Run from web-app locally and from the repository root in CI.
+    const rel = 'src-tauri/plugins/tauri-plugin-llamacpp/build.rs'
+    const path = [resolve(process.cwd(), rel), resolve(process.cwd(), '..', rel)].find((p) =>
+      existsSync(p)
+    ) as string
+    const buildRs = readFileSync(path, 'utf8')
     const pinned = /LLAMA_CPP_TAG:\s*&str\s*=\s*"(b\d+)"/.exec(buildRs)?.[1]
     // Fails when the engine moves: run scripts/gen-llama-architectures.mjs.
     expect(LLAMA_CPP_ARCHITECTURES_TAG).toBe(pinned)
