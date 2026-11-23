@@ -223,7 +223,7 @@ export function ResumeRecentLink({ className }: { className?: string }) {
     <div className={cn('text-center', className)}>
       <button
         type="button"
-        className="text-[length:calc(var(--ui-font-base)*0.78125)] whitespace-normal text-secondary-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="max-w-full text-[length:calc(var(--ui-font-base)*0.78125)] whitespace-normal [overflow-wrap:anywhere] text-secondary-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
         onClick={() =>
           navigate({
             to: route.threadsDetail,
@@ -231,10 +231,27 @@ export function ResumeRecentLink({ className }: { className?: string }) {
           })
         }
       >
-        {t('onboarding:resumeRecent', { title: recent.title || recent.id })}
+        {t('onboarding:resumeRecent', {
+          title: clipRecentTitle(recent.title || recent.id),
+        })}
       </button>
     </div>
   )
+}
+
+/** The most characters of a chat title the resume link names. */
+export const RECENT_TITLE_MAX = 80
+
+/**
+ * A chat title can be a long pasted URL or a run of text with no spaces. Named
+ * whole in the resume link it ran past the card on a narrow window, so it is
+ * cut with an ellipsis.
+ */
+export function clipRecentTitle(title: string): string {
+  const chars = Array.from(title)
+  return chars.length > RECENT_TITLE_MAX
+    ? `${chars.slice(0, RECENT_TITLE_MAX - 1).join('')}…`
+    : title
 }
 
 function GuideStep({
