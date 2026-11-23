@@ -134,6 +134,27 @@ const FLUX1_COMPANIONS: &[FileDef] = &[
     },
 ];
 
+// FLUX.2 klein 4B: the VAE is the FLUX.2 one (a different file from the FLUX.1 `ae`),
+// published ungated by Comfy-Org, and the text encoder is the plain Qwen3 4B
+// (not the 2507 instruct build Z-Image uses). The engine takes both through
+// `--vae` and `--llm`, like Z-Image (docs/flux2.md of the pinned engine tag).
+const FLUX2_KLEIN_COMPANIONS: &[FileDef] = &[
+    FileDef {
+        role: Role::Vae,
+        repo: "Comfy-Org/Flux-2-Klein-4B",
+        filename: "split_files/vae/flux2-vae.safetensors",
+        size: 336_211_292,
+        sha256: "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+    },
+    FileDef {
+        role: Role::Llm,
+        repo: "unsloth/Qwen3-4B-GGUF",
+        filename: "Qwen3-4B-Q4_K_M.gguf",
+        size: 2_497_281_312,
+        sha256: "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+    },
+];
+
 pub const FAMILIES: &[Family] = &[
     Family {
         id: "z-image",
@@ -202,6 +223,37 @@ pub const FAMILIES: &[Family] = &[
             steps: 20,
             cfg_scale: 1.0,
             sample_method: Some("euler"),
+            flow_shift: None,
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 16,
+        max_side: 2048,
+        edit: false,
+        extra_args: &[],
+    },
+    Family {
+        id: "flux2-klein",
+        label: "FLUX.2 klein 4B",
+        description: "FLUX.2 klein 4B, distilled or base. Also downloads a Qwen3 4B text encoder (2.5 GB) and a VAE (0.3 GB).",
+        hints: &[
+            "flux-2-klein-4b",
+            "flux.2-klein-4b",
+            "flux2-klein-4b",
+            "flux_2_klein_4b",
+            "flux2_klein_4b",
+            "flux-2-klein-base-4b",
+            "flux.2-klein-base-4b",
+            "flux2-klein-base-4b",
+            "flux_2_klein_base_4b",
+            "flux2_klein_base_4b",
+        ],
+        companions: FLUX2_KLEIN_COMPANIONS,
+        // The distilled model: 4 steps, no guidance. `def_of` raises both for a base file.
+        defaults: Defaults {
+            steps: 4,
+            cfg_scale: 1.0,
+            sample_method: None,
             flow_shift: None,
             width: 1024,
             height: 1024,
@@ -329,16 +381,23 @@ fn stem_key(path: &str) -> String {
     stem[..end].to_string()
 }
 
+/// `stem_key` with the separators dropped, so `qwen_3_4b` (ComfyUI's spelling)
+/// and `Qwen3-4B` (the GGUF repo's) name the same encoder.
+fn loose_key(path: &str) -> String {
+    stem_key(path).chars().filter(|c| c.is_ascii_alphanumeric()).collect()
+}
+
 /// Which of the person's own files stand in for a family's companions. A file
-/// matches a companion when their names agree apart from the quantisation, so a
-/// text encoder the person keeps in another quant is still found.
+/// matches a companion when their names agree apart from the quantisation and
+/// the separators, so a text encoder the person keeps in another quant or
+/// another spelling is still found.
 pub fn match_companions(family: &Family, candidates: &[(String, u64)]) -> Vec<LocalCompanion> {
     family
         .companions
         .iter()
         .filter_map(|want| {
-            let key = stem_key(want.filename);
-            let (path, size) = candidates.iter().find(|(p, size)| *size > 0 && stem_key(p) == key)?;
+            let key = loose_key(want.filename);
+            let (path, size) = candidates.iter().find(|(p, size)| *size > 0 && loose_key(p) == key)?;
             Some(LocalCompanion { role: want.role, path: path.clone(), size: *size })
         })
         .collect()
@@ -388,6 +447,11 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
     // The fast FLUX.1 variant needs only a few steps.
     if family.id == "flux1" && record.filename.to_ascii_lowercase().contains("schnell") {
         defaults.steps = 4;
+    }
+    // The base (undistilled) klein needs real guidance and more steps.
+    if family.id == "flux2-klein" && record.filename.to_ascii_lowercase().contains("base") {
+        defaults.steps = 20;
+        defaults.cfg_scale = 4.0;
     }
     Some(ModelDef {
         id: leak(&record.id),
@@ -636,6 +700,7 @@ mod tests {
         assert_eq!(roles("qwen-image"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("qwen-image-2.1"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("flux1"), vec![Role::Vae, Role::ClipL, Role::T5xxl]);
+        assert_eq!(roles("flux2-klein"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("qwen-image-edit-2509"), vec![Role::Vae, Role::Llm, Role::LlmVision]);
     }
 
@@ -671,6 +736,49 @@ mod tests {
         schnell.repo = "leejet/FLUX.1-schnell-gguf".into();
         assert_eq!(def_of(&schnell).unwrap().defaults.steps, 4);
         assert_eq!(def_of(&record("flux1", "flux1-dev-q4_k.gguf")).unwrap().defaults.steps, 20);
+    }
+
+    #[test]
+    fn flux2_klein_is_a_four_step_model_and_its_base_file_gets_guidance() {
+        let fam = family("flux2-klein").unwrap();
+        assert!(!fam.edit && fam.extra_args.is_empty());
+        let distilled = def_of(&record("flux2-klein", "flux-2-klein-4b-Q4_0.gguf")).unwrap();
+        assert_eq!((distilled.defaults.steps, distilled.defaults.cfg_scale), (4, 1.0));
+        let base = def_of(&record("flux2-klein", "flux-2-klein-base-4b-Q4_0.gguf")).unwrap();
+        assert_eq!((base.defaults.steps, base.defaults.cfg_scale), (20, 4.0));
+        // The weights, the FLUX.2 VAE and the Qwen3 4B text encoder: three files, `--vae` and `--llm`.
+        assert_eq!(distilled.files.iter().map(|f| f.role).collect::<Vec<_>>(), vec![Role::DiffusionModel, Role::Vae, Role::Llm]);
+        assert_eq!(distilled.files[1].filename, "split_files/vae/flux2-vae.safetensors");
+        assert_eq!(distilled.files[2].filename, "Qwen3-4B-Q4_K_M.gguf");
+    }
+
+    #[test]
+    fn flux2_klein_files_are_recognised_and_other_flux_is_not_mistaken_for_it() {
+        assert_eq!(guess_family("leejet/FLUX.2-klein-4B-GGUF", "flux-2-klein-4b-Q4_0.gguf"), Some("flux2-klein"));
+        assert_eq!(guess_family("local", "flux-2-klein-4b-Q8_0.gguf"), Some("flux2-klein"));
+        assert_eq!(guess_family("x/FLUX.2-klein-base-4B-GGUF", "flux-2-klein-base-4b-Q4_0.gguf"), Some("flux2-klein"));
+        // The 9B klein takes another text encoder: not offered the 4B family.
+        assert_eq!(guess_family("x/FLUX.2-klein-9B-GGUF", "flux-2-klein-9b-Q4_0.gguf"), None);
+        assert_eq!(guess_family("leejet/FLUX.1-dev-gguf", "flux1-dev-q4_k.gguf"), Some("flux1"));
+    }
+
+    #[test]
+    fn a_comfyui_folder_supplies_the_klein_companions_in_place() {
+        let fam = family("flux2-klein").unwrap();
+        let found = match_companions(
+            fam,
+            &[
+                ("D:/ComfyUI/models/text_encoders/qwen_3_4b.safetensors".into(), 8_044_982_048),
+                ("D:/ComfyUI/models/vae/flux2-vae.safetensors".into(), 336_211_292),
+                // Z-Image's encoder and VAE are not klein's.
+                ("D:/ComfyUI/models/text_encoders/qwen_3_4b_instruct_2507.safetensors".into(), 8_000_000_000),
+                ("D:/ComfyUI/models/vae/ae.safetensors".into(), 335_304_388),
+            ],
+        );
+        assert_eq!(found.iter().map(|c| (c.role, c.size)).collect::<Vec<_>>(), vec![(Role::Vae, 336_211_292), (Role::Llm, 8_044_982_048)]);
+        assert!(found[1].path.ends_with("qwen_3_4b.safetensors"));
+        // Without the right VAE the ae file is not accepted for it.
+        assert!(match_companions(fam, &[("D:/m/ae.safetensors".into(), 335_304_388)]).is_empty());
     }
 
     #[test]
