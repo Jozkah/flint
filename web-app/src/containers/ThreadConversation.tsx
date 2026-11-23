@@ -36,7 +36,7 @@ import { renderInstructions } from '@/lib/instructionTemplate'
 import { useChatRulesBlock } from '@/hooks/useChatRules'
 import { composeSystemMessage } from '@/lib/chatRules'
 import { generateId } from 'ai'
-import { chatFollowUp } from '@/lib/chatSteering'
+import { chatFollowUp, toolLoopAborted } from '@/lib/chatSteering'
 import type { UIMessage } from '@ai-sdk/react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { isServedByFlint } from '@/lib/platform/utils'
@@ -204,9 +204,7 @@ export function ThreadConversation({
           lastBatchKey.current = key
           notifyToolBatch(threadIdRef.current, names)
         },
-        aborted:
-          !toolCallAbortController.current ||
-          toolCallAbortController.current.signal.aborted,
+        aborted: toolLoopAborted(toolCallAbortController),
         takeSteering: () =>
           sendSteeringRef.current
             ? useMessageQueue.getState().takeSteering(threadIdRef.current)

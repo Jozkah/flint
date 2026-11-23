@@ -79,6 +79,18 @@ export function noReplyStep(messages: UIMessage[]): string | null {
   return acted ? null : `${last.id}:${from}`
 }
 
+/**
+ * Whether the turn's tool loop was stopped. No controller is not a stop: the
+ * loop has finished (or has not started), and a request that ends after it --
+ * a model step that answered nothing -- may still be followed up. Reading the
+ * missing controller as "aborted" made every such follow-up impossible.
+ */
+export function toolLoopAborted(toolAbort: {
+  current: AbortController | null
+}): boolean {
+  return toolAbort.current?.signal.aborted === true
+}
+
 export function chatFollowUp({
   messages,
   aborted,
