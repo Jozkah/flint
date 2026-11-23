@@ -13,6 +13,7 @@
     "unknown": "モデルエンジンが予期しないエラーを報告しました。",
     "MODEL_LOAD_FAILED": "モデルを読み込めませんでした。",
     "MODEL_ARCH_NOT_SUPPORTED": "このモデルのアーキテクチャは、現在のエンジンでは対応していません。設定からエンジンを更新すると、対応する場合があります。",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "このモデルのアーキテクチャ（{{architecture}}）は、同梱の llama.cpp（{{tag}}）では対応していません。より新しいエンジンが必要です。",
     "MODEL_LOAD_TIMED_OUT": "モデルの読み込みに時間がかかりすぎたため、停止されました。通常は、小さいモデルや小さいコンテキストサイズにすると改善します。",
     "MISSING_SHARED_LIBRARY": "エンジンに必要なライブラリがないため、起動できません。",
     "GPU_DRIVER_TOO_OLD": "お使いの GPU ドライバーは、このエンジンには古すぎます。ドライバーを更新するか、設定で CPU エンジンに切り替えると解決します。",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "GPU ドライバーがクラッシュしました",
   "gpuCrashCpuFallbackQuestion": "このモデルの読み込み中に GPU ドライバーがクラッシュしました。代わりに CPU で読み込みますか？動作は遅くなります。",
   "gpuCrashCpuFallbackConfirm": "CPU で読み込む",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "このモデルは動作しない可能性があります",
+  "unsupportedArchDescription": "このモデルのアーキテクチャ（{{architecture}}）は、同梱の llama.cpp（{{tag}}）では対応していません。より新しいエンジンが必要です。",
+  "unsupportedArchDownload": "それでもダウンロード",
+  "unsupportedArchCancel": "キャンセル"
 }

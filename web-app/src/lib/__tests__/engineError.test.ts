@@ -94,6 +94,25 @@ describe('describeEngineError', () => {
     expect(text).toContain('invalid ggml type 142')
   })
 
+  it('names the architecture and engine tag of an unsupported model', () => {
+    const text = describeEngineError({
+      code: 'MODEL_ARCH_NOT_SUPPORTED',
+      architecture: 'inkling',
+      engine_tag: 'b12359',
+    })
+
+    expect(mockT).toHaveBeenCalledWith(
+      'model-errors:engine.MODEL_ARCH_NOT_SUPPORTED_NAMED',
+      { architecture: 'inkling', tag: 'b12359' }
+    )
+    expect(text).toContain('MODEL_ARCH_NOT_SUPPORTED_NAMED')
+  })
+
+  it('keeps the general text when the architecture is not known', () => {
+    describeEngineError({ code: 'MODEL_ARCH_NOT_SUPPORTED' })
+    expect(mockT).toHaveBeenCalledWith('model-errors:engine.MODEL_ARCH_NOT_SUPPORTED')
+  })
+
   it('appends the missing library names, which are not translatable', () => {
     const text = describeEngineError({
       code: 'MISSING_SHARED_LIBRARY',

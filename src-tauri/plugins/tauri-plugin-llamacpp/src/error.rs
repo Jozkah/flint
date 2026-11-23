@@ -46,6 +46,13 @@ pub struct LlamacppError {
     /// install advice instead of showing raw engine output.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub missing_libraries: Option<Vec<String>>,
+    /// `general.architecture` of a model the engine cannot load
+    /// (`ModelArchNotSupported`), so the UI can name it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    /// The llama.cpp release the bundled engine is built from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine_tag: Option<String>,
 }
 
 impl LlamacppError {
@@ -55,7 +62,23 @@ impl LlamacppError {
             message,
             details,
             missing_libraries: None,
+            architecture: None,
+            engine_tag: None,
         }
+    }
+
+    /// An unsupported architecture, named. The GGUF header's own value wins
+    /// over what llama.cpp's log quoted; the log's is the fallback.
+    pub fn with_architecture(mut self, from_header: Option<String>) -> Self {
+        if matches!(self.code, ErrorCode::ModelArchNotSupported) {
+            let from_log = self.details.as_deref().and_then(architecture_in_log);
+            self.architecture = from_header
+                .filter(|a| !a.trim().is_empty())
+                .or(from_log)
+                .map(|a| a.trim().to_string());
+            self.engine_tag = Some(crate::engine::PINNED_TAG.to_string());
+        }
+        self
     }
 
     /// A load that failed because the model does not fit this device at any
@@ -201,16 +224,32 @@ impl LlamacppError {
             ));
         }
 
-        if lower.contains("error loading model architecture") {
-            return Some(Self::new(
-                ErrorCode::ModelArchNotSupported,
-                "The model's architecture is not supported by this version of the backend.".into(),
-                Some(output.into()),
-            ));
+        if lower.contains("error loading model architecture")
+            || lower.contains("unknown model architecture")
+        {
+            return Some(
+                Self::new(
+                    ErrorCode::ModelArchNotSupported,
+                    "The model's architecture is not supported by this version of the backend.".into(),
+                    Some(output.into()),
+                )
+                .with_architecture(None),
+            );
         }
 
         None
     }
+}
+
+/// The name llama.cpp quotes in "unknown model architecture: 'name'".
+fn architecture_in_log(output: &str) -> Option<String> {
+    let lower = output.to_lowercase();
+    let at = lower.find("unknown model architecture")?;
+    let rest = &output[at..];
+    let open = rest.find('\'')?;
+    let close = rest[open + 1..].find('\'')?;
+    let name = &rest[open + 1..open + 1 + close];
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// GPU backends whose kernel table can be missing a quantization type.
@@ -647,6 +686,31 @@ mod tests {
         let err = LlamacppError::from_load_failure(raw);
         assert!(matches!(err.code, ErrorCode::ModelFormatNotSupported), "{err:?}");
         assert_eq!(err.details.as_deref(), Some(raw));
+    }
+
+    #[test]
+    fn names_the_architecture_and_engine_of_an_unsupported_model() {
+        let raw = "llama_model_load: error loading model: error loading model architecture: unknown model architecture: 'inkling'";
+        let err = LlamacppError::from_load_failure(raw);
+        assert!(matches!(err.code, ErrorCode::ModelArchNotSupported), "{err:?}");
+        assert_eq!(err.architecture.as_deref(), Some("inkling"));
+        assert_eq!(err.engine_tag.as_deref(), Some(crate::engine::PINNED_TAG));
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["architecture"], "inkling");
+        assert_eq!(json["engine_tag"], crate::engine::PINNED_TAG);
+    }
+
+    #[test]
+    fn the_header_architecture_wins_over_the_log() {
+        let err = LlamacppError::from_load_failure("unknown model architecture: 'from-log'")
+            .with_architecture(Some("inkling".into()));
+        assert_eq!(err.architecture.as_deref(), Some("inkling"));
+        // Only an unsupported architecture carries one.
+        let other = LlamacppError::from_load_failure("out of memory").with_architecture(Some("x".into()));
+        assert!(other.architecture.is_none() && other.engine_tag.is_none());
+        // No quoted name and no header: the code still says what happened.
+        let bare = LlamacppError::from_load_failure("error loading model architecture");
+        assert!(bare.architecture.is_none());
     }
 
     #[test]

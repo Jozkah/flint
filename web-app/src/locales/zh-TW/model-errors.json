@@ -13,6 +13,7 @@
     "unknown": "模型引擎回報了非預期的錯誤。",
     "MODEL_LOAD_FAILED": "無法載入模型。",
     "MODEL_ARCH_NOT_SUPPORTED": "目前的引擎不支援此模型的架構。從「設定」更新引擎可能會新增支援。",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "此模型的架構（{{architecture}}）不受內建 llama.cpp（{{tag}}）支援，需要較新的引擎。",
     "MODEL_LOAD_TIMED_OUT": "模型載入時間過長而被停止。通常使用較小的模型或較小的上下文大小會有幫助。",
     "MISSING_SHARED_LIBRARY": "缺少引擎所需的程式庫，因此無法啟動。",
     "GPU_DRIVER_TOO_OLD": "你的 GPU 驅動程式對此引擎來說太舊了。更新驅動程式，或在「設定」中切換到 CPU 引擎，即可解決此問題。",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "GPU 驅動程式當機",
   "gpuCrashCpuFallbackQuestion": "載入此模型時 GPU 驅動程式當機。改為在 CPU 上載入？速度會變慢。",
   "gpuCrashCpuFallbackConfirm": "在 CPU 上載入",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "此模型可能無法執行",
+  "unsupportedArchDescription": "此模型的架構（{{architecture}}）不受內建 llama.cpp（{{tag}}）支援，需要較新的引擎。",
+  "unsupportedArchDownload": "仍然下載",
+  "unsupportedArchCancel": "取消"
 }

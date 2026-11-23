@@ -1,3 +1,4 @@
+import { confirmUnsupportedArchitecture } from '@/lib/unsupportedArchitecture'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Check,
@@ -157,6 +158,7 @@ export function HuggingFaceDownloadAction({
         token,
         replace: updateAvailable,
         models: serviceHub.models(),
+        confirmUnsupported: confirmUnsupportedArchitecture,
       })
     } catch (error) {
       toast.error(t('sweep:hub.downloadStartFailed'), {

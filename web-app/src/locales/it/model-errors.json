@@ -13,6 +13,7 @@
     "unknown": "Il motore del modello ha segnalato un errore imprevisto.",
     "MODEL_LOAD_FAILED": "Non è stato possibile caricare il modello.",
     "MODEL_ARCH_NOT_SUPPORTED": "L'architettura di questo modello non è supportata dal motore attuale. Aggiornare il motore dalle Impostazioni potrebbe aggiungere il supporto.",
+    "MODEL_ARCH_NOT_SUPPORTED_NAMED": "L'architettura di questo modello ({{architecture}}) non è supportata dal llama.cpp incluso ({{tag}}). Serve un motore più recente.",
     "MODEL_LOAD_TIMED_OUT": "Il modello ha impiegato troppo a caricarsi ed è stato fermato. Un modello più piccolo o una dimensione di contesto minore di solito aiutano.",
     "MISSING_SHARED_LIBRARY": "Manca una libreria necessaria al motore, quindi non può avviarsi.",
     "GPU_DRIVER_TOO_OLD": "Il driver della tua GPU è troppo vecchio per questo motore. Aggiornare il driver, o passare al motore CPU nelle Impostazioni, risolverà il problema.",
@@ -45,5 +46,9 @@
   "gpuCrashCpuFallbackTitle": "Il driver della GPU si è bloccato",
   "gpuCrashCpuFallbackQuestion": "Il driver della GPU si è bloccato durante il caricamento di questo modello. Caricarlo sulla CPU? Sarà più lento.",
   "gpuCrashCpuFallbackConfirm": "Carica sulla CPU",
-  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings."
+  "emptyReplyDetail": "The model finished without returning a reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try regenerating, or check the provider settings.",
+  "unsupportedArchTitle": "Questo modello potrebbe non funzionare",
+  "unsupportedArchDescription": "L'architettura di questo modello ({{architecture}}) non è supportata dal llama.cpp incluso ({{tag}}). Serve un motore più recente.",
+  "unsupportedArchDownload": "Scarica comunque",
+  "unsupportedArchCancel": "Annulla"
 }
