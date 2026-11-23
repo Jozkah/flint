@@ -1091,7 +1091,11 @@ function backendOptionsFor(
       : toolName === 'write' || toolName === 'edit'
         ? // Stopping the run withdraws the question about a flagged line.
           { signal }
-        : {}),
+        : toolName.startsWith('studio_')
+          ? // A picture can take minutes: Stop has to reach the call so it
+            // tells the engine to cancel instead of leaving it rendering.
+            { signal }
+          : {}),
     // Browser tools ask the user themselves (domain, action, submit).
     // Auto mode has nobody to ask: they then run only on sites a saved
     // rule or the project's allowed domains already cover.

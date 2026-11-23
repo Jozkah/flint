@@ -494,6 +494,7 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
 /// is, not copied. `companions` are other files the person has (text encoders,
 /// a VAE); those that match what the family needs are used in place too, and the
 /// rest are downloaded as for any model, from the Studio model list.
+// ipc-scope: dialog (a weights file the person picked; stat/read only, canonicalized, never written or copied)
 #[tauri::command(async)]
 pub fn diffusion_add_local_model<R: Runtime>(
     app: tauri::AppHandle<R>,
