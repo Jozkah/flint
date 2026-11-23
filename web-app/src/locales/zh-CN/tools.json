@@ -129,7 +129,9 @@
       "openPath": "在屏幕上打开",
       "skillWrite": "保存技能",
       "memoryWrite": "保存到记忆",
-      "default": "更改此计算机"
+      "default": "更改此计算机",
+      "studioGenerate": "在 Studio 中生成图片",
+      "studioOpen": "在编辑器中打开图片"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "没有使用该编号的进程正在运行",
     "kill": "结束进程 {{pid}}：{{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}}服务 {{name}}（{{display}}，当前{{status}}）"
+    "serviceDetail": "{{verb}}服务 {{name}}（{{display}}，当前{{status}}）",
+    "studioGenerate": "使用 {{model}} 以 {{size}} 生成，图片数量：{{count}}。这会使用显卡，可能需要一分钟或更久。\n{{prompt}}",
+    "studioOpen": "用 {{program}} 打开图片 {{id}}：\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

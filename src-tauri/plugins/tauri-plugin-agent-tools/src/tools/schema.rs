@@ -150,7 +150,7 @@ mod tests {
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
         // Per platform: the Windows-only tools are advertised on Windows only.
-        assert_eq!(schemas.len(), if cfg!(windows) { 59 } else { 59 - WINDOWS_ONLY_TOOLS.len() });
+        assert_eq!(schemas.len(), if cfg!(windows) { 62 } else { 62 - WINDOWS_ONLY_TOOLS.len() });
         assert_eq!(WINDOWS_ONLY_TOOLS.len(), 9);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");

@@ -2052,6 +2052,72 @@ async fn a_chat_thread_reads_its_attached_folders_read_only() {
     let _ = std::fs::remove_dir_all(&outside);
 }
 
+/// Studio saves its pictures in `<data>/images`. Flint's data folder is off
+/// limits to the file tools (it holds provider keys), so a path from
+/// `studio_list_generations` is refused until the desktop passes that one
+/// folder as an extra read-only folder for the conversation that was handed
+/// the path. The grant covers the gallery folder and nothing around it, and
+/// never lets anything be written.
+#[tokio::test]
+async fn the_studio_gallery_folder_is_readable_only_through_an_explicit_read_only_grant() {
+    let data = unique_data_folder();
+    let df = data.to_string_lossy().to_string();
+    let images = data.join("images");
+    std::fs::create_dir_all(&images).unwrap();
+    std::fs::write(images.join("pic.txt"), "gallery file").unwrap();
+    std::fs::write(data.join("settings.json"), "{\"apiKey\":\"secret\"}").unwrap();
+    let images_str = images.to_string_lossy().to_string();
+    let call = |name: &str, args: serde_json::Value, grant: bool| {
+        execute_tool(
+            df.clone(),
+            "studio-chat".into(),
+            None,
+            name.into(),
+            args,
+            None,
+            None,
+            None,
+            None,
+            Some(WorkspaceScope::Thread),
+            None,
+            None,
+            None,
+            grant.then(|| vec![images_str.clone()]),
+            None,
+            None,
+        )
+    };
+    let read_pic = json!({"path": images.join("pic.txt").to_string_lossy()});
+
+    // Without the grant the data folder is refused, gallery included.
+    let out = call("read", read_pic.clone(), false).await;
+    assert!(out.map(|r| r.is_error).unwrap_or(true), "the gallery must be refused without a grant");
+
+    // With it, the gallery file reads.
+    let out = call("read", read_pic, true).await.expect("read gallery file");
+    assert!(!out.is_error, "{}", out.content);
+    assert!(out.content.contains("gallery file"), "{}", out.content);
+
+    // It reaches nothing else in the data folder.
+    let secret = json!({"path": data.join("settings.json").to_string_lossy()});
+    let out = call("read", secret, true).await;
+    assert!(out.map(|r| r.is_error).unwrap_or(true), "settings.json must stay refused");
+
+    // And it is read-only.
+    let write = json!({"path": images.join("new.txt").to_string_lossy(), "content": "x"});
+    let out = call("write", write, true).await;
+    assert!(out.map(|r| r.is_error).unwrap_or(true));
+    assert!(!images.join("new.txt").exists());
+
+    // `request_access` still refuses the data folder: the only way in is the
+    // narrow grant above, not a grant the model can ask for.
+    let ask = json!({"path": images_str, "access_mode": "read", "reason": "look at pictures"});
+    let out = call("request_access", ask, false).await.expect("request_access answers");
+    assert!(out.content.contains("data_folder") || out.content.contains("overlaps"), "{}", out.content);
+
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// One request type carries a call from the execute commands into
 /// `execute_tool_inner` and into an unsandboxed-retry offer, so the retried
 /// call is exactly the one that failed. Only a sandboxed `bash` call keeps one.

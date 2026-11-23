@@ -129,7 +129,9 @@
       "openPath": "Obre a la pantalla",
       "skillWrite": "Desa una habilitat",
       "memoryWrite": "Desa a la memòria",
-      "default": "Canvia aquest ordinador"
+      "default": "Canvia aquest ordinador",
+      "studioGenerate": "Crea una imatge a Studio",
+      "studioOpen": "Obre una imatge al teu editor"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "cap procés amb aquest número s'està executant",
     "kill": "Finalitza el procés {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} servei {{name}} ({{display}}, ara {{status}})"
+    "serviceDetail": "{{verb}} servei {{name}} ({{display}}, ara {{status}})",
+    "studioGenerate": "Genera amb {{model}} a {{size}}, nombre d'imatges: {{count}}. Fa servir la targeta gràfica i pot trigar un minut o més.\n{{prompt}}",
+    "studioOpen": "Obre la imatge {{id}} amb {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

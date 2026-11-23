@@ -129,7 +129,9 @@
       "openPath": "在螢幕上開啟",
       "skillWrite": "儲存技能",
       "memoryWrite": "儲存到記憶",
-      "default": "變更這台電腦"
+      "default": "變更這台電腦",
+      "studioGenerate": "在 Studio 中產生圖片",
+      "studioOpen": "在編輯器中開啟圖片"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "沒有使用該編號的處理程序正在執行",
     "kill": "結束處理程序 {{pid}}：{{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}}服務 {{name}}（{{display}}，目前{{status}}）"
+    "serviceDetail": "{{verb}}服務 {{name}}（{{display}}，目前{{status}}）",
+    "studioGenerate": "使用 {{model}} 以 {{size}} 產生，圖片數量：{{count}}。這會使用顯示卡，可能需要一分鐘或更久。\n{{prompt}}",
+    "studioOpen": "用 {{program}} 開啟圖片 {{id}}：\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

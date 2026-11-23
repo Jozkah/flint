@@ -129,7 +129,9 @@
       "openPath": "Открыть на экране",
       "skillWrite": "Сохранить навык",
       "memoryWrite": "Сохранить в память",
-      "default": "Изменить этот компьютер"
+      "default": "Изменить этот компьютер",
+      "studioGenerate": "Создать изображение в Studio",
+      "studioOpen": "Открыть изображение в редакторе"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "процесс с таким номером не запущен",
     "kill": "Завершить процесс {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} службу {{name}} ({{display}}, сейчас {{status}})"
+    "serviceDetail": "{{verb}} службу {{name}} ({{display}}, сейчас {{status}})",
+    "studioGenerate": "Сгенерировать моделью {{model}} в размере {{size}}, число изображений: {{count}}. Используется видеокарта, может занять минуту или больше.\n{{prompt}}",
+    "studioOpen": "Открыть изображение {{id}} в {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

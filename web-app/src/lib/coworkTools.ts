@@ -93,6 +93,9 @@ export const REVIEW_DENIED_TOOLS = new Set([
   'host_package',
   'docker',
   'git_clone',
+  // Spends the graphics card and writes to the gallery / starts an app.
+  'studio_generate_image',
+  'studio_open_in_editor',
 ])
 
 export const isReviewDeniedTool = (name: string): boolean =>
@@ -593,6 +596,9 @@ const SLIM_DENIED = new Set([
   'image_gen',
   'image_edit',
   'image_view',
+  'studio_list_generations',
+  'studio_generate_image',
+  'studio_open_in_editor',
   'host_ssh',
   'host_wsl',
   'host_package',

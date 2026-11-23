@@ -129,7 +129,9 @@
       "openPath": "Mở trên màn hình",
       "skillWrite": "Lưu kỹ năng",
       "memoryWrite": "Lưu vào bộ nhớ",
-      "default": "Thay đổi máy tính này"
+      "default": "Thay đổi máy tính này",
+      "studioGenerate": "Tạo ảnh trong Studio",
+      "studioOpen": "Mở ảnh trong trình chỉnh sửa của bạn"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "không có tiến trình nào với số đó đang chạy",
     "kill": "Kết thúc tiến trình {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} dịch vụ {{name}} ({{display}}, hiện đang {{status}})"
+    "serviceDetail": "{{verb}} dịch vụ {{name}} ({{display}}, hiện đang {{status}})",
+    "studioGenerate": "Tạo bằng {{model}} ở kích thước {{size}}, số lượng ảnh: {{count}}. Tác vụ dùng card đồ họa và có thể mất một phút hoặc hơn.\n{{prompt}}",
+    "studioOpen": "Mở ảnh {{id}} bằng {{program}}:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

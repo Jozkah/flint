@@ -129,7 +129,9 @@
       "openPath": "स्क्रीन पर खोलें",
       "skillWrite": "स्किल सहेजें",
       "memoryWrite": "मेमोरी में सहेजें",
-      "default": "इस कंप्यूटर में बदलाव करें"
+      "default": "इस कंप्यूटर में बदलाव करें",
+      "studioGenerate": "Studio में एक चित्र बनाएँ",
+      "studioOpen": "अपने एडिटर में चित्र खोलें"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "उस नंबर की कोई प्रोसेस नहीं चल रही",
     "kill": "प्रोसेस {{pid}} समाप्त करें: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "{{verb}} सेवा {{name}} ({{display}}, अभी {{status}})"
+    "serviceDetail": "{{verb}} सेवा {{name}} ({{display}}, अभी {{status}})",
+    "studioGenerate": "{{model}} से {{size}} में बनाएँ, चित्रों की संख्या: {{count}}। यह आपके ग्राफ़िक्स कार्ड का उपयोग करता है और इसमें एक मिनट या अधिक लग सकता है।\n{{prompt}}",
+    "studioOpen": "चित्र {{id}} को {{program}} में खोलें:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

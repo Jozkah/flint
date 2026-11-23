@@ -129,7 +129,9 @@
       "openPath": "화면에서 열기",
       "skillWrite": "스킬 저장",
       "memoryWrite": "메모리에 저장",
-      "default": "이 컴퓨터 변경"
+      "default": "이 컴퓨터 변경",
+      "studioGenerate": "Studio에서 이미지 만들기",
+      "studioOpen": "편집기에서 이미지 열기"
     },
     "computer": {
       "target": "screen ({{x}}, {{y}})",
@@ -163,7 +165,9 @@
     "noProcess": "해당 번호의 프로세스가 실행 중이 아닙니다",
     "kill": "프로세스 {{pid}} 종료: {{who}}",
     "service": "{{verb}} service {{name}}",
-    "serviceDetail": "서비스 {{name}}을(를) {{verb}}합니다({{display}}, 현재 {{status}})"
+    "serviceDetail": "서비스 {{name}}을(를) {{verb}}합니다({{display}}, 현재 {{status}})",
+    "studioGenerate": "{{model}}(으)로 {{size}} 크기의 이미지를 생성합니다. 이미지 수: {{count}}. 그래픽 카드를 사용하며 1분 이상 걸릴 수 있습니다.\n{{prompt}}",
+    "studioOpen": "이미지 {{id}}을(를) {{program}}에서 엽니다:\n{{prompt}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

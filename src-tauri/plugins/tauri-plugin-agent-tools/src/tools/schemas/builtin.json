@@ -422,7 +422,9 @@
             "description": "The whole patch text, from `*** Begin Patch` to `*** End Patch`. Paths are relative to your working folder."
           }
         },
-        "required": ["patch"]
+        "required": [
+          "patch"
+        ]
       }
     }
   },
@@ -1564,6 +1566,97 @@
         },
         "required": [
           "image"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "studio_list_generations",
+      "description": "List the pictures and videos made in Flint's Studio, newest first, with the absolute path of each file, its gallery id, prompt, model, size, steps and seed. Read-only. Use it to find a picture the user made (for example to hand its path to another tool, or to pick a gallery id for studio_open_in_editor). The paths are readable with `read` and the other file tools; do not write there. Videos are listed only when kind is \"video\".",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Optional. How many to return, 1 to 50. Default 10."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video"
+            ],
+            "description": "Optional. Default image."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "studio_generate_image",
+      "description": "Make a picture with a picture model the user already installed in Flint's Studio and keep it in the Studio gallery. The user is asked to approve every call. It never installs a model or the engine: if none is installed the result says the user must do that in Studio. Loading the model and rendering can take a minute or more; Stop cancels it. The result lists the new pictures with their gallery ids and absolute file paths. Width and height are optional and, when given, must be multiples of 16 within the model's range (the error states the range).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "What the picture should show."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "Optional. What to keep out of the picture."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional. The id or name of an installed picture model. Omit for the model Studio has loaded or last used."
+          },
+          "width": {
+            "type": "integer",
+            "description": "Optional width in pixels, a multiple of 16. Omit for the model's own size."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Optional height in pixels, a multiple of 16. Omit for the model's own size."
+          },
+          "steps": {
+            "type": "integer",
+            "description": "Optional sampling steps, 1 to 100. Omit for the model's default."
+          },
+          "seed": {
+            "type": "integer",
+            "description": "Optional seed from 0 to 4294967295, to repeat a result."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Optional number of pictures, 1 to 4. Default 1."
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "studio_open_in_editor",
+      "description": "Open one Studio picture, by its gallery id from studio_list_generations or studio_generate_image, in the external editor the user set up in Studio (for example G'MIC-Qt). The user is asked to approve every call. Fails with a clear message when no editor is set up; it never starts any other program.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The gallery id of the picture."
+          }
+        },
+        "required": [
+          "id"
         ]
       }
     }
