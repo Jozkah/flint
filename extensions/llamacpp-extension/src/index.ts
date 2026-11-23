@@ -2678,10 +2678,19 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       if (!file.path) continue
       const full = await joinPath([dataFolder, file.path])
       let exists = false
+      let denied = false
       let size: number | undefined
       try {
         exists = await fs.existsSync(full)
         if (exists) size = (await fs.fileStat(full))?.size
+        else {
+          // `existsSync` is false for a path the app may not read as well as
+          // for a missing one; only a stat tells them apart.
+          denied = await fs.fileStat(full).then(
+            () => false,
+            (e) => String(e instanceof Error ? e.message : e).includes('fs_read_denied')
+          )
+        }
       } catch {
         continue
       }
@@ -2689,6 +2698,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         label: file.label,
         path: full,
         exists,
+        denied,
         size,
         expectedSize: file.expected,
       })

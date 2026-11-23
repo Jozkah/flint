@@ -418,9 +418,14 @@ export function modelFileProblem(file: {
   label: string
   path: string
   exists: boolean
+  /** The read was refused (outside the folders Flint may read), not missing. */
+  denied?: boolean
   size?: number
   expectedSize?: number
 }): string | null {
+  if (!file.exists && file.denied) {
+    return `Flint is not allowed to read the ${file.label} file: ${file.path}. Add the folder with the Add folder button in the import dialog to grant access, then start the model again.`
+  }
   if (!file.exists) {
     return `The ${file.label} file is missing: ${file.path}. It may have been moved, deleted or never finished downloading.`
   }

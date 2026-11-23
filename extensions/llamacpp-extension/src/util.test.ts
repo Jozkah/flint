@@ -820,6 +820,13 @@ describe('modelFileProblem', () => {
     expect(modelFileProblem({ ...base, exists: false })).toContain('is missing')
   })
 
+  it('says a refused read is not granted rather than missing', () => {
+    const msg = modelFileProblem({ ...base, exists: false, denied: true })
+    expect(msg).toContain('not allowed to read')
+    expect(msg).toContain('Add folder')
+    expect(msg).not.toContain('is missing')
+  })
+
   it('reports a file shorter than it should be', () => {
     const msg = modelFileProblem({ ...base, exists: true, size: 10, expectedSize: 100 })
     expect(msg).toContain('incomplete')
