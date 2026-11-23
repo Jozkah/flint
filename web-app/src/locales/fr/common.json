@@ -51,6 +51,7 @@
     "chatFolders": "Dossiers",
     "chatFoldersTitle": "Dossiers de cette discussion",
     "chatFoldersBody": "Les outils de la discussion peuvent lire ces dossiers. Les écritures restent dans son propre bac à sable.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Aucun dossier attaché.",
     "addFolder": "Ajouter un dossier",
     "chatFolderCount": "Dossiers : {{count}}",

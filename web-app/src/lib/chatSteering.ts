@@ -91,6 +91,21 @@ export function toolLoopAborted(toolAbort: {
   return toolAbort.current?.signal.aborted === true
 }
 
+/**
+ * The user stopped the reply. The SDK ends a stopped stream like a finished
+ * one and asks whether to resubmit, so the stop is recorded where that check
+ * reads it: an aborted controller, which stays until the next tool loop
+ * replaces it. Without it the retry for a step with no reply sent a fresh
+ * request right after Stop, and a hung reply could not be stopped.
+ */
+export function markTurnStopped(toolAbort: {
+  current: AbortController | null
+}): void {
+  const stopped = new AbortController()
+  stopped.abort()
+  toolAbort.current = stopped
+}
+
 export function chatFollowUp({
   messages,
   aborted,

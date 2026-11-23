@@ -51,6 +51,7 @@
     "chatFolders": "Thư mục",
     "chatFoldersTitle": "Thư mục của cuộc trò chuyện này",
     "chatFoldersBody": "Công cụ của cuộc trò chuyện có thể đọc các thư mục này. Việc ghi vẫn nằm trong hộp cát riêng.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Chưa gắn thư mục nào.",
     "addFolder": "Thêm thư mục",
     "chatFolderCount": "Thư mục: {{count}}",

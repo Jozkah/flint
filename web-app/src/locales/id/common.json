@@ -51,6 +51,7 @@
     "chatFolders": "Folder",
     "chatFoldersTitle": "Folder untuk chat ini",
     "chatFoldersBody": "Alat chat dapat membaca folder ini. Penulisan tetap di sandbox chat sendiri.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Tidak ada folder terlampir.",
     "addFolder": "Tambah folder",
     "chatFolderCount": "Folder: {{count}}",

@@ -122,6 +122,13 @@ export function runStatus(
         [10 * S, rs('waitingModel', 'Waiting for the model…')],
         [45 * S, rs('stillWaitingModel', 'Still waiting for the model…')],
         [60 * S, rs('modelSlow', 'The model is taking a while…')],
+        [
+          120 * S,
+          rs(
+            'noReplyToResults',
+            'No reply to the tool results yet. Stop to cancel, or keep waiting.'
+          ),
+        ],
       ]),
     }
   }

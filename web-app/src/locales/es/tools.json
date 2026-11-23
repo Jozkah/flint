@@ -98,6 +98,7 @@
     "waitingModel": "Esperando al modelo…",
     "stillWaitingModel": "Aún esperando al modelo…",
     "modelSlow": "El modelo tarda un poco…",
+    "noReplyToResults": "No reply to the tool results yet. Stop to cancel, or keep waiting.",
     "readingResults": "Leyendo resultados de herramientas…",
     "thinking": "Thinking…",
     "stillThinking": "Aún pensando…",

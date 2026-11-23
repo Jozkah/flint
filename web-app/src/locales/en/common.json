@@ -101,6 +101,7 @@
     "chatFolders": "Folders",
     "chatFoldersTitle": "Folders for this chat",
     "chatFoldersBody": "The chat's tools can read these folders. Writes stay in the chat's own sandbox.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "No folders attached.",
     "addFolder": "Add folder",
     "chatFolderCount": "Folders: {{count}}",

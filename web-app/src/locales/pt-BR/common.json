@@ -51,6 +51,7 @@
     "chatFolders": "Pastas",
     "chatFoldersTitle": "Pastas deste chat",
     "chatFoldersBody": "As ferramentas do chat podem ler estas pastas. As gravações ficam na sandbox própria do chat.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Nenhuma pasta anexada.",
     "addFolder": "Adicionar pasta",
     "chatFolderCount": "Pastas: {{count}}",

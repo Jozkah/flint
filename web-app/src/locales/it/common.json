@@ -51,6 +51,7 @@
     "chatFolders": "Cartelle",
     "chatFoldersTitle": "Cartelle di questa chat",
     "chatFoldersBody": "Gli strumenti della chat possono leggere queste cartelle. Le scritture restano nella sua sandbox.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Nessuna cartella collegata.",
     "addFolder": "Aggiungi cartella",
     "chatFolderCount": "Cartelle: {{count}}",

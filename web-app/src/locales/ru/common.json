@@ -51,6 +51,7 @@
     "chatFolders": "Папки",
     "chatFoldersTitle": "Папки этого чата",
     "chatFoldersBody": "Инструменты чата могут читать эти папки. Запись остаётся в собственной песочнице чата.",
+    "chatFoldersToolsOff": "Agent tools are off, so the chat cannot read these folders. Turn them on in Settings > Agent tools.",
     "chatFoldersEmpty": "Папки не подключены.",
     "addFolder": "Добавить папку",
     "chatFolderCount": "Папки: {{count}}",
