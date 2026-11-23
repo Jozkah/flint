@@ -346,6 +346,21 @@ describe('llamacpp_extension', () => {
       await expect(extension.import('owner/repo-model', { modelPath: path }))
         .rejects.toThrow(/not allowed to read .*Add folder/)
     })
+    it('start says a model file outside the readable folders is not granted, not missing', async () => {
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/home/user/.flint')
+      vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+      vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+        cmd === 'read_yaml' ? { model_path: '/home/user/.lmstudio/models/m.gguf' } : undefined
+      )
+      vi.mocked(fs.existsSync).mockResolvedValue(false)
+      vi.mocked(fs.fileStat).mockRejectedValue(new Error('fs_read_denied'))
+      const preflight = (extension as unknown as { preflightModelFiles(id: string): Promise<void> })
+      await expect(preflight.preflightModelFiles('m')).rejects.toThrow(
+        /not allowed to read the model file.*Add folder/
+      )
+      vi.mocked(fs.fileStat).mockRejectedValue(new Error('os error 2'))
+      await expect(preflight.preflightModelFiles('m')).rejects.toThrow(/is missing/)
+    })
     it('should throw error for invalid modelId', async () => {
       await expect(extension.import('invalid/model/../id', { modelPath: '/path/to/model' }))
         .rejects.toThrow('Invalid modelId')
