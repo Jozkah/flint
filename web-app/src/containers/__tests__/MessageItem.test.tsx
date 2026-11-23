@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // ---- Module mocks ----------------------------------------------------------
@@ -748,6 +748,29 @@ describe('MessageItem', () => {
       expect(bodies).toHaveLength(1)
       expect(bodies[0]).toHaveTextContent('final')
     })
+  })
+
+  it('drops the no-reply line once the request is reported as failed', () => {
+    // A failed request lands its error after the first render of the empty
+    // reply; the line saying "empty reply" must not outlive that.
+    render(
+      <MessageItem
+        message={makeMsg({ parts: [] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('empty-run-fallback')).toBeInTheDocument()
+    try {
+      act(() => {
+        useMessageErrors.setState({ errors: { 'msg-1': 'Incorrect API key' } })
+      })
+      expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
+      expect(screen.getByRole('alert')).toHaveTextContent('Incorrect API key')
+    } finally {
+      useMessageErrors.setState({ errors: {} })
+    }
   })
 
   it('words the per-message error title through the translations', () => {

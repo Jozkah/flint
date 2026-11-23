@@ -519,6 +519,13 @@ export const MessageItem = memo(
       isStopped,
       persistedThoughtSeconds,
       transcriptView,
+      // The empty-reply line is withheld when the request itself failed: it
+      // must follow the error (which lands after the first render), not keep
+      // saying "empty reply" above the real cause.
+      messageError,
+      emptyReplyBannerShown,
+      metadata?.finishReason,
+      metadata?.usage,
     ])
 
     const versionNav =
