@@ -52,6 +52,21 @@ describe('emptyRunFallback', () => {
     )
   })
 
+  it('adds how the last step ended to a tool error, so a report tells the causes apart', () => {
+    const parts = [
+      tool({ type: 'tool-read_text_file', state: 'output-error', errorText: 'Access denied - path outside allowed directories' }),
+    ]
+    expect(
+      emptyRunFallback(parts, { stepEnd: { finishReason: 'tool-calls', outputTokens: 12 } })
+    ).toBe(
+      'The run ended without a reply. Last tool error (read_text_file): Access denied - path outside allowed directories The model\'s last step ended with "tool-calls" after 12 output tokens.'
+    )
+    // No finish reason recorded: the tool error alone, as before.
+    expect(emptyRunFallback(parts, { stepEnd: {} })).toBe(
+      'The run ended without a reply. Last tool error (read_text_file): Access denied - path outside allowed directories'
+    )
+  })
+
   it('reads an error carried in a tool output', () => {
     const parts = [tool({ state: 'output-available', output: { isError: true, content: [{ type: 'text', text: 'boom' }] } })]
     expect(emptyRunFallback(parts)).toContain('Last tool error (bash): boom')

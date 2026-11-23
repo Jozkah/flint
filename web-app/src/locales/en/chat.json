@@ -295,6 +295,7 @@
     "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
     "noReply": "The run ended without a reply.",
     "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "stepEnded": "The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
     "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",

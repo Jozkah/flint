@@ -287,6 +287,7 @@
     "noReply": "运行结束，但没有回复。",
     "noReplyToolError": "运行结束，但没有回复。最后一次工具错误（{{tool}}）：{{error}}",
     "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "stepEnded": "The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
     "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",

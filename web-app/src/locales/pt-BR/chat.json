@@ -306,6 +306,7 @@
     "noReply": "A execução terminou sem resposta.",
     "noReplyToolError": "A execução terminou sem resposta. Último erro de ferramenta ({{tool}}): {{error}}",
     "noReplyDetail": "The run ended without a reply. The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
+    "stepEnded": "The model's last step ended with \"{{reason}}\" after {{tokens}} output tokens.",
     "emptyReplyDetail": "The model returned an empty reply (finish reason \"{{reason}}\", {{tokens}} output tokens). Try again or switch model."
   },
   "continuedTitleSuffix": " (continued)",
