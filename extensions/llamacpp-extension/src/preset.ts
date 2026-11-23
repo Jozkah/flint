@@ -16,7 +16,43 @@
 import { fs, joinPath } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
 import { gpuFlashAttnDefault, resolveKvCacheTypes } from './kvCache'
+import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 import type { LlamacppConfig, ModelConfig } from '@janhq/tauri-plugin-llamacpp-api'
+import { detectExpertCountFromGgufMeta } from './util'
+
+/** Bumped when how the expert count is read changes, so models are rechecked. */
+export const EXPERT_CHECK_VERSION = 1
+
+/**
+ * A `model.yml` written by hand or by an older build has no `expert_count`, and
+ * without it the preset drops `moe-cache-mib` as if the model were dense. When
+ * the cache is asked for, read the count from the GGUF header now and keep it
+ * in the file, rather than waiting for the model to be opened once. Any failure
+ * leaves the model as it was.
+ */
+async function withExpertCount<T extends { expert_count?: number }>(
+  mc: T,
+  modelAbs: string,
+  configPath: string
+): Promise<T> {
+  try {
+    if (!(await fs.existsSync(modelAbs))) return mc
+    const header = await readGgufMetadata(modelAbs)
+    const next = {
+      ...mc,
+      expert_count: detectExpertCountFromGgufMeta(header.metadata),
+      expert_check_v: EXPERT_CHECK_VERSION,
+    }
+    try {
+      await invoke<void>('write_yaml', { data: next, savePath: configPath })
+    } catch {
+      // The preset still gets the count; the next build reads it again.
+    }
+    return next
+  } catch {
+    return mc
+  }
+}
 
 // ModelConfig is intentionally widened — model.yml may carry extra fields like
 // `chat_template` that aren't yet in the strict typing.
@@ -1045,6 +1081,14 @@ export async function generatePreset(
     if (!mc?.model_path) continue
 
     const modelAbs = await joinPath([janDataFolderPath, mc.model_path])
+
+    if (
+      typeof mc.expert_count !== 'number' &&
+      typeof mc.moe_cache_mib === 'number' &&
+      mc.moe_cache_mib > 0
+    ) {
+      mc = await withExpertCount(mc, modelAbs, configPath)
+    }
 
     // A model whose path cannot be written is left out entirely: a truncated
     // `model =` line would load the wrong file or fail with a confusing error.

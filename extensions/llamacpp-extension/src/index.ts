@@ -65,6 +65,7 @@ import {
   CACHE_RAM_AUTO,
   describeFitBudget,
   toModelId,
+  EXPERT_CHECK_VERSION,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -125,7 +126,6 @@ import { getSystemUsage, getSystemInfo } from '@janhq/tauri-plugin-hardware-api'
 
 const EMBEDDING_CHECK_VERSION = 3
 const MTP_CHECK_VERSION = 1
-const EXPERT_CHECK_VERSION = 1
 
 // The tensor that marks a DSpark draft: it is a DFlash one plus this Markov
 // head (common/speculative.cpp, llama-arch.cpp LLM_TENSOR_DSPARK_MARKOV_W1).
