@@ -2,6 +2,7 @@
 // waves, alternation, images a server cannot take, and continuations. Pure;
 // used by CustomChatTransport.
 
+import { continuationJoin } from '@/lib/chat/transport/continuation'
 import { hasToolImageSentinel, stripToolImageSentinels } from '@/lib/tool-image-sentinel'
 import { i18n } from '@/i18n/react-i18next-compat'
 import type { UIMessage } from '@ai-sdk/react'
@@ -360,21 +361,36 @@ export function extractLatestUserText(messages: UIMessage[]): string {
  */
 export function prependContinuationToUIStream(
   stream: ReadableStream<UIMessageChunk>,
-  prefix: ContinuationContent
+  prefix: ContinuationContent,
+  options: { joinFirstDelta?: boolean } = {}
 ): ReadableStream<UIMessageChunk> {
   const reader = stream.getReader()
+  // The model's first words after the partial reply, spaced from it when the
+  // resume started a new turn rather than continuing mid-word.
+  let joinPending = !!options.joinFirstDelta && !!prefix.text
   let reasoningEmitted = !prefix.reasoning
   let textEmitted = !prefix.text
   return new ReadableStream<UIMessageChunk>({
     async pull(controller) {
       try {
-        const { done, value } = await reader.read()
+        const { done, value: chunk } = await reader.read()
         if (done) {
           controller.close()
           return
         }
-        controller.enqueue(value)
+        let value = chunk
         const type = (value as { type: string }).type
+        if (joinPending && type === 'text-delta') {
+          const delta = (value as { delta?: string }).delta ?? ''
+          if (delta) {
+            joinPending = false
+            value = {
+              ...(value as object),
+              delta: continuationJoin(prefix.text ?? '', delta) + delta,
+            } as UIMessageChunk
+          }
+        }
+        controller.enqueue(value)
         if (!reasoningEmitted && type === 'reasoning-start') {
           reasoningEmitted = true
           const id = (value as { id: string }).id
