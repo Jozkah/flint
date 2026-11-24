@@ -12,6 +12,7 @@
  */
 
 import type { WorkProfileId } from '@/lib/workProfiles'
+import type { CoworkMode } from '@/lib/coworkMode'
 
 import type { ClearScope } from './clearRoom'
 
@@ -100,6 +101,12 @@ export type Participant = {
    * narrows what its access allows; absent means every allowed tool.
    */
   disabledTools?: string[]
+  /**
+   * What this participant may do without asking (Cowork's four modes),
+   * overriding the room's. Absent means the room's. It only decides who is
+   * asked: a participant's tool access and the folder limits hold in every mode.
+   */
+  permissionMode?: CoworkMode
 }
 
 /**
@@ -280,6 +287,11 @@ export type Room = {
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   /** Per-turn tool budgets; absent uses the defaults. */
   toolBudget?: RoomToolBudget
+  /**
+   * What participants may do without asking, unless they set their own.
+   * Absent means `ask` (rooms saved before this existed).
+   */
+  permissionMode?: CoworkMode
   /** What the user decided on each turn's change card, by message id. */
   changeDecisions?: Record<string, RoomChangeDecision>
   limits: RoomLimits

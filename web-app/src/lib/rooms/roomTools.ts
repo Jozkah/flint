@@ -162,7 +162,8 @@ export async function buildRoomTools(
   } else if (ctx.folder && folderTools) {
     const extras = ctx.extraFolders ?? []
     let writeGrant: string | undefined
-    if (ctx.access === 'edit') {
+    // Review first: read, search and inspect, change nothing -- no write grant.
+    if (ctx.access === 'edit' && ctx.permissionMode !== 'review') {
       try {
         const dataFolder = await getServiceHub().app().getJanDataFolder()
         if (dataFolder) {

@@ -7,10 +7,12 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { chatDelegationEnabled } from '@/lib/chatDelegation'
 import { createSurfaceDelegation } from '@/lib/surfaceDelegation'
+import { isReadOnly } from '@/lib/coworkMode'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import type { TodoList } from '@/types/coworkSession'
 import { grantSessionId, type RoomToolActivity, type RoomToolContext } from './callError'
 import { withheld } from './toolCatalog'
+import { DEFAULT_ROOM_PERMISSION_MODE } from './permissionMode'
 
 /**
  * Each participant's plan, per room, kept for the app's lifetime so a plan
@@ -70,10 +72,12 @@ const refused = (what: string) => async () => ({
  * file tools, skills and plugins, all through the Cowork dispatcher, so the
  * same permission policy applies.
  *
- * The room runs in Cowork's "ask" mode: a call that changes something or runs
- * a command waits for the user to allow it, through the same approval prompt,
- * with the same saved rules and the same pause after a long streak of
- * auto-approved calls. Anything the prompt cannot reach is refused.
+ * The participant runs in the room's Cowork mode (Ask unless chosen
+ * otherwise): in Ask a call that changes something or runs a command waits for
+ * the user to allow it, through the same approval prompt, with the same saved
+ * rules and the same pause after a long streak of auto-approved calls; Review
+ * refuses every change; Auto and Bypass do not ask. Anything the prompt cannot
+ * reach is refused.
  */
 export async function buildFullFolderTools(
   ctx: RoomToolContext,
@@ -99,6 +103,10 @@ export async function buildFullFolderTools(
   }
 
   const who = ctx.participantName ?? 'A participant'
+  // The participant's own mode, else the room's, else Ask: Cowork's four modes
+  // through the same dispatcher, so the same policy applies. Only who is asked
+  // changes; the folders and the write grant below bound every mode.
+  const mode = ctx.permissionMode ?? DEFAULT_ROOM_PERMISSION_MODE
   const dispatchContext: DispatchContext = {
     // The session the write grant was issued to: the backend resolves a grant
     // only for the thread that holds it, so a different id here reads as no grant.
@@ -106,7 +114,7 @@ export async function buildFullFolderTools(
     activity: { session: ctx.roomId, run: ctx.roomId, agent: who, project: folder },
     readOnlyFolder: folder,
     extraFolders: extras,
-    mode: 'ask',
+    mode,
     webSearch: useWebSearchConfig.getState().webSearchEnabled,
     access: writeGrant ? 'edit-folder' : 'review-only',
     editConsent: { sessionId: grantSessionId(ctx), folder },
@@ -183,7 +191,13 @@ export async function buildFullFolderTools(
   // turn is one bounded reply, so there is nothing to run on beside it. The
   // child works in the room's folder under the same Ask-mode gate, is held to
   // the tokens the room has left, and its use is charged to the room.
-  if (delegation && chatDelegationEnabled() && (ctx.tokenBudget ?? Infinity) > 0) {
+  // Not in Review: a subagent's own commands would run outside its read-only promise.
+  if (
+    delegation &&
+    !isReadOnly(mode) &&
+    chatDelegationEnabled() &&
+    (ctx.tokenBudget ?? Infinity) > 0
+  ) {
     const remaining = ctx.tokenBudget
     const room = await createSurfaceDelegation({
       id: ctx.roomId,

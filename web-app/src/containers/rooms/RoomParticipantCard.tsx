@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { participantColor } from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
 import { RoomAvatar } from './RoomAvatar'
+import { RoomPermissionMenu } from './RoomPermissionMenu'
 import { participantReasoningControls } from '@/lib/rooms/participantReasoning'
 import { ParticipantReasoningField, ParticipantSection, TOOL_PILL, toolKey, CompareIsolationNote } from './roomEditorHelpers'
 
@@ -200,6 +201,14 @@ export function RoomParticipantCard({
                   </p>
                 )}
               </div>
+              {tools && (access === 'edit' || access === 'full') && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
+                    {t('rooms:permissions.participantLabel')}
+                  </span>
+                  <RoomPermissionMenu room={room} participant={room.participants.find((x) => x.id === p.id) ?? p.source} variant="pill" />
+                </div>
+              )}
               {tools && mode === 'compare' && (access === 'edit' || access === 'full') && (
                 <CompareIsolationNote
                   roomId={room.id}

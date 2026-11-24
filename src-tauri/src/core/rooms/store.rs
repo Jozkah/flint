@@ -244,6 +244,11 @@ pub struct Participant {
     /// Absent means every tool its access allows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_tools: Option<Vec<String>>,
+    /// What this participant may do without asking ("review", "ask", "auto",
+    /// "bypass"), overriding the room's. Stored, never interpreted here: the
+    /// frontend applies it. Absent means the room's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
 }
 
 /// Per-turn tool budgets of a room. Every field is optional: absent means the
@@ -400,6 +405,11 @@ pub struct Room {
     /// Per-turn tool budgets. Absent on rooms saved before they existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_budget: Option<RoomToolBudget>,
+    /// What the room's participants may do without asking ("review", "ask",
+    /// "auto", "bypass"), for those with no mode of their own. Stored, never
+    /// interpreted here. Absent on rooms saved before it existed: "ask".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
     /// What the user decided on a turn's change card, by message id:
     /// "kept", "discarded" or "applied". Absent on rooms saved before it.
     #[serde(default, skip_serializing_if = "Option::is_none")]

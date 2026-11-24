@@ -82,6 +82,24 @@ export function composerClearanceFor(): number {
   return BASE_MARGIN * 2
 }
 
+type Rect = { left: number; right: number; top: number; bottom: number }
+
+/**
+ * The one block a corner toast must stay clear of: the composer and anything
+ * marked `data-toast-avoid` (a room's dock of approval cards sits right above
+ * its composer and holds the Allow/Deny buttons). Empty rects are ignored.
+ */
+export function unionRect(rects: readonly Rect[]): Rect | null {
+  const live = rects.filter((r) => r.right > r.left && r.bottom > r.top)
+  if (live.length === 0) return null
+  return {
+    left: Math.min(...live.map((r) => r.left)),
+    right: Math.max(...live.map((r) => r.right)),
+    top: Math.min(...live.map((r) => r.top)),
+    bottom: Math.max(...live.map((r) => r.bottom)),
+  }
+}
+
 /** A toast is 356px wide plus its side margin (sonner's default width). */
 const TOAST_ZONE_PX = 356 + 16
 const COMPOSER_GAP = 12

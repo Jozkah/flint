@@ -13,6 +13,7 @@ import {
   getDialogToastPlacement,
   getNarrowToastPlacement,
   getToastOffsetAvoidingPane,
+  unionRect,
 } from '@/utils/toastPlacement'
 import { notifyToasterMounted } from '@/lib/settingsRecoveryNotice'
 import { installToastDedupe } from '@/lib/toastDedupe'
@@ -57,8 +58,11 @@ export function ToasterProvider() {
   )
   useEffect(() => {
     const measure = () => {
-      const el = document.querySelector('[data-composer]')
-      const rect = el ? el.getBoundingClientRect() : null
+      const rect = unionRect(
+        Array.from(
+          document.querySelectorAll('[data-composer], [data-toast-avoid]')
+        ).map((el) => el.getBoundingClientRect())
+      )
       const next = composerAwareClearance(rect, {
         width: window.innerWidth,
         height: window.innerHeight,

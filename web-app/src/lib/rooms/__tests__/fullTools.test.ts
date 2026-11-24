@@ -69,6 +69,35 @@ describe('buildFullFolderTools', () => {
     expect(authorize).toHaveBeenCalledWith('C:/data', 'r1', 'C:/proj', ['C:/other'])
   })
 
+  it.each(['review', 'ask', 'auto', 'bypass'] as const)(
+    'runs the dispatcher in the %s mode chosen for the participant, with the same folders and grant',
+    async (permissionMode) => {
+      dispatch.mockResolvedValue({ output: 'done', isError: false })
+      const tools = await buildFullFolderTools({ ...ctx, permissionMode })
+      await (tools.bash as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
+        { command: 'ls' },
+        { toolCallId: 'c1' }
+      )
+      expect(dispatch.mock.calls[0][1]).toMatchObject({
+        mode: permissionMode,
+        readOnlyFolder: 'C:/proj',
+        extraFolders: ['C:/other'],
+        access: 'edit-folder',
+        writeGrant: 'grant-1',
+      })
+    }
+  )
+
+  it('asks (ask mode) when no mode was chosen', async () => {
+    dispatch.mockResolvedValue({ output: 'done', isError: false })
+    const tools = await buildFullFolderTools(ctx)
+    await (tools.bash as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
+      { command: 'ls' },
+      { toolCallId: 'c2' }
+    )
+    expect(dispatch.mock.calls[0][1].mode).toBe('ask')
+  })
+
   it('sends each call through the Cowork dispatcher in ask mode, as the speaking participant', async () => {
     dispatch.mockResolvedValue({ output: 'done', isError: false })
     const tools = await buildFullFolderTools(ctx)

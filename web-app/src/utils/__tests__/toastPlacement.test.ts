@@ -133,3 +133,23 @@ describe('composerAwareClearance', () => {
     expect(composerAwareClearance(rect, vp)).toBe(345)
   })
 })
+
+describe('unionRect and approval cards', () => {
+  const vp = { width: 900, height: 800 }
+  it('ignores empty rects and returns null for none', async () => {
+    const { unionRect } = await import('../toastPlacement')
+    expect(unionRect([])).toBeNull()
+    expect(unionRect([{ left: 0, right: 0, top: 0, bottom: 0 }])).toBeNull()
+  })
+  it('keeps corner toasts off a room dock card that sits above the composer', async () => {
+    const { unionRect, composerAwareClearance } = await import('../toastPlacement')
+    const composer = { left: 200, right: 884, top: 660, bottom: 790 }
+    // The room's approval cards (data-toast-avoid), with Allow once at the right.
+    const cards = { left: 200, right: 884, top: 590, bottom: 640 }
+    const alone = composerAwareClearance(composer, vp)
+    const both = composerAwareClearance(unionRect([composer, cards]), vp)
+    // A toast stack lifted by `alone` would sit over the cards (top 590).
+    expect(vp.height - alone).toBeGreaterThan(cards.top)
+    expect(vp.height - both).toBeLessThanOrEqual(cards.top - 12)
+  })
+})

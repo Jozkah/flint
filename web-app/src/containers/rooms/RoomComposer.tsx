@@ -13,6 +13,8 @@ import { normalizeError, useRoomsApi, type RoomsUiError } from './roomsBindings'
 import { activeParticipants, participantColor } from './roomUi'
 import { selectClassName } from './RoomModelSelect'
 import { RoomAvatar } from './RoomAvatar'
+import { RoomPermissionMenu } from './RoomPermissionMenu'
+import { canWrite } from '@/lib/rooms/permissionMode'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
 import { useSlashCommands } from '@/hooks/useSlashCommands'
@@ -495,6 +497,7 @@ export function RoomComposer({ room }: { room: Room }) {
           className="block min-h-[calc(2lh+0.75rem)] w-full resize-none border-0 bg-transparent px-3 pt-1.5 pb-1.5 text-[length:calc(var(--ui-font-base)*0.84375)] leading-normal text-foreground outline-hidden placeholder:truncate placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
+          <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
             aria-label={t('rooms:composer.mention')}
@@ -504,6 +507,11 @@ export function RoomComposer({ room }: { room: Room }) {
           >
             <AtSign aria-hidden />
           </button>
+          {/* What the room may do without asking: Cowork's menu, saved with the room. */}
+          {room.folder && activeParticipants(room).some(canWrite) && (
+            <RoomPermissionMenu room={room} />
+          )}
+          </div>
           <div className="flex min-w-0 items-center gap-2">
             {/* One footer row: the shortcut hint only shows where it fits. */}
             <span

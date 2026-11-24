@@ -117,7 +117,7 @@
     "toolEdit": "Read & edit",
     "toolFull": "Like Cowork",
     "toolReadHint": "Read-only tools only. Approvals never apply in rooms: anything that needs approval is refused. MCP tools appear only for servers you've already trusted in Settings.",
-    "toolFullHint": "Everything a Cowork session can do: read, write, run commands, git, skills and plugins, in the room's folders. As in Cowork, a call that changes something or runs a command waits for you to allow it (see the approvals in the header), using your saved rules. More steps per turn. Needs a folder and a tool-capable model.",
+    "toolFullHint": "Everything a Cowork session can do: read, write, run commands, git, skills and plugins, in the room's folders. As in Cowork, in Ask mode (the room's default) a call that changes something or runs a command waits for you to allow it (see the approvals in the header), using your saved rules; Review first, Auto and Bypass change that. More steps per turn. Needs a folder and a tool-capable model.",
     "toolEditHint": "Reads plus write/edit, confined to the room's working folder. Attach a folder for these tools to work. MCP tools appear only for servers you've already trusted in Settings.",
     "toolUnsupported": "This model does not support tools, so tool access stays off.",
     "reasoning": "Reasoning",
@@ -599,6 +599,14 @@
     "undo": "Undo",
     "undone": "The change was taken back out of your folder",
     "undoFailed": "Could not undo: {{message}}"
+  },
+  "permissions": {
+    "roomScope": "Applies to every participant that has no mode of its own.",
+    "pauseFirst": "Pause the room to change what it may do.",
+    "participantLabel": "What this participant may do",
+    "inherits": "Using the room's mode",
+    "useRoom": "Use the room's mode",
+    "failed": "Could not change the mode"
   },
   "approvals": {
     "held": "Room paused",

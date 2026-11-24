@@ -42,6 +42,7 @@ import {
   roomWorkspaceChanges,
 } from '@/services/rooms'
 import { roomError } from './participants'
+import type { CoworkMode } from '@/lib/coworkMode'
 import {
   canResumeOnMessage,
   editorCommands,
@@ -109,11 +110,15 @@ export type ParticipantPatch = { id?: string } & Partial<
   workProfile?: Participant['workProfile'] | null
   /** Tools switched off for this participant; `null` or `[]` turns all back on. */
   disabledTools?: string[] | null
+  /** The participant's own mode; `null` returns it to the room's. */
+  permissionMode?: CoworkMode | null
 }
 
 export type RoomSettingsPatch = {
   /** Per-turn tool budgets; `null` returns to the defaults. */
   toolBudget?: RoomToolBudget | null
+  /** What participants may do without asking; `null` returns to `ask`. */
+  permissionMode?: CoworkMode | null
   title?: string
   objective?: string
   mode?: SpeakingMode
