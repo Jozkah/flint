@@ -594,6 +594,13 @@
     "undone": "변경을 내 폴더에서 되돌렸습니다",
     "undoFailed": "되돌릴 수 없습니다: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "룸이 할 수 있는 일을 바꾸려면 먼저 룸을 일시 중지하세요.",
+    "participantLabel": "이 참가자가 할 수 있는 일",
+    "inherits": "룸의 모드 사용 중",
+    "useRoom": "룸의 모드 사용",
+    "failed": "모드를 변경하지 못했습니다"
+  },
   "approvals": {
     "held": "룸 일시 중지됨",
     "heldHint": "대기 중에 룸이 일시 중지되어 더 이상 허용할 수 없습니다. 룸을 다시 시작하면 필요할 때 참가자가 다시 묻습니다.",

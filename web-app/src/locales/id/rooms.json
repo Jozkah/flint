@@ -594,6 +594,13 @@
     "undone": "Perubahan sudah ditarik dari folder Anda",
     "undoFailed": "Tidak dapat mengurungkan: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Jeda ruang untuk mengubah apa yang boleh dilakukannya.",
+    "participantLabel": "Apa yang boleh dilakukan peserta ini",
+    "inherits": "Memakai mode ruang",
+    "useRoom": "Pakai mode ruang",
+    "failed": "Tidak dapat mengubah mode"
+  },
   "approvals": {
     "held": "Ruang dijeda",
     "heldHint": "Ruang dijeda saat ini menunggu, jadi tidak bisa diizinkan lagi. Lanjutkan ruang dan peserta akan bertanya lagi bila masih perlu.",

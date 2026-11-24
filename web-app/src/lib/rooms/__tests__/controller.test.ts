@@ -178,6 +178,33 @@ describe('room editor', () => {
     expect(cleared.participants[0].disabledTools).toBeUndefined()
   })
 
+  it('stores the room permission mode and a per-participant override, ignores junk, and clears them', async () => {
+    const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    const room = await createDefault(ctl)
+    const pid = room.participants[0].id
+    expect(room.permissionMode).toBeUndefined()
+    const updated = await ctl.updateRoomSettings(room, {
+      permissionMode: 'auto',
+      participants: [{ id: pid, permissionMode: 'review' }],
+    })
+    expect(updated.permissionMode).toBe('auto')
+    expect(updated.participants[0].permissionMode).toBe('review')
+    expect(updated.participants[1].permissionMode).toBeUndefined()
+    // An unrelated edit keeps both.
+    const kept = await ctl.updateRoomSettings(updated, { title: 'Again' })
+    expect(kept.permissionMode).toBe('auto')
+    expect(kept.participants[0].permissionMode).toBe('review')
+    // An unknown value never lands.
+    const junk = await ctl.updateRoomSettings(kept, { permissionMode: 'yolo' as never })
+    expect(junk.permissionMode).toBeUndefined()
+    const cleared = await ctl.updateRoomSettings(kept, {
+      permissionMode: null,
+      participants: [{ id: pid, permissionMode: null }],
+    })
+    expect(cleared.permissionMode).toBeUndefined()
+    expect(cleared.participants[0].permissionMode).toBeUndefined()
+  })
+
   it("a participant's reasoning setting persists, reaches its own turns only, and null clears it", async () => {
     const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
     const { ctl, persistence } = setup(fn)

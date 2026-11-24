@@ -65,11 +65,16 @@ export type RoomSettingsPatch = Partial<
 > & {
   /** Per-turn tool budgets; `null` returns to the defaults. */
   toolBudget?: Room['toolBudget'] | null
+  /** What participants may do without asking; `null` returns to `ask`. */
+  permissionMode?: Room['permissionMode'] | null
   /** The room-wide reasoning effort; `null` returns to each model's default. */
   reasoningEffort?: Room['reasoningEffort'] | null
   /** A participant's `reasoning: null` returns it to its model's default. */
   participants?: Array<
-    Omit<Participant, 'reasoning' | 'assistantId' | 'workProfile'> & {
+    Partial<Omit<Participant, 'id' | 'reasoning' | 'assistantId' | 'workProfile' | 'permissionMode'>> & {
+      id: string
+      /** The participant's own mode; `null` returns it to the room's. */
+      permissionMode?: Participant['permissionMode'] | null
       reasoning?: Participant['reasoning'] | null
       /** `null` clears it. */
       assistantId?: string | null

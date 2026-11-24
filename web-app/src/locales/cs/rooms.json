@@ -630,6 +630,13 @@
     "undone": "Změna byla z vaší složky odebrána",
     "undoFailed": "Vrácení se nepodařilo: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Pozastavte místnost, abyste změnili, co smí dělat.",
+    "participantLabel": "Co smí tento účastník dělat",
+    "inherits": "Používá režim místnosti",
+    "useRoom": "Použít režim místnosti",
+    "failed": "Režim se nepodařilo změnit"
+  },
   "approvals": {
     "held": "Místnost pozastavena",
     "heldHint": "Místnost byla pozastavena, zatímco tento požadavek čekal, takže už jej nelze povolit. Obnovte místnost a účastník se zeptá znovu, pokud to bude stále potřebovat.",

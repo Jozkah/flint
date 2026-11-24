@@ -187,6 +187,8 @@ export function RoomView({ roomId }: { roomId: string }) {
             <div data-testid="room-dock" className="flex max-h-[55%] min-h-0 shrink-0 flex-col">
               <div
                 data-testid="room-dock-cards"
+                // Corner toasts stack above these cards, never over their Allow/Deny.
+                data-toast-avoid
                 className="relative z-20 flex min-h-0 shrink flex-col gap-2 overflow-y-auto px-3 pb-1 empty:hidden [scrollbar-width:thin] has-[>*]:pt-2"
               >
                 {/* A subagent a participant started: its approvals have no tool card

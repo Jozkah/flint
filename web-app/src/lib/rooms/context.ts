@@ -18,6 +18,7 @@ import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
 import { pinnedReplyLanguage, replyLanguageLine } from '@/lib/replyLanguage'
 import { turnToolAccess, type Participant, type Room, type RoomMessage } from './types'
+import { effectivePermissionMode } from './permissionMode'
 import { workspacePromptLine } from './isolation'
 import { roomFileToolsAvailable } from './toolCatalog'
 
@@ -134,7 +135,12 @@ function compareSystemPrompt(
       'Answer the user directly and completely, as you would in a one-to-one chat.',
     access === 'none'
       ? 'You have no tools here. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
-      : toolGuidance(room, access as 'read' | 'edit' | 'full'),
+      : toolGuidance(
+          room,
+          access !== 'read' && effectivePermissionMode(room, participant) === 'review'
+            ? 'read'
+            : (access as 'read' | 'edit' | 'full')
+        ),
     ...(workspace ? [workspacePromptLine(workspace.path, workspace.source)] : []),
     replyLanguageLine() ||
       "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
@@ -181,10 +187,7 @@ export function buildSystemPrompt(
     lines.push(
       speaker.participant.toolAccess === 'none'
         ? 'You have no tools in this discussion. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
-        : toolGuidance(
-          room,
-          turnToolAccess(room, speaker.participant.toolAccess) as 'read' | 'edit' | 'full'
-        )
+        : toolGuidance(room, guidedAccess(room, speaker.participant))
     )
   }
   if (speaker.kind === 'participant' && room.mode !== 'moderator-selected') {
@@ -275,6 +278,15 @@ function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
         ]
       : []),
   ].join('\n')
+}
+
+/**
+ * The access the participant is told it has: Review first changes nothing, so
+ * a writer is told it reads only (its tools match, see `buildRoomTools`).
+ */
+function guidedAccess(room: Room, participant: Participant): 'read' | 'edit' | 'full' {
+  const access = turnToolAccess(room, participant.toolAccess) as 'read' | 'edit' | 'full'
+  return access !== 'read' && effectivePermissionMode(room, participant) === 'review' ? 'read' : access
 }
 
 function authorPrefix(room: Room, m: RoomMessage): string {

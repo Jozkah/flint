@@ -180,6 +180,20 @@ describe('buildRoomTools', () => {
     expect(Object.keys(tools).sort()).toEqual(['skill_read', 'web_fetch', 'web_search'])
   })
 
+  it('gives an edit participant no write grant and no write tools in Review first', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write'), schema('edit')])
+    const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit', permissionMode: 'review' })
+    expect(directEditAuthorize).not.toHaveBeenCalled()
+    expect(Object.keys(tools).sort()).toEqual(['read', 'skill_read'])
+  })
+
+  it.each(['ask', 'auto', 'bypass'] as const)('keeps the folder-confined write grant for edit access in %s', async (permissionMode) => {
+    getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write'), schema('edit')])
+    const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit', permissionMode })
+    expect(directEditAuthorize).toHaveBeenCalledWith('/data', 'r1', '/work')
+    expect(Object.keys(tools)).toContain('write')
+  })
+
   it('adds write tools with a folder-confined grant for edit access', async () => {
     getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write'), schema('edit')])
     executeAgentTool.mockResolvedValue({ content: 'ok' })

@@ -833,6 +833,24 @@ fn room_reasoning_effort_round_trips_and_is_optional() {
 }
 
 #[test]
+fn permission_mode_round_trips_and_old_rooms_load_unchanged() {
+    let (_dir, store) = new_store();
+    let old = room("pm1");
+    assert!(old.permission_mode.is_none());
+    assert!(old.participants.iter().all(|p| p.permission_mode.is_none()));
+    let plain = serde_json::to_value(&old).unwrap();
+    assert!(plain.get("permissionMode").is_none());
+
+    let mut value = room_json("pm2");
+    value["permissionMode"] = json!("auto");
+    value["participants"][0]["permissionMode"] = json!("review");
+    store.save(parse_room(value).unwrap(), 5000).unwrap();
+    let loaded = store.get("pm2").unwrap().room;
+    assert_eq!(loaded.permission_mode.as_deref(), Some("auto"));
+    assert_eq!(loaded.participants[0].permission_mode.as_deref(), Some("review"));
+}
+
+#[test]
 fn tools2_fields_round_trip_and_old_rooms_load_unchanged() {
     let (_dir, store) = new_store();
     // An older room has none of the new fields and loads as before.

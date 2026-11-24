@@ -600,6 +600,13 @@
     "undone": "Değişiklik klasöründen geri alındı",
     "undoFailed": "Geri alınamadı: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Odanın neler yapabileceğini değiştirmek için önce odayı duraklatın.",
+    "participantLabel": "Bu katılımcı neler yapabilir",
+    "inherits": "Odanın modunu kullanıyor",
+    "useRoom": "Odanın modunu kullan",
+    "failed": "Mod değiştirilemedi"
+  },
   "approvals": {
     "held": "Oda duraklatıldı",
     "heldHint": "Bu beklerken oda duraklatıldı, bu yüzden artık izin verilemez. Odayı sürdürün; katılımcı hâlâ gerekiyorsa yeniden soracaktır.",

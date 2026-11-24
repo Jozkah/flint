@@ -31,6 +31,10 @@ type Props = {
   variant?: 'pill' | 'quiet'
   /** The modes offered; all of them unless the session's runner limits it. */
   options?: readonly CoworkMode[]
+  /** Shown but not changeable, e.g. while the owner of the setting is busy. */
+  disabled?: boolean
+  /** Why it is disabled, as the button's tooltip. */
+  disabledReason?: string
 }
 
 /**
@@ -47,6 +51,8 @@ export function CoworkModeSelector({
   onChange,
   variant = 'pill',
   options = COWORK_MODES,
+  disabled = false,
+  disabledReason,
 }: Props) {
   const quiet = variant === 'quiet'
   const { t } = useTranslation()
@@ -60,7 +66,8 @@ export function CoworkModeSelector({
             variant={quiet ? 'ghost' : 'outline'}
             size="xs"
             aria-label={t('common:coworkMode.label')}
-            title={t(modeLabelKey(mode))}
+            title={disabled && disabledReason ? disabledReason : t(modeLabelKey(mode))}
+            disabled={disabled}
             data-testid="cowork-mode-selector"
             className={cn(
               quiet

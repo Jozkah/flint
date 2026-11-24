@@ -615,6 +615,13 @@
     "undone": "El canvi s’ha retirat de la teva carpeta",
     "undoFailed": "No s’ha pogut desfer: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Posa la sala en pausa per canviar què pot fer.",
+    "participantLabel": "Què pot fer aquest participant",
+    "inherits": "Fa servir el mode de la sala",
+    "useRoom": "Fes servir el mode de la sala",
+    "failed": "No s'ha pogut canviar el mode"
+  },
   "approvals": {
     "held": "Sala en pausa",
     "heldHint": "La sala s'ha posat en pausa mentre això esperava, així que ja no es pot permetre. Repreneu la sala i el participant ho tornarà a demanar si encara ho necessita.",

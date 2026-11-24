@@ -615,6 +615,13 @@
     "undone": "Thay đổi đã được gỡ khỏi thư mục của bạn",
     "undoFailed": "Không thể hoàn tác: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Hãy tạm dừng phòng để thay đổi những gì phòng được phép làm.",
+    "participantLabel": "Người tham gia này được phép làm gì",
+    "inherits": "Đang dùng chế độ của phòng",
+    "useRoom": "Dùng chế độ của phòng",
+    "failed": "Không thể đổi chế độ"
+  },
   "approvals": {
     "held": "Phòng đang tạm dừng",
     "heldHint": "Phòng bị tạm dừng khi yêu cầu này đang chờ nên không thể cho phép nữa. Tiếp tục phòng và người tham gia sẽ hỏi lại nếu vẫn cần.",

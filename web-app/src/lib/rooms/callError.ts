@@ -10,6 +10,7 @@ import { isAbortLike } from '@/lib/coworkRunner'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { classifyFailure, type FailureClass, type FailureFacts } from '@/lib/runRetry'
 import { redactSecrets } from '@/lib/redact'
+import type { CoworkMode } from '@/lib/coworkMode'
 import type { PromptMessage } from './context'
 import type {
   ParticipantReasoning,
@@ -68,6 +69,11 @@ export type RoomToolContext = {
   budgetAccess?: ToolAccess
   /** Tools the user switched off for this participant. */
   disabledTools?: string[]
+  /**
+   * What this participant may do without asking, for the turn (its own mode,
+   * else the room's). Absent means `ask`.
+   */
+  permissionMode?: CoworkMode
   /**
    * The label an approval this turn raises keeps when the turn is stopped by
    * a pause (`room paused`), or null when the stop is not a pause.

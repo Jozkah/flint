@@ -615,6 +615,13 @@
     "undone": "El cambio se retiró de tu carpeta",
     "undoFailed": "No se pudo deshacer: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Pausa la sala para cambiar lo que puede hacer.",
+    "participantLabel": "Qué puede hacer este participante",
+    "inherits": "Usa el modo de la sala",
+    "useRoom": "Usar el modo de la sala",
+    "failed": "No se pudo cambiar el modo"
+  },
   "approvals": {
     "held": "Sala en pausa",
     "heldHint": "La sala se pausó mientras esto esperaba, así que ya no se puede permitir. Reanuda la sala y el participante volverá a preguntar si aún lo necesita.",

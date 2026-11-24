@@ -14,6 +14,7 @@ import type { RoomPersistence } from './persistence'
 import type { useRoomsStore } from './store'
 import type { RoomWorkspaceDeps } from './isolation'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { permissionModeField } from './permissionMode'
 import {
   budgetField,
   cleanDisabledTools,
@@ -417,6 +418,8 @@ export function editorCommands(
               participantDeps
             )
             if (edit.compareSkip) added.compareSkip = true
+            const addedMode = permissionModeField(edit.permissionMode)
+            if (addedMode) added.permissionMode = addedMode
             const addedOff = cleanDisabledTools(edit.disabledTools)
             if (addedOff.length) added.disabledTools = addedOff
             participants = [...participants, added]
@@ -450,6 +453,10 @@ export function editorCommands(
           )
           const skip = edit.compareSkip ?? prev.compareSkip
           if (skip) next.compareSkip = true
+          const ownMode = permissionModeField(
+            edit.permissionMode === undefined ? prev.permissionMode : edit.permissionMode
+          )
+          if (ownMode) next.permissionMode = ownMode
           const off = cleanDisabledTools(
             edit.disabledTools === undefined
               ? prev.disabledTools
@@ -491,6 +498,11 @@ export function editorCommands(
           ),
           ...budgetField(
             patch.toolBudget === undefined ? room.toolBudget : patch.toolBudget
+          ),
+          permissionMode: permissionModeField(
+            patch.permissionMode === undefined
+              ? room.permissionMode
+              : patch.permissionMode
           ),
           reasoningEffort: roomEffortField(
             patch.reasoningEffort === undefined

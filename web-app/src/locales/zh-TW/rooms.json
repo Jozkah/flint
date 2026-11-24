@@ -594,6 +594,13 @@
     "undone": "已從你的資料夾撤回這項變更",
     "undoFailed": "無法復原：{{message}}"
   },
+  "permissions": {
+    "pauseFirst": "請先暫停房間，再變更它可以做什麼。",
+    "participantLabel": "此參與者可以做什麼",
+    "inherits": "正在使用房間的模式",
+    "useRoom": "使用房間的模式",
+    "failed": "無法變更模式"
+  },
   "approvals": {
     "held": "房間已暫停",
     "heldHint": "此請求等待期間房間被暫停，因此無法再允許。恢復房間後，如仍需要，參與者會再次詢問。",

@@ -594,6 +594,13 @@
     "undone": "已从你的文件夹撤回该更改",
     "undoFailed": "无法撤销：{{message}}"
   },
+  "permissions": {
+    "pauseFirst": "请先暂停房间，再更改它可以做什么。",
+    "participantLabel": "此参与者可以做什么",
+    "inherits": "正在使用房间的模式",
+    "useRoom": "使用房间的模式",
+    "failed": "无法更改模式"
+  },
   "approvals": {
     "held": "房间已暂停",
     "heldHint": "此请求等待期间房间被暂停，因此无法再允许。恢复房间后，如仍需要，参与者会再次询问。",

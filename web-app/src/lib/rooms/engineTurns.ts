@@ -66,6 +66,7 @@ import {
   type StreamReplyResult,
 } from './engineShared'
 import { RoomRunBase } from './engineRunBase'
+import { effectivePermissionMode } from './permissionMode'
 
 /** A room run's model calls: summaries, prompts and one model turn with its retries. */
 export class RoomRunTurns extends RoomRunBase {
@@ -461,6 +462,7 @@ export class RoomRunTurns extends RoomRunBase {
           budgetAccess: participant.toolAccess,
           participantName: participant.name,
           participantId: participant.id,
+          permissionMode: effectivePermissionMode(this.room, participant),
           ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),
           ...(participant.disabledTools?.length
             ? { disabledTools: participant.disabledTools }
