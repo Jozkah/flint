@@ -172,7 +172,11 @@ export function CoworkStopMenu({
         side="top"
         sideOffset={6}
         collisionPadding={12}
-        className="w-64 p-1.5"
+        // Above the toaster (sonner: z-index 999999999). A toast that is still
+        // showing, such as the context-window or capability warnings, sits where
+        // this menu opens, took the clicks meant for "Stop current task", and
+        // made Stop look dead while the run carried on.
+        className="z-[1000000000] w-64 p-1.5"
         role="menu"
         aria-label={t('common:stopMenu.trigger')}
         data-testid="cowork-stop-menu"

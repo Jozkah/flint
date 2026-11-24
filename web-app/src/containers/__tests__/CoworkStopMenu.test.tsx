@@ -82,6 +82,19 @@ describe('CoworkStopMenu', () => {
     expect(screen.getByTestId('stop-all')).toBeInTheDocument()
   })
 
+  it('stacks above the toaster so a showing toast cannot swallow the Stop click', async () => {
+    // sonner's toaster is fixed at z-index 999999999 and a long-lived toast
+    // (context-window or capability warning) overlaps where this menu opens.
+    // Under it, "Stop current task" never received the click.
+    const TOASTER_Z = 999_999_999
+    mount()
+    fireEvent.click(screen.getByTestId('cowork-stop'))
+    const menu = await screen.findByTestId('cowork-stop-menu')
+    const match = /(?:^|\s)z-\[(\d+)\](?:\s|$)/.exec(menu.className)
+    expect(match, `no explicit z-index on: ${menu.className}`).not.toBeNull()
+    expect(Number(match![1])).toBeGreaterThan(TOASTER_Z)
+  })
+
   it('opens from a direct click even without pointer-down handling', async () => {
     mount()
     fireEvent.click(screen.getByTestId('cowork-stop'))
