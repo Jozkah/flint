@@ -630,6 +630,13 @@
     "undone": "Zmiana została wycofana z twojego folderu",
     "undoFailed": "Nie udało się cofnąć: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Wstrzymaj pokój, aby zmienić, co może robić.",
+    "participantLabel": "Co może robić ten uczestnik",
+    "inherits": "Używa trybu pokoju",
+    "useRoom": "Użyj trybu pokoju",
+    "failed": "Nie udało się zmienić trybu"
+  },
   "approvals": {
     "held": "Pokój wstrzymany",
     "heldHint": "Pokój wstrzymano, gdy to czekało, więc nie można już na to zezwolić. Wznów pokój, a uczestnik zapyta ponownie, jeśli nadal tego potrzebuje.",

@@ -615,6 +615,13 @@
     "undone": "La modification a été retirée de votre dossier",
     "undoFailed": "Impossible d’annuler : {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Mettez la salle en pause pour changer ce qu'elle peut faire.",
+    "participantLabel": "Ce que ce participant peut faire",
+    "inherits": "Utilise le mode de la salle",
+    "useRoom": "Utiliser le mode de la salle",
+    "failed": "Impossible de changer le mode"
+  },
   "approvals": {
     "held": "Salon en pause",
     "heldHint": "Le salon a été mis en pause pendant cette attente : elle ne peut plus être autorisée. Reprenez le salon et le participant redemandera s'il en a encore besoin.",

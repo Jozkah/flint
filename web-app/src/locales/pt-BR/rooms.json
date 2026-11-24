@@ -615,6 +615,13 @@
     "undone": "A alteração foi retirada da sua pasta",
     "undoFailed": "Não foi possível desfazer: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Pause a sala para mudar o que ela pode fazer.",
+    "participantLabel": "O que este participante pode fazer",
+    "inherits": "Usando o modo da sala",
+    "useRoom": "Usar o modo da sala",
+    "failed": "Não foi possível mudar o modo"
+  },
   "approvals": {
     "held": "Sala pausada",
     "heldHint": "A sala foi pausada enquanto isto aguardava, então não pode mais ser permitido. Retome a sala e o participante perguntará de novo se ainda precisar.",

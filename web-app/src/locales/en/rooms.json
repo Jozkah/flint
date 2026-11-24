@@ -601,7 +601,6 @@
     "undoFailed": "Could not undo: {{message}}"
   },
   "permissions": {
-    "roomScope": "Applies to every participant that has no mode of its own.",
     "pauseFirst": "Pause the room to change what it may do.",
     "participantLabel": "What this participant may do",
     "inherits": "Using the room's mode",

@@ -615,6 +615,13 @@
     "undone": "La modifica è stata tolta dalla tua cartella",
     "undoFailed": "Impossibile annullare: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Metti in pausa la stanza per cambiare ciò che può fare.",
+    "participantLabel": "Cosa può fare questo partecipante",
+    "inherits": "Usa la modalità della stanza",
+    "useRoom": "Usa la modalità della stanza",
+    "failed": "Impossibile cambiare la modalità"
+  },
   "approvals": {
     "held": "Stanza in pausa",
     "heldHint": "La stanza è stata messa in pausa mentre questa richiesta attendeva, quindi non può più essere consentita. Riprendi la stanza e il partecipante chiederà di nuovo se ne ha ancora bisogno.",

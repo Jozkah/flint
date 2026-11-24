@@ -600,6 +600,13 @@
     "undone": "Die Änderung wurde aus deinem Ordner zurückgenommen",
     "undoFailed": "Rückgängig fehlgeschlagen: {{message}}"
   },
+  "permissions": {
+    "pauseFirst": "Raum pausieren, um zu ändern, was er darf.",
+    "participantLabel": "Was dieser Teilnehmer darf",
+    "inherits": "Verwendet den Modus des Raums",
+    "useRoom": "Modus des Raums verwenden",
+    "failed": "Der Modus konnte nicht geändert werden"
+  },
   "approvals": {
     "held": "Raum pausiert",
     "heldHint": "Der Raum wurde pausiert, während dies wartete, daher kann es nicht mehr erlaubt werden. Setze den Raum fort; der Teilnehmer fragt erneut, wenn er es noch braucht.",
