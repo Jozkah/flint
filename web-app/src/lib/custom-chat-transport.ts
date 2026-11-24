@@ -954,7 +954,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const web = this.buildWebSearchSystemInstruction()
     const agentTools = this.buildAgentToolsSystemInstruction()
     const shellAvailability = !useAgentToolsConfig.getState().agentToolsEnabled
-      ? 'Host and workspace shell tools are off in this chat. If the user asks for one, explain that they can enable Agent Tools in Settings. Do not claim the command ran.'
+      ? 'Host and workspace shell tools are off in this chat. If the user asks for one, explain that they can enable Agent Tools in Settings. Do not claim the command ran. Studio picture tools (make a picture, list pictures, open one in the editor) are off too: if the user asks for a Studio picture, say in one sentence that they can turn those on in Settings > Agent Tools, and do not claim a picture was made.'
       : this.tools && 'host_powershell' in this.tools
         ? 'host_powershell is available for an explicit request to run PowerShell on this computer. It asks for approval before execution.'
         : 'host_powershell is not offered in this request. Do not claim the command ran.'

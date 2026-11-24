@@ -47,7 +47,9 @@
     "enterWorktree": "Flint, bu oturumun yazma erişimini bir worktree'ye taşımak istiyor: {{folder}} (dal {{branch}}, taban {{base}})",
     "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor",
     "changeFileOutside": "Flint, {{workspace}} dışındaki {{target}} dosyasını değiştirmek istiyor",
-    "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında"
+    "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında",
+    "studioGenerate": "Flint Studio'da bir resim oluşturmak istiyor",
+    "studioOpen": "Flint bir resmi düzenleyicinde açmak istiyor"
   },
   "consequence": {
     "fileChange": "Dosyalar oluşturabilir, üzerine yazabilir veya içeriklerini değiştirebilir.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "İç içe sohbet, bu projenin kendi dalında dosyaları okur ve değiştirir, model kotanızı kullanır ve siz başka işler yaparken çalışmaya devam eder. Değişiklikleri siz birleştirene kadar o dalda kalır. Flint her seferinde sorar.",
     "spawnChat": "İç içe sohbet, model kotanızı kullanan ve siz başka işler yaparken çalışmaya devam eden yeni bir oturumdur. Klasör erişimi olmadan başlar. Flint her seferinde sorar çünkü bu oturum için \"İç içe sohbetler başlamadan önce sor\" seçeneğini açtınız.",
     "enterWorktree": "Bu oturum dosyaları yalnızca kendi dalındaki o worktree'de okuyabilir ve değiştirebilir, proje klasörünüzde değil. Değişiklikleri siz birleştirene kadar o dalda kalır. Flint her seferinde sorar.",
-    "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur."
+    "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur.",
+    "studioGenerate": "Resim modelini ekran kartında çalıştırır ve sonucu Studio galerisine kaydeder.",
+    "studioOpen": "Düzenleyicini bu resimle başlatır. Orada neyi kaydedeceğin sana kalmış."
   },
   "repeat": {
     "allowedOnceBefore": "Bu komuta bu konuşmada zaten bir kez izin verdiniz."
@@ -109,7 +113,8 @@
     "tool": "Araç",
     "server": "Sunucu",
     "arguments": "Argümanlar",
-    "revokeHint": "İzinleri Ayarlar > İzinler bölümünden inceleyip geri alabilirsiniz."
+    "revokeHint": "İzinleri Ayarlar > İzinler bölümünden inceleyip geri alabilirsiniz.",
+    "details": "Ayrıntılar"
   },
   "pending": {
     "one": "1 istek onayınızı bekliyor",

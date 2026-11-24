@@ -166,8 +166,12 @@
     "kill": "プロセス {{pid}} を終了します:{{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "サービス {{name}} を{{verb}}します({{display}}、現在 {{status}})",
-    "studioGenerate": "{{model}} で {{size}} の画像を生成します。枚数: {{count}}。グラフィックスカードを使用し、1 分以上かかることがあります。\n{{prompt}}",
-    "studioOpen": "画像 {{id}} を {{program}} で開きます:\n{{prompt}}"
+    "studioGenerate": "{{model}} を使用: {{details}}。グラフィックスカードを使用し、1 分以上かかることがあります。",
+    "studioOpen": "{{path}} を {{program}} で開きます。",
+    "studioSteps": "ステップ数: {{steps}}",
+    "studioSeed": "シード: {{seed}}",
+    "studioCount": "枚数: {{count}}",
+    "studioNegative": "除外: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

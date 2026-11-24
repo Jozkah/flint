@@ -47,7 +47,9 @@
     "enterWorktree": "Flint vuole spostare l'accesso in scrittura di questa sessione in un worktree: {{folder}} (branch {{branch}}, basato su {{base}})",
     "spendPause": "Flint vuole proseguire questa esecuzione oltre la sua pausa di spesa",
     "changeFileOutside": "Flint vuole modificare {{target}}, che si trova fuori da {{workspace}}",
-    "changeManyFilesOutside": "Flint vuole modificare {{count}} file, alcuni fuori da {{workspace}}"
+    "changeManyFilesOutside": "Flint vuole modificare {{count}} file, alcuni fuori da {{workspace}}",
+    "studioGenerate": "Flint vuole creare un'immagine in Studio",
+    "studioOpen": "Flint vuole aprire un'immagine nel tuo editor"
   },
   "consequence": {
     "fileChange": "Può creare, sovrascrivere o modificare il contenuto dei file.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "La chat annidata legge e modifica file sul proprio branch di questo progetto, usa la tua quota del modello e continua a funzionare mentre fai altro. Le sue modifiche restano su quel branch finché non le unisci. Flint lo chiede ogni volta.",
     "spawnChat": "La chat annidata è una nuova sessione che usa la tua quota del modello e continua a funzionare mentre fai altro. Parte senza accesso alle cartelle. Flint lo chiede ogni volta perché hai attivato \"Chiedi prima di avviare chat annidate\" per questa sessione.",
     "enterWorktree": "Questa sessione può leggere e modificare file solo in quel worktree sul proprio branch, non nella cartella del progetto. Le sue modifiche restano su quel branch finché non le unisci. Flint lo chiede ogni volta.",
-    "spendPause": "L'esecuzione continua a consumare quota di modello a pagamento finché non termina o raggiunge il limite. Negare la ferma."
+    "spendPause": "L'esecuzione continua a consumare quota di modello a pagamento finché non termina o raggiunge il limite. Negare la ferma.",
+    "studioGenerate": "Esegue il modello di immagini sulla scheda grafica e salva il risultato nella galleria di Studio.",
+    "studioOpen": "Avvia il tuo editor con questa immagine. Ciò che salvi lì dipende da te."
   },
   "repeat": {
     "allowedOnceBefore": "Hai già consentito questo comando una volta in questa conversazione."
@@ -109,7 +113,8 @@
     "tool": "Strumento",
     "server": "Server",
     "arguments": "Argomenti",
-    "revokeHint": "Puoi rivedere e revocare i permessi in Impostazioni > Permessi."
+    "revokeHint": "Puoi rivedere e revocare i permessi in Impostazioni > Permessi.",
+    "details": "Dettagli"
   },
   "pending": {
     "one": "1 richiesta è in attesa della tua approvazione",

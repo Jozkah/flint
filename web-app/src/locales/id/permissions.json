@@ -47,7 +47,9 @@
     "enterWorktree": "Flint ingin memindahkan akses tulis sesi ini ke sebuah worktree: {{folder}} (cabang {{branch}}, berdasarkan {{base}})",
     "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya",
     "changeFileOutside": "Flint ingin mengubah {{target}}, yang berada di luar {{workspace}}",
-    "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}"
+    "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}",
+    "studioGenerate": "Flint ingin membuat gambar di Studio",
+    "studioOpen": "Flint ingin membuka gambar di editor Anda"
   },
   "consequence": {
     "fileChange": "Dapat membuat, menimpa, atau mengubah isi file.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Obrolan bertingkat membaca dan mengubah file di cabangnya sendiri pada proyek ini, memakai kuota model Anda, dan terus berjalan saat Anda mengerjakan hal lain. Perubahannya tetap di cabang itu sampai Anda menggabungkannya. Flint selalu bertanya.",
     "spawnChat": "Obrolan bertingkat adalah sesi baru yang memakai kuota model Anda dan terus berjalan saat Anda mengerjakan hal lain. Ia dimulai tanpa akses folder. Flint selalu bertanya karena Anda mengaktifkan \"Tanya sebelum obrolan bertingkat dimulai\" untuk sesi ini.",
     "enterWorktree": "Sesi ini hanya dapat membaca dan mengubah file di worktree itu pada cabangnya sendiri, bukan di folder proyek Anda. Perubahannya tetap di cabang itu sampai Anda menggabungkannya. Flint selalu bertanya.",
-    "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya."
+    "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya.",
+    "studioGenerate": "Ini menjalankan model gambar pada kartu grafis Anda dan menyimpan hasilnya di galeri Studio.",
+    "studioOpen": "Ini memulai editor Anda dengan gambar ini. Apa yang Anda simpan di sana terserah Anda."
   },
   "repeat": {
     "allowedOnceBefore": "Anda sudah mengizinkan perintah ini sekali dalam percakapan ini."
@@ -109,7 +113,8 @@
     "tool": "Alat",
     "server": "Server",
     "arguments": "Argumen",
-    "revokeHint": "Anda dapat meninjau dan mencabut izin di Pengaturan > Izin."
+    "revokeHint": "Anda dapat meninjau dan mencabut izin di Pengaturan > Izin.",
+    "details": "Detail"
   },
   "pending": {
     "one": "1 permintaan menunggu persetujuan Anda",

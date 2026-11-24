@@ -217,6 +217,9 @@ describe('CustomChatTransport', () => {
       expect(prompt).toContain('Enabled Flint plugins: caveman (skills: caveman)')
       expect(prompt).toContain('never search the filesystem for plugin settings')
       expect(prompt).toContain('enable Agent Tools in Settings')
+      // A Studio picture request says where the switch is, instead of the tools just being absent.
+      expect(prompt).toContain('Studio picture tools')
+      expect(prompt).toContain('Settings > Agent Tools')
     } finally {
       setCachedPluginInventory(null)
     }

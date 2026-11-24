@@ -813,10 +813,13 @@ export async function approveHostAction(
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
   const what = await describeHostAction(input, threadId, toolName)
-  const context = hostText('line', {
-    context: hostText(`context.${HOST_CONTEXT[toolName] ?? 'default'}`),
-    what,
-  })
+  // A Studio call's title already says what it is: its line is the details.
+  const context = isStudioTool(toolName)
+    ? what
+    : hostText('line', {
+        context: hostText(`context.${HOST_CONTEXT[toolName] ?? 'default'}`),
+        what,
+      })
   const ok = options.approve
     ? await options.approve({ context, alwaysAsk: true, input })
     : await useToolApprovalRequests

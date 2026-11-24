@@ -7,6 +7,7 @@ import {
   sanitizeResource,
   sanitizeValue,
   workspaceName,
+  requestSubject,
   MAX_RESOURCE_LENGTH,
   REDACTED,
   type PermissionMessage,
@@ -59,6 +60,31 @@ describe('a built-in host tool', () => {
       input: { script: 'Get-ChildItem' },
     })
     expect(d.consequences).toEqual([{ key: 'permissions:consequence.command' }])
+  })
+})
+
+describe('the Studio tools', () => {
+  const input = { prompt: 'a fox in snow', steps: 12, seed: 3 }
+  it('say what they do in words, with the prompt shown whole and no raw arguments', () => {
+    const d = describePermissionRequest({
+      toolName: 'studio_generate_image',
+      input,
+      taskContext: 'With Z-Image Turbo: 1024 x 1024',
+    })
+    expect(text(d.action)).toBe('Flint wants to make a picture in Studio')
+    expect(d.consequences.map(text).join(' ')).toMatch(/graphics card/)
+    expect(d.reason).toContain('Z-Image Turbo')
+    expect(d.reasonIsDetails).toBe(true)
+    expect(d.argumentsSummary).toBeUndefined()
+    expect(requestSubject(input, d.resources, 'studio_generate_image')).toBe('a fox in snow')
+  })
+  it('open a picture in the editor', () => {
+    const d = describePermissionRequest({ toolName: 'studio_open_in_editor', input: { id: 'g1' } })
+    expect(text(d.action)).toBe('Flint wants to open a picture in your editor')
+    expect(d.consequences.map(text).join(' ')).toMatch(/editor/)
+  })
+  it('leave other tools with a prompt argument alone', () => {
+    expect(requestSubject({ prompt: 'x' }, [], 'task')).toBeUndefined()
   })
 })
 

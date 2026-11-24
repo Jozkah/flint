@@ -98,6 +98,8 @@ export type PermissionRequestDescription = {
   /** Paths, command, URL or server, sanitized and truncated. */
   resources: string[]
   reason?: string
+  /** The reason is the call's own details (Studio), not why it was asked: labelled so. */
+  reasonIsDetails?: boolean
   /** PowerShell script, shown as code instead of crammed into Why. */
   script?: string
   /**
@@ -169,6 +171,9 @@ const READ_TOOLS = new Set([
   'chat_read',
 ])
 const HELPER_TOOLS = new Set(['task', 'team'])
+/** Studio's two tools that ask (see `lib/studio/agentStudio.ts`; not imported, it pulls in the engine client). */
+const STUDIO_GENERATE = 'studio_generate_image'
+const STUDIO_OPEN = 'studio_open_in_editor'
 /** The run's own question when it reaches its spend pause (not a tool call). */
 const SPEND_PAUSE_TOOL_NAME = 'spend_pause'
 
@@ -546,6 +551,8 @@ function actionFor(
       }
       if (toolName === SPEND_PAUSE_TOOL_NAME)
         return { key: 'permissions:action.spendPause' }
+      if (toolName === STUDIO_GENERATE) return { key: 'permissions:action.studioGenerate' }
+      if (toolName === STUDIO_OPEN) return { key: 'permissions:action.studioOpen' }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
       return { key: 'permissions:action.useTool', values: { tool: toolName } }
   }
@@ -593,6 +600,8 @@ function consequencesFor(
       if (toolName === STOP_SESSION_TOOL_NAME) {
         return [{ key: 'permissions:consequence.stopSession' }]
       }
+      if (toolName === STUDIO_GENERATE) return [{ key: 'permissions:consequence.studioGenerate' }]
+      if (toolName === STUDIO_OPEN) return [{ key: 'permissions:consequence.studioOpen' }]
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
       }
@@ -880,9 +889,11 @@ export function describePermissionRequest(
     ),
     resources,
     ...(reason ? { reason } : {}),
+    ...(reason && isStudioAsk(toolName) ? { reasonIsDetails: true } : {}),
     ...(powershell ? { script: truncate(redactSecrets(powershell.trim()), 4000) } : {}),
-    // A script is already shown whole; everything else gets its arguments.
-    ...(!powershell && argumentsSummary(req.input)
+    // A script is already shown whole, and a Studio call is put in words by its
+    // reason; everything else gets its arguments.
+    ...(!powershell && !isStudioAsk(toolName) && argumentsSummary(req.input)
       ? { argumentsSummary: argumentsSummary(req.input) }
       : {}),
     ...(category === 'git' ? gitExtras(args) : {}),
@@ -911,13 +922,21 @@ export function describePermissionRequest(
   }
 }
 
+const isStudioAsk = (toolName: string) => toolName === STUDIO_GENERATE || toolName === STUDIO_OPEN
+
 /** The full text a request acts on: a command in full, else what it touches. */
 export const requestSubject = (
   input: unknown,
-  resources: string[]
+  resources: string[],
+  toolName?: string
 ): string | undefined => {
   const parsed = parseToolInput(input)
   if (isPlainObject(parsed)) {
+    // A picture is asked for in words: show them whole.
+    if (toolName === STUDIO_GENERATE) {
+      const prompt = str(parsed.prompt)
+      if (prompt) return redactSecrets(prompt)
+    }
     for (const key of ['command', 'cmd', 'url', 'query']) {
       const value = parsed[key]
       if (typeof value === 'string' && value.trim()) return value.trim()

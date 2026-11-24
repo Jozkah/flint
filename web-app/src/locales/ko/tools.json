@@ -166,8 +166,12 @@
     "kill": "프로세스 {{pid}} 종료: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "서비스 {{name}}을(를) {{verb}}합니다({{display}}, 현재 {{status}})",
-    "studioGenerate": "{{model}}(으)로 {{size}} 크기의 이미지를 생성합니다. 이미지 수: {{count}}. 그래픽 카드를 사용하며 1분 이상 걸릴 수 있습니다.\n{{prompt}}",
-    "studioOpen": "이미지 {{id}}을(를) {{program}}에서 엽니다:\n{{prompt}}"
+    "studioGenerate": "{{model}} 사용: {{details}}. 그래픽 카드를 사용하며 1분 이상 걸릴 수 있습니다.",
+    "studioOpen": "{{path}}을(를) {{program}}에서 엽니다.",
+    "studioSteps": "단계: {{steps}}",
+    "studioSeed": "시드: {{seed}}",
+    "studioCount": "이미지 수: {{count}}",
+    "studioNegative": "제외: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

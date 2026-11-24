@@ -289,7 +289,7 @@ export function approvalOf(
 ): RemoteApproval {
   const req = describePermissionRequest(pending)
   const say = (m: PermissionMessage) => t(m.key, m.values)
-  const subject = requestSubject(pending.input, req.resources)
+  const subject = requestSubject(pending.input, req.resources, pending.toolName)
   return {
     requestId: pending.requestId,
     threadId: pending.threadId,

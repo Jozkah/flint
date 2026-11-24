@@ -166,8 +166,12 @@
     "kill": "结束进程 {{pid}}：{{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}}服务 {{name}}（{{display}}，当前{{status}}）",
-    "studioGenerate": "使用 {{model}} 以 {{size}} 生成，图片数量：{{count}}。这会使用显卡，可能需要一分钟或更久。\n{{prompt}}",
-    "studioOpen": "用 {{program}} 打开图片 {{id}}：\n{{prompt}}"
+    "studioGenerate": "使用 {{model}}：{{details}}。这会使用显卡，可能需要一分钟或更久。",
+    "studioOpen": "用 {{program}} 打开 {{path}}。",
+    "studioSteps": "步数：{{steps}}",
+    "studioSeed": "种子：{{seed}}",
+    "studioCount": "图片数量：{{count}}",
+    "studioNegative": "排除：{{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

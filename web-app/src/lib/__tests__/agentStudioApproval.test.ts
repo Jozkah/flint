@@ -102,12 +102,34 @@ describe('Studio tools and the consent model', () => {
     expect(generateImage).not.toHaveBeenCalled()
     const asked = useToolApprovalRequests.getState().pending['call-gen']
     expect(asked.alwaysAsk).toBe(true)
-    expect(asked.taskContext).toContain('a fox')
+    // The card says what will happen in words: the model, the size and the steps.
+    expect(asked.taskContext).toContain('Z-Image Turbo')
+    expect(asked.taskContext).toContain('1024 x 1024')
+    expect(asked.taskContext).toContain('8')
+    expect(asked.taskContext).not.toContain('{')
     asked.resolve(true)
     const result = await run
     expect(result.error).toBeUndefined()
     expect(JSON.parse(result.content ?? '{}').status).toBe('done')
     expect(generateImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts the arguments the model chose on the card, not the defaults', async () => {
+    const { executeAgentTool } = await import('../agentTools')
+    const { useToolApprovalRequests } = await import('@/hooks/useToolApprovalRequests')
+    const run = executeAgentTool(
+      'studio_generate_image',
+      { prompt: 'a fox', width: 512, height: 768, steps: 20, seed: 42, count: 2, negative_prompt: 'blurry' },
+      'chat-args',
+      { callId: 'call-args' }
+    )
+    await vi.waitFor(() =>
+      expect(useToolApprovalRequests.getState().pending['call-args']).toBeDefined()
+    )
+    const asked = useToolApprovalRequests.getState().pending['call-args']
+    for (const part of ['512 x 768', '20', '42', '2', 'blurry']) expect(asked.taskContext).toContain(part)
+    asked.resolve(false)
+    await run
   })
 
   it('does not generate when the user declines', async () => {
@@ -167,6 +189,10 @@ describe('Studio tools and the consent model', () => {
       expect(useToolApprovalRequests.getState().pending['call-open']).toBeDefined()
     )
     expect(openExternal).not.toHaveBeenCalled()
+    // The card names the file and the editor, not just the id.
+    const asked = useToolApprovalRequests.getState().pending['call-open']
+    expect(asked.taskContext).toContain(picture.path)
+    expect(asked.taskContext).toContain(String.raw`C:\Tools\gmic_qt.exe`)
     useToolApprovalRequests.getState().pending['call-open'].resolve(true)
     expect((await run).error).toBeUndefined()
     expect(openExternal).toHaveBeenCalledWith('image', 'g1', 'C:\\Tools\\gmic_qt.exe', '')

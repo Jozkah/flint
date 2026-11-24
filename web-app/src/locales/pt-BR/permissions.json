@@ -47,7 +47,9 @@
     "enterWorktree": "O Flint quer mover o acesso de escrita desta sessão para um worktree: {{folder}} (branch {{branch}}, baseada em {{base}})",
     "spendPause": "O Flint quer continuar esta execução além da pausa de gastos",
     "changeFileOutside": "O Flint quer alterar {{target}}, que está fora de {{workspace}}",
-    "changeManyFilesOutside": "O Flint quer alterar {{count}} arquivos, alguns fora de {{workspace}}"
+    "changeManyFilesOutside": "O Flint quer alterar {{count}} arquivos, alguns fora de {{workspace}}",
+    "studioGenerate": "O Flint quer criar uma imagem no Studio",
+    "studioOpen": "O Flint quer abrir uma imagem no seu editor"
   },
   "consequence": {
     "fileChange": "Pode criar, sobrescrever ou alterar o conteúdo de arquivos.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "O chat aninhado lê e altera arquivos na própria branch deste projeto, usa sua cota do modelo e continua rodando enquanto você faz outras coisas. As alterações ficam nessa branch até você mesclá-las. O Flint sempre pergunta.",
     "spawnChat": "O chat aninhado é uma nova sessão que usa sua cota do modelo e continua rodando enquanto você faz outras coisas. Ele começa sem acesso a pastas. O Flint sempre pergunta porque você ativou \"Perguntar antes de iniciar chats aninhados\" para esta sessão.",
     "enterWorktree": "Esta sessão só pode ler e alterar arquivos nesse worktree, na própria branch, e não na pasta do seu projeto. As alterações ficam nessa branch até você mesclá-las. O Flint sempre pergunta.",
-    "spendPause": "A execução continua usando cota paga do modelo até terminar ou atingir o limite. Negar interrompe a execução."
+    "spendPause": "A execução continua usando cota paga do modelo até terminar ou atingir o limite. Negar interrompe a execução.",
+    "studioGenerate": "Executa o modelo de imagens na placa de vídeo e salva o resultado na galeria do Studio.",
+    "studioOpen": "Inicia o seu editor com esta imagem. O que você salvar lá fica por sua conta."
   },
   "repeat": {
     "allowedOnceBefore": "Você já permitiu este comando uma vez nesta conversa."
@@ -109,7 +113,8 @@
     "tool": "Ferramenta",
     "server": "Servidor",
     "arguments": "Argumentos",
-    "revokeHint": "Você pode revisar e revogar permissões em Configurações > Permissões."
+    "revokeHint": "Você pode revisar e revogar permissões em Configurações > Permissões.",
+    "details": "Detalhes"
   },
   "pending": {
     "one": "1 solicitação aguarda a sua aprovação",

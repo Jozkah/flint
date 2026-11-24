@@ -47,7 +47,9 @@
     "enterWorktree": "Flint 想要將此工作階段的寫入權限移入某個工作樹：{{folder}}（分支 {{branch}}，基於 {{base}}）",
     "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行",
     "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
-    "changeManyFilesOutside": "Flint 想修改 {{count}} 個檔案,其中一些在 {{workspace}} 之外"
+    "changeManyFilesOutside": "Flint 想修改 {{count}} 個檔案,其中一些在 {{workspace}} 之外",
+    "studioGenerate": "Flint 想要在 Studio 中產生圖片",
+    "studioOpen": "Flint 想要在編輯器中開啟圖片"
   },
   "consequence": {
     "fileChange": "它可以建立、覆寫或變更檔案的內容。",
@@ -71,7 +73,9 @@
     "spawnWorktree": "巢狀聊天會在這個專案自己的分支上讀取和變更檔案，使用你的模型額度，並在你做其他事情時持續執行。在你合併之前，它的變更會保留在該分支上。Flint 每次都會詢問。",
     "spawnChat": "巢狀聊天是一個新的工作階段，會使用你的模型額度，並在你做其他事情時持續執行。它啟動時沒有資料夾存取權。因為你為此工作階段開啟了「巢狀聊天啟動前先詢問」，所以 Flint 每次都會詢問。",
     "enterWorktree": "此工作階段只能在該工作樹自己的分支上讀取和變更檔案，而不能在你的專案資料夾中。在你合併之前，它的變更會保留在該分支上。Flint 每次都會詢問。",
-    "spendPause": "執行會繼續消耗付費模型額度，直到結束或達到上限。拒絕則停止執行。"
+    "spendPause": "執行會繼續消耗付費模型額度，直到結束或達到上限。拒絕則停止執行。",
+    "studioGenerate": "它會在顯示卡上執行圖片模型，並把結果儲存到 Studio 圖庫。",
+    "studioOpen": "它會用這張圖片啟動你的編輯器。你在其中儲存什麼由你決定。"
   },
   "repeat": {
     "allowedOnceBefore": "你已在此對話中允許過這個指令一次。"
@@ -109,7 +113,8 @@
     "tool": "工具",
     "server": "伺服器",
     "arguments": "參數",
-    "revokeHint": "你可以在「設定」>「權限」中檢視和撤銷權限。"
+    "revokeHint": "你可以在「設定」>「權限」中檢視和撤銷權限。",
+    "details": "詳情"
   },
   "pending": {
     "one": "1 個請求正在等待你的核准",

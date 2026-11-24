@@ -47,7 +47,9 @@
     "enterWorktree": "Flint가 이 세션의 쓰기 권한을 worktree로 옮기려고 합니다: {{folder}}(브랜치 {{branch}}, 기준 {{base}})",
     "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다",
     "changeFileOutside": "Flint가 {{workspace}} 밖에 있는 {{target}}을(를) 변경하려고 합니다",
-    "changeManyFilesOutside": "Flint가 파일 {{count}}개를 변경하려고 합니다(일부는 {{workspace}} 밖)"
+    "changeManyFilesOutside": "Flint가 파일 {{count}}개를 변경하려고 합니다(일부는 {{workspace}} 밖)",
+    "studioGenerate": "Flint가 Studio에서 이미지를 만들려고 합니다",
+    "studioOpen": "Flint가 편집기에서 이미지를 열려고 합니다"
   },
   "consequence": {
     "fileChange": "파일을 만들거나, 덮어쓰거나, 내용을 변경할 수 있습니다.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "중첩 채팅은 이 프로젝트의 자체 브랜치에서 파일을 읽고 변경하며, 모델 할당량을 사용하고, 다른 작업을 하는 동안에도 계속 실행됩니다. 변경 사항은 병합할 때까지 해당 브랜치에 남습니다. Flint가 매번 확인합니다.",
     "spawnChat": "중첩 채팅은 모델 할당량을 사용하고 다른 작업을 하는 동안에도 계속 실행되는 새 세션입니다. 폴더 접근 권한 없이 시작됩니다. 이 세션에서 \"중첩 채팅 시작 전에 확인\"을 켰기 때문에 Flint가 매번 확인합니다.",
     "enterWorktree": "이 세션은 프로젝트 폴더가 아니라 자체 브랜치의 해당 worktree 안에서만 파일을 읽고 변경할 수 있습니다. 변경 사항은 병합할 때까지 해당 브랜치에 남습니다. Flint가 매번 확인합니다.",
-    "spendPause": "실행은 끝나거나 한도에 이를 때까지 유료 모델 할당량을 계속 사용합니다. 거부하면 실행이 중지됩니다."
+    "spendPause": "실행은 끝나거나 한도에 이를 때까지 유료 모델 할당량을 계속 사용합니다. 거부하면 실행이 중지됩니다.",
+    "studioGenerate": "그래픽 카드에서 이미지 모델을 실행하고 결과를 Studio 갤러리에 저장합니다.",
+    "studioOpen": "이 이미지로 편집기를 시작합니다. 편집기에서 저장하는 내용은 사용자에게 달려 있습니다."
   },
   "repeat": {
     "allowedOnceBefore": "이 대화에서 이 명령을 이미 한 번 허용했습니다."
@@ -109,7 +113,8 @@
     "tool": "도구",
     "server": "서버",
     "arguments": "인수",
-    "revokeHint": "설정 > 권한에서 권한을 검토하고 철회할 수 있습니다."
+    "revokeHint": "설정 > 권한에서 권한을 검토하고 철회할 수 있습니다.",
+    "details": "세부 정보"
   },
   "pending": {
     "one": "승인을 기다리는 요청이 1개 있습니다",

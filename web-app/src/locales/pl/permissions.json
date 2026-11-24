@@ -47,7 +47,9 @@
     "enterWorktree": "Flint chce przenieść dostęp zapisu tej sesji do worktree: {{folder}} (gałąź {{branch}}, oparta na {{base}})",
     "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków",
     "changeFileOutside": "Flint chce zmienić {{target}}, który jest poza {{workspace}}",
-    "changeManyFilesOutside": "Flint chce zmienić {{count}} plików, część poza {{workspace}}"
+    "changeManyFilesOutside": "Flint chce zmienić {{count}} plików, część poza {{workspace}}",
+    "studioGenerate": "Flint chce utworzyć obraz w Studio",
+    "studioOpen": "Flint chce otworzyć obraz w Twoim edytorze"
   },
   "consequence": {
     "fileChange": "Może tworzyć i nadpisywać pliki oraz zmieniać ich zawartość.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Zagnieżdżony czat odczytuje i zmienia pliki na własnej gałęzi tego projektu, zużywa limit Twojego modelu i działa dalej, gdy zajmujesz się czymś innym. Jego zmiany pozostają na tej gałęzi, dopóki ich nie scalisz. Flint pyta za każdym razem.",
     "spawnChat": "Zagnieżdżony czat to nowa sesja, która zużywa limit Twojego modelu i działa dalej, gdy zajmujesz się czymś innym. Startuje bez dostępu do folderów. Flint pyta za każdym razem, ponieważ dla tej sesji włączono „Pytaj przed rozpoczęciem zagnieżdżonych czatów”.",
     "enterWorktree": "Ta sesja może odczytywać i zmieniać pliki tylko w tym worktree na jego własnej gałęzi, a nie w folderze Twojego projektu. Jej zmiany pozostają na tej gałęzi, dopóki ich nie scalisz. Flint pyta za każdym razem.",
-    "spendPause": "Uruchomienie nadal zużywa płatny limit modelu, aż się zakończy lub osiągnie pułap. Odmowa je zatrzymuje."
+    "spendPause": "Uruchomienie nadal zużywa płatny limit modelu, aż się zakończy lub osiągnie pułap. Odmowa je zatrzymuje.",
+    "studioGenerate": "Uruchamia model obrazów na karcie graficznej i zapisuje wynik w galerii Studio.",
+    "studioOpen": "Uruchamia Twój edytor z tym obrazem. To, co w nim zapiszesz, zależy od Ciebie."
   },
   "repeat": {
     "allowedOnceBefore": "Już raz zezwolono na to polecenie w tej rozmowie."
@@ -109,7 +113,8 @@
     "tool": "Narzędzie",
     "server": "Serwer",
     "arguments": "Argumenty",
-    "revokeHint": "Uprawnienia możesz przeglądać i cofać w Ustawienia > Uprawnienia."
+    "revokeHint": "Uprawnienia możesz przeglądać i cofać w Ustawienia > Uprawnienia.",
+    "details": "Szczegóły"
   },
   "pending": {
     "one": "1 prośba czeka na Twoje zatwierdzenie",
