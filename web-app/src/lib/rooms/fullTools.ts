@@ -100,14 +100,16 @@ export async function buildFullFolderTools(
 
   const who = ctx.participantName ?? 'A participant'
   const dispatchContext: DispatchContext = {
-    sessionId: ctx.roomId,
+    // The session the write grant was issued to: the backend resolves a grant
+    // only for the thread that holds it, so a different id here reads as no grant.
+    sessionId: grantSessionId(ctx),
     activity: { session: ctx.roomId, run: ctx.roomId, agent: who, project: folder },
     readOnlyFolder: folder,
     extraFolders: extras,
     mode: 'ask',
     webSearch: useWebSearchConfig.getState().webSearchEnabled,
     access: writeGrant ? 'edit-folder' : 'review-only',
-    editConsent: { sessionId: ctx.roomId, folder },
+    editConsent: { sessionId: grantSessionId(ctx), folder },
     accessCapability: { managedWorktree: false, directEdit: Boolean(writeGrant) },
     writeGrant,
     bindingIntact: () => true,

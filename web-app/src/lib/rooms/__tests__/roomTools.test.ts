@@ -209,6 +209,26 @@ describe('buildRoomTools', () => {
     )
   })
 
+  it('runs each participant file calls on the thread its write grant was issued to', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write')])
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+    directEditAuthorize.mockClear()
+    const tools = await buildRoomTools({
+      roomId: 'r1',
+      participantId: 'pa',
+      folder: '/work',
+      access: 'edit',
+    })
+    const grantSession = (directEditAuthorize.mock.calls[0] as unknown[])[1]
+    await (tools.write as { execute: (i: unknown) => Promise<string> }).execute({
+      path: 'a.txt',
+      content: 'x',
+    })
+    // The backend resolves a grant only for the thread that holds it: any other
+    // id reads as "no grant" and every write is refused as read-only.
+    expect((executeAgentTool.mock.calls.at(-1) as unknown[])[2]).toBe(grantSession)
+  })
+
   it('withholds write tools when the grant cannot be minted', async () => {
     getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write')])
     directEditAuthorize.mockRejectedValueOnce(new Error('refused'))
