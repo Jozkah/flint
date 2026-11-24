@@ -173,6 +173,17 @@
       "detected": "已偵測：{{format}}",
       "reset": "重設偵測結果",
       "switched": "{{model}} 在此不接受 {{from}}。已切換到 {{to}} 並為此模型儲存。"
+    },
+    "reasoning": {
+      "title": "推理",
+      "supported": "支援的推理強度",
+      "supportedHelp": "勾選此模型接受的強度。只有在此處宣告，或已知該模型系列支援時，才會傳送強度。",
+      "known": "此模型已知：{{levels}}。勾選強度可設定你自己的清單。",
+      "default": "預設強度",
+      "auto": "自動（{{level}}）",
+      "autoNone": "自動（不傳送）",
+      "none": "不傳送",
+      "defaultHelp": "隨每個未選擇強度的請求一併傳送，讓推理開箱即顯示。若伺服器拒絕，請求會在不帶強度的情況下重試。"
     }
   },
   "addProvider": "新增提供者",

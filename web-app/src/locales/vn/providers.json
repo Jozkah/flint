@@ -173,6 +173,17 @@
       "detected": "Đã phát hiện: {{format}}",
       "reset": "Đặt lại phát hiện",
       "switched": "{{model}} không chấp nhận {{from}} ở đây. Đã chuyển sang {{to}} và lưu cho mô hình này."
+    },
+    "reasoning": {
+      "title": "Suy luận",
+      "supported": "Mức nỗ lực được hỗ trợ",
+      "supportedHelp": "Chọn các mức nỗ lực mà mô hình này chấp nhận. Một mức chỉ được gửi khi bạn khai báo ở đây hoặc họ mô hình được biết là chấp nhận mức đó.",
+      "known": "Đã biết cho mô hình này: {{levels}}. Chọn các mức để tự đặt danh sách.",
+      "default": "Mức nỗ lực mặc định",
+      "auto": "Tự động ({{level}})",
+      "autoNone": "Tự động (không gửi gì)",
+      "none": "Không gửi gì",
+      "defaultHelp": "Được gửi kèm mỗi yêu cầu chưa chọn mức nỗ lực, để phần suy luận hiện ngay. Nếu máy chủ từ chối, yêu cầu được gửi lại mà không có nó."
     }
   },
   "addProvider": "Thêm nhà cung cấp",

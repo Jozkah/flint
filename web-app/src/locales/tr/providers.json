@@ -173,6 +173,17 @@
       "detected": "Algılandı: {{format}}",
       "reset": "Algılananı sıfırla",
       "switched": "{{model}} burada {{from}} biçimini kabul etmedi. {{to}} biçimine geçildi ve bu model için kaydedildi."
+    },
+    "reasoning": {
+      "title": "Muhakeme",
+      "supported": "Desteklenen çaba düzeyleri",
+      "supportedHelp": "Bu modelin kabul ettiği çaba düzeylerini işaretleyin. Bir düzey yalnızca burada belirtirseniz veya modelin ailesinin kabul ettiği biliniyorsa gönderilir.",
+      "known": "Bu model için bilinenler: {{levels}}. Kendi listenizi belirlemek için düzeyleri işaretleyin.",
+      "default": "Varsayılan çaba düzeyi",
+      "auto": "Otomatik ({{level}})",
+      "autoNone": "Otomatik (hiçbir şey gönderilmez)",
+      "none": "Hiçbir şey gönderme",
+      "defaultHelp": "Düzey seçmemiş her istekle birlikte gönderilir; böylece muhakeme baştan görünür. Sunucu reddederse istek onsuz yeniden denenir."
     }
   },
   "addProvider": "Sağlayıcı Ekle",

@@ -7,6 +7,7 @@ import {
 } from './thinkingBudget'
 import {
   clampEffort,
+  defaultEffort,
   effortProfile,
   geminiTakesThinkingLevel,
   isOpenAICompatibleReasoningProvider,
@@ -104,6 +105,20 @@ function readBudgetLevel(
 }
 
 /**
+ * The level a chat sends: its own choice, else the model's default effort so
+ * reasoning streams without anyone opening a menu. Never when thinking is off.
+ */
+function levelToSend(
+  providerId: string,
+  model: Model | null | undefined
+): ThinkingBudgetLevelKey | undefined {
+  return (
+    readBudgetLevel(model) ??
+    (isThinkingOff(model) ? undefined : (defaultEffort(providerId, model) ?? undefined))
+  )
+}
+
+/**
  * Translate Flint's shared reasoning settings (reasoning on/off/auto + thinking
  * budget level) into the per-request `providerOptions` the AI SDK expects for
  * cloud providers, using each provider's NATIVE options rather than a
@@ -122,7 +137,7 @@ export function buildReasoningProviderOptions(
   model: Model | null | undefined
 ): Record<string, JSONObject> | undefined {
   const reasoning = readReasoning(model)
-  const level = readBudgetLevel(model)
+  const level = levelToSend(providerId, model)
 
   if (providerId === 'google' || providerId === 'gemini') {
     if (reasoning === 'off') {
@@ -245,7 +260,7 @@ export function buildReasoningBodyParams(
   if (canDisable && isThinkingOff(model)) {
     return { chat_template_kwargs: { enable_thinking: false } }
   }
-  const level = readBudgetLevel(model)
+  const level = levelToSend(providerId ?? '', model)
   if (!level || level === 'unlimited') return undefined
   // Clamped to what this model takes (gpt-oss has no `xhigh`).
   const sent = clampEffort(level, levels)

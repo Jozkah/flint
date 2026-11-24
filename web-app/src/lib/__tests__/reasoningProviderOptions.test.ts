@@ -96,7 +96,10 @@ describe('buildReasoningProviderOptions', () => {
           modelWith(reasoning('on'), 'claude-opus-4-8')
         )
       ).toEqual({
-        anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
+        anthropic: {
+          thinking: { type: 'adaptive', display: 'summarized' },
+          effort: 'high', // the family default, see defaultEffort
+        },
       })
     })
 
@@ -106,7 +109,9 @@ describe('buildReasoningProviderOptions', () => {
           'anthropic',
           modelWith(reasoning('on'), 'claude-sonnet-4-6')
         )
-      ).toEqual({ anthropic: { thinking: { type: 'adaptive' } } })
+      ).toEqual({
+        anthropic: { thinking: { type: 'adaptive' }, effort: 'high' },
+      })
     })
 
     it('uses enabled + budget_tokens on pre-4.6 models (adaptive 400s there)', () => {
@@ -194,8 +199,10 @@ describe('buildReasoningBodyParams', () => {
     ).toEqual({ reasoning_effort: 'xhigh' })
   })
 
-  it('sends nothing when no level is set, or the level is unlimited', () => {
-    expect(buildReasoningBodyParams('pxa', remoteModel(true))).toBeUndefined()
+  it('sends the default when no level is set, nothing for unlimited', () => {
+    expect(buildReasoningBodyParams('pxa', remoteModel(true))).toEqual({
+      reasoning_effort: 'medium',
+    })
     expect(
       buildReasoningBodyParams('pxa', remoteModel(true, budget('unlimited')))
     ).toBeUndefined()

@@ -173,6 +173,17 @@
       "detected": "Detectat: {{format}}",
       "reset": "Restableix la detecció",
       "switched": "{{model}} no ha acceptat {{from}} aquí. Canviat a {{to}} i desat per a aquest model."
+    },
+    "reasoning": {
+      "title": "Raonament",
+      "supported": "Esforços compatibles",
+      "supportedHelp": "Marca els esforços que accepta aquest model. Només s’envia un esforç si el declares aquí o si se sap que la família del model l’accepta.",
+      "known": "Coneguts per a aquest model: {{levels}}. Marca nivells per definir la teva llista.",
+      "default": "Esforç per defecte",
+      "auto": "Automàtic ({{level}})",
+      "autoNone": "Automàtic (no s’envia res)",
+      "none": "No enviïs res",
+      "defaultHelp": "S’envia amb cada petició que no ha triat esforç, perquè el raonament es vegi des del principi. Si el servidor el rebutja, la petició es repeteix sense ell."
     }
   },
   "addProvider": "Afegeix un proveïdor",

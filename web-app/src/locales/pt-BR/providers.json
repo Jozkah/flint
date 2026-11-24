@@ -173,6 +173,17 @@
       "detected": "Detectado: {{format}}",
       "reset": "Redefinir detecção",
       "switched": "{{model}} não aceitou {{from}} aqui. Alterado para {{to}} e salvo para este modelo."
+    },
+    "reasoning": {
+      "title": "Raciocínio",
+      "supported": "Esforços compatíveis",
+      "supportedHelp": "Marque os esforços que este modelo aceita. Um esforço só é enviado se você o declarar aqui ou se a família do modelo for conhecida por aceitá-lo.",
+      "known": "Conhecidos para este modelo: {{levels}}. Marque níveis para definir sua própria lista.",
+      "default": "Esforço padrão",
+      "auto": "Automático ({{level}})",
+      "autoNone": "Automático (nada é enviado)",
+      "none": "Não enviar nada",
+      "defaultHelp": "Enviado com cada solicitação que não escolheu um esforço, para que o raciocínio apareça desde o início. Se o servidor recusar, a solicitação é repetida sem ele."
     }
   },
   "addProvider": "Adicionar Provedor",

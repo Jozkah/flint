@@ -186,6 +186,17 @@
       "detected": "Detected: {{format}}",
       "reset": "Reset detected",
       "switched": "{{model}} did not accept {{from}} here. Switched to {{to}} and kept it for this model."
+    },
+    "reasoning": {
+      "title": "Reasoning",
+      "supported": "Supported efforts",
+      "supportedHelp": "Tick the efforts this model accepts. An effort is only sent when you declare one here or the model's family is known to take it.",
+      "known": "Known for this model: {{levels}}. Tick levels to set your own list.",
+      "default": "Default effort",
+      "auto": "Automatic ({{level}})",
+      "autoNone": "Automatic (none sent)",
+      "none": "Send nothing",
+      "defaultHelp": "Sent with each request that has not picked an effort, so reasoning streams out of the box. If the server refuses it, the request is retried without it."
     }
   },
   "addProvider": "Add Provider",

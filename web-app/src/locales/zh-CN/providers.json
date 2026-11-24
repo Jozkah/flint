@@ -173,6 +173,17 @@
       "detected": "已检测：{{format}}",
       "reset": "重置检测结果",
       "switched": "{{model}} 在此不接受 {{from}}。已切换到 {{to}} 并为此模型保存。"
+    },
+    "reasoning": {
+      "title": "推理",
+      "supported": "支持的推理强度",
+      "supportedHelp": "勾选此模型接受的强度。只有在此处声明，或已知该模型系列支持时，才会发送强度。",
+      "known": "此模型已知：{{levels}}。勾选强度可设置你自己的列表。",
+      "default": "默认强度",
+      "auto": "自动（{{level}}）",
+      "autoNone": "自动（不发送）",
+      "none": "不发送",
+      "defaultHelp": "随每个未选择强度的请求一起发送，使推理开箱即显示。如果服务器拒绝，请求会在不带强度的情况下重试。"
     }
   },
   "addProvider": "添加提供商",

@@ -173,6 +173,17 @@
       "detected": "Détecté : {{format}}",
       "reset": "Réinitialiser la détection",
       "switched": "{{model}} n’a pas accepté {{from}} ici. Passé à {{to}} et conservé pour ce modèle."
+    },
+    "reasoning": {
+      "title": "Raisonnement",
+      "supported": "Efforts pris en charge",
+      "supportedHelp": "Cochez les efforts que ce modèle accepte. Un effort n’est envoyé que si vous le déclarez ici ou si la famille du modèle l’accepte, à notre connaissance.",
+      "known": "Connus pour ce modèle : {{levels}}. Cochez des niveaux pour définir votre propre liste.",
+      "default": "Effort par défaut",
+      "auto": "Automatique ({{level}})",
+      "autoNone": "Automatique (rien n’est envoyé)",
+      "none": "Ne rien envoyer",
+      "defaultHelp": "Envoyé avec chaque requête qui n’a pas choisi d’effort, pour que le raisonnement s’affiche d’emblée. Si le serveur le refuse, la requête est renvoyée sans lui."
     }
   },
   "addProvider": "Ajouter un fournisseur",

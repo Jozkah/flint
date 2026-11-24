@@ -173,6 +173,17 @@
       "detected": "Erkannt: {{format}}",
       "reset": "Erkennung zurücksetzen",
       "switched": "{{model}} hat {{from}} hier nicht akzeptiert. Auf {{to}} umgestellt und für dieses Modell gespeichert."
+    },
+    "reasoning": {
+      "title": "Reasoning",
+      "supported": "Unterstützte Aufwandsstufen",
+      "supportedHelp": "Markiere die Stufen, die dieses Modell akzeptiert. Eine Stufe wird nur gesendet, wenn du sie hier angibst oder die Modellfamilie sie bekanntermaßen akzeptiert.",
+      "known": "Bekannt für dieses Modell: {{levels}}. Markiere Stufen, um eine eigene Liste festzulegen.",
+      "default": "Standard-Aufwand",
+      "auto": "Automatisch ({{level}})",
+      "autoNone": "Automatisch (nichts gesendet)",
+      "none": "Nichts senden",
+      "defaultHelp": "Wird mit jeder Anfrage gesendet, die keine Stufe gewählt hat, damit das Reasoning sofort angezeigt wird. Lehnt der Server sie ab, wird die Anfrage ohne sie wiederholt."
     }
   },
   "addProvider": "Anbieter hinzufügen",
