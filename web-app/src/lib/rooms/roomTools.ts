@@ -132,14 +132,16 @@ export async function buildRoomTools(
   onActivity = timed(onActivity)
 
   const run = (name: string, options: ExecOptions) => async (input: unknown) => {
-    const result = await executeAgentTool(name, input, ctx.roomId, options)
+    // The thread must be the one the write grant was issued to (see
+    // `grantSessionId`), or the backend finds no grant and refuses every write.
+    const result = await executeAgentTool(name, input, grantSessionId(ctx), options)
     // A room has no approval prompt, so an unsandboxed retry cannot be put to
     // anyone: the failure stands, saying so, and the offer is withdrawn.
     const error =
       result.error && result.unsandboxedRetry
         ? (
             await offerUnsandboxedRetry({
-              threadId: ctx.roomId,
+              threadId: grantSessionId(ctx),
               retry: result.unsandboxedRetry,
               failure: result.error,
             })

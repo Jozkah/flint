@@ -89,6 +89,23 @@ describe('buildFullFolderTools', () => {
     expect(dctx.activity.agent).toBe('Ada')
   })
 
+  it('dispatches each participant calls under the session its write grant was issued to', async () => {
+    dispatch.mockResolvedValue({ output: 'done', isError: false })
+    authorize.mockClear()
+    const tools = await buildFullFolderTools({ ...ctx, participantId: 'pa' })
+    await (tools.write as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
+      { path: 'a.md', content: 'x' },
+      {}
+    )
+    const grantSession = (authorize.mock.calls[0] as unknown[])[1]
+    expect(grantSession).toBe('r1--pa')
+    // The backend resolves a grant only for the thread that holds it; any other
+    // id reads as no grant and every write is refused as read-only.
+    const dctx = dispatch.mock.calls.at(-1)![1]
+    expect(dctx.sessionId).toBe(grantSession)
+    expect(dctx.editConsent.sessionId).toBe(grantSession)
+  })
+
   it('reports how long each call took, for the tool details', async () => {
     dispatch.mockResolvedValue({ output: 'done', isError: false })
     const activity = vi.fn()
