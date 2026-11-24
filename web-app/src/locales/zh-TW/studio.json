@@ -272,5 +272,24 @@
     "setup": "編輯應用程式",
     "edit": "在外部應用程式中編輯",
     "reveal": "在資料夾中顯示"
+  },
+  "reference": {
+    "title": "參考圖片",
+    "hint": "此模型可編輯圖片。新增要修改的圖片，並在提示詞中描述修改內容。",
+    "hintChosen": "描述要如何修改圖片，或要從中取用什麼。",
+    "add": "新增參考圖片",
+    "limit": "最多 {{count}} 張參考圖片",
+    "fromComputer": "從這台電腦選擇",
+    "fromGallery": "從你的圖片中選擇",
+    "pickTitle": "選擇參考圖片",
+    "pickDesc": "從圖庫中最多選擇 {{count}} 張圖片。",
+    "done": "完成",
+    "remove": "移除參考圖片：{{name}}",
+    "use": "用作參考",
+    "imported": "已匯入的圖片",
+    "notPicture": "請選擇 PNG、JPEG 或 WebP 圖片。",
+    "tooBig": "該圖片超過 20 MB。",
+    "importFailed": "無法新增該圖片。",
+    "count": "參考圖片：{{count}}"
   }
 }

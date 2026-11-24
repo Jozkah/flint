@@ -278,5 +278,24 @@
     "setup": "Sửa ứng dụng",
     "edit": "Chỉnh sửa trong ứng dụng ngoài",
     "reveal": "Hiện trong thư mục"
+  },
+  "reference": {
+    "title": "Ảnh tham chiếu",
+    "hint": "Mô hình này chỉnh sửa ảnh. Thêm ảnh cần đổi rồi mô tả thay đổi trong câu lệnh.",
+    "hintChosen": "Mô tả cách đổi ảnh hoặc những gì cần lấy từ ảnh.",
+    "add": "Thêm ảnh tham chiếu",
+    "limit": "Tối đa {{count}} ảnh tham chiếu",
+    "fromComputer": "Từ máy tính này",
+    "fromGallery": "Từ ảnh của bạn",
+    "pickTitle": "Chọn ảnh tham chiếu",
+    "pickDesc": "Chọn tối đa {{count}} ảnh từ thư viện.",
+    "done": "Xong",
+    "remove": "Bỏ ảnh tham chiếu: {{name}}",
+    "use": "Dùng làm ảnh tham chiếu",
+    "imported": "Ảnh đã nhập",
+    "notPicture": "Hãy chọn ảnh PNG, JPEG hoặc WebP.",
+    "tooBig": "Ảnh này lớn hơn 20 MB.",
+    "importFailed": "Không thể thêm ảnh này.",
+    "count": "Ảnh tham chiếu: {{count}}"
   }
 }

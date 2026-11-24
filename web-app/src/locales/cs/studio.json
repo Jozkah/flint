@@ -281,5 +281,24 @@
     "setup": "Upravit aplikaci",
     "edit": "Upravit v externí aplikaci",
     "reveal": "Zobrazit ve složce"
+  },
+  "reference": {
+    "title": "Referenční obrázky",
+    "hint": "Tento model upravuje obrázky. Přidejte obrázek, který chcete změnit, a změnu popište v zadání.",
+    "hintChosen": "Popište, jak obrázek změnit nebo co z něj převzít.",
+    "add": "Přidat referenční obrázek",
+    "limit": "Nejvýše {{count}} referenčních obrázků",
+    "fromComputer": "Z tohoto počítače",
+    "fromGallery": "Z vašich obrázků",
+    "pickTitle": "Vyberte referenční obrázky",
+    "pickDesc": "Vyberte z galerie nejvýše {{count}} obrázků.",
+    "done": "Hotovo",
+    "remove": "Odebrat referenční obrázek: {{name}}",
+    "use": "Použít jako referenci",
+    "imported": "Importovaný obrázek",
+    "notPicture": "Vyberte obrázek PNG, JPEG nebo WebP.",
+    "tooBig": "Obrázek je větší než 20 MB.",
+    "importFailed": "Obrázek se nepodařilo přidat.",
+    "count": "Referenční obrázky: {{count}}"
   }
 }

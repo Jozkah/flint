@@ -272,5 +272,24 @@
     "setup": "编辑应用",
     "edit": "在外部应用中编辑",
     "reveal": "在文件夹中显示"
+  },
+  "reference": {
+    "title": "参考图片",
+    "hint": "此模型可编辑图片。添加要修改的图片，并在提示词中描述修改内容。",
+    "hintChosen": "描述要如何修改图片，或要从中取用什么。",
+    "add": "添加参考图片",
+    "limit": "最多 {{count}} 张参考图片",
+    "fromComputer": "从此电脑选择",
+    "fromGallery": "从你的图片中选择",
+    "pickTitle": "选择参考图片",
+    "pickDesc": "从图库中最多选择 {{count}} 张图片。",
+    "done": "完成",
+    "remove": "移除参考图片：{{name}}",
+    "use": "用作参考",
+    "imported": "已导入的图片",
+    "notPicture": "请选择 PNG、JPEG 或 WebP 图片。",
+    "tooBig": "该图片超过 20 MB。",
+    "importFailed": "无法添加该图片。",
+    "count": "参考图片：{{count}}"
   }
 }

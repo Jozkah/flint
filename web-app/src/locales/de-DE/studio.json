@@ -275,5 +275,24 @@
     "setup": "App bearbeiten",
     "edit": "In externer App bearbeiten",
     "reveal": "Im Ordner anzeigen"
+  },
+  "reference": {
+    "title": "Referenzbilder",
+    "hint": "Dieses Modell bearbeitet Bilder. Füge das zu ändernde Bild hinzu und beschreibe die Änderung im Prompt.",
+    "hintChosen": "Beschreibe, wie das Bild geändert werden soll oder was daraus übernommen wird.",
+    "add": "Referenzbild hinzufügen",
+    "limit": "Bis zu {{count}} Referenzbilder",
+    "fromComputer": "Von diesem Computer",
+    "fromGallery": "Aus deinen Bildern",
+    "pickTitle": "Referenzbilder auswählen",
+    "pickDesc": "Wähle bis zu {{count}} Bilder aus deiner Galerie.",
+    "done": "Fertig",
+    "remove": "Referenzbild entfernen: {{name}}",
+    "use": "Als Referenz verwenden",
+    "imported": "Importiertes Bild",
+    "notPicture": "Wähle ein PNG-, JPEG- oder WebP-Bild.",
+    "tooBig": "Das Bild ist größer als 20 MB.",
+    "importFailed": "Das Bild konnte nicht hinzugefügt werden.",
+    "count": "Referenzbilder: {{count}}"
   }
 }

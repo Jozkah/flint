@@ -75,6 +75,7 @@ export function StudioPage() {
       cloud: '',
       localModel: '',
       loras: [],
+      references: [],
     })
   }
 
@@ -93,6 +94,10 @@ export function StudioPage() {
         ? item.recipe.modelId
         : '',
       loras: item.recipe.lora ?? [],
+      // Only the pictures still in the gallery can be followed again.
+      references: (item.recipe.referenceIds ?? []).flatMap((id) =>
+        gallery.image.filter((g) => g.id === id)
+      ),
       // The exact size it was made at: a standard shape when it is one,
       // else the custom boxes, so a remix never quietly changes the size.
       ...(sizes.some(

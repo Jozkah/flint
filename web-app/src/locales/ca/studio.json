@@ -278,5 +278,24 @@
     "setup": "Edita l'aplicació",
     "edit": "Edita en una aplicació externa",
     "reveal": "Mostra a la carpeta"
+  },
+  "reference": {
+    "title": "Imatges de referència",
+    "hint": "Aquest model edita imatges. Afegeix la imatge a canviar i descriu el canvi a la indicació.",
+    "hintChosen": "Descriu com canviar la imatge o què en vols aprofitar.",
+    "add": "Afegeix una imatge de referència",
+    "limit": "Fins a {{count}} imatges de referència",
+    "fromComputer": "Des d'aquest ordinador",
+    "fromGallery": "De les teves imatges",
+    "pickTitle": "Tria imatges de referència",
+    "pickDesc": "Tria fins a {{count}} imatges de la galeria.",
+    "done": "Fet",
+    "remove": "Treu la imatge de referència: {{name}}",
+    "use": "Usa com a referència",
+    "imported": "Imatge importada",
+    "notPicture": "Tria una imatge PNG, JPEG o WebP.",
+    "tooBig": "Aquesta imatge supera els 20 MB.",
+    "importFailed": "No s'ha pogut afegir la imatge.",
+    "count": "Imatges de referència: {{count}}"
   }
 }

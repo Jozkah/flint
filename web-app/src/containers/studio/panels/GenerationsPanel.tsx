@@ -182,6 +182,9 @@ export function GenerationsPanel({
                       <div className="flex items-center justify-between gap-1">
                         <span className="truncate text-[length:calc(var(--ui-font-base)*0.625)] opacity-80 tabular-nums">
                           {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
+                          {item.recipe.referenceIds?.length
+                            ? ` · ${t('studio:reference.count', { count: item.recipe.referenceIds.length })}`
+                            : ''}
                         </span>
                         <span className="pointer-events-auto flex shrink-0 gap-1">
                           {item.kind === 'image' && (
@@ -256,9 +259,21 @@ export function GenerationsPanel({
                       <span className="truncate text-xs text-muted-foreground tabular-nums">
                         {item.recipe.modelName} · {item.recipe.width} × {item.recipe.height} ·{' '}
                         {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
+                        {item.recipe.referenceIds?.length
+                          ? ` · ${t('studio:reference.count', { count: item.recipe.referenceIds.length })}`
+                          : ''}
                       </span>
                     </span>
                   </button>
+                  {!selecting && !!item.recipe.referenceIds?.length && (
+                    <span className="hidden shrink-0 items-center -space-x-2 sm:flex" aria-hidden>
+                      {item.recipe.referenceIds.flatMap((id) => gallery.image.filter((g) => g.id === id)).map((ref) => (
+                        <span key={ref.id} className="size-8 overflow-hidden rounded-md bg-muted ring-2 ring-background">
+                          <Thumb item={ref} />
+                        </span>
+                      ))}
+                    </span>
+                  )}
                   {!selecting && item.kind === 'image' && (
                     <button
                       type="button"

@@ -29,6 +29,9 @@ pub struct Recipe {
     pub model_name: String,
     #[serde(default)]
     pub lora: Vec<LoraRecipe>,
+    /// Gallery ids of the pictures an edit followed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reference_ids: Vec<String>,
     pub frames: Option<u32>,
     pub fps: Option<u32>,
     pub created_at_ms: u64,
@@ -303,6 +306,7 @@ mod tests {
             model_id: "z-image-turbo".into(),
             model_name: "Z-Image Turbo".into(),
             lora: Vec::new(),
+            reference_ids: Vec::new(),
             frames: None,
             fps: None,
             created_at_ms: at,

@@ -275,5 +275,24 @@
     "setup": "Uygulamayı düzenle",
     "edit": "Harici uygulamada düzenle",
     "reveal": "Klasörde göster"
+  },
+  "reference": {
+    "title": "Referans görseller",
+    "hint": "Bu model görselleri düzenler. Değiştirilecek görseli ekleyin, ardından değişikliği istemde anlatın.",
+    "hintChosen": "Görselin nasıl değişeceğini veya ondan neyin alınacağını anlatın.",
+    "add": "Referans görsel ekle",
+    "limit": "En fazla {{count}} referans görsel",
+    "fromComputer": "Bu bilgisayardan",
+    "fromGallery": "Görsellerinizden",
+    "pickTitle": "Referans görselleri seçin",
+    "pickDesc": "Galerinizden en fazla {{count}} görsel seçin.",
+    "done": "Bitti",
+    "remove": "Referans görseli kaldır: {{name}}",
+    "use": "Referans olarak kullan",
+    "imported": "İçe aktarılan görsel",
+    "notPicture": "PNG, JPEG veya WebP görseli seçin.",
+    "tooBig": "Bu görsel 20 MB'tan büyük.",
+    "importFailed": "Görsel eklenemedi.",
+    "count": "Referans görseller: {{count}}"
   }
 }

@@ -272,5 +272,24 @@
     "setup": "アプリを編集",
     "edit": "外部アプリで編集",
     "reveal": "フォルダーで表示"
+  },
+  "reference": {
+    "title": "参照画像",
+    "hint": "このモデルは画像を編集します。変更したい画像を追加し、変更内容をプロンプトに書いてください。",
+    "hintChosen": "画像をどう変えるか、または画像から何を引き継ぐかを書いてください。",
+    "add": "参照画像を追加",
+    "limit": "参照画像は最大 {{count}} 枚",
+    "fromComputer": "このコンピューターから",
+    "fromGallery": "ギャラリーから",
+    "pickTitle": "参照画像を選択",
+    "pickDesc": "ギャラリーから最大 {{count}} 枚選べます。",
+    "done": "完了",
+    "remove": "参照画像を削除: {{name}}",
+    "use": "参照として使う",
+    "imported": "取り込んだ画像",
+    "notPicture": "PNG、JPEG、WebP の画像を選んでください。",
+    "tooBig": "その画像は 20 MB を超えています。",
+    "importFailed": "画像を追加できませんでした。",
+    "count": "参照画像: {{count}}"
   }
 }

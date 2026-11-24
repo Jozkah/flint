@@ -458,6 +458,7 @@ pub async fn diffusion_save_external_images<R: Runtime>(
             model_id: params.model_id.clone(),
             model_name: params.model_name.clone(),
             lora: Vec::new(),
+            reference_ids: Vec::new(),
             frames: None,
             fps: None,
             created_at_ms,

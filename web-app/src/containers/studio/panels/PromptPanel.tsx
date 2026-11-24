@@ -22,6 +22,7 @@ import { formatEta } from '@/lib/downloadSpeed'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { EXAMPLE_PROMPTS, framesForSeconds, parseSeed, videoMemoryWarning } from '@/lib/studio/helpers'
 import { studioApi, type GalleryItem, type StudioKind, type StudioModel } from '@/lib/studio/studio'
+import { MAX_REFERENCES, ReferencePictures } from '@/containers/studio/panels/ReferencePictures'
 import { Elapsed } from '@/containers/studio/panels/Elapsed'
 import { PanelButton } from '@/containers/studio/panels/PanelButton'
 import { chosenSize, phaseText, rise } from '@/containers/studio/studioHelpers'
@@ -108,6 +109,7 @@ export function PromptPanel({
       </span>
     </>
   ) : null
+  const showReferences = kind === 'image' && !hosted && !!model.edit
   const showFrame = kind === 'image' && (running || !!latest)
 
   const start = async () => {
@@ -149,13 +151,18 @@ export function PromptPanel({
       seed: parseSeed(form.seed),
       lora: form.loras,
     }
+    const references = model.edit ? form.references.filter((r) => items.some((i) => i.id === r.id)) : []
     const ok = await generate(kind, text, () =>
       kind === 'video'
         ? studioApi.generateVideo({
             ...common,
             frames: framesForSeconds(form.seconds, model.video?.fps ?? 24),
           })
-        : studioApi.generateImage({ ...common, count: form.count })
+        : studioApi.generateImage({
+            ...common,
+            count: form.count,
+            reference_ids: references.length ? references.map((r) => r.id) : undefined,
+          })
     )
     if (ok) toast.success(kind === 'video' ? t('studio:prompt.videoReady') : t('studio:prompt.imageReady'))
   }
@@ -175,6 +182,13 @@ export function PromptPanel({
       />
       <FrameBody className="flex-1 gap-3 p-3.5">
         <div className="flex flex-col gap-2.5">
+          {showReferences && (
+            <ReferencePictures
+              value={form.references.filter((r) => items.some((i) => i.id === r.id))}
+              onChange={(references) => setForm({ references })}
+              disabled={busy}
+            />
+          )}
           <div className="relative rounded-xl border-[0.8px] border-border bg-card transition-shadow duration-200 focus-within:border-input focus-within:shadow-lift">
             <Textarea
               ref={promptRef}
@@ -344,6 +358,18 @@ export function PromptPanel({
                   <DropdownMenuItem onSelect={() => onRemix(latest)}>
                     {t('studio:prompt.remix')}
                   </DropdownMenuItem>
+                  {showReferences && latest.kind === 'image' && (
+                    <DropdownMenuItem
+                      disabled={
+                        busy ||
+                        form.references.some((r) => r.id === latest.id) ||
+                        form.references.length >= MAX_REFERENCES
+                      }
+                      onSelect={() => setForm({ references: [...form.references, latest] })}
+                    >
+                      {t('studio:reference.use')}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onSelect={() => {
                       // Only claim a copy that happened.
