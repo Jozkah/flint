@@ -337,9 +337,9 @@ describe('studio_generate_image', () => {
     expect(cancel).not.toHaveBeenCalled()
   })
 
-  it('describes the call for the approval question with the model, size and prompt', async () => {
-    const text = await describeStudioCall('studio_generate_image', { prompt: 'a red fox', width: 512, height: 768 })
-    expect(text).toContain('a red fox')
+  it('describes the call for the approval question with the model, size and steps (the prompt is shown beside it)', async () => {
+    const text = await describeStudioCall('studio_generate_image', { prompt: 'a red fox', width: 512, height: 768, steps: 9 })
+    expect(text).toContain('9')
     expect(text).toContain('512 x 768')
     expect(text).toContain('Model z-image-turbo')
   })
@@ -388,7 +388,6 @@ describe('studio_open_in_editor', () => {
     const text = await describeStudioCall('studio_open_in_editor', { id: 'g1' })
     expect(text).toContain('g1')
     expect(text).toContain('C:\\Tools\\gmic_qt.exe')
-    expect(text).toContain('prompt g1')
   })
 
   it('reports a launch failure from the backend', async () => {
