@@ -41,6 +41,19 @@ describe('dispatchCoworkTool', () => {
     executeAgentTool.mockResolvedValue({ content: 'ok' })
   })
 
+  it('hands the backend the room its prompts belong to, and who is asking', async () => {
+    await dispatchCoworkTool(
+      call('read', { path: 'a' }),
+      ctx({ sessionId: 'r1--p1', approvalThreadId: 'r1', activity: { agent: 'Ann' } })
+    )
+    expect(executeAgentTool.mock.calls[0][2]).toBe('r1--p1')
+    expect(executeAgentTool.mock.calls[0][3]).toMatchObject({ approvalThreadId: 'r1', origin: 'Ann' })
+    executeAgentTool.mockClear()
+    await dispatchCoworkTool(call('read', { path: 'a' }), ctx())
+    expect(executeAgentTool.mock.calls[0][3]).not.toHaveProperty('approvalThreadId')
+    expect(executeAgentTool.mock.calls[0][3]).not.toHaveProperty('origin')
+  })
+
   it('returns when Stop aborts a tool whose backend never replies', async () => {
     executeAgentTool.mockImplementationOnce(() => new Promise(() => {}))
     const controller = new AbortController()

@@ -133,6 +133,9 @@ describe('buildFullFolderTools', () => {
     const dctx = dispatch.mock.calls.at(-1)![1]
     expect(dctx.sessionId).toBe(grantSession)
     expect(dctx.editConsent.sessionId).toBe(grantSession)
+    // ...but its approval prompts belong to the room, or the header chip names
+    // "New Thread", opens a chat, and the room never shows the card.
+    expect(dctx.approvalThreadId).toBe('r1')
   })
 
   it('reports how long each call took, for the tool details', async () => {

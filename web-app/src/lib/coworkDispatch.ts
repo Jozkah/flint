@@ -107,6 +107,12 @@ export { bypassCannotOverride }
 export type DispatchContext = {
   sessionId: string
   /**
+   * The conversation this call's approval prompts belong to, when it is not
+   * `sessionId` (a room participant runs under `roomId--participantId`; its
+   * prompts belong to the room).
+   */
+  approvalThreadId?: string
+  /**
    * Identity the call's lifecycle events are recorded under. AH-050.
    *
    * Optional so a caller that has no run to name still records something
@@ -1074,6 +1080,14 @@ function backendOptionsFor(
   return {
     readOnlyProject: ctx.readOnlyFolder,
     extraProjects: ctx.extraFolders,
+    // A room's prompts have no tool card to sit under: the room's dock shows
+    // the ones that name who is asking.
+    ...(ctx.approvalThreadId
+      ? {
+          approvalThreadId: ctx.approvalThreadId,
+          ...(ctx.activity?.agent ? { origin: ctx.activity.agent } : {}),
+        }
+      : {}),
     scope: ctx.scope ?? 'session',
     writeGrant: ctx.writeGrant,
     // The run the change belongs to, so it can be undone from it (AH-202).
