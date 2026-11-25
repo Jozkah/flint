@@ -94,6 +94,23 @@ describe('agentTools', () => {
     expect(await asked).toBeNull()
   })
 
+  it('asks a room participant host call under the room, not under its grant session', async () => {
+    const { approveHostAction } = await import('../agentTools')
+    const { useToolApprovalRequests } = await import('@/hooks/useToolApprovalRequests')
+    const asked = approveHostAction(
+      { script: 'Get-Date' },
+      'room-1--p1',
+      { callId: 'call-room', approvalThreadId: 'room-1' },
+      'host_powershell'
+    )
+    await vi.waitFor(() =>
+      expect(useToolApprovalRequests.getState().pending['call-room']).toBeDefined()
+    )
+    expect(useToolApprovalRequests.getState().pending['call-room'].threadId).toBe('room-1')
+    useToolApprovalRequests.getState().pending['call-room'].resolve(true)
+    expect(await asked).toBeNull()
+  })
+
   it('withholds bash and refuses a bash call while the shell switch is off', async () => {
     advertisedToolSchemas.mockResolvedValue(advertising(['read', 'bash']))
     const { getAgentToolSchemas, executeAgentTool } = await import('../agentTools')

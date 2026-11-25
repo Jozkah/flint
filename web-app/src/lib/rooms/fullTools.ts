@@ -111,6 +111,8 @@ export async function buildFullFolderTools(
     // The session the write grant was issued to: the backend resolves a grant
     // only for the thread that holds it, so a different id here reads as no grant.
     sessionId: grantSessionId(ctx),
+    // Prompts sit under the room, not under the per-participant grant id.
+    approvalThreadId: ctx.roomId,
     activity: { session: ctx.roomId, run: ctx.roomId, agent: who, project: folder },
     readOnlyFolder: folder,
     extraFolders: extras,

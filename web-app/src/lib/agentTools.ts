@@ -477,7 +477,7 @@ export async function approveBrowserTool(
         .requestApproval(
           options.callId ?? '',
           BROWSER_TOOL_NAME,
-          threadId,
+          options.approvalThreadId ?? threadId,
           undefined,
           {
             input: shown,
@@ -554,7 +554,7 @@ export async function approveSecretWrite(
   const approved = await store.requestApproval(
     callId,
     toolName,
-    threadId,
+    options.approvalThreadId ?? threadId,
     undefined,
     {
       input,
@@ -824,7 +824,7 @@ export async function approveHostAction(
     ? await options.approve({ context, alwaysAsk: true, input })
     : await useToolApprovalRequests
         .getState()
-        .requestApproval(options.callId ?? '', toolName, threadId, undefined, {
+        .requestApproval(options.callId ?? '', toolName, options.approvalThreadId ?? threadId, undefined, {
           input,
           alwaysAsk: true,
           taskContext: context,
@@ -860,6 +860,13 @@ export async function approveHostAction(
  * one place that still knows the order is the adapter below.
  */
 export type AgentToolOptions = {
+  /**
+   * The conversation the approval prompts of this call belong to, when that is
+   * not the id the call runs under. A room participant's calls run under
+   * `roomId--participantId` (its own write grant), but the prompt must sit
+   * under the room: the header chip names and opens it, and the room shows it.
+   */
+  approvalThreadId?: string
   /** Cowork's run mode determines the audit source for this call. */
   approvalSource?: ApprovalSource
   /**
