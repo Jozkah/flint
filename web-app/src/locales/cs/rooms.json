@@ -425,6 +425,7 @@
     "send": "Odeslat",
     "hint": "Odeslat: Ctrl+Enter",
     "limitReached": "Limit {{limit}} byl dosažen. Pokračovat v diskusi?",
+    "hardCap": "Limit „{{limit}}“ je na pevném maximu, takže tato místnost nemůže pokračovat. Pro pokračování založ novou místnost.",
     "extendBy": "Více kol",
     "continue": "Pokračovat",
     "toShort": "Komu",

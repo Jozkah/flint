@@ -6,6 +6,7 @@ import {
   clampLimits,
   costIsEnforceable,
   emptyUsage,
+  canExtendPastLimit,
   extendedLimits,
   measureCall,
 } from '../limits'
@@ -145,5 +146,37 @@ describe('usage accounting', () => {
       outputPerMTokUsd: 1,
     })
     expect(later.costUsd).toBeNull()
+  })
+})
+
+describe('canExtendPastLimit', () => {
+  const stopped = (usage: Partial<ReturnType<typeof emptyUsage>>, limits = {}) => {
+    const room = makeRoom({ limits })
+    room.usage = { ...emptyUsage(), rounds: 3, turns: 9, ...usage }
+    return room
+  }
+
+  it('is true when raising the limit clears the stop', () => {
+    const room = stopped({ inputTokens: 100_000, outputTokens: 100_000 }, { maxTotalTokens: 200_000 })
+    expect(checkLimits(room, 0, { activeSince: 0 })).toBe('maxTotalTokens')
+    expect(canExtendPastLimit(room, 0, { activeSince: 0 })).toBe(true)
+  })
+
+  it('is false when the limit already sits at its fixed ceiling', () => {
+    const room = stopped({
+      inputTokens: ROOM_LIMIT_CEILINGS.maxTotalTokens,
+      outputTokens: 0,
+    })
+    expect(checkLimits(room, 0, { activeSince: 0 })).toBe('maxTotalTokens')
+    expect(canExtendPastLimit(room, 0, { activeSince: 0 })).toBe(false)
+  })
+
+  it('is false at the turn ceiling too', () => {
+    const room = stopped({ turns: ROOM_LIMIT_CEILINGS.maxTurns })
+    expect(canExtendPastLimit(room, 0, { activeSince: 0, speaking: true })).toBe(false)
+  })
+
+  it('is true when nothing blocks', () => {
+    expect(canExtendPastLimit(stopped({}), 0)).toBe(true)
   })
 })

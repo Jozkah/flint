@@ -4,7 +4,7 @@ import type { ClearScope } from '@/lib/rooms/clearRoom'
 import { ArrowUp, AtSign } from 'lucide-react'
 import type { Address, Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
-import { checkLimits } from '@/lib/rooms/limits'
+import { canExtendPastLimit, checkLimits } from '@/lib/rooms/limits'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { isCompareRoom } from '@/lib/rooms/types'
 import { cn } from '@/lib/utils'
@@ -124,18 +124,22 @@ export function RoomComposer({ room }: { room: Room }) {
   // (whether it stopped on that limit or concluded while already at it). A plain
   // message would only re-trip it, so offer to raise that limit and continue.
   // The hard 'ceiling' is not extendable.
+  const limitOpts = { activeSince: Date.now(), callsMade: 0, speaking: true }
   const blocking =
-    room.status === 'running'
-      ? null
-      : checkLimits(room, Date.now(), { activeSince: Date.now(), callsMade: 0, speaking: true })
-  // Any soft limit blocks; 'ceiling' is the hard cap and cannot be extended.
-  const limitStop = blocking && blocking !== 'ceiling' ? blocking : null
+    room.status === 'running' ? null : checkLimits(room, Date.now(), limitOpts)
+  // Any soft limit that raising can clear offers Continue. A room already at a
+  // fixed ceiling cannot be extended (Continue would re-stop at once), so it
+  // gets a notice instead and no way to send.
+  const extendable =
+    blocking !== null && blocking !== 'ceiling' && canExtendPastLimit(room, Date.now(), limitOpts)
+  const limitStop = extendable ? blocking : null
+  const hardStop = blocking !== null && !extendable ? blocking : null
   // Continue is measured in rounds regardless of which limit was hit.
   const limitCeiling = ROOM_LIMIT_CEILINGS.maxRounds
 
   const send = async () => {
     const typed = text.trim()
-    if (!typed || sending) return
+    if (!typed || sending || hardStop) return
     setSending(true)
     setError(null)
     try {
@@ -216,7 +220,7 @@ export function RoomComposer({ room }: { room: Room }) {
     : current.value === 'room'
       ? t(narrow ? 'rooms:composer.placeholderShort' : 'rooms:composer.placeholder')
       : t('rooms:composer.placeholderTo', { name: current.label })
-  const ready = text.trim().length > 0 && !sending
+  const ready = text.trim().length > 0 && !sending && !hardStop
 
   // Arrow keys move between the address chips, as in any radio group.
   const moveTarget = (step: number) => {
@@ -323,6 +327,21 @@ export function RoomComposer({ room }: { room: Room }) {
                 compare && limitStop === 'maxRounds'
                   ? t('rooms:usage.questions')
                   : t(`rooms:limits.${limitStop}`),
+            })}
+          </p>
+        )}
+        {hardStop && (
+          <p
+            className="mx-2.5 mt-2.5 rounded-lg bg-warning-tint px-2.5 py-1.5 text-xs text-warning"
+            data-testid="room-hard-cap-notice"
+          >
+            {t('rooms:composer.hardCap', {
+              limit:
+                compare && hardStop === 'maxRounds'
+                  ? t('rooms:usage.questions')
+                  : hardStop === 'ceiling'
+                    ? t('rooms:limits.maxTurns')
+                    : t(`rooms:limits.${hardStop}`),
             })}
           </p>
         )}

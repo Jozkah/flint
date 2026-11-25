@@ -5,6 +5,8 @@ import '@testing-library/jest-dom'
 import { createFakeApi, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomComposer } from '../RoomComposer'
 import { RoomUsageBar } from '../RoomUsageBar'
+import { emptyUsage } from '@/lib/rooms/limits'
+import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsT')
@@ -91,5 +93,42 @@ describe('RoomUsageBar', () => {
     render(<RoomUsageBar room={room} />)
     expect(screen.getByRole('region', { name: 'Usage' })).toHaveTextContent('$0.50 / $2.00')
     expect(screen.queryByTestId('room-stop-reason')).not.toBeInTheDocument()
+  })
+})
+
+describe('RoomComposer limits', () => {
+  const stopped = (usage: object, limits = {}) =>
+    makeRoom({
+      status: 'idle',
+      limits,
+      usage: { ...emptyUsage(), rounds: 3, turns: 9, ...usage },
+    } as never)
+
+  it('offers Continue when raising the limit would let the room speak', () => {
+    const { api } = createFakeApi()
+    renderWithApi(
+      <RoomComposer
+        room={stopped({ inputTokens: 100_000, outputTokens: 100_000 }, { maxTotalTokens: 200_000 })}
+      />,
+      api
+    )
+    expect(screen.getByTestId('room-limit-notice')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    expect(screen.queryByTestId('room-hard-cap-notice')).not.toBeInTheDocument()
+  })
+
+  it('says so, and offers no Continue, when a limit sits at its fixed ceiling', async () => {
+    const user = userEvent.setup()
+    const { api, controller } = createFakeApi()
+    renderWithApi(
+      <RoomComposer room={stopped({ inputTokens: ROOM_LIMIT_CEILINGS.maxTotalTokens })} />,
+      api
+    )
+    expect(screen.getByTestId('room-hard-cap-notice')).toHaveTextContent('fixed maximum')
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Message to the room'), 'More?')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    await user.keyboard('{Control>}{Enter}{/Control}')
+    expect(controller.sendUserMessage).not.toHaveBeenCalled()
   })
 })

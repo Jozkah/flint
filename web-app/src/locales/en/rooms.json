@@ -417,6 +417,7 @@
     "send": "Send",
     "hint": "Ctrl+Enter to send",
     "limitReached": "The {{limit}} limit was reached. Continue the discussion?",
+    "hardCap": "The {{limit}} limit is at its fixed maximum, so this room cannot continue. Start a new room to keep going.",
     "extendBy": "More rounds",
     "continue": "Continue",
     "toShort": "To",
