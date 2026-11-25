@@ -414,6 +414,7 @@
     "send": "Kirim",
     "hint": "Ctrl+Enter untuk mengirim",
     "limitReached": "Batas {{limit}} tercapai. Lanjutkan diskusi?",
+    "hardCap": "Batas {{limit}} sudah di maksimum tetapnya, jadi room ini tidak bisa dilanjutkan. Mulai room baru untuk melanjutkan.",
     "extendBy": "Putaran tambahan",
     "continue": "Lanjutkan",
     "toShort": "Kepada",

@@ -167,6 +167,16 @@ export function extendedLimits(room: Room, addRounds: number): RoomLimits {
 }
 
 /**
+ * Whether raising the limits can actually let a stopped room speak again. The
+ * limits have fixed ceilings (2M tokens, 200 turns, 50 rounds, 4 hours); a room
+ * already at one of them re-trips instantly however far Continue "extends" it.
+ */
+export function canExtendPastLimit(room: Room, now: number, opts: CheckLimitsOptions = {}): boolean {
+  if (checkLimits(room, now, opts) === null) return true
+  return checkLimits({ ...room, limits: extendedLimits(room, 1) }, now, opts) === null
+}
+
+/**
  * The cost limit applies only when every model that can speak (active
  * participants, and the moderator when enabled) has user-entered pricing.
  */

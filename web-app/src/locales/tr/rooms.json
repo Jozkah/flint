@@ -417,6 +417,7 @@
     "send": "Gönder",
     "hint": "Göndermek için Ctrl+Enter",
     "limitReached": "{{limit}} sınırına ulaşıldı. Tartışmaya devam edilsin mi?",
+    "hardCap": "{{limit}} sınırı sabit üst değerinde, bu yüzden bu oda devam edemez. Devam etmek için yeni bir oda başlat.",
     "extendBy": "Daha fazla tur",
     "continue": "Devam et",
     "toShort": "Alıcı",

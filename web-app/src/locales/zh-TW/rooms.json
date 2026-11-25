@@ -414,6 +414,7 @@
     "send": "傳送",
     "hint": "按 Ctrl+Enter 傳送",
     "limitReached": "已達到 {{limit}} 限制。要繼續討論嗎？",
+    "hardCap": "「{{limit}}」上限已達固定最大值，此房間無法繼續。請建立新房間繼續。",
     "extendBy": "更多輪數",
     "continue": "繼續",
     "toShort": "發給",

@@ -414,6 +414,7 @@
     "send": "发送",
     "hint": "按 Ctrl+Enter 发送",
     "limitReached": "已达到 {{limit}} 限制。要继续讨论吗？",
+    "hardCap": "“{{limit}}”上限已达固定最大值，此房间无法继续。请新建房间继续。",
     "extendBy": "更多轮数",
     "continue": "继续",
     "toShort": "发给",

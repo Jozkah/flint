@@ -425,6 +425,7 @@
     "send": "Wyślij",
     "hint": "Ctrl+Enter, aby wysłać",
     "limitReached": "Osiągnięto limit: {{limit}}. Kontynuować dyskusję?",
+    "hardCap": "Limit „{{limit}}” osiągnął stałe maksimum, więc ten pokój nie może kontynuować. Utwórz nowy pokój, aby iść dalej.",
     "extendBy": "Więcej rund",
     "continue": "Kontynuuj",
     "toShort": "Do",

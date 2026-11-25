@@ -421,6 +421,7 @@
     "send": "Envia",
     "hint": "Ctrl+Enter per enviar",
     "limitReached": "S'ha assolit el límit de {{limit}}. Vols continuar el debat?",
+    "hardCap": "El límit de {{limit}} és al màxim fix, així que aquesta sala no pot continuar. Crea una sala nova per seguir.",
     "extendBy": "Més rondes",
     "continue": "Continua",
     "toShort": "A",

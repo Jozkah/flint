@@ -414,6 +414,7 @@
     "send": "送信",
     "hint": "Ctrl+Enter で送信",
     "limitReached": "{{limit}} の制限に達しました。議論を続けますか?",
+    "hardCap": "{{limit}}の上限が固定の最大値に達したため、このルームは続行できません。続けるには新しいルームを作成してください。",
     "extendBy": "追加のラウンド",
     "continue": "続ける",
     "toShort": "宛先",

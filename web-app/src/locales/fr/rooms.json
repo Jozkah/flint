@@ -421,6 +421,7 @@
     "send": "Envoyer",
     "hint": "Ctrl+Entrée pour envoyer",
     "limitReached": "La limite de {{limit}} a été atteinte. Continuer la discussion ?",
+    "hardCap": "La limite « {{limit}} » est à son maximum fixe : cette room ne peut pas continuer. Crée une nouvelle room pour poursuivre.",
     "extendBy": "Tours de table supplémentaires",
     "continue": "Continuer",
     "toShort": "À",

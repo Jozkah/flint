@@ -421,6 +421,7 @@
     "send": "Gửi",
     "hint": "Ctrl+Enter để gửi",
     "limitReached": "Đã đạt giới hạn {{limit}}. Tiếp tục cuộc thảo luận?",
+    "hardCap": "Giới hạn {{limit}} đã đạt mức tối đa cố định nên phòng này không thể tiếp tục. Hãy tạo phòng mới để đi tiếp.",
     "extendBy": "Thêm vòng",
     "continue": "Tiếp tục",
     "toShort": "Đến",

@@ -421,6 +421,7 @@
     "send": "Invia",
     "hint": "Ctrl+Invio per inviare",
     "limitReached": "Il limite {{limit}} è stato raggiunto. Continuare la discussione?",
+    "hardCap": "Il limite «{{limit}}» è al massimo fisso, quindi questa stanza non può continuare. Avvia una nuova stanza per proseguire.",
     "extendBy": "Altri giri",
     "continue": "Continua",
     "toShort": "A",
