@@ -166,8 +166,12 @@
     "kill": "Zakończ proces {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} usługę {{name}} ({{display}}, obecnie {{status}})",
-    "studioGenerate": "Wygeneruj modelem {{model}} w rozmiarze {{size}}, liczba obrazów: {{count}}. Używa karty graficznej i może potrwać minutę lub dłużej.\n{{prompt}}",
-    "studioOpen": "Otwórz obraz {{id}} w programie {{program}}:\n{{prompt}}"
+    "studioGenerate": "Modelem {{model}}: {{details}}. Używa karty graficznej i może potrwać minutę lub dłużej.",
+    "studioOpen": "Otwórz {{path}} w programie {{program}}.",
+    "studioSteps": "kroki: {{steps}}",
+    "studioSeed": "ziarno: {{seed}}",
+    "studioCount": "obrazy: {{count}}",
+    "studioNegative": "unikać: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

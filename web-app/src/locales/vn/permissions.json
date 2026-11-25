@@ -47,7 +47,9 @@
     "enterWorktree": "Flint muốn chuyển quyền ghi của phiên này vào một worktree: {{folder}} (nhánh {{branch}}, dựa trên {{base}})",
     "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu",
     "changeFileOutside": "Flint muốn thay đổi {{target}}, nằm ngoài {{workspace}}",
-    "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}"
+    "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}",
+    "studioGenerate": "Flint muốn tạo một ảnh trong Studio",
+    "studioOpen": "Flint muốn mở một ảnh trong trình chỉnh sửa của bạn"
   },
   "consequence": {
     "fileChange": "Nó có thể tạo, ghi đè hoặc thay đổi nội dung các tệp.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Cuộc trò chuyện lồng nhau đọc và thay đổi tệp trên nhánh riêng của dự án này, dùng hạn mức mô hình của bạn và tiếp tục chạy trong khi bạn làm việc khác. Các thay đổi của nó nằm trên nhánh đó cho đến khi bạn hợp nhất. Flint luôn hỏi.",
     "spawnChat": "Cuộc trò chuyện lồng nhau là một phiên mới dùng hạn mức mô hình của bạn và tiếp tục chạy trong khi bạn làm việc khác. Nó bắt đầu mà không có quyền truy cập thư mục. Flint luôn hỏi vì bạn đã bật \"Hỏi trước khi bắt đầu cuộc trò chuyện lồng nhau\" cho phiên này.",
     "enterWorktree": "Phiên này chỉ có thể đọc và thay đổi tệp trong worktree đó trên nhánh riêng của nó, không phải trong thư mục dự án của bạn. Các thay đổi của nó nằm trên nhánh đó cho đến khi bạn hợp nhất. Flint luôn hỏi.",
-    "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy."
+    "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy.",
+    "studioGenerate": "Nó chạy mô hình ảnh trên card đồ họa và lưu kết quả vào thư viện Studio.",
+    "studioOpen": "Nó khởi động trình chỉnh sửa của bạn với ảnh này. Những gì bạn lưu ở đó là tùy bạn."
   },
   "repeat": {
     "allowedOnceBefore": "Bạn đã cho phép lệnh này một lần trong cuộc trò chuyện này."
@@ -109,7 +113,8 @@
     "tool": "Công cụ",
     "server": "Máy chủ",
     "arguments": "Đối số",
-    "revokeHint": "Bạn có thể xem và thu hồi quyền trong Cài đặt > Quyền."
+    "revokeHint": "Bạn có thể xem và thu hồi quyền trong Cài đặt > Quyền.",
+    "details": "Chi tiết"
   },
   "pending": {
     "one": "1 yêu cầu đang chờ bạn phê duyệt",

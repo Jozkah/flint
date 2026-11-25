@@ -166,8 +166,12 @@
     "kill": "Finalizar el proceso {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} el servicio {{name}} ({{display}}, ahora {{status}})",
-    "studioGenerate": "Generar con {{model}} a {{size}}, número de imágenes: {{count}}. Usa la tarjeta gráfica y puede tardar un minuto o más.\n{{prompt}}",
-    "studioOpen": "Abrir la imagen {{id}} en {{program}}:\n{{prompt}}"
+    "studioGenerate": "Con {{model}}: {{details}}. Usa la tarjeta gráfica y puede tardar un minuto o más.",
+    "studioOpen": "Abrir {{path}} en {{program}}.",
+    "studioSteps": "pasos: {{steps}}",
+    "studioSeed": "semilla: {{seed}}",
+    "studioCount": "imágenes: {{count}}",
+    "studioNegative": "evitando: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

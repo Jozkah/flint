@@ -166,8 +166,12 @@
     "kill": "प्रोसेस {{pid}} समाप्त करें: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} सेवा {{name}} ({{display}}, अभी {{status}})",
-    "studioGenerate": "{{model}} से {{size}} में बनाएँ, चित्रों की संख्या: {{count}}। यह आपके ग्राफ़िक्स कार्ड का उपयोग करता है और इसमें एक मिनट या अधिक लग सकता है।\n{{prompt}}",
-    "studioOpen": "चित्र {{id}} को {{program}} में खोलें:\n{{prompt}}"
+    "studioGenerate": "{{model}} के साथ: {{details}}। यह आपके ग्राफ़िक्स कार्ड का उपयोग करता है और इसमें एक मिनट या अधिक लग सकता है।",
+    "studioOpen": "{{path}} को {{program}} में खोलें।",
+    "studioSteps": "चरण: {{steps}}",
+    "studioSeed": "सीड: {{seed}}",
+    "studioCount": "चित्र: {{count}}",
+    "studioNegative": "इनसे बचें: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

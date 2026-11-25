@@ -47,7 +47,9 @@
     "enterWorktree": "Flint möchte den Schreibzugriff dieser Sitzung in einen Worktree verlegen: {{folder}} (Branch {{branch}}, basierend auf {{base}})",
     "spendPause": "Flint möchte diesen Lauf über seine Ausgabenpause hinaus fortsetzen",
     "changeFileOutside": "Flint möchte {{target}} ändern, was außerhalb von {{workspace}} liegt",
-    "changeManyFilesOutside": "Flint möchte {{count}} Dateien ändern, einige außerhalb von {{workspace}}"
+    "changeManyFilesOutside": "Flint möchte {{count}} Dateien ändern, einige außerhalb von {{workspace}}",
+    "studioGenerate": "Flint möchte in Studio ein Bild erzeugen",
+    "studioOpen": "Flint möchte ein Bild in Ihrem Editor öffnen"
   },
   "consequence": {
     "fileChange": "Es kann Dateien erstellen, überschreiben oder deren Inhalt ändern.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Der verschachtelte Chat liest und ändert Dateien auf seinem eigenen Branch dieses Projekts, verbraucht Ihr Modellkontingent und läuft weiter, während Sie andere Dinge tun. Seine Änderungen bleiben auf diesem Branch, bis Sie sie zusammenführen. Flint fragt jedes Mal nach.",
     "spawnChat": "Der verschachtelte Chat ist eine neue Sitzung, die Ihr Modellkontingent verbraucht und weiterläuft, während Sie andere Dinge tun. Er startet ohne Ordnerzugriff. Flint fragt jedes Mal nach, weil Sie „Vor dem Start verschachtelter Chats fragen“ für diese Sitzung aktiviert haben.",
     "enterWorktree": "Diese Sitzung kann Dateien nur in diesem Worktree auf dessen eigenem Branch lesen und ändern, nicht in Ihrem Projektordner. Ihre Änderungen bleiben auf diesem Branch, bis Sie sie zusammenführen. Flint fragt jedes Mal nach.",
-    "spendPause": "Der Lauf verbraucht weiter kostenpflichtiges Modellkontingent, bis er endet oder sein Limit erreicht. Ablehnen beendet den Lauf."
+    "spendPause": "Der Lauf verbraucht weiter kostenpflichtiges Modellkontingent, bis er endet oder sein Limit erreicht. Ablehnen beendet den Lauf.",
+    "studioGenerate": "Es führt das Bildmodell auf Ihrer Grafikkarte aus und speichert das Ergebnis in der Studio-Galerie.",
+    "studioOpen": "Es startet Ihren Editor mit diesem Bild. Was Sie dort speichern, liegt bei Ihnen."
   },
   "repeat": {
     "allowedOnceBefore": "Du hast diesen Befehl in dieser Unterhaltung bereits einmal erlaubt."
@@ -109,7 +113,8 @@
     "tool": "Tool",
     "server": "Server",
     "arguments": "Argumente",
-    "revokeHint": "Du kannst Berechtigungen unter Einstellungen > Berechtigungen prüfen und widerrufen."
+    "revokeHint": "Du kannst Berechtigungen unter Einstellungen > Berechtigungen prüfen und widerrufen.",
+    "details": "Details"
   },
   "pending": {
     "one": "1 Anfrage wartet auf deine Genehmigung",

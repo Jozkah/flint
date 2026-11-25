@@ -284,33 +284,35 @@ export async function studioPrecheck(toolName: string, input: unknown): Promise<
 const hostText = (key: string, values?: Record<string, unknown>) =>
   i18n.t(`tools:hostApproval.${key}`, values)
 
-/** What the approval question says a studio call will do, in the person's language. */
+/**
+ * What the approval card says a Studio call will do, with the real arguments
+ * and the model or editor they resolve to, in the person's language. The
+ * prompt itself is shown whole beside this line (`requestSubject`).
+ */
 export async function describeStudioCall(toolName: string, input: unknown): Promise<string> {
   const args = asArgs(input)
   if (toolName === STUDIO_OPEN_TOOL) {
     const plan = await planOpen(args).catch(() => undefined)
     if (plan && !failed(plan)) {
-      return hostText('studioOpen', {
-        id: plan.item.id,
-        prompt: plan.item.recipe.prompt.slice(0, 200),
-        program: plan.program,
-      })
+      return hostText('studioOpen', { path: plan.item.path, program: plan.program })
     }
-    return hostText('studioOpen', { id: String(args.id ?? ''), prompt: '', program: '' })
+    return hostText('studioOpen', { path: String(args.id ?? ''), program: '' })
   }
   const plan = await planGeneration(args).catch(() => undefined)
-  const model = plan && !failed(plan) ? plan.model : undefined
-  const size =
-    plan && !failed(plan) && plan.width && plan.height
-      ? `${plan.width} x ${plan.height}`
-      : model
-        ? `${model.defaults.width} x ${model.defaults.height}`
-        : ''
+  const ok = plan && !failed(plan) ? plan : undefined
+  const model = ok?.model
+  const size = ok?.width && ok.height ? `${ok.width} x ${ok.height}` : model ? `${model.defaults.width} x ${model.defaults.height}` : ''
+  const steps = ok?.steps ?? model?.defaults.steps
+  const details = [
+    size,
+    steps !== undefined ? hostText('studioSteps', { steps }) : '',
+    ok?.seed !== undefined ? hostText('studioSeed', { seed: ok.seed }) : '',
+    hostText('studioCount', { count: ok?.count ?? 1 }),
+    ok?.negativePrompt ? hostText('studioNegative', { text: ok.negativePrompt.slice(0, 120) }) : '',
+  ].filter(Boolean)
   return hostText('studioGenerate', {
     model: model?.display_name ?? text(args.model) ?? '',
-    size,
-    count: (plan && !failed(plan) ? plan.count : 1) as number,
-    prompt: String(text(args.prompt) ?? ''),
+    details: details.join(', '),
   })
 }
 

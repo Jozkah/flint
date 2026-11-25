@@ -47,7 +47,9 @@
     "enterWorktree": "Flint vol moure l'accés d'escriptura d'aquesta sessió a un worktree: {{folder}} (branca {{branch}}, basada en {{base}})",
     "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa",
     "changeFileOutside": "Flint vol canviar {{target}}, que és fora de {{workspace}}",
-    "changeManyFilesOutside": "Flint vol canviar {{count}} fitxers, alguns fora de {{workspace}}"
+    "changeManyFilesOutside": "Flint vol canviar {{count}} fitxers, alguns fora de {{workspace}}",
+    "studioGenerate": "Flint vol crear una imatge a Studio",
+    "studioOpen": "Flint vol obrir una imatge al teu editor"
   },
   "consequence": {
     "fileChange": "Pot crear, sobreescriure o canviar el contingut de fitxers.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "El xat imbricat llegeix i canvia fitxers a la seva pròpia branca d'aquest projecte, consumeix la teva quota del model i continua executant-se mentre fas altres coses. Els seus canvis es queden en aquesta branca fins que els fusionis. Flint ho pregunta cada vegada.",
     "spawnChat": "El xat imbricat és una sessió nova que consumeix la teva quota del model i continua executant-se mentre fas altres coses. S'inicia sense accés a carpetes. Flint ho pregunta cada vegada perquè has activat \"Pregunta abans d'iniciar xats imbricats\" per a aquesta sessió.",
     "enterWorktree": "Aquesta sessió només pot llegir i canviar fitxers en aquell worktree a la seva pròpia branca, no a la carpeta del projecte. Els seus canvis es queden en aquesta branca fins que els fusionis. Flint ho pregunta cada vegada.",
-    "spendPause": "L'execució continua gastant quota de model de pagament fins que acabi o arribi al límit. Si ho denegues, s'atura."
+    "spendPause": "L'execució continua gastant quota de model de pagament fins que acabi o arribi al límit. Si ho denegues, s'atura.",
+    "studioGenerate": "Executa el model d'imatges a la targeta gràfica i desa el resultat a la galeria de Studio.",
+    "studioOpen": "Inicia el teu editor amb aquesta imatge. El que hi desis depèn de tu."
   },
   "repeat": {
     "allowedOnceBefore": "Ja has permès aquesta ordre una vegada en aquesta conversa."
@@ -109,7 +113,8 @@
     "tool": "Eina",
     "server": "Servidor",
     "arguments": "Arguments",
-    "revokeHint": "Pots revisar i revocar els permisos a Configuració > Permisos."
+    "revokeHint": "Pots revisar i revocar els permisos a Configuració > Permisos.",
+    "details": "Detalls"
   },
   "pending": {
     "one": "1 sol·licitud espera la teva aprovació",

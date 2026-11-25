@@ -166,8 +166,12 @@
     "kill": "Prozess {{pid}} beenden: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} Dienst {{name}} ({{display}}, derzeit {{status}})",
-    "studioGenerate": "Mit {{model}} in {{size}} erzeugen, Anzahl der Bilder: {{count}}. Das nutzt die Grafikkarte und kann eine Minute oder länger dauern.\n{{prompt}}",
-    "studioOpen": "Bild {{id}} in {{program}} öffnen:\n{{prompt}}"
+    "studioGenerate": "Mit {{model}}: {{details}}. Das nutzt die Grafikkarte und kann eine Minute oder länger dauern.",
+    "studioOpen": "{{path}} in {{program}} öffnen.",
+    "studioSteps": "Schritte: {{steps}}",
+    "studioSeed": "Seed: {{seed}}",
+    "studioCount": "Bilder: {{count}}",
+    "studioNegative": "vermeiden: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

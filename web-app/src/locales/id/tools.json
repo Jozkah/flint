@@ -166,8 +166,12 @@
     "kill": "Akhiri proses {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} layanan {{name}} ({{display}}, sekarang {{status}})",
-    "studioGenerate": "Buat dengan {{model}} pada {{size}}, jumlah gambar: {{count}}. Ini memakai kartu grafis dan bisa memakan waktu satu menit atau lebih.\n{{prompt}}",
-    "studioOpen": "Buka gambar {{id}} di {{program}}:\n{{prompt}}"
+    "studioGenerate": "Dengan {{model}}: {{details}}. Ini memakai kartu grafis dan bisa memakan waktu satu menit atau lebih.",
+    "studioOpen": "Buka {{path}} di {{program}}.",
+    "studioSteps": "langkah: {{steps}}",
+    "studioSeed": "seed: {{seed}}",
+    "studioCount": "gambar: {{count}}",
+    "studioNegative": "hindari: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

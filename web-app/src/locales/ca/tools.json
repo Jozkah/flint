@@ -166,8 +166,12 @@
     "kill": "Finalitza el procés {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} servei {{name}} ({{display}}, ara {{status}})",
-    "studioGenerate": "Genera amb {{model}} a {{size}}, nombre d'imatges: {{count}}. Fa servir la targeta gràfica i pot trigar un minut o més.\n{{prompt}}",
-    "studioOpen": "Obre la imatge {{id}} amb {{program}}:\n{{prompt}}"
+    "studioGenerate": "Amb {{model}}: {{details}}. Fa servir la targeta gràfica i pot trigar un minut o més.",
+    "studioOpen": "Obre {{path}} amb {{program}}.",
+    "studioSteps": "passos: {{steps}}",
+    "studioSeed": "llavor: {{seed}}",
+    "studioCount": "imatges: {{count}}",
+    "studioNegative": "evitant: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

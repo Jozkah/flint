@@ -47,7 +47,9 @@
     "enterWorktree": "Flint quiere mover el acceso de escritura de esta sesión a un worktree: {{folder}} (rama {{branch}}, basada en {{base}})",
     "spendPause": "Flint quiere continuar esta ejecución más allá de su pausa de gasto",
     "changeFileOutside": "Flint quiere cambiar {{target}}, que está fuera de {{workspace}}",
-    "changeManyFilesOutside": "Flint quiere cambiar {{count}} archivos, algunos fuera de {{workspace}}"
+    "changeManyFilesOutside": "Flint quiere cambiar {{count}} archivos, algunos fuera de {{workspace}}",
+    "studioGenerate": "Flint quiere crear una imagen en Studio",
+    "studioOpen": "Flint quiere abrir una imagen en tu editor"
   },
   "consequence": {
     "fileChange": "Puede crear, sobrescribir o cambiar el contenido de archivos.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "El chat anidado lee y modifica archivos en su propia rama de este proyecto, usa su cuota de modelo y sigue ejecutándose mientras usted hace otras cosas. Sus cambios permanecen en esa rama hasta que los fusione. Flint pregunta siempre.",
     "spawnChat": "El chat anidado es una sesión nueva que usa su cuota de modelo y sigue ejecutándose mientras usted hace otras cosas. Empieza sin acceso a carpetas. Flint pregunta siempre porque activó \"Preguntar antes de iniciar chats anidados\" para esta sesión.",
     "enterWorktree": "Esta sesión solo puede leer y modificar archivos en ese worktree, en su propia rama, no en la carpeta de su proyecto. Sus cambios permanecen en esa rama hasta que los fusione. Flint pregunta siempre.",
-    "spendPause": "La ejecución sigue consumiendo cuota de modelo de pago hasta que termine o llegue a su tope. Denegar la detiene."
+    "spendPause": "La ejecución sigue consumiendo cuota de modelo de pago hasta que termine o llegue a su tope. Denegar la detiene.",
+    "studioGenerate": "Ejecuta el modelo de imágenes en la tarjeta gráfica y guarda el resultado en la galería de Studio.",
+    "studioOpen": "Inicia tu editor con esta imagen. Lo que guardes ahí depende de ti."
   },
   "repeat": {
     "allowedOnceBefore": "Ya permitiste este comando una vez en esta conversación."
@@ -109,7 +113,8 @@
     "tool": "Herramienta",
     "server": "Servidor",
     "arguments": "Argumentos",
-    "revokeHint": "Puedes revisar y revocar permisos en Ajustes > Permisos."
+    "revokeHint": "Puedes revisar y revocar permisos en Ajustes > Permisos.",
+    "details": "Detalles"
   },
   "pending": {
     "one": "1 solicitud espera tu aprobación",

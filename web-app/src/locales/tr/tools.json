@@ -166,8 +166,12 @@
     "kill": "{{pid}} işlemini sonlandır: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{name}} hizmeti için {{verb}} ({{display}}, şu an {{status}})",
-    "studioGenerate": "{{model}} ile {{size}} boyutunda oluştur, resim sayısı: {{count}}. Ekran kartını kullanır ve bir dakika veya daha uzun sürebilir.\n{{prompt}}",
-    "studioOpen": "{{id}} resmini {{program}} ile aç:\n{{prompt}}"
+    "studioGenerate": "{{model}} ile: {{details}}. Ekran kartını kullanır ve bir dakika veya daha uzun sürebilir.",
+    "studioOpen": "{{path}} dosyasını {{program}} ile aç.",
+    "studioSteps": "adım: {{steps}}",
+    "studioSeed": "seed: {{seed}}",
+    "studioCount": "resim: {{count}}",
+    "studioNegative": "kaçınılacak: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

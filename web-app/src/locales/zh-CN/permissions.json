@@ -47,7 +47,9 @@
     "enterWorktree": "Flint 想要将此会话的写入权限移入某个工作树：{{folder}}（分支 {{branch}}，基于 {{base}}）",
     "spendPause": "Flint 想在超过支出暂停额度后继续此次运行",
     "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
-    "changeManyFilesOutside": "Flint 想修改 {{count}} 个文件,其中一些在 {{workspace}} 之外"
+    "changeManyFilesOutside": "Flint 想修改 {{count}} 个文件,其中一些在 {{workspace}} 之外",
+    "studioGenerate": "Flint 想要在 Studio 中生成图片",
+    "studioOpen": "Flint 想要在编辑器中打开图片"
   },
   "consequence": {
     "fileChange": "它可以创建、覆盖或更改文件的内容。",
@@ -71,7 +73,9 @@
     "spawnWorktree": "嵌套聊天会在这个项目自己的分支上读取和更改文件，使用你的模型配额，并在你做其他事情时持续运行。在你合并之前，它的更改会保留在该分支上。Flint 每次都会询问。",
     "spawnChat": "嵌套聊天是一个新会话，会使用你的模型配额，并在你做其他事情时持续运行。它启动时没有文件夹访问权限。因为你为此会话开启了“嵌套聊天启动前询问”，所以 Flint 每次都会询问。",
     "enterWorktree": "此会话只能在该工作树自己的分支上读取和更改文件，而不能在你的项目文件夹中。在你合并之前，它的更改会保留在该分支上。Flint 每次都会询问。",
-    "spendPause": "运行会继续消耗付费模型额度，直到结束或达到上限。拒绝则停止运行。"
+    "spendPause": "运行会继续消耗付费模型额度，直到结束或达到上限。拒绝则停止运行。",
+    "studioGenerate": "它会在显卡上运行图片模型，并把结果保存到 Studio 图库。",
+    "studioOpen": "它会用这张图片启动你的编辑器。你在其中保存什么由你决定。"
   },
   "repeat": {
     "allowedOnceBefore": "你已在此对话中允许过这条命令一次。"
@@ -109,7 +113,8 @@
     "tool": "工具",
     "server": "服务器",
     "arguments": "参数",
-    "revokeHint": "你可以在“设置”>“权限”中查看和撤销权限。"
+    "revokeHint": "你可以在“设置”>“权限”中查看和撤销权限。",
+    "details": "详情"
   },
   "pending": {
     "one": "1 个请求正在等待你的批准",

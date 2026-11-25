@@ -47,7 +47,9 @@
     "enterWorktree": "Flint souhaite déplacer l’accès en écriture de cette session vers un worktree : {{folder}} (branche {{branch}}, basée sur {{base}})",
     "spendPause": "Flint veut poursuivre cette exécution au-delà de sa pause de dépense",
     "changeFileOutside": "Flint veut modifier {{target}}, qui se trouve en dehors de {{workspace}}",
-    "changeManyFilesOutside": "Flint veut modifier {{count}} fichiers, dont certains en dehors de {{workspace}}"
+    "changeManyFilesOutside": "Flint veut modifier {{count}} fichiers, dont certains en dehors de {{workspace}}",
+    "studioGenerate": "Flint veut créer une image dans Studio",
+    "studioOpen": "Flint veut ouvrir une image dans votre éditeur"
   },
   "consequence": {
     "fileChange": "Elle peut créer, écraser ou modifier le contenu de fichiers.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Le chat imbriqué lit et modifie des fichiers sur sa propre branche de ce projet, consomme votre quota de modèle et continue de s’exécuter pendant que vous faites autre chose. Ses modifications restent sur cette branche jusqu’à ce que vous les fusionniez. Flint demande à chaque fois.",
     "spawnChat": "Le chat imbriqué est une nouvelle session qui consomme votre quota de modèle et continue de s’exécuter pendant que vous faites autre chose. Il démarre sans accès aux dossiers. Flint demande à chaque fois parce que vous avez activé « Demander avant le démarrage de chats imbriqués » pour cette session.",
     "enterWorktree": "Cette session peut lire et modifier des fichiers uniquement dans ce worktree, sur sa propre branche, et non dans votre dossier de projet. Ses modifications restent sur cette branche jusqu’à ce que vous les fusionniez. Flint demande à chaque fois.",
-    "spendPause": "L'exécution continue de consommer du quota de modèle payant jusqu'à sa fin ou son plafond. Refuser l'arrête."
+    "spendPause": "L'exécution continue de consommer du quota de modèle payant jusqu'à sa fin ou son plafond. Refuser l'arrête.",
+    "studioGenerate": "Il exécute le modèle d’images sur votre carte graphique et enregistre le résultat dans la galerie Studio.",
+    "studioOpen": "Il lance votre éditeur avec cette image. Ce que vous y enregistrez dépend de vous."
   },
   "repeat": {
     "allowedOnceBefore": "Vous avez déjà autorisé cette commande une fois dans cette conversation."
@@ -109,7 +113,8 @@
     "tool": "Outil",
     "server": "Serveur",
     "arguments": "Arguments",
-    "revokeHint": "Vous pouvez examiner et révoquer les autorisations dans Réglages > Permissions."
+    "revokeHint": "Vous pouvez examiner et révoquer les autorisations dans Réglages > Permissions.",
+    "details": "Détails"
   },
   "pending": {
     "one": "1 demande attend votre approbation",

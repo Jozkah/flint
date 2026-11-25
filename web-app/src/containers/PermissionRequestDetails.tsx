@@ -130,7 +130,7 @@ export function PermissionRequestDetails({
           {request.reason && (
             <>
               <dt className="text-muted-foreground">
-                {t('permissions:request.reason')}
+                {t(request.reasonIsDetails ? 'permissions:request.details' : 'permissions:request.reason')}
               </dt>
               <dd className="min-w-0 break-words">
                 {request.reason}
@@ -234,7 +234,7 @@ export function PermissionRequestDetails({
       {request.reason && (
         <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3">
           <dt className={cn(LABEL, 'pt-0.5')}>
-            {t('permissions:request.reason')}
+            {t(request.reasonIsDetails ? 'permissions:request.details' : 'permissions:request.reason')}
           </dt>
           <dd className="min-w-0 break-words text-foreground">
             {request.reason}

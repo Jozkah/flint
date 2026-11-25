@@ -47,7 +47,9 @@
     "enterWorktree": "Flint chce přesunout zápisový přístup této relace do worktree: {{folder}} (větev {{branch}}, založeno na {{base}})",
     "spendPause": "Flint chce pokračovat v tomto běhu po dosažení limitu pozastavení výdajů",
     "changeFileOutside": "Flint chce změnit {{target}}, který je mimo {{workspace}}",
-    "changeManyFilesOutside": "Flint chce změnit {{count}} souborů, některé mimo {{workspace}}"
+    "changeManyFilesOutside": "Flint chce změnit {{count}} souborů, některé mimo {{workspace}}",
+    "studioGenerate": "Flint chce vytvořit obrázek ve Studiu",
+    "studioOpen": "Flint chce otevřít obrázek ve vašem editoru"
   },
   "consequence": {
     "fileChange": "Může vytvářet, přepisovat nebo měnit obsah souborů.",
@@ -71,7 +73,9 @@
     "spawnWorktree": "Vnořený chat čte a mění soubory na své vlastní větvi tohoto projektu, spotřebovává kvótu vašeho modelu a běží dál, zatímco děláte jiné věci. Jeho změny zůstanou na té větvi, dokud je nesloučíte. Flint se ptá vždy.",
     "spawnChat": "Vnořený chat je nová relace, která spotřebovává kvótu vašeho modelu a běží dál, zatímco děláte jiné věci. Začíná bez přístupu ke složkám. Flint se ptá vždy, protože jste pro tuto relaci zapnuli „Zeptat se před spuštěním vnořených chatů“.",
     "enterWorktree": "Tato relace může číst a měnit soubory jen v tom worktree na jeho vlastní větvi, ne ve složce vašeho projektu. Její změny zůstanou na té větvi, dokud je nesloučíte. Flint se ptá vždy.",
-    "spendPause": "Běh dál spotřebovává placenou kvótu modelu, dokud neskončí nebo nedosáhne stropu. Zamítnutím se zastaví."
+    "spendPause": "Běh dál spotřebovává placenou kvótu modelu, dokud neskončí nebo nedosáhne stropu. Zamítnutím se zastaví.",
+    "studioGenerate": "Spustí model obrázků na grafické kartě a výsledek uloží do galerie Studia.",
+    "studioOpen": "Spustí váš editor s tímto obrázkem. Co v něm uložíte, je na vás."
   },
   "repeat": {
     "allowedOnceBefore": "Tento příkaz jste v této konverzaci již jednou povolili."
@@ -109,7 +113,8 @@
     "tool": "Nástroj",
     "server": "Server",
     "arguments": "Argumenty",
-    "revokeHint": "Oprávnění můžete zkontrolovat a odvolat v Nastavení > Oprávnění."
+    "revokeHint": "Oprávnění můžete zkontrolovat a odvolat v Nastavení > Oprávnění.",
+    "details": "Podrobnosti"
   },
   "pending": {
     "one": "1 žádost čeká na vaše schválení",

@@ -166,8 +166,12 @@
     "kill": "Завершить процесс {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} службу {{name}} ({{display}}, сейчас {{status}})",
-    "studioGenerate": "Сгенерировать моделью {{model}} в размере {{size}}, число изображений: {{count}}. Используется видеокарта, может занять минуту или больше.\n{{prompt}}",
-    "studioOpen": "Открыть изображение {{id}} в {{program}}:\n{{prompt}}"
+    "studioGenerate": "Моделью {{model}}: {{details}}. Используется видеокарта, может занять минуту или больше.",
+    "studioOpen": "Открыть {{path}} в {{program}}.",
+    "studioSteps": "шаги: {{steps}}",
+    "studioSeed": "seed: {{seed}}",
+    "studioCount": "изображений: {{count}}",
+    "studioNegative": "исключить: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

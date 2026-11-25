@@ -166,8 +166,12 @@
     "kill": "Ukončit proces {{pid}}: {{who}}",
     "service": "{{verb}} service {{name}}",
     "serviceDetail": "{{verb}} službu {{name}} ({{display}}, nyní {{status}})",
-    "studioGenerate": "Vygenerovat s modelem {{model}} v rozlišení {{size}}, počet obrázků: {{count}}. Využije grafickou kartu a může trvat minutu i déle.\n{{prompt}}",
-    "studioOpen": "Otevřít obrázek {{id}} v programu {{program}}:\n{{prompt}}"
+    "studioGenerate": "S modelem {{model}}: {{details}}. Využije grafickou kartu a může trvat minutu i déle.",
+    "studioOpen": "Otevřít {{path}} v programu {{program}}.",
+    "studioSteps": "kroky: {{steps}}",
+    "studioSeed": "seed: {{seed}}",
+    "studioCount": "obrázky: {{count}}",
+    "studioNegative": "vyhnout se: {{text}}"
   },
   "referenceAlias": {
     "noFolder": "no folder is attached, so there is nothing to name",

@@ -225,7 +225,8 @@ export const ToolApprovalActions = memo(() => {
     !scopeFormChoice || chosenScopeId === EVERYWHERE_CHOICE
   const subject = requestSubject(
     pending.shownInput ?? pending.input,
-    request.resources
+    request.resources,
+    pending.toolName
   )
   const planCard = planCardOf(pending.toolName, pending.input)
   const planUnsaved = Boolean(planCard && planDirty[planCard.campaignId])
