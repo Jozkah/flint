@@ -173,6 +173,17 @@
       "detected": "Rilevato: {{format}}",
       "reset": "Reimposta rilevamento",
       "switched": "{{model}} non ha accettato {{from}} qui. Passato a {{to}} e salvato per questo modello."
+    },
+    "reasoning": {
+      "title": "Ragionamento",
+      "supported": "Livelli di impegno supportati",
+      "supportedHelp": "Seleziona i livelli di impegno che questo modello accetta. Un livello viene inviato solo se lo dichiari qui o se la famiglia del modello è nota per accettarlo.",
+      "known": "Noti per questo modello: {{levels}}. Seleziona dei livelli per impostare un elenco personale.",
+      "default": "Impegno predefinito",
+      "auto": "Automatico ({{level}})",
+      "autoNone": "Automatico (non viene inviato nulla)",
+      "none": "Non inviare nulla",
+      "defaultHelp": "Inviato con ogni richiesta che non ha scelto un livello, così il ragionamento compare subito. Se il server lo rifiuta, la richiesta viene ripetuta senza di esso."
     }
   },
   "addProvider": "Aggiungi provider",

@@ -173,6 +173,17 @@
       "detected": "Wykryto: {{format}}",
       "reset": "Zresetuj wykrycie",
       "switched": "{{model}} nie przyjął tu {{from}}. Przełączono na {{to}} i zapamiętano dla tego modelu."
+    },
+    "reasoning": {
+      "title": "Rozumowanie",
+      "supported": "Obsługiwane poziomy wysiłku",
+      "supportedHelp": "Zaznacz poziomy wysiłku, które akceptuje ten model. Poziom jest wysyłany tylko wtedy, gdy zadeklarujesz go tutaj albo rodzina modelu jest znana z jego obsługi.",
+      "known": "Znane dla tego modelu: {{levels}}. Zaznacz poziomy, aby ustawić własną listę.",
+      "default": "Domyślny poziom wysiłku",
+      "auto": "Automatycznie ({{level}})",
+      "autoNone": "Automatycznie (nic nie jest wysyłane)",
+      "none": "Nie wysyłaj niczego",
+      "defaultHelp": "Wysyłany z każdym żądaniem, które nie wybrało poziomu, dzięki czemu rozumowanie widać od razu. Jeśli serwer go odrzuci, żądanie jest ponawiane bez niego."
     }
   },
   "addProvider": "Dodaj Dostawcę",

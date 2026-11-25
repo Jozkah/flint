@@ -173,6 +173,17 @@
       "detected": "Terdeteksi: {{format}}",
       "reset": "Reset deteksi",
       "switched": "{{model}} tidak menerima {{from}} di sini. Beralih ke {{to}} dan disimpan untuk model ini."
+    },
+    "reasoning": {
+      "title": "Penalaran",
+      "supported": "Tingkat upaya yang didukung",
+      "supportedHelp": "Centang tingkat upaya yang diterima model ini. Tingkat upaya hanya dikirim jika Anda mendeklarasikannya di sini atau keluarga model diketahui menerimanya.",
+      "known": "Diketahui untuk model ini: {{levels}}. Centang tingkat untuk membuat daftar Anda sendiri.",
+      "default": "Tingkat upaya default",
+      "auto": "Otomatis ({{level}})",
+      "autoNone": "Otomatis (tidak ada yang dikirim)",
+      "none": "Jangan kirim apa pun",
+      "defaultHelp": "Dikirim dengan setiap permintaan yang belum memilih tingkat upaya, sehingga penalaran langsung tampil. Jika server menolaknya, permintaan diulang tanpa itu."
     }
   },
   "addProvider": "Tambah Penyedia",

@@ -78,6 +78,19 @@ type Model = {
   apiFormat?: 'auto' | 'chat' | 'responses'
   /** The API a request proved this model works on, set by the automatic switch. */
   detectedApiFormat?: 'chat' | 'responses'
+  /**
+   * Reasoning efforts the model accepts, set in Edit Model. Missing = what the
+   * model's family is known to take (see lib/modelEffort.ts); an unknown model
+   * is sent no effort.
+   */
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh'>
+  /**
+   * The effort sent when a chat has not picked one. Missing = the family's
+   * default; 'none' = send nothing, as before.
+   */
+  defaultEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'none'
+  /** The server refused a reasoning parameter; the implicit default stays off. */
+  reasoningRejected?: boolean
   /** Set when `contextWindow` / `maxOutputTokens` were filled from models.dev. */
   limitsSource?: 'models.dev'
   /** The user set this model's capabilities; probes must not add to them. */

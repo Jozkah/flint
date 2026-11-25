@@ -1,6 +1,7 @@
 import { ComposerEffort } from '@/containers/ComposerEffort'
 import {
   EFFORT_SETTING_KEY,
+  defaultEffort,
   effortOf,
   effortProfile,
   isThinkingOff,
@@ -115,7 +116,8 @@ export function useComposerEffort({
   const currentEffort: EffortChoice | null =
     effortCanDisable && isThinkingOff(resolvedForEffort)
       ? 'off'
-      : effortOf(resolvedForEffort)
+      : (effortOf(resolvedForEffort) ??
+        defaultEffort(selectedProvider, resolvedForEffort))
   const effortOverridden =
     isOverridden(chatOverrides, EFFORT_SETTING_KEY) ||
     isOverridden(chatOverrides, 'reasoning')

@@ -60,6 +60,10 @@ import { withApiFormatFallback } from '@/lib/apiFormatFallback'
 import { requestUrlOf } from '@/lib/model/transportErrors'
 import { rememberApiFormat } from '@/lib/apiFormatMemory'
 import {
+  rememberReasoningRejected,
+  withReasoningRejectionRetry,
+} from '@/lib/reasoningRejection'
+import {
   continuationStrategy,
   withContinueFinalMessage,
 } from '@/lib/chat/transport/continuation'
@@ -1024,10 +1028,12 @@ export class ModelFactory {
 
     const keyChain = providerRemoteApiKeyChain(provider)
     // The shim sits under the parameter merge, so it sees the final body.
-    const baseFetch =
+    const baseFetch = withReasoningRejectionRetry(
       mode === 'responses'
         ? withResponsesBodyShim(getRuntimeFetch())
-        : getRuntimeFetch()
+        : getRuntimeFetch(),
+      () => rememberReasoningRejected(provider.provider, modelId)
+    )
     const fetchImpl =
       keyChain.length > 1
         ? createApiKeyRotatingFetch(
@@ -1235,16 +1241,21 @@ export class ModelFactory {
     }
 
     const imageTap = new ImageTap()
+    // Under the parameter merge, so it sees the body with the effort in it: a
+    // server that refuses the effort is retried without it.
+    const sendFetch = withReasoningRejectionRetry(getRuntimeFetch(), () =>
+      rememberReasoningRejected(provider.provider, modelId)
+    )
     let fetchImpl: typeof globalThis.fetch =
       keyChain.length > 1
         ? createApiKeyRotatingFetch(
-            getRuntimeFetch(),
+            sendFetch,
             keyChain,
             parameters,
             isAzure ? 'authorization-bearer+api-key' : 'authorization-bearer',
             true
           )
-        : createCustomFetch(getRuntimeFetch(), parameters, false, undefined, true)
+        : createCustomFetch(sendFetch, parameters, false, undefined, true)
 
     // Groq's API rejects assistant `reasoning` fields, so it always strips
     // regardless of the toggle; other providers honor the global setting.

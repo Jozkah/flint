@@ -17,6 +17,14 @@ import { modelContextWindow, modelMaxOutputTokens } from '@/lib/modelLimits'
 import { lookupModelsDev } from '@/lib/modelsDev'
 import { Select } from '@/components/ui/select'
 import {
+  EFFORT_LEVELS,
+  defaultEffort,
+  effortLabel,
+  effortProfile,
+  isEffortLevel,
+  type EffortLevel,
+} from '@/lib/modelEffort'
+import {
   isApiFormat,
   type ApiFormat,
   type ApiFormatSetting,
@@ -34,6 +42,7 @@ const NATIVE_API_PROVIDERS = new Set([
   'xai',
 ])
 import {
+  Check,
   Eye,
   Globe,
   Headphones,
@@ -245,6 +254,50 @@ export const DialogEditModel = ({
   const formatName = (f: ApiFormat) =>
     t(`providers:editModel.apiFormat.${f}`)
 
+  // Reasoning: which efforts the model accepts (none ticked = what its family
+  // is known to take) and the one sent when a chat has not picked one. Local
+  // engines size their own thinking, so they have neither.
+  const showReasoning = !['llamacpp', 'mlx'].includes(
+    provider.provider.toLowerCase()
+  )
+  const storedEfforts = EFFORT_LEVELS.filter((l) =>
+    selectedModel?.reasoningEfforts?.includes(l)
+  )
+  const storedDefault: EffortLevel | 'auto' | 'none' =
+    selectedModel?.defaultEffort === 'none' ||
+    isEffortLevel(selectedModel?.defaultEffort)
+      ? selectedModel.defaultEffort
+      : 'auto'
+  const [efforts, setEfforts] = useState<EffortLevel[]>([])
+  const [defaultSel, setDefaultSel] = useState<EffortLevel | 'auto' | 'none'>('auto')
+  const storedEffortsKey = storedEfforts.join()
+  useEffect(() => {
+    setEfforts(storedEffortsKey ? (storedEffortsKey.split(',') as EffortLevel[]) : [])
+    setDefaultSel(storedDefault)
+  }, [selectedModel?.id, storedEffortsKey, storedDefault])
+  const reasoningChanged =
+    showReasoning &&
+    (efforts.join() !== storedEffortsKey || defaultSel !== storedDefault)
+  // The profile the model would have with the ticks as they are now.
+  const draftModel = selectedModel
+    ? {
+        ...selectedModel,
+        reasoningEfforts: efforts.length ? efforts : undefined,
+        defaultEffort: undefined,
+      }
+    : undefined
+  const profileLevels = effortProfile(provider.provider, draftModel).levels
+  const automaticDefault = defaultEffort(provider.provider, draftModel)
+  const toggleEffort = (level: EffortLevel) => {
+    const next = efforts.includes(level)
+      ? efforts.filter((l) => l !== level)
+      : EFFORT_LEVELS.filter((l) => l === level || efforts.includes(l))
+    setEfforts(next)
+    if (isEffortLevel(defaultSel) && next.length && !next.includes(defaultSel)) {
+      setDefaultSel('auto')
+    }
+  }
+
   // Update model capabilities - only update local state
   const handleCapabilityChange = (capability: string, enabled: boolean) => {
     setCapabilities((prev) => ({
@@ -268,7 +321,8 @@ export const DialogEditModel = ({
       capabilitiesChanged ||
       costsChanged ||
       limitsChanged ||
-      apiFormatChanged
+      apiFormatChanged ||
+      reasoningChanged
     )
   }
 
@@ -319,6 +373,13 @@ export const DialogEditModel = ({
         modelUpdate.detectedApiFormat = detectedFormat
       }
 
+      if (reasoningChanged) {
+        modelUpdate.reasoningEfforts = efforts.length ? efforts : undefined
+        modelUpdate.defaultEffort = defaultSel === 'auto' ? undefined : defaultSel
+        // Picking a default again is the way back after a refusal.
+        modelUpdate.reasoningRejected = undefined
+      }
+
       // Update the model in the provider models array
       const updatedModels = provider.models.map((m: Model) =>
         m.id === selectedModelId ? { ...m, ...modelUpdate } : m
@@ -365,6 +426,8 @@ export const DialogEditModel = ({
       setLookup({ state: 'idle' })
       setApiFormat(storedApiFormat)
       setDetectedFormat(storedDetected)
+      setEfforts(storedEfforts)
+      setDefaultSel(storedDefault)
     }
     setIsOpen(open)
   }
@@ -653,6 +716,82 @@ export const DialogEditModel = ({
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {showReasoning && (
+          <div className="py-1">
+            <h3 className="mb-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
+              {t('providers:editModel.reasoning.title')}
+            </h3>
+            <div
+              role="group"
+              aria-label={t('providers:editModel.reasoning.supported')}
+              aria-describedby="supported-efforts-help"
+              className="flex flex-wrap gap-2"
+            >
+              {EFFORT_LEVELS.map((level) => (
+                <Button
+                  key={level}
+                  type="button"
+                  variant={efforts.includes(level) ? 'default' : 'outline'}
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  aria-pressed={efforts.includes(level)}
+                  onClick={() => toggleEffort(level)}
+                  disabled={isLoading}
+                >
+                  {efforts.includes(level) && <Check aria-hidden />}
+                  {effortLabel(level)}
+                </Button>
+              ))}
+            </div>
+            <p
+              id="supported-efforts-help"
+              className="mt-1 text-xs text-muted-foreground"
+              aria-live="polite"
+            >
+              {efforts.length === 0 && profileLevels.length > 0
+                ? t('providers:editModel.reasoning.known', {
+                    levels: profileLevels.map(effortLabel).join(', '),
+                  })
+                : t('providers:editModel.reasoning.supportedHelp')}
+            </p>
+            <label
+              htmlFor="default-effort"
+              className="mb-2 mt-3 block text-xs font-medium text-foreground"
+            >
+              {t('providers:editModel.reasoning.default')}
+            </label>
+            <Select
+              id="default-effort"
+              aria-describedby="default-effort-help"
+              value={defaultSel}
+              onChange={(e) =>
+                setDefaultSel(e.target.value as EffortLevel | 'auto' | 'none')
+              }
+              disabled={isLoading}
+            >
+              <option value="auto">
+                {automaticDefault
+                  ? t('providers:editModel.reasoning.auto', {
+                      level: effortLabel(automaticDefault),
+                    })
+                  : t('providers:editModel.reasoning.autoNone')}
+              </option>
+              <option value="none">{t('providers:editModel.reasoning.none')}</option>
+              {(efforts.length ? efforts : profileLevels).map((level) => (
+                <option key={level} value={level}>
+                  {effortLabel(level)}
+                </option>
+              ))}
+            </Select>
+            <p
+              id="default-effort-help"
+              className="mt-1 text-xs text-muted-foreground"
+            >
+              {t('providers:editModel.reasoning.defaultHelp')}
+            </p>
           </div>
         )}
 

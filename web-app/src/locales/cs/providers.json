@@ -173,6 +173,17 @@
       "detected": "Zjištěno: {{format}}",
       "reset": "Zrušit zjištění",
       "switched": "{{model}} zde nepřijal {{from}}. Přepnuto na {{to}} a uloženo pro tento model."
+    },
+    "reasoning": {
+      "title": "Uvažování",
+      "supported": "Podporované úrovně úsilí",
+      "supportedHelp": "Zaškrtněte úrovně, které tento model přijímá. Úroveň se odesílá jen tehdy, když ji zde uvedete nebo když je známo, že ji rodina modelu přijímá.",
+      "known": "Známé pro tento model: {{levels}}. Zaškrtnutím úrovní nastavíte vlastní seznam.",
+      "default": "Výchozí úroveň úsilí",
+      "auto": "Automaticky ({{level}})",
+      "autoNone": "Automaticky (nic se neposílá)",
+      "none": "Neposílat nic",
+      "defaultHelp": "Odesílá se s každým požadavkem, který žádnou úroveň nezvolil, aby se uvažování zobrazovalo hned. Pokud ji server odmítne, požadavek se zopakuje bez ní."
     }
   },
   "addProvider": "Přidat poskytovatele",

@@ -173,6 +173,17 @@
       "detected": "Detectado: {{format}}",
       "reset": "Restablecer detección",
       "switched": "{{model}} no aceptó {{from}} aquí. Se cambió a {{to}} y se guardó para este modelo."
+    },
+    "reasoning": {
+      "title": "Razonamiento",
+      "supported": "Esfuerzos admitidos",
+      "supportedHelp": "Marca los esfuerzos que acepta este modelo. Solo se envía un esfuerzo si lo declaras aquí o si se sabe que la familia del modelo lo acepta.",
+      "known": "Conocidos para este modelo: {{levels}}. Marca niveles para definir tu propia lista.",
+      "default": "Esfuerzo predeterminado",
+      "auto": "Automático ({{level}})",
+      "autoNone": "Automático (no se envía nada)",
+      "none": "No enviar nada",
+      "defaultHelp": "Se envía con cada solicitud que no haya elegido un esfuerzo, para que el razonamiento se vea desde el principio. Si el servidor lo rechaza, la solicitud se repite sin él."
     }
   },
   "addProvider": "Agregar proveedor",

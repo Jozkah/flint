@@ -90,8 +90,15 @@ export function isOpenAICompatibleReasoningProvider(
     !!providerId &&
     !NATIVELY_WIRED_REASONING_PROVIDERS.has(providerId) &&
     ((model?.capabilities?.includes('reasoning') ?? false) ||
+      declaredEfforts(model).length > 0 ||
       REASONING_MODEL_ID.test(model?.id ?? ''))
   )
+}
+
+/** The efforts the user declared for this model in Edit Model, lowest first. */
+function declaredEfforts(model: Model | null | undefined): EffortLevel[] {
+  const list = model?.reasoningEfforts
+  return Array.isArray(list) ? EFFORT_LEVELS.filter((l) => list.includes(l)) : []
 }
 
 /** The levels a model offers, and the one it uses when none is chosen. */
@@ -313,6 +320,25 @@ export function effortProfile(
   model: Model | null | undefined,
   rules: EffortRule[] = EFFORT_RULES
 ): EffortProfile {
+  const base = knownEffortProfile(providerId, model, rules)
+  const declared = declaredEfforts(model)
+  // A declared list replaces the family's, but only where a control already
+  // belongs: a provider with no effort wiring would ignore it.
+  if (!declared.length || !base.levels.length) return base
+  return {
+    ...base,
+    levels: declared,
+    recommended: base.recommended && declared.includes(base.recommended)
+      ? base.recommended
+      : null,
+  }
+}
+
+function knownEffortProfile(
+  providerId: string | null | undefined,
+  model: Model | null | undefined,
+  rules: EffortRule[]
+): EffortProfile {
   switch (providerId) {
     case 'openai':
       return openaiProfile(model?.id ?? '')
@@ -338,6 +364,47 @@ export function effortProfile(
         ? compatibleProfile(model?.id ?? '')
         : NO_EFFORT
   }
+}
+
+/** OpenAI ids that reason; the others (gpt-4o, gpt-4.1) 400 on an effort. */
+const OPENAI_REASONING_ID = /(^|[/:])(o[134](-|$)|gpt-?5)/i
+
+/**
+ * The effort sent when a chat has not picked one, or null for none.
+ *
+ * The user's `defaultEffort` wins ('none' = nothing). Otherwise a family default
+ * applies only where the model is known to reason and its levels are known:
+ * OpenAI's reasoning ids, Anthropic and Gemini families in the table, and any
+ * compatible host whose model declares reasoning. An unknown model, a local
+ * llama.cpp model and the subscription bridges (whose CLIs reason on their own)
+ * get nothing. A model whose server refused the parameter keeps nothing.
+ */
+export function defaultEffort(
+  providerId: string | null | undefined,
+  model: Model | null | undefined
+): EffortLevel | null {
+  if (!providerId || providerId === 'llamacpp' || providerId === 'mlx') {
+    return null
+  }
+  const { levels, recommended } = effortProfile(providerId, model)
+  if (!levels.length) return null
+  const own = model?.defaultEffort
+  if (own === 'none') return null
+  if (isEffortLevel(own)) return clampEffort(own, levels)
+  if (model?.reasoningRejected) return null
+  if (SUBSCRIPTION_BRIDGE_PROVIDERS.has(providerId)) return null
+  if (
+    providerId === 'openai' &&
+    !OPENAI_REASONING_ID.test(model?.id ?? '') &&
+    !(model?.capabilities?.includes('reasoning') ?? false) &&
+    declaredEfforts(model).length === 0
+  ) {
+    return null
+  }
+  return clampEffort(
+    recommended ?? (levels.includes('medium') ? 'medium' : levels[0]!),
+    levels
+  )
 }
 
 /** The levels this provider and model will actually act on. */
