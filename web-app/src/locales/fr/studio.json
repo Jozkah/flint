@@ -278,5 +278,24 @@
     "setup": "Modifier l'appli",
     "edit": "Modifier dans une appli externe",
     "reveal": "Afficher dans le dossier"
+  },
+  "reference": {
+    "title": "Images de référence",
+    "hint": "Ce modèle retouche des images. Ajoutez l'image à modifier, puis décrivez la modification dans la consigne.",
+    "hintChosen": "Décrivez comment modifier l'image, ou ce qu'il faut en reprendre.",
+    "add": "Ajouter une image de référence",
+    "limit": "Jusqu'à {{count}} images de référence",
+    "fromComputer": "Depuis cet ordinateur",
+    "fromGallery": "Depuis vos images",
+    "pickTitle": "Choisir des images de référence",
+    "pickDesc": "Choisissez jusqu'à {{count}} images dans votre galerie.",
+    "done": "Terminé",
+    "remove": "Retirer l'image de référence : {{name}}",
+    "use": "Utiliser comme référence",
+    "imported": "Image importée",
+    "notPicture": "Choisissez une image PNG, JPEG ou WebP.",
+    "tooBig": "Cette image dépasse 20 Mo.",
+    "importFailed": "Impossible d'ajouter cette image.",
+    "count": "Images de référence : {{count}}"
   }
 }

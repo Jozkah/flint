@@ -155,6 +155,19 @@ const FLUX2_KLEIN_COMPANIONS: &[FileDef] = &[
     },
 ];
 
+// FLUX.2 klein 9B: the same VAE, but the text encoder is Qwen3 8B (docs/flux2.md
+// of the pinned engine tag). The weights are under the FLUX non-commercial licence.
+const FLUX2_KLEIN_9B_COMPANIONS: &[FileDef] = &[
+    FLUX2_KLEIN_COMPANIONS[0],
+    FileDef {
+        role: Role::Llm,
+        repo: "unsloth/Qwen3-8B-GGUF",
+        filename: "Qwen3-8B-Q4_K_M.gguf",
+        size: 5_027_784_512,
+        sha256: "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4",
+    },
+];
+
 pub const FAMILIES: &[Family] = &[
     Family {
         id: "z-image",
@@ -235,7 +248,7 @@ pub const FAMILIES: &[Family] = &[
     Family {
         id: "flux2-klein",
         label: "FLUX.2 klein 4B",
-        description: "FLUX.2 klein 4B, distilled or base. Also downloads a Qwen3 4B text encoder (2.5 GB) and a VAE (0.3 GB).",
+        description: "FLUX.2 klein 4B, distilled or base. Follows reference pictures to edit them. Also downloads a Qwen3 4B text encoder (2.5 GB) and a VAE (0.3 GB).",
         hints: &[
             "flux-2-klein-4b",
             "flux.2-klein-4b",
@@ -260,7 +273,38 @@ pub const FAMILIES: &[Family] = &[
         },
         min_side: 16,
         max_side: 2048,
-        edit: false,
+        edit: true,
+        extra_args: &[],
+    },
+    Family {
+        id: "flux2-klein-9b",
+        label: "FLUX.2 klein 9B",
+        description: "FLUX.2 klein 9B (non-commercial licence), distilled or base. Follows reference pictures to edit them. Also downloads a Qwen3 8B text encoder (5.0 GB) and a VAE (0.3 GB).",
+        hints: &[
+            "flux-2-klein-9b",
+            "flux.2-klein-9b",
+            "flux2-klein-9b",
+            "flux_2_klein_9b",
+            "flux2_klein_9b",
+            "flux-2-klein-base-9b",
+            "flux.2-klein-base-9b",
+            "flux2-klein-base-9b",
+            "flux_2_klein_base_9b",
+            "flux2_klein_base_9b",
+        ],
+        companions: FLUX2_KLEIN_9B_COMPANIONS,
+        // The distilled model: 4 steps, no guidance. `def_of` raises both for a base file.
+        defaults: Defaults {
+            steps: 4,
+            cfg_scale: 1.0,
+            sample_method: None,
+            flow_shift: None,
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 16,
+        max_side: 2048,
+        edit: true,
         extra_args: &[],
     },
     Family {
@@ -449,7 +493,7 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
         defaults.steps = 4;
     }
     // The base (undistilled) klein needs real guidance and more steps.
-    if family.id == "flux2-klein" && record.filename.to_ascii_lowercase().contains("base") {
+    if family.id.starts_with("flux2-klein") && record.filename.to_ascii_lowercase().contains("base") {
         defaults.steps = 20;
         defaults.cfg_scale = 4.0;
     }
@@ -707,7 +751,7 @@ mod tests {
     #[test]
     fn only_the_edit_families_follow_references_and_2511_gets_its_flag() {
         for f in FAMILIES {
-            assert_eq!(f.edit, f.id.contains("-edit"), "{}", f.id);
+            assert_eq!(f.edit, f.id.contains("-edit") || f.id.starts_with("flux2-klein"), "{}", f.id);
         }
         let edit = def_of(&record("qwen-image-edit", "qwen-image-edit-Q4_K_M.gguf")).unwrap();
         assert!(edit.edit && edit.extra_args.is_empty());
@@ -741,7 +785,8 @@ mod tests {
     #[test]
     fn flux2_klein_is_a_four_step_model_and_its_base_file_gets_guidance() {
         let fam = family("flux2-klein").unwrap();
-        assert!(!fam.edit && fam.extra_args.is_empty());
+        // The engine's flux2 docs show the same `-r` edit call for klein as for FLUX.2 dev.
+        assert!(fam.edit && fam.extra_args.is_empty());
         let distilled = def_of(&record("flux2-klein", "flux-2-klein-4b-Q4_0.gguf")).unwrap();
         assert_eq!((distilled.defaults.steps, distilled.defaults.cfg_scale), (4, 1.0));
         let base = def_of(&record("flux2-klein", "flux-2-klein-base-4b-Q4_0.gguf")).unwrap();
@@ -753,12 +798,37 @@ mod tests {
     }
 
     #[test]
+    fn flux2_klein_9b_takes_the_qwen3_8b_encoder_and_follows_references() {
+        let fam = family("flux2-klein-9b").unwrap();
+        assert!(fam.edit && fam.extra_args.is_empty());
+        let def = def_of(&record("flux2-klein-9b", "flux-2-klein-9b-Q4_0.gguf")).unwrap();
+        assert!(def.edit);
+        assert_eq!((def.defaults.steps, def.defaults.cfg_scale), (4, 1.0));
+        assert_eq!(def.files.iter().map(|f| f.role).collect::<Vec<_>>(), vec![Role::DiffusionModel, Role::Vae, Role::Llm]);
+        // The same FLUX.2 VAE as the 4B; only the text encoder differs.
+        assert_eq!(def.files[1].filename, family("flux2-klein").unwrap().companions[0].filename);
+        assert_eq!((def.files[2].filename, def.files[2].size), ("Qwen3-8B-Q4_K_M.gguf", 5_027_784_512));
+        let base = def_of(&record("flux2-klein-9b", "flux-2-klein-base-9b-Q8_0.gguf")).unwrap();
+        assert_eq!((base.defaults.steps, base.defaults.cfg_scale), (20, 4.0));
+        // A ComfyUI folder's own spellings still stand in for both companions.
+        let own = vec![
+            ("C:/comfy/text_encoders/qwen_3_8b.safetensors".to_string(), 16_000_000_000u64),
+            ("C:/comfy/vae/flux2-vae.safetensors".to_string(), 336_211_292),
+            ("C:/comfy/text_encoders/qwen_3_4b.safetensors".to_string(), 8_000_000_000),
+        ];
+        let matched = match_companions(fam, &own);
+        assert_eq!(matched.iter().map(|m| m.role).collect::<Vec<_>>(), vec![Role::Vae, Role::Llm]);
+        assert!(matched[1].path.ends_with("qwen_3_8b.safetensors"));
+    }
+
+    #[test]
     fn flux2_klein_files_are_recognised_and_other_flux_is_not_mistaken_for_it() {
         assert_eq!(guess_family("leejet/FLUX.2-klein-4B-GGUF", "flux-2-klein-4b-Q4_0.gguf"), Some("flux2-klein"));
         assert_eq!(guess_family("local", "flux-2-klein-4b-Q8_0.gguf"), Some("flux2-klein"));
         assert_eq!(guess_family("x/FLUX.2-klein-base-4B-GGUF", "flux-2-klein-base-4b-Q4_0.gguf"), Some("flux2-klein"));
-        // The 9B klein takes another text encoder: not offered the 4B family.
-        assert_eq!(guess_family("x/FLUX.2-klein-9B-GGUF", "flux-2-klein-9b-Q4_0.gguf"), None);
+        // The 9B klein takes another text encoder: it has its own family.
+        assert_eq!(guess_family("x/FLUX.2-klein-9B-GGUF", "flux-2-klein-9b-Q4_0.gguf"), Some("flux2-klein-9b"));
+        assert_eq!(guess_family("x/FLUX.2-klein-base-9B-GGUF", "flux-2-klein-base-9b-Q8_0.gguf"), Some("flux2-klein-9b"));
         assert_eq!(guess_family("leejet/FLUX.1-dev-gguf", "flux1-dev-q4_k.gguf"), Some("flux1"));
     }
 

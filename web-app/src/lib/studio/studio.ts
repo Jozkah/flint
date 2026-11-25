@@ -39,6 +39,8 @@ export type StudioModel = {
   custom?: boolean
   /** The family a custom model belongs to. */
   family?: string | null
+  /** Follows reference pictures (an edit model). */
+  edit?: boolean
 }
 
 /** A file of a model that did not come down, with what is needed to fetch it by hand. */
@@ -80,6 +82,8 @@ export type Recipe = {
   modelId: string
   modelName: string
   lora?: StudioLora[]
+  /** Gallery ids of the pictures an edit followed. */
+  referenceIds?: string[]
   frames: number | null
   fps: number | null
   createdAtMs: number
@@ -104,6 +108,7 @@ export type StudioFamily = {
   hints: string[]
   minSide: number
   maxSide: number
+  edit?: boolean
   companionBytes: number
 }
 

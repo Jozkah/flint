@@ -275,5 +275,24 @@
     "setup": "Edit app",
     "edit": "Edit in external app",
     "reveal": "Show in folder"
+  },
+  "reference": {
+    "title": "Reference pictures",
+    "hint": "This model edits pictures. Add the picture to change, then describe the change in the prompt.",
+    "hintChosen": "Describe how to change the picture, or what to take from it.",
+    "add": "Add a reference picture",
+    "limit": "Up to {{count}} reference pictures",
+    "fromComputer": "From this computer",
+    "fromGallery": "From your pictures",
+    "pickTitle": "Choose reference pictures",
+    "pickDesc": "Pick up to {{count}} pictures from your gallery.",
+    "done": "Done",
+    "remove": "Remove reference picture: {{name}}",
+    "use": "Use as a reference",
+    "imported": "Imported picture",
+    "notPicture": "Choose a PNG, JPEG or WebP picture.",
+    "tooBig": "That picture is larger than 20 MB.",
+    "importFailed": "Could not add that picture.",
+    "count": "Reference pictures: {{count}}"
   }
 }

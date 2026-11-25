@@ -1,5 +1,5 @@
 import { VIDEO_SECONDS } from '@/lib/studio/helpers'
-import { type EngineBuild, type StudioLora } from '@/lib/studio/studio'
+import { type EngineBuild, type GalleryItem, type StudioLora } from '@/lib/studio/studio'
 
 export const BUILDS: Array<{ id: EngineBuild; label: 'anyGpu' | 'noGpu' | 'nvidia' }> = [
   { id: 'linux-vulkan-x64', label: 'anyGpu' },
@@ -28,6 +28,8 @@ export type Form = {
   seconds: number
   accepted: boolean
   loras: StudioLora[]
+  /** Pictures an edit model follows (its gallery items). */
+  references: GalleryItem[]
 }
 
 export const CUSTOM = -1
@@ -45,4 +47,5 @@ export const EMPTY_FORM: Form = {
   seconds: VIDEO_SECONDS[VIDEO_SECONDS.length - 1],
   accepted: false,
   loras: [],
+  references: [],
 }

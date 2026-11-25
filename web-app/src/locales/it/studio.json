@@ -278,5 +278,24 @@
     "setup": "Modifica app",
     "edit": "Modifica in app esterna",
     "reveal": "Mostra nella cartella"
+  },
+  "reference": {
+    "title": "Immagini di riferimento",
+    "hint": "Questo modello modifica le immagini. Aggiungi l'immagine da cambiare e descrivi la modifica nel prompt.",
+    "hintChosen": "Descrivi come cambiare l'immagine o cosa prenderne.",
+    "add": "Aggiungi un'immagine di riferimento",
+    "limit": "Fino a {{count}} immagini di riferimento",
+    "fromComputer": "Da questo computer",
+    "fromGallery": "Dalle tue immagini",
+    "pickTitle": "Scegli le immagini di riferimento",
+    "pickDesc": "Scegli fino a {{count}} immagini dalla galleria.",
+    "done": "Fatto",
+    "remove": "Rimuovi l'immagine di riferimento: {{name}}",
+    "use": "Usa come riferimento",
+    "imported": "Immagine importata",
+    "notPicture": "Scegli un'immagine PNG, JPEG o WebP.",
+    "tooBig": "Quell'immagine supera i 20 MB.",
+    "importFailed": "Impossibile aggiungere l'immagine.",
+    "count": "Immagini di riferimento: {{count}}"
   }
 }

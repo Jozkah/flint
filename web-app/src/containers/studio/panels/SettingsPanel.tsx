@@ -100,7 +100,7 @@ export function SettingsPanel({
           <PanelButton
             disabled={running}
             onClick={() => {
-              setForm({ sizeIndex: 0, count: 1, seed: '', negative: '', accepted: false, loras: [] })
+              setForm({ sizeIndex: 0, count: 1, seed: '', negative: '', accepted: false, loras: [], references: [] })
               setNegativeOn(false)
             }}
           >

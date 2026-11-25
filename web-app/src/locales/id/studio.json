@@ -272,5 +272,24 @@
     "setup": "Edit aplikasi",
     "edit": "Edit di aplikasi eksternal",
     "reveal": "Tampilkan di folder"
+  },
+  "reference": {
+    "title": "Gambar referensi",
+    "hint": "Model ini mengedit gambar. Tambahkan gambar yang ingin diubah, lalu jelaskan perubahannya di prompt.",
+    "hintChosen": "Jelaskan cara mengubah gambar, atau apa yang diambil darinya.",
+    "add": "Tambah gambar referensi",
+    "limit": "Hingga {{count}} gambar referensi",
+    "fromComputer": "Dari komputer ini",
+    "fromGallery": "Dari gambar Anda",
+    "pickTitle": "Pilih gambar referensi",
+    "pickDesc": "Pilih hingga {{count}} gambar dari galeri Anda.",
+    "done": "Selesai",
+    "remove": "Hapus gambar referensi: {{name}}",
+    "use": "Gunakan sebagai referensi",
+    "imported": "Gambar yang diimpor",
+    "notPicture": "Pilih gambar PNG, JPEG, atau WebP.",
+    "tooBig": "Gambar itu lebih besar dari 20 MB.",
+    "importFailed": "Gambar tidak dapat ditambahkan.",
+    "count": "Gambar referensi: {{count}}"
   }
 }

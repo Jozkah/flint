@@ -980,7 +980,7 @@ pub async fn generate_image<R: Runtime>(
     }
     if !params.reference_ids.is_empty() && !def.edit {
         return Err(format!(
-            "{} cannot follow reference pictures. Use image-to-image on one picture instead, or load an instruction-edit model such as Qwen-Image-Edit.",
+            "{} cannot follow reference pictures. Use image-to-image on one picture instead, or load an edit model such as FLUX.2 klein or Qwen-Image-Edit.",
             def.display_name
         ));
     }
@@ -1064,6 +1064,7 @@ pub async fn generate_image<R: Runtime>(
             model_id: def.id.to_string(),
             model_name: def.display_name.to_string(),
             lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
+            reference_ids: params.reference_ids.clone(),
             frames: None,
             fps: None,
             created_at_ms: gallery::now_ms(),
@@ -1143,6 +1144,7 @@ pub async fn generate_video<R: Runtime>(
         model_id: def.id.to_string(),
         model_name: def.display_name.to_string(),
         lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
+        reference_ids: Vec::new(),
         frames: result["frame_count"].as_u64().map(|n| n as u32).or(Some(frames)),
         fps: result["fps"].as_u64().map(|n| n as u32).or(Some(video.fps)),
         created_at_ms: gallery::now_ms(),

@@ -281,5 +281,24 @@
     "setup": "Edytuj aplikację",
     "edit": "Edytuj w zewnętrznej aplikacji",
     "reveal": "Pokaż w folderze"
+  },
+  "reference": {
+    "title": "Obrazy referencyjne",
+    "hint": "Ten model edytuje obrazy. Dodaj obraz do zmiany i opisz zmianę w poleceniu.",
+    "hintChosen": "Opisz, jak zmienić obraz lub co z niego wziąć.",
+    "add": "Dodaj obraz referencyjny",
+    "limit": "Do {{count}} obrazów referencyjnych",
+    "fromComputer": "Z tego komputera",
+    "fromGallery": "Z Twoich obrazów",
+    "pickTitle": "Wybierz obrazy referencyjne",
+    "pickDesc": "Wybierz z galerii do {{count}} obrazów.",
+    "done": "Gotowe",
+    "remove": "Usuń obraz referencyjny: {{name}}",
+    "use": "Użyj jako referencji",
+    "imported": "Zaimportowany obraz",
+    "notPicture": "Wybierz obraz PNG, JPEG lub WebP.",
+    "tooBig": "Ten obraz ma ponad 20 MB.",
+    "importFailed": "Nie udało się dodać obrazu.",
+    "count": "Obrazy referencyjne: {{count}}"
   }
 }

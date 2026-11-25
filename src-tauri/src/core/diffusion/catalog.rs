@@ -131,11 +131,20 @@ pub struct FileDef {
 /// serves any more, and the commit that still has them. Unsloth replaced
 /// `z-image-turbo-Q4_K_M.gguf` (5,017,613,376 bytes) with a smaller file on
 /// 2026-10-29, which left a download of `main` unable to ever match the pin.
-const PINNED_REVISIONS: &[(&str, &str, &str)] = &[(
-    "unsloth/Z-Image-Turbo-GGUF",
-    "z-image-turbo-Q4_K_M.gguf",
-    "6c80814333b7b6a70a2e5b469a7c6437ce65de0f",
-)];
+const PINNED_REVISIONS: &[(&str, &str, &str)] = &[
+    (
+        "unsloth/Z-Image-Turbo-GGUF",
+        "z-image-turbo-Q4_K_M.gguf",
+        "6c80814333b7b6a70a2e5b469a7c6437ce65de0f",
+    ),
+    // The FLUX.2 klein 9B text encoder, pinned to the commit its size and
+    // SHA-256 were read from (the repository re-quantises now and then).
+    (
+        "unsloth/Qwen3-8B-GGUF",
+        "Qwen3-8B-Q4_K_M.gguf",
+        "a6adef130ffb23ddaf1a62fec9dced968c9bc482",
+    ),
+];
 
 impl FileDef {
     /// The commit to download from when `main` no longer serves this exact

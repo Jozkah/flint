@@ -272,5 +272,24 @@
     "setup": "앱 편집",
     "edit": "외부 앱에서 편집",
     "reveal": "폴더에서 보기"
+  },
+  "reference": {
+    "title": "참조 이미지",
+    "hint": "이 모델은 이미지를 편집합니다. 바꿀 이미지를 추가한 뒤 프롬프트에 변경 내용을 적어 주세요.",
+    "hintChosen": "이미지를 어떻게 바꿀지, 또는 무엇을 가져올지 적어 주세요.",
+    "add": "참조 이미지 추가",
+    "limit": "참조 이미지는 최대 {{count}}장",
+    "fromComputer": "이 컴퓨터에서",
+    "fromGallery": "내 이미지에서",
+    "pickTitle": "참조 이미지 선택",
+    "pickDesc": "갤러리에서 최대 {{count}}장을 고르세요.",
+    "done": "완료",
+    "remove": "참조 이미지 제거: {{name}}",
+    "use": "참조로 사용",
+    "imported": "가져온 이미지",
+    "notPicture": "PNG, JPEG 또는 WebP 이미지를 선택하세요.",
+    "tooBig": "이미지가 20MB보다 큽니다.",
+    "importFailed": "이미지를 추가하지 못했습니다.",
+    "count": "참조 이미지: {{count}}"
   }
 }

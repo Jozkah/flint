@@ -278,5 +278,24 @@
     "setup": "Editar app",
     "edit": "Editar em app externo",
     "reveal": "Mostrar na pasta"
+  },
+  "reference": {
+    "title": "Imagens de referência",
+    "hint": "Este modelo edita imagens. Adicione a imagem a alterar e descreva a mudança no prompt.",
+    "hintChosen": "Descreva como alterar a imagem ou o que aproveitar dela.",
+    "add": "Adicionar imagem de referência",
+    "limit": "Até {{count}} imagens de referência",
+    "fromComputer": "Deste computador",
+    "fromGallery": "Das suas imagens",
+    "pickTitle": "Escolher imagens de referência",
+    "pickDesc": "Escolha até {{count}} imagens da sua galeria.",
+    "done": "Concluir",
+    "remove": "Remover imagem de referência: {{name}}",
+    "use": "Usar como referência",
+    "imported": "Imagem importada",
+    "notPicture": "Escolha uma imagem PNG, JPEG ou WebP.",
+    "tooBig": "Essa imagem tem mais de 20 MB.",
+    "importFailed": "Não foi possível adicionar a imagem.",
+    "count": "Imagens de referência: {{count}}"
   }
 }
