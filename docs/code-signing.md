@@ -79,3 +79,39 @@ same identity so reputation accumulates.
 `sign.ps1` reads `FLINT_SIGN_MODE` (`trusted` or `pfx`) plus the variables named
 at the top of the script. With it unset, signing is skipped, so local builds are
 unaffected.
+
+# macOS code signing
+
+The repository has no Apple Developer ID certificate, so the macOS build is
+ad-hoc signed: the release workflow sets tauri's `signingIdentity` to `-` (and
+turns the hardened runtime off, since it only matters for notarization and its
+library validation rejects ad-hoc dylibs). A "Verify the macOS app signature"
+step mounts the `.dmg` and fails the job if `codesign --verify --deep --strict`
+does not accept the app inside.
+
+Before this, tauri skipped signing altogether. The bundle had no sealed
+signature, and a downloaded (quarantined) copy was reported by Gatekeeper as
+"damaged and can't be opened", with no way to allow it in System Settings.
+
+## Opening an ad-hoc signed build
+
+An ad-hoc signature is valid but not notarized, so the first launch of a
+downloaded copy still shows "Apple could not verify Flint is free of malware".
+Either open System Settings, Privacy & Security, and click "Open Anyway", or
+clear the quarantine flag once after copying the app to Applications:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Flint.app
+```
+
+## Developer ID signing and notarization
+
+Opening without any prompt needs a paid Apple Developer account: a "Developer ID
+Application" certificate (exported as a base64 `.p12`) plus notarization
+credentials, either an Apple ID app-specific password with the team ID
+(`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) or an App Store Connect API key
+(`APPLE_API_KEY`, `APPLE_API_ISSUER`, the `.p8` key). Tauri reads these together
+with `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD`. The workflow does not
+wire them up yet: the binaries staged in `resources/bin` (engine worker, ggml
+libraries, `flint` CLI, `mlx-server`) must also be signed with the Developer ID
+before notarization accepts the app.
