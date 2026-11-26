@@ -229,6 +229,7 @@
     "emptyVideo": "你的第一部影片從這裡開始",
     "emptyDesc": "在上方描述它，或試試其中一個範例。",
     "save": "儲存",
+    "savedTo": "已儲存到 {{path}}",
     "openLarge": "放大檢視",
     "remix": "再創作：相同提示詞，新種子",
     "remixShort": "再創作",

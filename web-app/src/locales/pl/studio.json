@@ -238,6 +238,7 @@
     "emptyVideo": "Tu zaczyna się Twoje pierwsze wideo",
     "emptyDesc": "Opisz go powyżej lub wypróbuj jeden z przykładów.",
     "save": "Zapisz",
+    "savedTo": "Zapisano w {{path}}",
     "openLarge": "Otwórz w dużym rozmiarze",
     "remix": "Remiks: ten sam prompt, nowy seed",
     "remixShort": "Remiks",

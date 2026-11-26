@@ -201,4 +201,7 @@ export const studioApi = {
   /** Opens a gallery picture in an editor app; the backend finds the file and checks the program. */
   openExternal: (kind: StudioKind, id: string, program: string, args: string) =>
     invoke<void>('diffusion_open_external', { kind, id, program, args }),
+  /** Saves a gallery item through the system save dialog; the path is null when the person cancels. */
+  saveCopy: (kind: StudioKind, id: string, suggestedName: string) =>
+    invoke<string | null>('diffusion_save_copy', { kind, id, suggestedName }),
 }

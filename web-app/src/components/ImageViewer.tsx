@@ -33,6 +33,7 @@ export function ImageViewer({
   onIndexChange,
   onClose,
   actions,
+  onSave,
 }: {
   images: readonly ViewerImage[]
   index: number
@@ -40,6 +41,8 @@ export function ImageViewer({
   onClose: () => void
   /** Extra buttons for the current image, shown beside save (use the same round style). */
   actions?: (toolButton: string) => ReactNode
+  /** Saves the image at this index. Given where the link cannot (file URLs in the desktop app). */
+  onSave?: (index: number) => void
 }) {
   const { t } = useTranslation()
   const [zoom, setZoom] = useState(1)
@@ -161,15 +164,27 @@ export function ImageViewer({
             <ZoomIn className="size-4" />
           </button>
           {actions?.(toolButton)}
-          <a
-            className={toolButton}
-            href={image.url}
-            download={downloadNameOf(image, index)}
-            aria-label={t('common:imageViewer.save')}
-            title={t('common:imageViewer.save')}
-          >
-            <Download className="size-4" />
-          </a>
+          {onSave ? (
+            <button
+              type="button"
+              className={toolButton}
+              onClick={() => onSave(index)}
+              aria-label={t('common:imageViewer.save')}
+              title={t('common:imageViewer.save')}
+            >
+              <Download className="size-4" />
+            </button>
+          ) : (
+            <a
+              className={toolButton}
+              href={image.url}
+              download={downloadNameOf(image, index)}
+              aria-label={t('common:imageViewer.save')}
+              title={t('common:imageViewer.save')}
+            >
+              <Download className="size-4" />
+            </a>
+          )}
           <button ref={closeRef} type="button" className={toolButton} onClick={onClose} aria-label={t('common:imageViewer.close')}>
             <X className="size-4" />
           </button>

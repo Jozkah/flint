@@ -235,6 +235,7 @@
     "emptyVideo": "Video đầu tiên của bạn bắt đầu từ đây",
     "emptyDesc": "Hãy mô tả ở trên, hoặc thử một trong các ví dụ.",
     "save": "Lưu",
+    "savedTo": "Đã lưu vào {{path}}",
     "openLarge": "Mở cỡ lớn",
     "remix": "Remix: cùng prompt, seed mới",
     "remixShort": "Remix",
