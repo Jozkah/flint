@@ -372,6 +372,7 @@ macro_rules! invoke_commands_with_extras {
         // MCP commands
         core::mcp::commands::get_tools,
         core::mcp::commands::get_tools_for_servers,
+        core::mcp::commands::get_mcp_session_placeholders,
         core::mcp::commands::get_server_summaries,
         core::mcp::commands::call_tool,
         core::mcp::commands::get_mcp_budget_report,

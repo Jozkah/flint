@@ -373,7 +373,7 @@ async fn test_get_tools_falls_back_to_last_known_when_server_enabled_but_disconn
         );
     }
 
-    let result = get_tools(app.handle().clone(), state, None).await;
+    let result = get_tools(app.handle().clone(), state, None, None).await;
     assert!(result.is_ok());
     let tools = result.unwrap();
     assert_eq!(
@@ -414,7 +414,7 @@ async fn test_get_tools_omits_disabled_server_even_with_stale_last_known_entry()
         );
     }
 
-    let result = get_tools(app.handle().clone(), state, None).await;
+    let result = get_tools(app.handle().clone(), state, None, None).await;
     assert!(result.is_ok());
     assert!(
         result.unwrap().is_empty(),
@@ -2530,6 +2530,74 @@ mod manager_bookkeeping_tests {
             .await
             .expect("the old monitor must be aborted, not detached")
             .unwrap_err();
+    }
+
+    /// A `{{var}}` template never starts as written: each session starts its
+    /// own instance with its values.
+    #[tokio::test]
+    async fn a_template_is_never_started_as_written() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+        let result = start_mcp_server(
+            handle.clone(),
+            servers.clone(),
+            "idea".to_string(),
+            json!({ "type": "stdio", "command": "npx", "args": ["--root={{project_path}}"] }),
+        )
+        .await;
+        let err = result.expect_err("a template must not start");
+        assert!(err.contains("{{project_path}}"), "{err}");
+        assert!(servers.lock().await.get("idea").is_none());
+        let state = handle.state::<AppState>();
+        assert!(!state.mcp_starting.lock().await.contains("idea"));
+    }
+
+    #[tokio::test]
+    async fn a_session_gets_its_own_instance_of_a_template() {
+        use super::super::helpers::session_instance;
+        use std::collections::HashMap;
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let state = handle.state::<AppState>();
+        state.mcp_active_servers.lock().await.insert(
+            "obsidian".to_string(),
+            json!({ "type": "http", "url": "http://127.0.0.1:{{port}}/mcp", "startWithFlint": true }),
+        );
+        state
+            .mcp_active_servers
+            .lock()
+            .await
+            .insert("plain".to_string(), json!({ "type": "stdio", "command": "x", "args": [] }));
+        let vars = |p: &str| HashMap::from([("port".to_string(), p.to_string())]);
+
+        let a = session_instance(&state, "obsidian", &vars("1")).await.unwrap();
+        let a2 = session_instance(&state, "obsidian", &vars("1")).await.unwrap();
+        let b = session_instance(&state, "obsidian", &vars("2")).await.unwrap();
+        assert_eq!(a, a2, "the same values share one instance");
+        assert_ne!(a, b, "different values get different instances");
+        {
+            let active = state.mcp_active_servers.lock().await;
+            let config = active.get(&a).expect("the instance is registered");
+            assert_eq!(config["url"], "http://127.0.0.1:1/mcp");
+            assert!(config.get("startWithFlint").is_none(), "instances start on demand");
+            assert_eq!(active["obsidian"]["url"], "http://127.0.0.1:{{port}}/mcp");
+        }
+        let missing = session_instance(&state, "obsidian", &HashMap::new()).await.unwrap_err();
+        assert!(missing.contains("{{port}}"), "{missing}");
+        assert_eq!(session_instance(&state, "plain", &HashMap::new()).await.unwrap(), "plain");
+
+        // Turning the template off takes its instances with it.
+        super::super::commands::deactivate_mcp_server(
+            handle.clone(),
+            handle.state::<AppState>(),
+            "obsidian".to_string(),
+        )
+        .await
+        .unwrap();
+        let active = state.mcp_active_servers.lock().await;
+        assert!(!active.contains_key("obsidian"));
+        assert!(!active.contains_key(&a) && !active.contains_key(&b));
+        assert!(active.contains_key("plain"));
     }
 
     #[tokio::test]

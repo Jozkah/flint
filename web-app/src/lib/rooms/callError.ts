@@ -69,6 +69,8 @@ export type RoomToolContext = {
   budgetAccess?: ToolAccess
   /** Tools the user switched off for this participant. */
   disabledTools?: string[]
+  /** The room's `{{var}}` values for template MCP servers. */
+  mcpVariables?: Record<string, string>
   /**
    * What this participant may do without asking, for the turn (its own mode,
    * else the room's). Absent means `ask`.

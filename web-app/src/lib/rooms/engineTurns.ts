@@ -467,6 +467,7 @@ export class RoomRunTurns extends RoomRunBase {
           ...(participant.disabledTools?.length
             ? { disabledTools: participant.disabledTools }
             : {}),
+          ...(this.room.mcpVariables ? { mcpVariables: this.room.mcpVariables } : {}),
           holdLabel: () => (this.signal.aborted && (this.opts.intent?.() ?? 'pause') === 'pause' ? 'room paused' : null),
           // What the room can still spend, for a subagent's budget.
           tokenBudget: Math.max(

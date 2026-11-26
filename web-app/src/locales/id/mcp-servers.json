@@ -291,5 +291,17 @@
       "label": "RivalSearchMCP (hosted)",
       "note": "Setiap kueri dikirim ke rivalsearchmcp.fastmcp.app, dioperasikan pihak ketiga yang logging dan retensinya tidak didokumentasikan. Berlaku batas penggunaan wajar. Untuk hal pribadi, pilih opsi host sendiri. Catatan sama: berbasis scraping, satu pemelihara, belum diaudit."
     }
+  },
+  "sessionVars": {
+    "title": "Variabel MCP",
+    "description": "Nilai yang diberikan sesi ini ke server MCP yang pengaturannya memakai placeholder, seperti path proyek atau port.",
+    "valuePlaceholder": "Nilai",
+    "usedBy": "Dipakai oleh {{servers}}",
+    "none": "Tidak ada server MCP aktif yang memakai variabel sesi.",
+    "unsetHint": "Sebuah server MCP butuh variabel yang belum diatur",
+    "promptTitle": "Variabel diperlukan untuk {{server}}",
+    "promptDescription": "Server ini butuh nilai untuk sesi ini sebelum alat bisa berjalan. Nilai disimpan bersama sesi ini.",
+    "promptConfirm": "Simpan dan jalankan",
+    "formHint": "Tulis placeholder seperti {{example}} di argumen, environment, URL, atau header untuk mengaturnya per chat, sesi cowork, atau ruang."
   }
 }

@@ -29,6 +29,7 @@ import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { announceMcpChange, announceMcpWithheld, mcpAvailability, diffMcpSnapshots, enabledMcpServers, getMcpGeneration, loadLiveMcpTools, mcpChangeNote, mcpStartingNote, readMcpBaseline, snapshotMcpTools, syncMcpStore, writeMcpBaseline } from '@/lib/mcpLiveTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import { filterToolsByServers, threadMcpAllowList } from '@/lib/projectMcpServers'
+import { chatWithholdsUnresolved, gateUnresolvedTools, threadMcpVars } from '@/lib/mcpSessionScope'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
 import type { ServiceHub } from '@/lib/custom-chat-transport'
 
@@ -139,7 +140,13 @@ export async function refreshTools(
       : []
   // A project may limit its chats to some MCP servers (null = all).
   const mcpAllow = threadMcpAllowList(host.threadId)
+  // The chat's `{{var}}` values for template servers, and whether its mode
+  // withholds the templates they leave unresolved.
+  const sessionVars = threadMcpVars(host.threadId)
+  const withholdUnresolved = chatWithholdsUnresolved()
   const cacheKey = JSON.stringify({
+    sessionVars: sessionVars ?? null,
+    withholdUnresolved,
     mcpFingerprint,
     mcpAllow: mcpAllow ? [...mcpAllow].sort() : null,
     routedQuery: useMCPServers.getState().settings.enableSmartToolRouting
@@ -214,6 +221,7 @@ export async function refreshTools(
       ) {
         const summaries = await mcpService.getServerSummaries!()
         const routedSig = JSON.stringify({
+          vars: sessionVars ?? null,
           // Tool identities, not only server names: a server that gains
           // tools must re-route rather than keep the frozen subset.
           tools: mcpFingerprint,
@@ -235,9 +243,9 @@ export async function refreshTools(
             {
               // The router decides from server summaries, then only the
               // servers it selects are started (on demand).
-              getTools: () => mcpService.getTools({ start: true }),
+              getTools: () => mcpService.getTools({ start: true, sessionVars }),
               getToolsForServers: (names) =>
-                mcpService.getToolsForServers!(names, { start: true }),
+                mcpService.getToolsForServers!(names, { start: true, sessionVars }),
               getServerSummaries: () => Promise.resolve(summaries),
             },
             disabledToolKeys,
@@ -252,7 +260,7 @@ export async function refreshTools(
       } else {
         // A send that uses tools starts enabled servers on demand, waiting
         // a bounded time for ones still starting.
-        const live = await loadLiveMcpTools(mcpService)
+        const live = await loadLiveMcpTools(mcpService, { sessionVars })
         mcpTools = live.tools
         mcpStarting = live.starting
         fullListing = true
@@ -261,7 +269,15 @@ export async function refreshTools(
         mcpTools = filterToolsByServers(mcpTools ?? [], mcpAllow)
         mcpStarting = mcpStarting.filter((s) => mcpAllow.has(s))
       }
-      host.mcpStartingText = mcpStartingNote(mcpStarting)
+      // The listing before session gating feeds the shared tool store: a
+      // template withheld here is still a server other chats can use.
+      const ungated = mcpTools ?? []
+      const gated = gateUnresolvedTools(ungated, sessionVars, withholdUnresolved)
+      mcpTools = gated.tools
+      host.mcpStartingText =
+        [mcpStartingNote(mcpStarting), gated.note]
+          .filter((s): s is string => Boolean(s))
+          .join(' ') || null
 
       if (Array.isArray(mcpTools) && mcpTools.length > 0) {
         const seenBy = new Map<string, string>()
@@ -307,9 +323,12 @@ export async function refreshTools(
           ),
           mcpStarting,
           isToolDisabled,
-          mcpAllow
+          // A template withheld for unset variables was said so above;
+          // it is not "enabled but listed nothing".
+          (mcpAllow
             ? enabledMcpServers().filter((s) => mcpAllow.has(s))
             : enabledMcpServers()
+          ).filter((s) => !gated.withheld.has(s))
         )
         host.mcpStartingText =
           [host.mcpStartingText, availability.note]
@@ -319,7 +338,7 @@ export async function refreshTools(
       }
       recordMcpSet(host, 
         [...toolServers].map(([name, server]) => ({ name, server })),
-        fullListing ? mcpTools : undefined
+        fullListing ? ungated : undefined
       )
     } catch (error) {
       console.warn('Failed to load MCP tools:', error)

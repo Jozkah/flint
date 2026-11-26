@@ -12,6 +12,10 @@ import { McpExtensionToolLoader } from '@/containers/McpExtensionToolLoader'
 import { ExtensionManager } from '@/lib/extension'
 import { useAppState } from '@/hooks/useAppState'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useThreads } from '@/hooks/useThreads'
+import { McpVariablesButton } from '@/containers/McpVariablesButton'
+import { setThreadMcpVars } from '@/lib/mcpSessionScope'
+import { varsFromMetadata } from '@/lib/mcpSessionVars'
 
 /**
  * The composer's tool buttons: the embeddings marker, "enable tools" for a
@@ -23,6 +27,7 @@ export function ComposerToolControls({
   hasModel,
   toolsEnabled,
   onEnableTools,
+  threadId,
 }: {
   /** The model is an embeddings model. */
   hasEmbeddings: boolean
@@ -30,8 +35,11 @@ export function ComposerToolControls({
   hasModel: boolean
   toolsEnabled: boolean
   onEnableTools: () => void
+  /** The chat the composer writes to, for its MCP `{{var}}` values. */
+  threadId?: string
 }) {
   const { t } = useTranslation()
+  const thread = useThreads((s) => (threadId ? s.threads?.[threadId] : undefined))
   const tools = useAppState((state) => state.tools)
   const [dropdownToolsAvailable, setDropdownToolsAvailable] = useState(false)
   const [tooltipShown, setTooltipShown] = useState<
@@ -139,6 +147,12 @@ export function ComposerToolControls({
             </TooltipContent>
           </Tooltip>
         ))}
+      {toolsEnabled && threadId && thread && (
+        <McpVariablesButton
+          value={varsFromMetadata(thread.metadata as Record<string, unknown> | undefined)}
+          onSave={(vars) => setThreadMcpVars(threadId, vars)}
+        />
+      )}
     </>
   )
 }

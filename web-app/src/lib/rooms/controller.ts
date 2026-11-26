@@ -132,6 +132,8 @@ export type RoomSettingsPatch = {
   folder?: string | null
   /** More folders beside the main one; the list replaces the old one. */
   extraFolders?: string[]
+  /** The room's MCP `{{var}}` values; `null` (or empty) clears them. */
+  mcpVariables?: Record<string, string> | null
 }
 
 export interface RoomEditor {

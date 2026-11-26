@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { McpVariablesCard } from '@/containers/McpVariablesCard'
 
 export function RoomGeneralTab({
   hidden, uid, room, title, objective, onTitle, onObjective, attachFolder, detachFolder, addExtraFolder, removeExtraFolder,
+  saveMcpVariables,
 }: {
   hidden: boolean
   uid: string
@@ -22,6 +24,8 @@ export function RoomGeneralTab({
   detachFolder: () => Promise<void>
   addExtraFolder: () => Promise<void>
   removeExtraFolder: (path: string) => Promise<void>
+  /** Save the room's MCP `{{var}}` values. */
+  saveMcpVariables?: (vars: Record<string, string>) => Promise<void>
 }) {
   const { t } = useTranslation()
   return (
@@ -93,6 +97,12 @@ export function RoomGeneralTab({
           )}
           <p className="text-xs text-muted-foreground">{t('rooms:editor.workingFolderHint')}</p>
         </div>
+        {saveMcpVariables && (
+          <McpVariablesCard
+            value={room.mcpVariables}
+            onSave={(vars) => void saveMcpVariables(vars)}
+          />
+        )}
       </div>
   )
 }

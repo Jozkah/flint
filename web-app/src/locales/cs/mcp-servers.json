@@ -300,5 +300,17 @@
       "label": "RivalSearchMCP (hostovaný)",
       "note": "Každý dotaz se odesílá na rivalsearchmcp.fastmcp.app, který provozuje třetí strana s nezdokumentovaným logováním a uchováváním. Platí limity férového užití. Pro cokoli soukromého zvolte vlastní hostování. Stejné výhrady: scraping, jeden správce, bez auditu."
     }
+  },
+  "sessionVars": {
+    "title": "Proměnné MCP",
+    "description": "Hodnoty, které tato relace předává serverům MCP, jejichž nastavení používá zástupné symboly, například cestu k projektu nebo port.",
+    "valuePlaceholder": "Hodnota",
+    "usedBy": "Používá {{servers}}",
+    "none": "Žádný zapnutý server MCP nepoužívá proměnné relace.",
+    "unsetHint": "Server MCP potřebuje proměnné, které nejsou nastavené",
+    "promptTitle": "Proměnné potřebné pro {{server}}",
+    "promptDescription": "Tento server potřebuje pro tuto relaci hodnoty, než se nástroj spustí. Uloží se s touto relací.",
+    "promptConfirm": "Uložit a spustit",
+    "formHint": "Napište zástupný symbol jako {{example}} do argumentů, prostředí, URL nebo hlaviček a nastavte ho pro každý chat, relaci cowork nebo místnost."
   }
 }

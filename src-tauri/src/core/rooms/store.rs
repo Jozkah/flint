@@ -414,6 +414,11 @@ pub struct Room {
     /// "kept", "discarded" or "applied". Absent on rooms saved before it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change_decisions: Option<std::collections::BTreeMap<String, String>>,
+    /// Values for `{{var}}` placeholders in MCP server configs: the room's
+    /// instance of a template server is started with them. Absent on rooms
+    /// saved before it existed, and on rooms that set none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_variables: Option<std::collections::BTreeMap<String, String>>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,

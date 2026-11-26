@@ -294,5 +294,17 @@
       "label": "RivalSearchMCP(托管)",
       "note": "每次查询都会发送到 rivalsearchmcp.fastmcp.app,由第三方运营,其日志和保留政策未公开。适用合理使用限额。涉及隐私的内容请选择自托管。同样的提醒:基于抓取、一位维护者、未经审计。"
     }
+  },
+  "sessionVars": {
+    "title": "MCP 变量",
+    "description": "此会话传给 MCP 服务器的值，这些服务器的设置使用了占位符，例如项目路径或端口。",
+    "valuePlaceholder": "值",
+    "usedBy": "由 {{servers}} 使用",
+    "none": "没有已启用的 MCP 服务器使用会话变量。",
+    "unsetHint": "某个 MCP 服务器需要尚未设置的变量",
+    "promptTitle": "{{server}} 需要变量",
+    "promptDescription": "运行工具前，此服务器需要此会话的值。这些值会随此会话保存。",
+    "promptConfirm": "保存并运行",
+    "formHint": "在参数、环境变量、URL 或请求头中写入 {{example}} 这样的占位符，即可按聊天、协作会话或房间分别设置。"
   }
 }

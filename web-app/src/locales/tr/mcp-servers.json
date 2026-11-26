@@ -294,5 +294,17 @@
       "label": "RivalSearchMCP (barındırılan)",
       "note": "Her sorgu, kayıt tutma ve saklama politikası belgelenmemiş bir üçüncü tarafın işlettiği rivalsearchmcp.fastmcp.app adresine gönderilir. Adil kullanım sınırları geçerlidir. Özel işler için kendi barındırma seçeneğini seçin. Aynı çekinceler: kazıma tabanlı, tek bakımcı, denetlenmemiş."
     }
+  },
+  "sessionVars": {
+    "title": "MCP değişkenleri",
+    "description": "Bu oturumun, ayarlarında proje yolu veya port gibi yer tutucular kullanan MCP sunucularına verdiği değerler.",
+    "valuePlaceholder": "Değer",
+    "usedBy": "{{servers}} tarafından kullanılıyor",
+    "none": "Etkin hiçbir MCP sunucusu oturum değişkeni kullanmıyor.",
+    "unsetHint": "Bir MCP sunucusu ayarlanmamış değişkenlere ihtiyaç duyuyor",
+    "promptTitle": "{{server}} için gereken değişkenler",
+    "promptDescription": "Araç çalışmadan önce bu sunucunun bu oturum için değerlere ihtiyacı var. Değerler bu oturumla birlikte kaydedilir.",
+    "promptConfirm": "Kaydet ve çalıştır",
+    "formHint": "Sohbet, cowork oturumu veya oda başına ayarlamak için bağımsız değişkenlere, ortama, URL'ye veya başlıklara {{example}} gibi bir yer tutucu yazın."
   }
 }

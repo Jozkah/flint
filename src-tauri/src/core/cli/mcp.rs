@@ -471,6 +471,15 @@ pub async fn connect(
     config: &Value,
     servers: &SharedMcpServers,
 ) -> Result<(), ConnectError> {
+    // A `{{var}}` template takes its values from a desktop chat, cowork
+    // session or room; the CLI has none to give it, and launching it with the
+    // placeholders as written would run the wrong thing.
+    let unset = crate::core::mcp::session_vars::placeholders(config);
+    if !unset.is_empty() {
+        return Err(ConnectError::Failed(
+            crate::core::mcp::session_vars::missing_message(name, &unset),
+        ));
+    }
     connect_in(&default_data_folder(), name, config, servers).await
 }
 

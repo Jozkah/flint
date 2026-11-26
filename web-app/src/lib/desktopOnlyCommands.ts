@@ -252,6 +252,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'get_mcp_prompt',
       'get_mcp_server_log',
       'get_mcp_server_statuses',
+      'get_mcp_session_placeholders',
       'get_server_status',
       'get_server_summaries',
       'list_mcp_prompts',

@@ -1,4 +1,5 @@
 import type { MCPServerStatus } from '@/services/mcp/types'
+import { configUsesPlaceholders } from '@/lib/mcpSessionVars'
 import { useMCPServers, MCPServerConfig } from '@/hooks/useMCPServers'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -231,7 +232,9 @@ export function useMcpServerLifecycle({
             // nothing is saved or announced until it appears there.
             const connected = await serviceHub.mcp().getConnectedServers()
             setConnectedServers(connected)
-            if (!connected.includes(serverKey)) {
+            // A `{{var}}` template is only enabled here: it runs per session,
+            // as that session's instance, so it is never listed on its own.
+            if (!connected.includes(serverKey) && !configUsesPlaceholders(config)) {
               throw new Error(t('mcp-servers:connection.notListedAfterStart'))
             }
             editServer(serverKey, { ...config, active })

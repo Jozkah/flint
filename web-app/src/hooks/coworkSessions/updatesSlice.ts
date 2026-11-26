@@ -60,6 +60,7 @@ export type SessionUpdatesSlice = Pick<
   | 'setInFlight'
   | 'recoverInFlight'
   | 'setMode'
+  | 'setMcpVariables'
   | 'setCodePanel'
   | 'setTitle'
   | 'renameSession'
@@ -333,6 +334,18 @@ export const createSessionUpdatesSlice: StateCreator<
     }))
     return true
   },
+
+  setMcpVariables: (id, vars) =>
+    set((s) => ({
+      sessions: s.sessions.map((x) =>
+        x.id === id
+          ? {
+              ...x,
+              mcpVariables: Object.keys(vars).length > 0 ? { ...vars } : undefined,
+            }
+          : x
+      ),
+    })),
 
   setMode: (id, mode) =>
     set((s) => ({

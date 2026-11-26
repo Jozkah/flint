@@ -1,4 +1,8 @@
 import { mcpFailureText } from '@/lib/mcpToolResult'
+import { setThreadMcpVars, threadMcpVars } from '@/lib/mcpSessionScope'
+import { ensureMcpVariables, variablesDeclinedError } from '@/lib/mcpVariablePrompt'
+import { missingVariables } from '@/lib/mcpSessionVars'
+import { useMcpPlaceholders } from '@/hooks/useMcpPlaceholders'
 import type { MutableRefObject } from 'react'
 import type { UIMessage, UseChatHelpers } from '@ai-sdk/react'
 import type { ServiceHub } from '@/services'
@@ -544,6 +548,25 @@ export function runChatToolLoop(
           // the approval was for, so a server edited in between is
           // refused rather than called.
           const server = serverForTool(toolName)
+          // A template server needs this chat's `{{var}}` values; any it
+          // leaves unset are asked for now, and saved with the chat.
+          const sessionVars = await ensureMcpVariables(
+            server,
+            threadMcpVars(threadId),
+            (vars) => setThreadMcpVars(threadId, vars)
+          )
+          if (server && sessionVars === null) {
+            return {
+              error: variablesDeclinedError(
+                server,
+                missingVariables(
+                  useMcpPlaceholders.getState().placeholders,
+                  server,
+                  threadMcpVars(threadId)
+                )
+              ),
+            }
+          }
           const approvedFingerprint = useToolApprovalRequests
             .getState()
             .takeApprovedFingerprint?.(toolCall.toolCallId)
@@ -573,6 +596,7 @@ export function runChatToolLoop(
               arguments: toolCall.input,
               approvalTicket,
               cancellationToken,
+              sessionVars: sessionVars ?? undefined,
               maxOutputChars: deriveToolOutputCap(
                 typeof ctxLen === 'number' ? ctxLen : undefined
               ),

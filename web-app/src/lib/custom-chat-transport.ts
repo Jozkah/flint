@@ -282,12 +282,18 @@ export type ServiceHub = {
     >
   }
   mcp(): {
-    /** `start`: start enabled servers that are not running (on demand). */
-    getTools(options?: { start?: boolean }): Promise<MCPTool[]>
+    /**
+     * `start`: start enabled servers that are not running (on demand).
+     * `sessionVars`: the session's `{{var}}` values for template servers.
+     */
+    getTools(options?: {
+      start?: boolean
+      sessionVars?: Record<string, string>
+    }): Promise<MCPTool[]>
     /** TauriMCPService only */
     getToolsForServers?(
       serverNames: string[],
-      options?: { start?: boolean }
+      options?: { start?: boolean; sessionVars?: Record<string, string> }
     ): Promise<MCPTool[]>
     /** TauriMCPService only */
     getServerSummaries?(): Promise<

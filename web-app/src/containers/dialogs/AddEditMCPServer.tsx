@@ -730,6 +730,12 @@ export default function AddEditMCPServer({
               </div>
             )}
 
+            {/* Session variables: written here, filled in per chat, cowork
+                session or room. */}
+            <p className="text-xs text-muted-foreground">
+              {t('mcp-servers:sessionVars.formHint', { example: '{{project_path}}' })}
+            </p>
+
             {transportType === 'stdio' && (
               <div className="space-y-2">
                 <label
