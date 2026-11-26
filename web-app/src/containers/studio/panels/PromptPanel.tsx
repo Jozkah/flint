@@ -21,6 +21,7 @@ import { writeLastHostedImageModel } from '@/lib/studio/lastHostedImage'
 import { formatEta } from '@/lib/downloadSpeed'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { EXAMPLE_PROMPTS, framesForSeconds, parseSeed, videoMemoryWarning } from '@/lib/studio/helpers'
+import { saveStudioItem } from '@/lib/studio/saveItem'
 import { studioApi, type GalleryItem, type StudioKind, type StudioModel } from '@/lib/studio/studio'
 import { MAX_REFERENCES, ReferencePictures } from '@/containers/studio/panels/ReferencePictures'
 import { Elapsed } from '@/containers/studio/panels/Elapsed'
@@ -330,15 +331,15 @@ export function PromptPanel({
           )}
           {latest && !running && (
             <div className="absolute top-3 right-3 flex gap-1.5">
-              <a
-                href={convertFileSrc(latest.path)}
-                download={`studio-${latest.recipe.seed}.${kind === 'video' ? 'mp4' : 'png'}`}
+              <button
+                type="button"
+                onClick={() => void saveStudioItem(latest, convertFileSrc(latest.path))}
                 title={t('studio:prompt.save')}
                 aria-label={t('studio:prompt.save')}
                 className={roundBtn}
               >
                 <Download className="size-4" />
-              </a>
+              </button>
               <button
                 type="button"
                 title={t('studio:prompt.openLarge')}

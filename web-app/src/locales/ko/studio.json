@@ -229,6 +229,7 @@
     "emptyVideo": "첫 동영상이 여기서 시작됩니다",
     "emptyDesc": "위에 설명을 입력하거나 예시를 사용해 보세요.",
     "save": "저장",
+    "savedTo": "{{path}}에 저장했습니다",
     "openLarge": "크게 열기",
     "remix": "리믹스: 같은 프롬프트, 새 시드",
     "remixShort": "리믹스",

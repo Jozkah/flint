@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Segmented } from '@/components/ui/segmented'
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
+import { saveStudioItem } from '@/lib/studio/saveItem'
 import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { useStudio } from '@/hooks/useStudio'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -233,6 +234,10 @@ export function StudioPage() {
           index={viewing}
           onIndexChange={setViewing}
           onClose={() => setViewing(null)}
+          onSave={(i) => {
+            const item = shown[i]
+            if (item) void saveStudioItem(item, convertFileSrc(item.path))
+          }}
           actions={(toolButton) => {
             const current = shown[viewing]
             if (!current) return null

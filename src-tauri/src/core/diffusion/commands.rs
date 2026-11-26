@@ -386,6 +386,59 @@ pub fn diffusion_open_external<R: Runtime>(
     super::external::launch(&program, args.as_deref().unwrap_or(""), Path::new(&item.path))
 }
 
+/// What a saved copy may be: the media types the gallery holds.
+const SAVE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "mp4", "webm"];
+
+/// Copies `source` to `dest` through a temporary file, so a failed copy never
+/// leaves half a picture where the person chose to save.
+fn copy_atomically(source: &Path, dest: &Path) -> Result<(), String> {
+    let mut temp = dest.as_os_str().to_owned();
+    temp.push(".tmp");
+    let temp = std::path::PathBuf::from(temp);
+    std::fs::copy(source, &temp).map_err(|e| format!("could not save the copy: {e}"))?;
+    std::fs::rename(&temp, dest).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        format!("could not save the copy: {e}")
+    })
+}
+
+/// Saves a gallery picture or clip where the person chooses, through the
+/// system save dialog. The webview names the gallery item, never a path, and
+/// the destination comes from the dialog (an `<a download>` on a file URL
+/// opens the web preview instead of saving, in the desktop app). `None` means
+/// the person cancelled.
+#[tauri::command]
+pub async fn diffusion_save_copy<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    kind: Kind,
+    id: String,
+    suggested_name: String,
+) -> Result<Option<String>, String> {
+    let item = gallery::list(&app, kind)
+        .into_iter()
+        .find(|g| g.id == id)
+        .ok_or("That picture is no longer in the gallery.")?;
+    let source = std::path::PathBuf::from(&item.path);
+    let ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| SAVE_EXTENSIONS.contains(&e.as_str()))
+        .ok_or("That file is not a picture or video Flint can save.")?;
+    let name = crate::core::filesystem::export_file::sanitize_file_name(&suggested_name, &ext);
+    let Some(mut dest) = crate::core::filesystem::export_file::pick_path(&ext, &name).await else {
+        return Ok(None);
+    };
+    if dest.extension().is_none() {
+        dest.set_extension(&ext);
+    }
+    let target = dest.clone();
+    tauri::async_runtime::spawn_blocking(move || copy_atomically(&source, &target))
+        .await
+        .map_err(|e| format!("could not save the copy: {e}"))??;
+    Ok(Some(dest.to_string_lossy().to_string()))
+}
+
 /// Pictures a hosted provider returned, to keep in the gallery beside local ones.
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -651,6 +704,19 @@ pub async fn diffusion_remove_custom_model<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_saved_copy_matches_the_original_and_leaves_no_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.png");
+        let dst = dir.path().join("b.png");
+        std::fs::write(&src, b"picture").unwrap();
+        copy_atomically(&src, &dst).unwrap();
+        assert_eq!(std::fs::read(&dst).unwrap(), b"picture");
+        assert!(!dir.path().join("b.png.tmp").exists());
+        assert!(copy_atomically(&dir.path().join("missing.png"), &dir.path().join("c.png")).is_err());
+        assert!(!dir.path().join("c.png").exists() && !dir.path().join("c.png.tmp").exists());
+    }
+
     use super::*;
 
     #[test]
