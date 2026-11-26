@@ -191,6 +191,10 @@ html:not(.reduce-motion) .dlp-root[data-state='running'] .dlp-fill::after {
 }
 .dlp-num {
   display: inline-block;
+  /* Whole-pixel rows. At a fractional size WebKitGTK (Linux) snapped the
+     hundreds, tens and ones columns' -N em shifts to different pixels, so the
+     settled digits sat 1-2px apart and looked wavy. */
+  font-size: round(1em, 1px);
   width: 0.62em;
   height: 1em;
   overflow: hidden;
