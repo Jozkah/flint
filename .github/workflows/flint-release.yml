@@ -324,6 +324,24 @@ jobs:
           } | ConvertTo-Json -Depth 6 -Compress
           "TAURI_CONFIG=$config" >> $env:GITHUB_ENV
 
+      # macOS has no Developer ID certificate yet, so tauri skipped signing
+      # entirely: Flint.app shipped with only the linker's ad-hoc signature on
+      # the main executable and no sealed bundle (no _CodeSignature). Once the
+      # .dmg is downloaded it carries the quarantine flag, and Gatekeeper reports
+      # a bundle without a valid signature as "damaged and can't be opened",
+      # which System Settings cannot override. Ad-hoc signing the whole bundle
+      # ("-") gives it a valid signature, so Gatekeeper instead says it could
+      # not verify the developer and offers "Open Anyway" in Privacy & Security.
+      # The hardened runtime is off for ad-hoc builds: it only matters for
+      # notarization, and its library validation refuses ad-hoc dylibs (no team
+      # ID) such as sqlite-vec loaded into the app process. Real Developer ID
+      # signing and notarization need APPLE_* secrets; see docs/code-signing.md.
+      - name: Configure macOS code signing
+        if: runner.os == 'macOS'
+        run: |
+          echo '::notice::No Apple Developer ID secrets; ad-hoc signing the macOS app. See docs/code-signing.md.'
+          echo 'TAURI_CONFIG={"bundle":{"macOS":{"signingIdentity":"-","hardenedRuntime":false}}}' >> "$GITHUB_ENV"
+
       # Unsigned unless the step above found signing secrets: createUpdaterArtifacts
       # is false in tauri.conf.json, no TAURI_SIGNING_*/APPLE_* variables are set,
       # and JAN_ENGINE_REQUIRE_SIGNING is left unset so sign-engine.sh skips
@@ -371,6 +389,21 @@ jobs:
           }
           $sidecars = @(Get-ChildItem src-tauri/target/release -File -Filter *.exe | ForEach-Object FullName)
           ./src-tauri/sign.ps1 -Verify src-tauri/resources/bin @sidecars @installers @packed
+
+      # Fails the job if the macOS app inside the .dmg has no valid signature,
+      # which is what makes Gatekeeper call a downloaded app "damaged".
+      - name: Verify the macOS app signature
+        if: runner.os == 'macOS'
+        run: |
+          dmg=$(find src-tauri/target -path '*/release/bundle/dmg/*.dmg' -type f | head -1)
+          if [ -z "$dmg" ]; then echo "::error::no .dmg to verify"; exit 1; fi
+          mnt=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mnt" -force >/dev/null || true' EXIT
+          app=$(find "$mnt" -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$app" ]; then echo "::error::no .app inside $dmg"; exit 1; fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E '^(Identifier|Signature|Sealed Resources|Format)'
 
       - name: Report ccache statistics
         if: success() || failure()
