@@ -236,6 +236,7 @@
     "emptyVideo": "Tu primer vídeo empieza aquí",
     "emptyDesc": "Descríbela arriba o prueba uno de los ejemplos.",
     "save": "Guardar",
+    "savedTo": "Guardado en {{path}}",
     "openLarge": "Abrir en grande",
     "remix": "Remix: mismo prompt, semilla nueva",
     "remixShort": "Remix",

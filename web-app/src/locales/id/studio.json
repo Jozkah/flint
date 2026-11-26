@@ -230,6 +230,7 @@
     "emptyVideo": "Video pertama Anda dimulai di sini",
     "emptyDesc": "Jelaskan di atas, atau coba salah satu contoh.",
     "save": "Simpan",
+    "savedTo": "Disimpan di {{path}}",
     "openLarge": "Buka ukuran besar",
     "remix": "Remix: prompt sama, seed baru",
     "remixShort": "Remix",

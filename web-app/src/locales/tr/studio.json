@@ -233,6 +233,7 @@
     "emptyVideo": "İlk videonuz burada başlar",
     "emptyDesc": "Yukarıda tarif edin ya da örneklerden birini deneyin.",
     "save": "Kaydet",
+    "savedTo": "{{path}} konumuna kaydedildi",
     "openLarge": "Büyük aç",
     "remix": "Remiks: aynı istem, yeni seed",
     "remixShort": "Remiks",

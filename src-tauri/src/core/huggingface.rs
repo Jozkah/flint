@@ -428,6 +428,9 @@ fn etag_of(headers: &reqwest::header::HeaderMap) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Marks a partial's record as the URL it came from (the server sent no ETag).
+const PART_URL_PREFIX: &str = "url ";
+
 async fn read_part_etag(part_path: &std::path::Path) -> Option<String> {
     let text = tokio::fs::read_to_string(part_meta_path(part_path)).await.ok()?;
     let text = text.trim();
@@ -1089,17 +1092,33 @@ async fn download_attempt<R: Runtime>(
     token_sent: bool,
     cancel: &AtomicBool,
 ) -> Result<Attempt, String> {
-    let existing = tokio::fs::metadata(part_path)
+    let mut existing = tokio::fs::metadata(part_path)
         .await
         .map(|meta| meta.len())
         .unwrap_or(0);
+    // What the partial was downloaded from: the server's ETag, or the URL when
+    // the server sent none. A partial with no record (left by an older build)
+    // or from another URL (a pinned revision instead of `main`, say) cannot be
+    // trusted as a prefix of this file: gluing it on gives the full size and a
+    // failed SHA-256 at the end. Start that file over instead.
+    let mut if_range = None;
+    if existing > 0 {
+        match read_part_etag(part_path).await {
+            Some(record) => match record.strip_prefix(PART_URL_PREFIX) {
+                Some(source) if source == url.as_str() => {}
+                Some(_) => existing = 0,
+                None => if_range = Some(record),
+            },
+            None => existing = 0,
+        }
+    }
     let mut request = client.get(url.clone());
     if existing > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
         // Resume only if the file is still the one the partial came from. If it
         // changed, the server answers 200 with the whole new file and the
         // partial is rewritten instead of being glued onto different bytes.
-        if let Some(etag) = read_part_etag(part_path).await {
+        if let Some(etag) = if_range {
             request = request.header(reqwest::header::IF_RANGE, etag);
         }
     }
@@ -1155,8 +1174,9 @@ async fn download_attempt<R: Runtime>(
         return Err(response_error(response).await);
     }
 
-    if let Some(etag) = etag_of(response.headers()) {
-        write_part_etag(part_path, &etag).await;
+    match etag_of(response.headers()) {
+        Some(etag) => write_part_etag(part_path, &etag).await,
+        None => write_part_etag(part_path, &format!("{PART_URL_PREFIX}{url}")).await,
     }
     let resumed = existing > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
     let start = if resumed { existing } else { 0 };
@@ -2216,6 +2236,84 @@ mod tests {
         let requests = server.requests();
         assert_eq!(requests[0].1, None);
         assert_eq!(requests[1].1, Some(30_000));
+    }
+
+    /// Runs the loop with a partial already on disk, as an older build or
+    /// another URL left it.
+    async fn run_with_partial(url: &str, partial: &[u8], record: Option<&str>, expected_size: Option<u64>) -> (Result<(), String>, Option<Vec<u8>>) {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("model.gguf.part");
+        std::fs::write(&part, partial).unwrap();
+        if let Some(record) = record {
+            write_part_etag(&part, record).await;
+        }
+        let app = tauri::test::mock_app();
+        let handle = app.handle().clone();
+        let url = Url::parse(url).unwrap();
+        let cancel = AtomicBool::new(false);
+        let anonymous = AtomicBool::new(false);
+        let client = reqwest::Client::new();
+        let result = retry_until_done(
+            &cancel,
+            || async {
+                fetch_step(&handle, &client, &url, "t", &part, expected_size, false, &anonymous, &cancel).await
+            },
+            |_| async {},
+            |_, _, _| {},
+        )
+        .await;
+        (result, std::fs::read(&part).ok())
+    }
+
+    #[tokio::test]
+    async fn a_partial_with_no_record_is_started_over_not_glued_on() {
+        let data = content(60_000);
+        let served = data.clone();
+        let server = fake_server(move |request, _| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        // Bytes from some other file, as a build without the record left them.
+        let stale = vec![0xAB; 20_000];
+        let (result, bytes) = run_with_partial(&format!("{}/f", server.base), &stale, None, Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert_eq!(server.requests()[0].1, None, "no Range for an unverifiable partial");
+    }
+
+    #[tokio::test]
+    async fn a_partial_from_another_url_is_started_over() {
+        let data = content(60_000);
+        let served = data.clone();
+        let server = fake_server(move |request, _| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        let stale = vec![0xAB; 20_000];
+        let record = format!("{PART_URL_PREFIX}{}/main/f", server.base);
+        let (result, bytes) = run_with_partial(&format!("{}/f", server.base), &stale, Some(&record), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert_eq!(server.requests()[0].1, None);
+    }
+
+    #[tokio::test]
+    async fn a_partial_from_the_same_url_resumes() {
+        let data = content(60_000);
+        let served = data.clone();
+        let server = fake_server(move |request, _| {
+            let (status, body) = serve(&served, request, true);
+            Reply::File { status, body, cut: None, stall: None }
+        })
+        .await;
+        let url = format!("{}/f", server.base);
+        let record = format!("{PART_URL_PREFIX}{}", Url::parse(&url).unwrap());
+        let (result, bytes) = run_with_partial(&url, &data[..20_000], Some(&record), Some(data.len() as u64)).await;
+        result.unwrap();
+        assert_eq!(bytes.unwrap(), data);
+        assert_eq!(server.requests()[0].1, Some(20_000));
     }
 
     #[tokio::test]

@@ -236,6 +236,7 @@
     "emptyVideo": "El teu primer vídeo comença aquí",
     "emptyDesc": "Descriu-la a dalt o prova un dels exemples.",
     "save": "Desa",
+    "savedTo": "Desat a {{path}}",
     "openLarge": "Obre en gran",
     "remix": "Remix: mateix prompt, llavor nova",
     "remixShort": "Remix",

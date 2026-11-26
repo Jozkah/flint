@@ -239,6 +239,7 @@
     "emptyVideo": "Vaše první video začíná tady",
     "emptyDesc": "Popište ho nahoře, nebo vyzkoušejte některý z příkladů.",
     "save": "Uložit",
+    "savedTo": "Uloženo do {{path}}",
     "openLarge": "Otevřít velké",
     "remix": "Remix: stejný prompt, nový seed",
     "remixShort": "Remix",

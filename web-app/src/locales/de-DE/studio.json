@@ -233,6 +233,7 @@
     "emptyVideo": "Dein erstes Video entsteht hier",
     "emptyDesc": "Beschreibe es oben oder probiere eines der Beispiele aus.",
     "save": "Speichern",
+    "savedTo": "Gespeichert unter {{path}}",
     "openLarge": "Groß öffnen",
     "remix": "Remix: gleicher Prompt, neuer Seed",
     "remixShort": "Remix",

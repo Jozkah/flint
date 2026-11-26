@@ -233,6 +233,7 @@
     "emptyVideo": "Your first video starts here",
     "emptyDesc": "Describe it above, or try one of the examples.",
     "save": "Save",
+    "savedTo": "Saved to {{path}}",
     "openLarge": "Open large",
     "remix": "Remix: same prompt, new seed",
     "remixShort": "Remix",
