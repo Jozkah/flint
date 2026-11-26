@@ -305,7 +305,11 @@
     "actionDownload": "Amplia ×{{scale}} (primer baixa {{size}})",
     "downloading": "Baixant l’ampliador: {{bytes}} de {{total}}",
     "done": "Ampliada {{scale}}×",
-    "jobLabel": "Ampliant ×{{scale}}: {{prompt}}"
+    "jobLabel": "Ampliant ×{{scale}}: {{prompt}}",
+    "selection": "Amplia la selecció ×{{scale}}",
+    "selectionDownload": "Amplia la selecció ×{{scale}} (primer baixa {{size}})",
+    "selectionLabel": "Selecció",
+    "cropFailed": "No s’ha pogut retallar la selecció."
   },
   "select": {
     "start": "Selecciona una zona per editar",

@@ -302,7 +302,11 @@
     "actionDownload": "Upscale ×{{scale}} (downloads {{size}} first)",
     "downloading": "Downloading the upscaler: {{bytes}} of {{total}}",
     "done": "Upscaled ×{{scale}}",
-    "jobLabel": "Upscaling ×{{scale}}: {{prompt}}"
+    "jobLabel": "Upscaling ×{{scale}}: {{prompt}}",
+    "selection": "Upscale selection ×{{scale}}",
+    "selectionDownload": "Upscale selection ×{{scale}} (downloads {{size}} first)",
+    "selectionLabel": "Selection",
+    "cropFailed": "Could not cut out the selection."
   },
   "select": {
     "start": "Select an area to edit",

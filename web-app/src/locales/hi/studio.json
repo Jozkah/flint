@@ -302,7 +302,11 @@
     "actionDownload": "×{{scale}} बड़ा करें (पहले {{size}} डाउनलोड होगा)",
     "downloading": "अपस्केलर डाउनलोड हो रहा है: {{total}} में से {{bytes}}",
     "done": "{{scale}}× बड़ा किया गया",
-    "jobLabel": "×{{scale}} बड़ा किया जा रहा है: {{prompt}}"
+    "jobLabel": "×{{scale}} बड़ा किया जा रहा है: {{prompt}}",
+    "selection": "चयन ×{{scale}} बड़ा करें",
+    "selectionDownload": "चयन ×{{scale}} बड़ा करें (पहले {{size}} डाउनलोड होगा)",
+    "selectionLabel": "चयन",
+    "cropFailed": "चयन को काटा नहीं जा सका।"
   },
   "select": {
     "start": "संपादित करने के लिए क्षेत्र चुनें",

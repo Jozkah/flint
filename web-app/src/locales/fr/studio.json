@@ -305,7 +305,11 @@
     "actionDownload": "Agrandir ×{{scale}} (télécharge d’abord {{size}})",
     "downloading": "Téléchargement de l’agrandisseur : {{bytes}} sur {{total}}",
     "done": "Agrandie {{scale}}×",
-    "jobLabel": "Agrandissement ×{{scale}} : {{prompt}}"
+    "jobLabel": "Agrandissement ×{{scale}} : {{prompt}}",
+    "selection": "Agrandir la sélection ×{{scale}}",
+    "selectionDownload": "Agrandir la sélection ×{{scale}} (télécharge d’abord {{size}})",
+    "selectionLabel": "Sélection",
+    "cropFailed": "Impossible de découper la sélection."
   },
   "select": {
     "start": "Sélectionner une zone à modifier",

@@ -308,7 +308,11 @@
     "actionDownload": "Zvětšit ×{{scale}} (nejdřív stáhne {{size}})",
     "downloading": "Stahuje se zvětšovač: {{bytes}} z {{total}}",
     "done": "Zvětšeno {{scale}}×",
-    "jobLabel": "Zvětšování ×{{scale}}: {{prompt}}"
+    "jobLabel": "Zvětšování ×{{scale}}: {{prompt}}",
+    "selection": "Zvětšit výběr ×{{scale}}",
+    "selectionDownload": "Zvětšit výběr ×{{scale}} (nejdřív stáhne {{size}})",
+    "selectionLabel": "Výběr",
+    "cropFailed": "Výběr se nepodařilo vyříznout."
   },
   "select": {
     "start": "Vybrat oblast k úpravě",

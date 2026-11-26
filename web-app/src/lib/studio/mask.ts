@@ -93,3 +93,36 @@ export function hasPaint(rgba: Uint8ClampedArray): boolean {
   for (let i = 3; i < rgba.length; i += 4) if (rgba[i] > 0) return true
   return false
 }
+
+/** The smallest rectangle around every painted pixel of the overlay, or null. */
+export function paintedBounds(rgba: Uint8ClampedArray, width: number, height: number): Rect | null {
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (rgba[(y * width + x) * 4 + 3] === 0) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
+}
+
+/**
+ * A rectangle in mask pixels as whole pixels of the picture, grown outward so
+ * nothing painted is cut off, and kept inside the picture.
+ */
+export function toPictureRect(rect: Rect, mask: Size, picture: Size): Rect {
+  const sx = picture.width / mask.width
+  const sy = picture.height / mask.height
+  const x = Math.max(0, Math.floor(rect.x * sx))
+  const y = Math.max(0, Math.floor(rect.y * sy))
+  const right = Math.min(picture.width, Math.ceil((rect.x + rect.width) * sx))
+  const bottom = Math.min(picture.height, Math.ceil((rect.y + rect.height) * sy))
+  return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) }
+}

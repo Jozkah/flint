@@ -299,7 +299,11 @@
     "actionDownload": "Perbesar ×{{scale}} (mengunduh {{size}} dulu)",
     "downloading": "Mengunduh pembesar: {{bytes}} dari {{total}}",
     "done": "Diperbesar {{scale}}×",
-    "jobLabel": "Memperbesar ×{{scale}}: {{prompt}}"
+    "jobLabel": "Memperbesar ×{{scale}}: {{prompt}}",
+    "selection": "Perbesar pilihan ×{{scale}}",
+    "selectionDownload": "Perbesar pilihan ×{{scale}} (mengunduh {{size}} dulu)",
+    "selectionLabel": "Pilihan",
+    "cropFailed": "Pilihan tidak dapat dipotong."
   },
   "select": {
     "start": "Pilih area untuk diedit",
