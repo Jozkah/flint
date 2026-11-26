@@ -160,7 +160,8 @@
     "sampling": "Dibuixant",
     "decoding": "Acabant",
     "saving": "Desant",
-    "working": "Treballant"
+    "working": "Treballant",
+    "upscaling": "Ampliant"
   },
   "settings": {
     "title": "Paràmetres de generació",
@@ -298,5 +299,35 @@
     "tooBig": "Aquesta imatge supera els 20 MB.",
     "importFailed": "No s'ha pogut afegir la imatge.",
     "count": "Imatges de referència: {{count}}"
+  },
+  "upscale": {
+    "action": "Amplia ×{{scale}}",
+    "actionDownload": "Amplia ×{{scale}} (primer baixa {{size}})",
+    "downloading": "Baixant l’ampliador: {{bytes}} de {{total}}",
+    "done": "Ampliada {{scale}}×",
+    "jobLabel": "Ampliant ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Selecciona una zona per editar",
+    "brush": "Pinzell (B)",
+    "eraser": "Goma (E)",
+    "rect": "Rectangle (R)",
+    "size": "Mida del pinzell",
+    "undo": "Desfés ({{keys}})",
+    "invert": "Inverteix la selecció",
+    "clear": "Esborra la selecció",
+    "exit": "Surt de la selecció",
+    "area": "Pinta la zona que vols canviar",
+    "tools": "Eines de selecció",
+    "strength": "Quant canviar",
+    "apply": "Edita la selecció",
+    "paintFirst": "Pinta la zona que vols canviar",
+    "empty": "Primer pinta la zona que vols canviar.",
+    "edited": "Selecció editada"
+  },
+  "drop": {
+    "added": "Imatge afegida a la galeria",
+    "adding": "Afegint la imatge…",
+    "hint": "O deixa anar una imatge aquí per ampliar-la o editar-la."
   }
 }

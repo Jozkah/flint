@@ -154,7 +154,8 @@
     "sampling": "Menggambar",
     "decoding": "Menyelesaikan",
     "saving": "Menyimpan",
-    "working": "Bekerja"
+    "working": "Bekerja",
+    "upscaling": "Memperbesar"
   },
   "settings": {
     "title": "Pengaturan Pembuatan",
@@ -292,5 +293,35 @@
     "tooBig": "Gambar itu lebih besar dari 20 MB.",
     "importFailed": "Gambar tidak dapat ditambahkan.",
     "count": "Gambar referensi: {{count}}"
+  },
+  "upscale": {
+    "action": "Perbesar ×{{scale}}",
+    "actionDownload": "Perbesar ×{{scale}} (mengunduh {{size}} dulu)",
+    "downloading": "Mengunduh pembesar: {{bytes}} dari {{total}}",
+    "done": "Diperbesar {{scale}}×",
+    "jobLabel": "Memperbesar ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Pilih area untuk diedit",
+    "brush": "Kuas (B)",
+    "eraser": "Penghapus (E)",
+    "rect": "Persegi panjang (R)",
+    "size": "Ukuran kuas",
+    "undo": "Urungkan ({{keys}})",
+    "invert": "Balik pilihan",
+    "clear": "Hapus pilihan",
+    "exit": "Keluar dari pilihan",
+    "area": "Warnai area yang ingin diubah",
+    "tools": "Alat pilihan",
+    "strength": "Seberapa banyak diubah",
+    "apply": "Edit pilihan",
+    "paintFirst": "Warnai area yang diubah",
+    "empty": "Warnai dulu area yang ingin diubah.",
+    "edited": "Pilihan diedit"
+  },
+  "drop": {
+    "added": "Gambar ditambahkan ke galeri",
+    "adding": "Menambahkan gambar…",
+    "hint": "Atau letakkan gambar di sini untuk diperbesar atau diedit."
   }
 }

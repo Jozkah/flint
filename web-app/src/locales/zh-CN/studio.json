@@ -154,7 +154,8 @@
     "sampling": "正在绘制",
     "decoding": "正在收尾",
     "saving": "正在保存",
-    "working": "处理中"
+    "working": "处理中",
+    "upscaling": "正在放大"
   },
   "settings": {
     "title": "生成设置",
@@ -292,5 +293,35 @@
     "tooBig": "该图片超过 20 MB。",
     "importFailed": "无法添加该图片。",
     "count": "参考图片：{{count}}"
+  },
+  "upscale": {
+    "action": "放大 ×{{scale}}",
+    "actionDownload": "放大 ×{{scale}}(先下载 {{size}})",
+    "downloading": "正在下载放大模型:{{bytes}} / {{total}}",
+    "done": "已放大 {{scale}} 倍",
+    "jobLabel": "正在放大 ×{{scale}}:{{prompt}}"
+  },
+  "select": {
+    "start": "选择要编辑的区域",
+    "brush": "画笔 (B)",
+    "eraser": "橡皮擦 (E)",
+    "rect": "矩形 (R)",
+    "size": "画笔大小",
+    "undo": "撤销 ({{keys}})",
+    "invert": "反选",
+    "clear": "清除选区",
+    "exit": "退出选择",
+    "area": "涂出要修改的区域",
+    "tools": "选区工具",
+    "strength": "修改强度",
+    "apply": "编辑选区",
+    "paintFirst": "先涂出要修改的区域",
+    "empty": "请先涂出要修改的区域。",
+    "edited": "选区已编辑"
+  },
+  "drop": {
+    "added": "图片已添加到图库",
+    "adding": "正在添加图片…",
+    "hint": "或将图片拖到这里进行放大或编辑。"
   }
 }

@@ -71,6 +71,7 @@ pub struct Status {
     pub engine_backend: Option<Backend>,
     pub models: Vec<ModelStatus>,
     pub resident: Option<ResidentInfo>,
+    pub upscalers: Vec<super::upscale::UpscalerStatus>,
 }
 
 #[tauri::command]
@@ -92,6 +93,7 @@ pub async fn diffusion_status<R: Runtime>(app: tauri::AppHandle<R>) -> Result<St
         engine_backend: engine::installed_backend(&app),
         models,
         resident: runtime::resident_info().await,
+        upscalers: super::upscale::statuses(&app),
     })
 }
 
@@ -326,8 +328,32 @@ pub async fn diffusion_generate_video<R: Runtime>(
     runtime::generate_video(&app, params).await
 }
 
+/// Download an upscaler model (see `upscale.rs`).
+#[tauri::command]
+pub async fn diffusion_download_upscaler<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    upscaler_id: String,
+    token: Option<String>,
+) -> Result<(), String> {
+    super::upscale::download(&app, &upscaler_id, token).await
+}
+
+/// Make a gallery picture larger with an upscaler; the result is a new picture.
+#[tauri::command]
+pub async fn diffusion_upscale<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    image_id: String,
+    upscaler_id: String,
+) -> Result<Generated, String> {
+    super::upscale::upscale(&app, &image_id, &upscaler_id).await
+}
+
 #[tauri::command]
 pub async fn diffusion_cancel<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    // An upscale runs apart from the engine's job queue.
+    if super::upscale::cancel().await {
+        return Ok(());
+    }
     runtime::cancel(&app).await
 }
 
@@ -516,6 +542,9 @@ pub async fn diffusion_save_external_images<R: Runtime>(
             fps: None,
             created_at_ms,
             duration_ms: params.duration_ms,
+            source_id: None,
+            upscale: None,
+            masked: false,
         };
         let saved = gallery::save_external_image(&app, &recipe, index as u32, &bytes)?;
         ids.push(saved.id);

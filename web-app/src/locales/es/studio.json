@@ -160,7 +160,8 @@
     "sampling": "Dibujando",
     "decoding": "Terminando",
     "saving": "Guardando",
-    "working": "Trabajando"
+    "working": "Trabajando",
+    "upscaling": "Ampliando"
   },
   "settings": {
     "title": "Ajustes de generación",
@@ -298,5 +299,35 @@
     "tooBig": "Esa imagen pesa más de 20 MB.",
     "importFailed": "No se pudo añadir la imagen.",
     "count": "Imágenes de referencia: {{count}}"
+  },
+  "upscale": {
+    "action": "Ampliar ×{{scale}}",
+    "actionDownload": "Ampliar ×{{scale}} (primero descarga {{size}})",
+    "downloading": "Descargando el ampliador: {{bytes}} de {{total}}",
+    "done": "Ampliada {{scale}}×",
+    "jobLabel": "Ampliando ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Seleccionar una zona para editar",
+    "brush": "Pincel (B)",
+    "eraser": "Borrador (E)",
+    "rect": "Rectángulo (R)",
+    "size": "Tamaño del pincel",
+    "undo": "Deshacer ({{keys}})",
+    "invert": "Invertir selección",
+    "clear": "Borrar selección",
+    "exit": "Salir de la selección",
+    "area": "Pinta la zona que quieres cambiar",
+    "tools": "Herramientas de selección",
+    "strength": "Cuánto cambiar",
+    "apply": "Editar selección",
+    "paintFirst": "Pinta la zona a cambiar",
+    "empty": "Primero pinta la zona a cambiar.",
+    "edited": "Selección editada"
+  },
+  "drop": {
+    "added": "Imagen añadida a la galería",
+    "adding": "Añadiendo la imagen…",
+    "hint": "O suelta aquí una imagen para ampliarla o editarla."
   }
 }

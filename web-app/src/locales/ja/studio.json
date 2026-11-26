@@ -154,7 +154,8 @@
     "sampling": "描画中",
     "decoding": "仕上げ中",
     "saving": "保存中",
-    "working": "処理中"
+    "working": "処理中",
+    "upscaling": "拡大中"
   },
   "settings": {
     "title": "生成設定",
@@ -292,5 +293,35 @@
     "tooBig": "その画像は 20 MB を超えています。",
     "importFailed": "画像を追加できませんでした。",
     "count": "参照画像: {{count}}"
+  },
+  "upscale": {
+    "action": "×{{scale}} に拡大",
+    "actionDownload": "×{{scale}} に拡大(先に {{size}} をダウンロード)",
+    "downloading": "拡大モデルをダウンロード中: {{bytes}} / {{total}}",
+    "done": "{{scale}}倍に拡大しました",
+    "jobLabel": "×{{scale}} に拡大中: {{prompt}}"
+  },
+  "select": {
+    "start": "編集する範囲を選択",
+    "brush": "ブラシ (B)",
+    "eraser": "消しゴム (E)",
+    "rect": "矩形 (R)",
+    "size": "ブラシのサイズ",
+    "undo": "元に戻す ({{keys}})",
+    "invert": "選択範囲を反転",
+    "clear": "選択範囲をクリア",
+    "exit": "選択を終了",
+    "area": "変更する範囲を塗ってください",
+    "tools": "選択ツール",
+    "strength": "変更の強さ",
+    "apply": "選択範囲を編集",
+    "paintFirst": "変更する範囲を塗る",
+    "empty": "先に変更する範囲を塗ってください。",
+    "edited": "選択範囲を編集しました"
+  },
+  "drop": {
+    "added": "ギャラリーに画像を追加しました",
+    "adding": "画像を追加しています…",
+    "hint": "または画像をここにドロップして拡大・編集できます。"
   }
 }

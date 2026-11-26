@@ -67,6 +67,19 @@ export type StudioStatus = {
   engineBackend: 'vulkan' | 'cuda12' | 'cpu' | null
   models: StudioModel[]
   resident: StudioResident | null
+  /** Models that make a picture larger (see `upscale.rs`). */
+  upscalers?: StudioUpscaler[]
+}
+
+/** An upscaler Studio offers, and whether it is on this computer. */
+export type StudioUpscaler = {
+  id: string
+  displayName: string
+  /** How many times wider and taller the result is. */
+  scale: number
+  license: string
+  totalBytes: number
+  installed: boolean
 }
 
 export type Recipe = {
@@ -88,6 +101,12 @@ export type Recipe = {
   fps: number | null
   createdAtMs: number
   durationMs: number
+  /** The gallery picture this one was made from (an edit or an upscale). */
+  sourceId?: string
+  /** How many times larger an upscale made its source. */
+  upscale?: number
+  /** Only the selected part of the source was repainted. */
+  masked?: boolean
 }
 
 export type GalleryItem = { id: string; kind: StudioKind; path: string; recipe: Recipe }
@@ -141,7 +160,14 @@ export const studioApi = {
     strength?: number
     /** Gallery ids of pictures an edit model should follow. */
     reference_ids?: string[]
+    /** What of `init_image_id` to repaint, as a PNG data URL (white is repainted). */
+    mask?: string
   }) => invoke<Generated>('diffusion_generate_image', { params }),
+  downloadUpscaler: (upscalerId: string, token?: string) =>
+    invoke<void>('diffusion_download_upscaler', { upscalerId, token: token || null }),
+  /** Makes a gallery picture larger; the result is a new picture. */
+  upscale: (imageId: string, upscalerId: string) =>
+    invoke<Generated>('diffusion_upscale', { imageId, upscalerId }),
   generateVideo: (params: {
     model: string
     prompt: string

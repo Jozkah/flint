@@ -641,6 +641,10 @@ pub struct ImageParams {
     /// Gallery ids of pictures an edit model should follow.
     #[serde(default)]
     pub reference_ids: Vec<String>,
+    /// What to repaint of `init_image_id`, as a PNG data URL: white is
+    /// repainted, black kept. Needs `init_image_id`.
+    #[serde(default)]
+    pub mask: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -985,6 +989,13 @@ pub async fn generate_image<R: Runtime>(
         ));
     }
     let init_image = params.init_image_id.as_deref().map(|id| gallery_image(app, id)).transpose()?;
+    let mask = match params.mask.as_deref() {
+        Some(_) if init_image.is_none() => {
+            return Err("A selection needs the picture it was drawn on.".to_string());
+        }
+        Some(mask) => Some(args::checked_mask(mask)?),
+        None => None,
+    };
     let ref_images = params.reference_ids.iter().map(|id| gallery_image(app, id)).collect::<Result<Vec<_>, _>>()?;
     // An edit keeps the source's shape unless the caller sized it.
     let source_size = init_image.as_ref().or(ref_images.first()).and_then(|(_, size)| *size);
@@ -1013,6 +1024,7 @@ pub async fn generate_image<R: Runtime>(
         sampling,
         lora: resolve_loras(app, &params.lora)?,
         init_image: init_image.map(|(url, _)| url),
+        mask_image: mask,
         strength: params.strength,
         ref_images: ref_images.into_iter().map(|(url, _)| url).collect(),
     };
@@ -1069,6 +1081,9 @@ pub async fn generate_image<R: Runtime>(
             fps: None,
             created_at_ms: gallery::now_ms(),
             duration_ms,
+            source_id: params.init_image_id.clone(),
+            upscale: None,
+            masked: params.mask.is_some(),
         };
         let saved = gallery::save_image(app, &recipe, index as u32, &bytes)?;
         ids.push(saved.id);
@@ -1149,6 +1164,9 @@ pub async fn generate_video<R: Runtime>(
         fps: result["fps"].as_u64().map(|n| n as u32).or(Some(video.fps)),
         created_at_ms: gallery::now_ms(),
         duration_ms,
+        source_id: None,
+        upscale: None,
+        masked: false,
     };
     let saved = gallery::save_video(app, &recipe, &bytes)?;
     Ok(Generated {

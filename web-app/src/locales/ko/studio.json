@@ -154,7 +154,8 @@
     "sampling": "그리는 중",
     "decoding": "마무리하는 중",
     "saving": "저장하는 중",
-    "working": "작업 중"
+    "working": "작업 중",
+    "upscaling": "확대 중"
   },
   "settings": {
     "title": "생성 설정",
@@ -292,5 +293,35 @@
     "tooBig": "이미지가 20MB보다 큽니다.",
     "importFailed": "이미지를 추가하지 못했습니다.",
     "count": "참조 이미지: {{count}}"
+  },
+  "upscale": {
+    "action": "×{{scale}} 확대",
+    "actionDownload": "×{{scale}} 확대 (먼저 {{size}} 다운로드)",
+    "downloading": "확대 모델 다운로드 중: {{bytes}} / {{total}}",
+    "done": "{{scale}}배로 확대했습니다",
+    "jobLabel": "×{{scale}} 확대 중: {{prompt}}"
+  },
+  "select": {
+    "start": "편집할 영역 선택",
+    "brush": "브러시 (B)",
+    "eraser": "지우개 (E)",
+    "rect": "사각형 (R)",
+    "size": "브러시 크기",
+    "undo": "실행 취소 ({{keys}})",
+    "invert": "선택 영역 반전",
+    "clear": "선택 영역 지우기",
+    "exit": "선택 종료",
+    "area": "바꿀 영역을 칠하세요",
+    "tools": "선택 도구",
+    "strength": "변경 강도",
+    "apply": "선택 영역 편집",
+    "paintFirst": "바꿀 영역을 칠하세요",
+    "empty": "먼저 바꿀 영역을 칠하세요.",
+    "edited": "선택 영역을 편집했습니다"
+  },
+  "drop": {
+    "added": "갤러리에 그림을 추가했습니다",
+    "adding": "그림을 추가하는 중…",
+    "hint": "또는 그림을 여기에 놓아 확대하거나 편집하세요."
   }
 }

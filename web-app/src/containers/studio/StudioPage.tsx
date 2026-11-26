@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAssetUrl } from '@/lib/assetPath'
-import { Film, FolderOpen, ImageIcon, Loader, SquarePen, X } from 'lucide-react'
+import { Expand, Film, FolderOpen, ImageIcon, Loader, SquarePen, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Segmented } from '@/components/ui/segmented'
@@ -10,6 +10,7 @@ import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { useStudio } from '@/hooks/useStudio'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { IMAGE_SIZES, VIDEO_SIZES, sizeIndexOf } from '@/lib/studio/helpers'
+import { formatModelBytes } from '@/lib/huggingface'
 import { type GalleryItem, type StudioKind } from '@/lib/studio/studio'
 import { ActivityPanel } from '@/containers/studio/panels/ActivityPanel'
 import { useEditExternally } from '@/containers/studio/panels/ExternalEditorDialog'
@@ -34,6 +35,15 @@ export function StudioPage() {
   const refreshGallery = useStudio((s) => s.refreshGallery)
   const clearError = useStudio((s) => s.clearError)
   const gallery = useStudio((s) => s.gallery)
+  const job = useStudio((s) => s.job)
+  const upscaleItem = useStudio((s) => s.upscale)
+  const upscalerDownload = useStudio((s) => s.upscalerDownload)
+  const upscalers = status?.upscalers ?? []
+  const upscaleLabel = (u: (typeof upscalers)[number]) =>
+    u.installed
+      ? t('studio:upscale.action', { scale: u.scale })
+      : t('studio:upscale.actionDownload', { scale: u.scale, size: formatModelBytes(u.totalBytes) })
+  const engineReady = !!status?.engineBackend
   const serviceHub = useServiceHub()
   const { edit, dialog: editorDialog } = useEditExternally()
   const [kind, setKind] = useState<StudioKind>('image')
@@ -243,6 +253,26 @@ export function StudioPage() {
             if (!current) return null
             return (
               <>
+                {upscalers.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className={toolButton}
+                    disabled={!!job || !engineReady || !!upscalerDownload}
+                    title={upscaleLabel(u)}
+                    aria-label={upscaleLabel(u)}
+                    onClick={() => {
+                      void upscaleItem(current, u).then((ok) => {
+                        if (ok) {
+                          toast.success(t('studio:upscale.done', { scale: u.scale }))
+                          setViewing(0)
+                        }
+                      })
+                    }}
+                  >
+                    <Expand className="size-4" aria-hidden />
+                  </button>
+                ))}
                 <button
                   type="button"
                   className={toolButton}

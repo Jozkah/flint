@@ -157,7 +157,8 @@
     "sampling": "Çiziliyor",
     "decoding": "Tamamlanıyor",
     "saving": "Kaydediliyor",
-    "working": "Çalışıyor"
+    "working": "Çalışıyor",
+    "upscaling": "Büyütülüyor"
   },
   "settings": {
     "title": "Üretim Ayarları",
@@ -295,5 +296,35 @@
     "tooBig": "Bu görsel 20 MB'tan büyük.",
     "importFailed": "Görsel eklenemedi.",
     "count": "Referans görseller: {{count}}"
+  },
+  "upscale": {
+    "action": "×{{scale}} büyüt",
+    "actionDownload": "×{{scale}} büyüt (önce {{size}} indirir)",
+    "downloading": "Büyütücü indiriliyor: {{bytes}} / {{total}}",
+    "done": "{{scale}}× büyütüldü",
+    "jobLabel": "×{{scale}} büyütülüyor: {{prompt}}"
+  },
+  "select": {
+    "start": "Düzenlenecek alanı seç",
+    "brush": "Fırça (B)",
+    "eraser": "Silgi (E)",
+    "rect": "Dikdörtgen (R)",
+    "size": "Fırça boyutu",
+    "undo": "Geri al ({{keys}})",
+    "invert": "Seçimi ters çevir",
+    "clear": "Seçimi temizle",
+    "exit": "Seçimden çık",
+    "area": "Değişecek alanı boya",
+    "tools": "Seçim araçları",
+    "strength": "Değişim miktarı",
+    "apply": "Seçimi düzenle",
+    "paintFirst": "Değişecek alanı boya",
+    "empty": "Önce değişecek alanı boya.",
+    "edited": "Seçim düzenlendi"
+  },
+  "drop": {
+    "added": "Resim galeriye eklendi",
+    "adding": "Resim ekleniyor…",
+    "hint": "Ya da büyütmek veya düzenlemek için buraya bir resim bırak."
   }
 }

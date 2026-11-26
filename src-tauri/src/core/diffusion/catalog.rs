@@ -116,6 +116,8 @@ pub enum Role {
     ClipL,
     /// The vision projector beside a vision-language text encoder (`--llm_vision`).
     LlmVision,
+    /// An ESRGAN upscaler, run on its own by `sd-cli` (see `upscale.rs`).
+    Upscaler,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -136,6 +138,12 @@ const PINNED_REVISIONS: &[(&str, &str, &str)] = &[
         "unsloth/Z-Image-Turbo-GGUF",
         "z-image-turbo-Q4_K_M.gguf",
         "6c80814333b7b6a70a2e5b469a7c6437ce65de0f",
+    ),
+    // The Real-ESRGAN upscaler, pinned to the commit its size and SHA-256 were read from.
+    (
+        "Comfy-Org/Real-ESRGAN",
+        "RealESRGAN_x4plus.safetensors",
+        "5fd49b7b278836f48af63ecd314d0f98ab336105",
     ),
     // The FLUX.2 klein 9B text encoder, pinned to the commit its size and
     // SHA-256 were read from (the repository re-quantises now and then).

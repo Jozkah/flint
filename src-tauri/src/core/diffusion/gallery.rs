@@ -36,6 +36,15 @@ pub struct Recipe {
     pub fps: Option<u32>,
     pub created_at_ms: u64,
     pub duration_ms: u64,
+    /// The gallery picture this one was made from (an edit or an upscale).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    /// How many times larger an upscale made its source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upscale: Option<u32>,
+    /// Only the selected part of the source was repainted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub masked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -311,6 +320,9 @@ mod tests {
             fps: None,
             created_at_ms: at,
             duration_ms: 1200,
+            source_id: None,
+            upscale: None,
+            masked: false,
         }
     }
 

@@ -13,6 +13,7 @@ import {
   type StudioDownloadFailure,
   type StudioKind,
   type StudioModel,
+  type StudioUpscaler,
   type StudioStatus,
 } from '@/lib/studio/studio'
 import { downloadedBytes, parseDownloadTask } from '@/lib/studio/helpers'
@@ -53,6 +54,8 @@ type StudioState = {
   } | null
   /** The files of a model that did not come down, kept until the next try. */
   downloadFailure: { modelId: string; files: StudioDownloadFailure[] } | null
+  /** An upscaler coming down, apart from picture models. */
+  upscalerDownload: { id: string; bytes: number; total: number } | null
   gallery: Record<StudioKind, GalleryItem[]>
   job: Job | null
   jobPrompt: string
@@ -61,13 +64,17 @@ type StudioState = {
   refreshGallery: (kind: StudioKind) => Promise<void>
   installEngine: (build: EngineBuild) => Promise<void>
   downloadModel: (model: StudioModel) => Promise<void>
+  /** Download `upscaler` if needed, then make `item` larger with it. */
+  upscale: (item: GalleryItem, upscaler: StudioUpscaler) => Promise<boolean>
   load: (modelId: string) => Promise<void>
   unload: () => Promise<void>
   generate: (
     kind: StudioKind,
     prompt: string,
     run: () => Promise<unknown>,
-    remote?: { label: string; abort: AbortController }
+    remote?: { label: string; abort: AbortController },
+    /** The job does not need the graphics card to itself (an upscale is small). */
+    options?: { keepChatModels?: boolean }
   ) => Promise<boolean>
   cancel: () => Promise<void>
   remove: (kind: StudioKind, id: string) => Promise<void>
@@ -114,7 +121,15 @@ function listenOnce(): void {
     const task = parseDownloadTask(payload.taskId)
     if (!task) return
     const model = useStudio.getState().status?.models.find((m) => m.id === task.modelId)
-    if (!model) return
+    if (!model) {
+      // An upscaler: only while its download is running, so a late event
+      // cannot bring back a finished one.
+      const current = useStudio.getState().upscalerDownload
+      if (current?.id === task.modelId) {
+        useStudio.setState({ upscalerDownload: { ...current, bytes: payload.downloaded } })
+      }
+      return
+    }
     useStudio.setState({
       download: {
         modelId: model.id,
@@ -145,6 +160,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   installing: null,
   download: null,
   downloadFailure: null,
+  upscalerDownload: null,
   gallery: { image: [], video: [] },
   job: null,
   jobPrompt: '',
@@ -202,6 +218,26 @@ export const useStudio = create<StudioState>((set, get) => ({
     }
   },
 
+  upscale: async (item, upscaler) => {
+    if (get().job || get().upscalerDownload) return false
+    if (!upscaler.installed) {
+      set({ error: null, upscalerDownload: { id: upscaler.id, bytes: 0, total: upscaler.totalBytes } })
+      try {
+        await studioApi.downloadUpscaler(upscaler.id, useGeneralSetting.getState().huggingfaceToken)
+      } catch (error) {
+        set({ error: message(error) })
+        return false
+      } finally {
+        set({ upscalerDownload: null })
+        await get().refresh()
+      }
+    }
+    const label = i18n.t('studio:upscale.jobLabel', { scale: upscaler.scale, prompt: item.recipe.prompt })
+    return get().generate('image', label, () => studioApi.upscale(item.id, upscaler.id), undefined, {
+      keepChatModels: true,
+    })
+  },
+
   load: async (modelId) => {
     set({ error: null })
     try {
@@ -225,7 +261,7 @@ export const useStudio = create<StudioState>((set, get) => ({
     }
   },
 
-  generate: async (kind, prompt, run, remote) => {
+  generate: async (kind, prompt, run, remote, options) => {
     if (get().job) return false
     const startedAt = Date.now()
     void allowNotifications()
@@ -246,7 +282,8 @@ export const useStudio = create<StudioState>((set, get) => ({
     try {
       // A hosted provider does not use this computer's graphics card, so the
       // chat models stay loaded.
-      if (!remote) await getServiceHub().models().stopAllModels().catch(() => undefined)
+      if (!remote && !options?.keepChatModels)
+        await getServiceHub().models().stopAllModels().catch(() => undefined)
       await run()
       await get().refreshGallery(kind)
       log('done')
