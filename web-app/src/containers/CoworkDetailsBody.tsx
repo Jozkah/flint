@@ -13,6 +13,8 @@ import { projectListDir } from '@janhq/tauri-plugin-agent-tools-api'
 import type { CoworkSession } from '@/hooks/useCoworkSessions'
 import type { CompatibilityManifest, McpProbe } from '@/lib/claudeCompat'
 import type { ReadinessManifest } from '@/lib/coworkReadiness'
+import { McpVariablesCard } from '@/containers/McpVariablesCard'
+import { setCoworkMcpVars } from '@/lib/coworkMcpVars'
 import type { ServiceHub } from '@/services'
 import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
 
@@ -69,6 +71,13 @@ export function CoworkDetailsBody({
           them on its own. Here, not only on a held message, so it can be
           decided before anyone writes. */}
       {session?.id && <SessionMessagingToggle sessionId={session.id} />}
+      {/* Values for MCP servers whose configs use `{{var}}` placeholders. */}
+      {session?.id && !session.remote && (
+        <McpVariablesCard
+          value={session.mcpVariables}
+          onSave={(vars) => setCoworkMcpVars(session.id, vars)}
+        />
+      )}
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport
         sessionId={session?.id}

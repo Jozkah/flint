@@ -1057,6 +1057,7 @@ const ChatInput = memo(function ChatInput({
                             selectedModel?.capabilities?.includes('embeddings')
                           )}
                           hasModel={Boolean(selectedModel)}
+                          threadId={currentThreadId}
                           toolsEnabled={toolsEnabled}
                           onEnableTools={() =>
                             requestCapabilities(['tools'], () => {})

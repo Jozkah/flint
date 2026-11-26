@@ -113,8 +113,10 @@ pub async fn run_mcp_commands<R: Runtime>(
     load_persisted_tool_cache(app).await;
 
     for (name, config) in server_map {
+        // A template starts per session, once a session gives it values.
         if extract_active_status(config) == Some(false)
             || !super::lazy::starts_with_flint(config)
+            || super::session_vars::is_templated(config)
         {
             continue;
         }
@@ -408,6 +410,12 @@ pub async fn start_mcp_server<R: Runtime>(
         return Err(format!(
             "{name}: {field} \"{key}\" holds a hidden placeholder, not the secret; re-enter it in the server settings"
         ));
+    }
+    // A template (a config with `{{var}}` placeholders) never starts as
+    // written: each session starts its own instance with its values.
+    let unset = super::session_vars::placeholders(&config);
+    if !unset.is_empty() {
+        return Err(super::session_vars::missing_message(&name, &unset));
     }
     let app_state = app.state::<AppState>();
     let active_servers_state = app_state.mcp_active_servers.clone();
@@ -1886,6 +1894,9 @@ pub async fn persist_server_tools<R: Runtime>(
     name: &str,
     tools: &[crate::core::mcp::models::ToolWithServer],
 ) {
+    // A session instance's tools are cached under its template's name and
+    // identity: every instance of the template serves the same tools.
+    let name = super::session_vars::base_name(name);
     let app_state = app.state::<AppState>();
     let Some(config) = app_state.mcp_active_servers.lock().await.get(name).cloned() else {
         return;
@@ -1924,14 +1935,14 @@ pub async fn refresh_server_tools<R: Runtime>(app: &AppHandle<R>, name: &str) {
                 name: tool.name.to_string(),
                 description: tool.description.as_ref().map(|d| d.to_string()),
                 input_schema: Value::Object((*tool.input_schema).clone()),
-                server: name.to_string(),
+                server: super::session_vars::base_name(name).to_string(),
             })
             .collect();
         app_state
             .mcp_last_known_tools
             .lock()
             .await
-            .insert(name.to_string(), mapped.clone());
+            .insert(super::session_vars::base_name(name).to_string(), mapped.clone());
         persist_server_tools(app, name, &mapped).await;
     }
 }
@@ -1951,6 +1962,10 @@ pub async fn ensure_mcp_server_started<R: Runtime>(
         .get(name)
         .cloned()
         .ok_or_else(|| format!("MCP server '{name}' is not enabled"))?;
+    let unset = super::session_vars::placeholders(&config);
+    if !unset.is_empty() {
+        return Err(super::session_vars::missing_message(name, &unset));
+    }
     let servers = app_state.mcp_servers.clone();
     if servers.lock().await.contains_key(name) {
         app_state.mcp_lazy.touch(name);
@@ -2003,6 +2018,50 @@ pub async fn ensure_mcp_server_started<R: Runtime>(
     result.map_err(|e| format!("MCP server '{name}' failed to start: {e}"))
 }
 
+/// The name `server` runs under for a session with `vars`.
+///
+/// An ordinary server is its own name. A template (a config with `{{var}}`
+/// placeholders) gets the instance for these values, registered as enabled
+/// with the values substituted so the usual lazy start, idle stop and health
+/// monitor apply to it. `Err` when `server` is not enabled or `vars` leaves a
+/// placeholder unset; nothing is started here.
+pub async fn session_instance(
+    state: &AppState,
+    server: &str,
+    vars: &HashMap<String, String>,
+) -> Result<String, String> {
+    let mut active = state.mcp_active_servers.lock().await;
+    let config = active
+        .get(server)
+        .cloned()
+        .ok_or_else(|| format!("MCP server '{server}' is not enabled"))?;
+    if !super::session_vars::is_templated(&config) {
+        return Ok(server.to_string());
+    }
+    let mut resolved = super::session_vars::resolve(&config, vars)
+        .map_err(|unset| super::session_vars::missing_message(server, &unset))?;
+    // An instance starts when a session needs it and stops when idle, even
+    // when its template is marked to start with Flint.
+    if let Some(map) = resolved.as_object_mut() {
+        map.remove("startWithFlint");
+    }
+    let instance = super::session_vars::instance_name(server, &config, vars);
+    active.entry(instance.clone()).or_insert(resolved);
+    Ok(instance)
+}
+
+/// The enabled session instances of template `server`.
+pub async fn instances_of(state: &AppState, server: &str) -> Vec<String> {
+    state
+        .mcp_active_servers
+        .lock()
+        .await
+        .keys()
+        .filter(|name| super::session_vars::template_of(name) == Some(server))
+        .cloned()
+        .collect()
+}
+
 /// Start every enabled server that is not running, concurrently.
 pub async fn ensure_all_enabled_started<R: Runtime>(app: &AppHandle<R>) {
     ensure_all_enabled_started_within(app, None).await;
@@ -2019,7 +2078,13 @@ pub async fn ensure_all_enabled_started_within<R: Runtime>(
     let names: Vec<String> = {
         let app_state = app.state::<AppState>();
         let active = app_state.mcp_active_servers.lock().await;
-        active.keys().cloned().collect()
+        active
+            .iter()
+            .filter(|(name, config)| {
+                !super::session_vars::is_instance(name) && !super::session_vars::is_templated(config)
+            })
+            .map(|(name, _)| name.clone())
+            .collect()
     };
     let Some(cap) = cap else {
         futures_util::future::join_all(names.iter().map(|name| async move {

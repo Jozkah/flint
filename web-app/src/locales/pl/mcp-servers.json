@@ -300,5 +300,17 @@
       "label": "RivalSearchMCP (hostowany)",
       "note": "Każde zapytanie trafia do rivalsearchmcp.fastmcp.app, prowadzonego przez osobę trzecią, której logowanie i retencja nie są udokumentowane. Obowiązują limity uczciwego użytkowania. Do rzeczy prywatnych wybierz własny hosting. Te same zastrzeżenia: scraping, jeden opiekun, bez audytu."
     }
+  },
+  "sessionVars": {
+    "title": "Zmienne MCP",
+    "description": "Wartości, które ta sesja przekazuje serwerom MCP, których ustawienia używają symboli zastępczych, np. ścieżki projektu lub portu.",
+    "valuePlaceholder": "Wartość",
+    "usedBy": "Używane przez {{servers}}",
+    "none": "Żaden włączony serwer MCP nie używa zmiennych sesji.",
+    "unsetHint": "Serwer MCP potrzebuje zmiennych, które nie są ustawione",
+    "promptTitle": "Zmienne potrzebne dla {{server}}",
+    "promptDescription": "Ten serwer potrzebuje wartości dla tej sesji, zanim narzędzie zostanie uruchomione. Są zapisywane razem z tą sesją.",
+    "promptConfirm": "Zapisz i uruchom",
+    "formHint": "Wpisz symbol zastępczy, np. {{example}}, w argumentach, środowisku, URL lub nagłówkach, aby ustawić go dla każdego czatu, sesji cowork lub pokoju."
   }
 }

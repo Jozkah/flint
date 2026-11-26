@@ -7,6 +7,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, MCPExtension } from '@janhq/core'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator/mcp-orchestrator'
 import { bumpMcpGeneration } from '@/lib/mcpLiveTools'
+import { useMcpPlaceholders } from './useMcpPlaceholders'
 
 type Handlers = {
   updateTools: ReturnType<typeof useAppState.getState>['updateTools']
@@ -48,6 +49,8 @@ function startShared(): () => void {
       const [mcpTools, ragToolNames] = await Promise.all([
         getServiceHub().mcp().getTools(),
         getServiceHub().rag().getToolNames?.() ?? Promise.resolve([]),
+        // Which servers need session variables changes with their configs.
+        useMcpPlaceholders.getState().refresh(),
       ])
 
       if (mine !== latest) return

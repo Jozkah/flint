@@ -294,5 +294,17 @@
       "label": "RivalSearchMCP(代管)",
       "note": "每次查詢都會傳送到 rivalsearchmcp.fastmcp.app,由第三方營運,其記錄與保留政策未公開。適用合理使用限制。涉及隱私的內容請選擇自行代管。同樣的提醒:依賴抓取、僅一位維護者、未經稽核。"
     }
+  },
+  "sessionVars": {
+    "title": "MCP 變數",
+    "description": "此工作階段傳給 MCP 伺服器的值，這些伺服器的設定使用了預留位置，例如專案路徑或連接埠。",
+    "valuePlaceholder": "值",
+    "usedBy": "由 {{servers}} 使用",
+    "none": "沒有已啟用的 MCP 伺服器使用工作階段變數。",
+    "unsetHint": "某個 MCP 伺服器需要尚未設定的變數",
+    "promptTitle": "{{server}} 需要變數",
+    "promptDescription": "執行工具前，此伺服器需要此工作階段的值。這些值會隨此工作階段儲存。",
+    "promptConfirm": "儲存並執行",
+    "formHint": "在參數、環境變數、URL 或標頭中寫入 {{example}} 這樣的預留位置，即可依聊天、協作工作階段或房間分別設定。"
   }
 }

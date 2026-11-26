@@ -1399,7 +1399,13 @@ pub(crate) async fn collect_mcp_openai_tools_noted(
     // the whole collection behind its timeout (previously each server waited out
     // the full timeout before the next was contacted).
     let listings =
-        futures_util::future::join_all(servers.iter().map(|(server_name, service)| async move {
+        // A session instance of a `{{var}}` template belongs to the desktop
+        // session that set its values; nothing else may list it.
+        futures_util::future::join_all(
+            servers
+                .iter()
+                .filter(|(name, _)| !crate::core::mcp::session_vars::is_instance(name))
+                .map(|(server_name, service)| async move {
             let result =
                 match tokio::time::timeout(timeout_duration, service.list_all_tools()).await {
                     Ok(Ok(tools)) => {
@@ -1840,7 +1846,11 @@ fn peer_of(service: &crate::core::state::RunningServiceEnum) -> rmcp::Peer<rmcp:
 /// without it, so awaiting a server never holds the shared map.
 async fn mcp_peers(mcp_servers: &SharedMcpServers) -> HashMap<String, rmcp::Peer<rmcp::RoleClient>> {
     let servers = mcp_servers.lock().await;
-    servers.iter().map(|(name, s)| (name.clone(), peer_of(s))).collect()
+    servers
+        .iter()
+        .filter(|(name, _)| !crate::core::mcp::session_vars::is_instance(name))
+        .map(|(name, s)| (name.clone(), peer_of(s)))
+        .collect()
 }
 
 /// What an MCP server offers to read, across every connected server.

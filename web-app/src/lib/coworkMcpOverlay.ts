@@ -7,8 +7,11 @@ import {
   announceMcpWithheld,
   mcpStartingNote,
   snapshotMcpTools,
+  enabledMcpServers,
 } from '@/lib/mcpLiveTools'
 import { collectMcpOverlay } from '@/lib/coworkTransportTools'
+import { gateUnresolvedTools } from '@/lib/mcpSessionScope'
+import { coworkMcpVars, coworkWithholdsUnresolved } from '@/lib/coworkMcpVars'
 
 /** Where `loadCoworkMcpOverlay` reports what it learns, as soon as it learns it. */
 export type CoworkMcpSink = {
@@ -33,14 +36,25 @@ export type CoworkMcpSink = {
 export async function loadCoworkMcpOverlay(
   base: Record<string, Tool>,
   planMode: boolean | undefined,
-  sink: CoworkMcpSink
+  sink: CoworkMcpSink,
+  sessionId?: string
 ): Promise<{ overlay: Record<string, Tool>; servers: Map<string, string> }> {
   let overlay: Record<string, Tool> = {}
   const servers = new Map<string, string>()
   if (!planMode) {
     try {
       const mcp = getServiceHub().mcp()
-      const live = await loadLiveMcpTools(mcp)
+      // The session's `{{var}}` values reach its own instances of template
+      // servers; in Auto and Bypass a template they leave unresolved is not
+      // offered, since no call would stop to ask for the values.
+      const sessionVars = coworkMcpVars(sessionId)
+      const listed = await loadLiveMcpTools(mcp, { sessionVars })
+      const gated = gateUnresolvedTools(
+        listed.tools,
+        sessionVars,
+        coworkWithholdsUnresolved(sessionId)
+      )
+      const live = { ...listed, tools: gated.tools }
       sink.starting(live.starting)
       const isDisabled = useToolAvailable.getState().isToolDisabled
       collectMcpOverlay(live.tools, base, isDisabled, overlay, servers)
@@ -49,16 +63,19 @@ export async function loadCoworkMcpOverlay(
         live.tools,
         snapshotMcpTools(offered),
         live.starting,
-        isDisabled
+        isDisabled,
+        // A template withheld for unset variables is said so by its own note.
+        enabledMcpServers().filter((s) => !gated.withheld.has(s))
       )
       sink.withheldLabels(availability.labels)
       sink.startingText(
-        [mcpStartingNote(live.starting), availability.note]
+        [mcpStartingNote(live.starting), availability.note, gated.note]
           .filter((s): s is string => Boolean(s))
           .join(' ') || null
       )
       announceMcpWithheld(availability.withheld)
-      sink.record(offered, live.tools)
+      // The shared tool store keeps a withheld template's tools.
+      sink.record(offered, listed.tools)
     } catch (error) {
       console.warn('Failed to load MCP tools:', error)
       overlay = {}

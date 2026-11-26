@@ -297,5 +297,17 @@
       "label": "RivalSearchMCP (ospitato)",
       "note": "Ogni query viene inviata a rivalsearchmcp.fastmcp.app, gestito da terzi con log e conservazione non documentati. Si applicano limiti di uso corretto. Per dati privati scegli l'opzione self-hosted. Stesse riserve: basato su scraping, un solo maintainer, non verificato."
     }
+  },
+  "sessionVars": {
+    "title": "Variabili MCP",
+    "description": "Valori che questa sessione fornisce ai server MCP le cui impostazioni usano segnaposto, come il percorso di un progetto o una porta.",
+    "valuePlaceholder": "Valore",
+    "usedBy": "Usata da {{servers}}",
+    "none": "Nessun server MCP attivo usa variabili di sessione.",
+    "unsetHint": "Un server MCP richiede variabili non impostate",
+    "promptTitle": "Variabili richieste per {{server}}",
+    "promptDescription": "Questo server richiede valori per questa sessione prima che lo strumento possa essere eseguito. Vengono salvati con questa sessione.",
+    "promptConfirm": "Salva ed esegui",
+    "formHint": "Scrivi un segnaposto come {{example}} negli argomenti, nell'ambiente, nell'URL o nelle intestazioni per impostarlo per chat, sessione cowork o stanza."
   }
 }

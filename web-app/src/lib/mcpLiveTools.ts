@@ -297,10 +297,11 @@ function timeout<T>(ms: number, value: T): Promise<T> {
 
 async function read(
   mcp: Pick<MCPService, 'getTools'>,
-  waitMs: number
+  waitMs: number,
+  sessionVars?: Record<string, string>
 ): Promise<LiveMcp> {
   const enabled = enabledMcpServers()
-  const started = mcp.getTools({ start: true }).then((tools) => ({
+  const started = mcp.getTools({ start: true, sessionVars }).then((tools) => ({
     tools: Array.isArray(tools) ? tools : [],
     timedOut: false,
   }))
@@ -314,7 +315,7 @@ async function read(
   started.catch(() => undefined)
   let known: MCPTool[] = []
   try {
-    known = (await mcp.getTools()) ?? []
+    known = (await mcp.getTools(sessionVars ? { sessionVars } : undefined)) ?? []
   } catch {
     known = []
   }
@@ -329,8 +330,13 @@ async function read(
  */
 export async function loadLiveMcpTools(
   mcp: Pick<MCPService, 'getTools'>,
-  opts: { waitMs?: number } = {}
+  opts: { waitMs?: number; sessionVars?: Record<string, string> } = {}
 ): Promise<LiveMcp> {
+  // A session with `{{var}}` values reaches its own instances of template
+  // servers: its listing is its own, never the shared cached one.
+  if (opts.sessionVars && Object.keys(opts.sessionVars).length > 0) {
+    return read(mcp, opts.waitMs ?? MCP_START_WAIT_MS, opts.sessionVars)
+  }
   const gen = generation
   if (
     cached &&

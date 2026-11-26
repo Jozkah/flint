@@ -92,6 +92,10 @@ import {
 import { usePrStatusStore } from '@/stores/pr-status-store'
 import type { DelegationNudge } from '@/lib/delegationNudge'
 import { recordSessionPr } from '@/lib/prClaimBackfill'
+import { coworkMcpVars, setCoworkMcpVars } from '@/lib/coworkMcpVars'
+import { ensureMcpVariables, variablesDeclinedError } from '@/lib/mcpVariablePrompt'
+import { missingVariables } from '@/lib/mcpSessionVars'
+import { useMcpPlaceholders } from '@/hooks/useMcpPlaceholders'
 import {
   bypassCannotOverride,
   deniedByUser,
@@ -488,6 +492,28 @@ async function callMcpTool(
   })
   if (!allowed) return deniedByUser(toolName, call.toolCallId)
 
+  // Asked before the one-time ticket is minted: the prompt may take longer
+  // than the ticket lives.
+  // A template server needs the session's `{{var}}` values; any it leaves
+  // unset are asked for now and saved with the session.
+  const sessionVars = await ensureMcpVariables(
+    server,
+    coworkMcpVars(ctx.sessionId),
+    (vars) => setCoworkMcpVars(ctx.sessionId, vars)
+  )
+  if (sessionVars === null) {
+    return {
+      output: variablesDeclinedError(
+        server,
+        missingVariables(
+          useMcpPlaceholders.getState().placeholders,
+          server,
+          coworkMcpVars(ctx.sessionId)
+        )
+      ),
+      isError: true,
+    }
+  }
   try {
     const mcp = getServiceHub().mcp()
     const fingerprint = await fingerprintFor(
@@ -505,6 +531,7 @@ async function callMcpTool(
         toolName,
         serverName: server,
         arguments: (call.input ?? {}) as object,
+        sessionVars,
         approvalTicket,
         maxOutputChars: deriveToolOutputCap(undefined),
       },

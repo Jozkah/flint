@@ -12,6 +12,11 @@ export interface ListToolsOptions {
    * Without it a stopped server contributes its last known tools only.
    */
   start?: boolean
+  /**
+   * The asking session's `{{var}}` values. A template server is listed (and
+   * started) through this session's instance of it.
+   */
+  sessionVars?: Record<string, string>
 }
 
 /** Lifecycle status of one enabled server, from `get_mcp_server_statuses`. */
@@ -184,6 +189,12 @@ export interface MCPService {
     approvalTicket?: string
     /** Lets `cancelToolCall(token)` end this call, and tells the server. */
     cancellationToken?: string
+    /**
+     * The calling session's `{{var}}` values. A call to a template server goes
+     * to this session's instance of it; the backend refuses while one it
+     * needs is unset.
+     */
+    sessionVars?: Record<string, string>
   }): Promise<MCPToolCallResult>
   /** Servers the user has trusted, as the backend records them. AH-041. */
   trustedServers(): Promise<string[]>
@@ -243,6 +254,11 @@ export interface MCPService {
   stopMCPServer(name: string): Promise<void>
   /** Status of every enabled server, by name. */
   getServerStatuses(): Promise<Record<string, MCPServerStatus>>
+  /**
+   * The `{{var}}` names each enabled template server uses, by server name.
+   * Absent where the backend has no session variables.
+   */
+  getSessionPlaceholders?(): Promise<Record<string, string[]>>
   checkJanBrowserExtensionConnected(): Promise<boolean>
 
   // OAuth for remote (http/sse) servers

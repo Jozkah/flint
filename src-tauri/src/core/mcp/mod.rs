@@ -29,6 +29,7 @@ pub mod oauth;
 #[cfg(not(feature = "cli"))]
 pub mod progress;
 pub mod redact;
+pub mod session_vars;
 // The server direction: Jan's own toolset offered to other agents. Tauri-free,
 // so it is built in both feature configs.
 pub mod server;

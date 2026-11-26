@@ -37,6 +37,7 @@ describe('useCoworkSessions state shape', () => {
       'setRunBudget',
       'setInFlight',
       'recoverInFlight',
+      'setMcpVariables',
       'setMode',
       'setCodePanel',
       'setTitle',

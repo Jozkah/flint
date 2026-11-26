@@ -260,6 +260,15 @@ export function RoomEditor({ room }: { room: Room }) {
     }
   }
 
+  const saveMcpVariables = async (vars: Record<string, string>) => {
+    setError(null)
+    try {
+      await api.updateRoomSettings(room, { mcpVariables: vars })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+
   const pause = async () => {
     setError(null)
     try {
@@ -408,6 +417,7 @@ export function RoomEditor({ room }: { room: Room }) {
               detachFolder={detachFolder}
               addExtraFolder={addExtraFolder}
               removeExtraFolder={removeExtraFolder}
+              saveMcpVariables={saveMcpVariables}
             />
 
             <RoomDiscussionTab

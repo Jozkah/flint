@@ -297,5 +297,17 @@
       "label": "RivalSearchMCP (hospedado)",
       "note": "Toda consulta é enviada a rivalsearchmcp.fastmcp.app, operado por terceiros cujo registro e retenção não são documentados. Há limites de uso justo. Para algo privado, prefira a opção auto-hospedada. Mesmas ressalvas: baseado em scraping, um mantenedor, sem auditoria."
     }
+  },
+  "sessionVars": {
+    "title": "Variáveis MCP",
+    "description": "Valores que esta sessão passa para servidores MCP cujas configurações usam marcadores, como o caminho de um projeto ou uma porta.",
+    "valuePlaceholder": "Valor",
+    "usedBy": "Usada por {{servers}}",
+    "none": "Nenhum servidor MCP ativado usa variáveis de sessão.",
+    "unsetHint": "Um servidor MCP precisa de variáveis que não foram definidas",
+    "promptTitle": "Variáveis necessárias para {{server}}",
+    "promptDescription": "Este servidor precisa de valores para esta sessão antes que a ferramenta possa rodar. Eles são salvos com esta sessão.",
+    "promptConfirm": "Salvar e executar",
+    "formHint": "Escreva um marcador como {{example}} nos argumentos, no ambiente, na URL ou nos cabeçalhos para defini-lo por chat, sessão de cowork ou sala."
   }
 }

@@ -199,6 +199,11 @@ export type CoworkSession = {
    * a turn carries, then to `updated`.
    */
   createdAt?: number
+  /**
+   * Values for `{{var}}` placeholders in MCP server configs: this session's
+   * instance of a template server is started with them.
+   */
+  mcpVariables?: Record<string, string>
 }
 
 /**
@@ -319,6 +324,8 @@ export type CoworkSessionsState = {
   /** Record the input still pending for the session; empty clears it. */
   setPendingInput: (id: string, pending: PendingInputRecord[]) => void
   setMode: (id: string, mode: CoworkMode) => void
+  /** Save the session's MCP `{{var}}` values; empty clears them. */
+  setMcpVariables: (id: string, vars: Record<string, string>) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
   /** Record, or clear, what the run in progress has spent. */

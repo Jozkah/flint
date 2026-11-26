@@ -297,5 +297,17 @@
       "label": "RivalSearchMCP (hébergé)",
       "note": "Chaque requête est envoyée à rivalsearchmcp.fastmcp.app, exploité par un tiers dont la journalisation et la conservation ne sont pas documentées. Des limites d'usage raisonnable s'appliquent. Pour tout contenu privé, préférez l'auto-hébergement. Mêmes réserves : scraping, un seul mainteneur, non audité."
     }
+  },
+  "sessionVars": {
+    "title": "Variables MCP",
+    "description": "Valeurs que cette session donne aux serveurs MCP dont les réglages utilisent des espaces réservés, comme le chemin d'un projet ou un port.",
+    "valuePlaceholder": "Valeur",
+    "usedBy": "Utilisé par {{servers}}",
+    "none": "Aucun serveur MCP activé n'utilise de variables de session.",
+    "unsetHint": "Un serveur MCP a besoin de variables non définies",
+    "promptTitle": "Variables requises pour {{server}}",
+    "promptDescription": "Ce serveur a besoin de valeurs pour cette session avant que l'outil puisse s'exécuter. Elles sont enregistrées avec cette session.",
+    "promptConfirm": "Enregistrer et exécuter",
+    "formHint": "Écrivez un espace réservé comme {{example}} dans les arguments, l'environnement, l'URL ou les en-têtes pour le définir par discussion, session cowork ou salle."
   }
 }

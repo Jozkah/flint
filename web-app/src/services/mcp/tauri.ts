@@ -124,6 +124,12 @@ export class TauriMCPService extends DefaultMCPService {
   async getTools(options?: ListToolsOptions): Promise<MCPTool[]> {
     // Plain listings stay on the existing bridge; a listing that may start
     // servers on demand passes the flag through.
+    if (options?.sessionVars) {
+      return invokeCommand('get_tools', {
+        start: options.start ?? false,
+        sessionVars: options.sessionVars,
+      })
+    }
     if (options?.start) return invokeCommand('get_tools', { start: true })
     // No bridge (a page outside the app): an empty list, not `undefined`.
     return (await window.core?.api?.getTools()) ?? []
@@ -133,6 +139,13 @@ export class TauriMCPService extends DefaultMCPService {
     serverNames: string[],
     options?: ListToolsOptions
   ): Promise<MCPTool[]> {
+    if (options?.sessionVars) {
+      return invokeCommand('get_tools_for_servers', {
+        serverNames,
+        start: options.start ?? false,
+        sessionVars: options.sessionVars,
+      })
+    }
     if (options?.start) {
       return invokeCommand('get_tools_for_servers', { serverNames, start: true })
     }
@@ -174,6 +187,7 @@ export class TauriMCPService extends DefaultMCPService {
     maxOutputChars?: number
     approvalTicket?: string
     cancellationToken?: string
+    sessionVars?: Record<string, string>
   }): Promise<{ error: string; content: { text: string }[] }> {
     return tallied(
       args,
@@ -283,6 +297,10 @@ export class TauriMCPService extends DefaultMCPService {
 
   async getServerStatuses(): Promise<Record<string, MCPServerStatus>> {
     return (await invokeCommand('get_mcp_server_statuses')) ?? {}
+  }
+
+  async getSessionPlaceholders(): Promise<Record<string, string[]>> {
+    return (await invokeCommand('get_mcp_session_placeholders')) ?? {}
   }
 
   async deactivateMCPServer(name: string): Promise<void> {

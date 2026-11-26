@@ -69,6 +69,8 @@ export type RoomSettingsPatch = Partial<
   permissionMode?: Room['permissionMode'] | null
   /** The room-wide reasoning effort; `null` returns to each model's default. */
   reasoningEffort?: Room['reasoningEffort'] | null
+  /** The room's MCP `{{var}}` values; `null` (or empty) clears them. */
+  mcpVariables?: Room['mcpVariables'] | null
   /** A participant's `reasoning: null` returns it to its model's default. */
   participants?: Array<
     Partial<Omit<Participant, 'id' | 'reasoning' | 'assistantId' | 'workProfile' | 'permissionMode'>> & {

@@ -1486,6 +1486,9 @@
   "get_mcp_server_statuses": [
     "web-app/src/services/mcp/tauri.ts"
   ],
+  "get_mcp_session_placeholders": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
   "get_provider_keys": [
     "web-app/src/providers/dataProviderHooks.ts"
   ],

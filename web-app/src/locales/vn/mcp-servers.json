@@ -297,5 +297,17 @@
       "label": "RivalSearchMCP (lưu trữ sẵn)",
       "note": "Mọi truy vấn được gửi tới rivalsearchmcp.fastmcp.app, do bên thứ ba vận hành và chưa công bố cách ghi log hay lưu giữ. Áp dụng giới hạn sử dụng hợp lý. Với nội dung riêng tư, hãy chọn tự lưu trữ. Cùng lưu ý: dựa trên cào dữ liệu, một người bảo trì, chưa kiểm toán."
     }
+  },
+  "sessionVars": {
+    "title": "Biến MCP",
+    "description": "Các giá trị phiên này truyền cho máy chủ MCP có cài đặt dùng chỗ giữ chỗ, như đường dẫn dự án hoặc cổng.",
+    "valuePlaceholder": "Giá trị",
+    "usedBy": "Được dùng bởi {{servers}}",
+    "none": "Không có máy chủ MCP nào đang bật dùng biến phiên.",
+    "unsetHint": "Một máy chủ MCP cần các biến chưa được đặt",
+    "promptTitle": "Cần biến cho {{server}}",
+    "promptDescription": "Máy chủ này cần giá trị cho phiên này trước khi công cụ có thể chạy. Các giá trị được lưu cùng phiên này.",
+    "promptConfirm": "Lưu và chạy",
+    "formHint": "Viết chỗ giữ chỗ như {{example}} trong đối số, môi trường, URL hoặc header để đặt riêng cho từng cuộc trò chuyện, phiên cowork hoặc phòng."
   }
 }

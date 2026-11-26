@@ -294,6 +294,11 @@ export type Room = {
   permissionMode?: CoworkMode
   /** What the user decided on each turn's change card, by message id. */
   changeDecisions?: Record<string, RoomChangeDecision>
+  /**
+   * Values for `{{var}}` placeholders in MCP server configs: the room's
+   * instance of a template server is started with them.
+   */
+  mcpVariables?: Record<string, string>
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */

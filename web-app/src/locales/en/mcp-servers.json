@@ -294,5 +294,17 @@
       "label": "RivalSearchMCP (hosted)",
       "note": "Every query is sent to rivalsearchmcp.fastmcp.app, run by a third party whose logging and retention are not documented. Fair-use rate limits apply. Prefer the self-hosted option for anything private. Same caveats as self-hosted: scraping based, one maintainer, not audited."
     }
+  },
+  "sessionVars": {
+    "title": "MCP variables",
+    "description": "Values this session gives MCP servers whose settings use placeholders, such as a project path or a port.",
+    "valuePlaceholder": "Value",
+    "usedBy": "Used by {{servers}}",
+    "none": "No enabled MCP server uses session variables.",
+    "unsetHint": "An MCP server here needs variables that are not set",
+    "promptTitle": "Variables needed for {{server}}",
+    "promptDescription": "This server needs values for this session before the tool can run. They are saved with this session.",
+    "promptConfirm": "Save and run",
+    "formHint": "Write a placeholder such as {{example}} in the arguments, environment, URL or headers to set it per chat, cowork session or room."
   }
 }

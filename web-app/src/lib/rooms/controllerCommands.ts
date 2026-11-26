@@ -3,6 +3,7 @@
  * housekeeping. `createRoomController` builds one `ControllerContext` (the
  * per-room queue, run slots, persistence and store) and merges the groups.
  */
+import { normalizeVars } from '@/lib/mcpSessionVars'
 import { clearRoomScratch, clearsKnowledge, clearsScratch } from './clearRoom'
 import { forgetRoomTodos } from './fullTools'
 import type { AbortIntent, RunCommand } from './engine'
@@ -509,6 +510,10 @@ export function editorCommands(
               ? room.reasoningEffort
               : patch.reasoningEffort
           ),
+          mcpVariables:
+            patch.mcpVariables === undefined
+              ? room.mcpVariables
+              : normalizeVars(patch.mcpVariables ?? undefined),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           // Raising a limit that stopped the room clears the stop, so a message
           // resumes it instead of being stranded by a limit that no longer binds.

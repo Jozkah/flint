@@ -299,5 +299,17 @@
       "label": "RivalSearchMCP (allotjat)",
       "note": "Cada consulta s'envia a rivalsearchmcp.fastmcp.app, gestionat per un tercer del qual no es documenta el registre ni la retenció. S'apliquen límits d'ús just. Per a res privat, tria l'opció autoallotjada. Mateixes reserves: basat en scraping, un sol mantenidor, sense auditar."
     }
+  },
+  "sessionVars": {
+    "title": "Variables MCP",
+    "description": "Valors que aquesta sessió dona als servidors MCP la configuració dels quals fa servir marcadors, com ara el camí d'un projecte o un port.",
+    "valuePlaceholder": "Valor",
+    "usedBy": "Ho fa servir {{servers}}",
+    "none": "Cap servidor MCP activat no fa servir variables de sessió.",
+    "unsetHint": "Un servidor MCP necessita variables que no estan definides",
+    "promptTitle": "Variables necessàries per a {{server}}",
+    "promptDescription": "Aquest servidor necessita valors per a aquesta sessió abans que l'eina es pugui executar. Es desen amb aquesta sessió.",
+    "promptConfirm": "Desa i executa",
+    "formHint": "Escriu un marcador com {{example}} als arguments, l'entorn, l'URL o les capçaleres per definir-lo per xat, sessió de cowork o sala."
   }
 }

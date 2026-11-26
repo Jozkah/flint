@@ -294,5 +294,17 @@
       "label": "RivalSearchMCP (gehostet)",
       "note": "Jede Anfrage geht an rivalsearchmcp.fastmcp.app, betrieben von einem Dritten, dessen Protokollierung und Aufbewahrung nicht dokumentiert sind. Fair-Use-Limits gelten. Für Privates die selbst gehostete Option wählen. Gleiche Vorbehalte: Scraping, ein Maintainer, nicht geprüft."
     }
+  },
+  "sessionVars": {
+    "title": "MCP-Variablen",
+    "description": "Werte, die diese Sitzung an MCP-Server übergibt, deren Einstellungen Platzhalter verwenden, etwa einen Projektpfad oder einen Port.",
+    "valuePlaceholder": "Wert",
+    "usedBy": "Verwendet von {{servers}}",
+    "none": "Kein aktivierter MCP-Server verwendet Sitzungsvariablen.",
+    "unsetHint": "Ein MCP-Server benötigt Variablen, die nicht gesetzt sind",
+    "promptTitle": "Variablen für {{server}} benötigt",
+    "promptDescription": "Dieser Server braucht Werte für diese Sitzung, bevor das Tool laufen kann. Sie werden mit dieser Sitzung gespeichert.",
+    "promptConfirm": "Speichern und ausführen",
+    "formHint": "Schreibe einen Platzhalter wie {{example}} in Argumente, Umgebung, URL oder Header, um ihn pro Chat, Cowork-Sitzung oder Raum festzulegen."
   }
 }

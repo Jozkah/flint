@@ -40,6 +40,7 @@ import { HeaderSlotProvider } from '@/components/shell/HeaderSlot'
 import { WindowResizeGrips } from '@/components/WindowResizeGrips'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import BypassConfirmDialog from '@/containers/dialogs/BypassConfirmDialog'
+import McpVariablesPromptDialog from '@/containers/dialogs/McpVariablesPromptDialog'
 import GpuCrashCpuFallbackDialog from '@/containers/dialogs/GpuCrashCpuFallbackDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
@@ -215,6 +216,7 @@ export default function MainRootLayout() {
           <OutOfContextPromiseModal />
           <AccessRequestDialog />
           <BypassConfirmDialog />
+          <McpVariablesPromptDialog />
           <GpuCrashCpuFallbackDialog />
           <ModelReplaceDialog />
           <UnknownWindowDialog />

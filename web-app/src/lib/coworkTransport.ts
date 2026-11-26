@@ -490,7 +490,7 @@ export class CoworkChatTransport extends CustomChatTransport {
         this.mcpStartingText = text
       },
       record: (offered, listed) => this.recordMcpSet(offered, listed),
-    })
+    }, this.threadId)
     // Sorted, and after the built-ins: an unchanged set sends identical JSON.
     this.mcpOverlay = overlay
     this.mcpToolServers = servers

@@ -22,7 +22,14 @@ use crate::core::{
     state::{RunningMcpService, SharedMcpServers},
 };
 use serde::Serialize;
-use std::{collections::HashSet, fs, path::Path, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+    time::Duration,
+};
+
+use super::session_vars;
 
 async fn tool_call_timeout(state: &AppState) -> Duration {
     state.mcp_settings.lock().await.tool_call_timeout_duration()
@@ -50,15 +57,20 @@ async fn collect_mcp_tools<R: Runtime>(
     state: &AppState,
     server_filter: Option<HashSet<String>>,
     start: bool,
+    session_vars: &HashMap<String, String>,
 ) -> Result<Vec<ToolWithServer>, String> {
     let timeout_duration = tool_call_timeout(state).await;
     let mut all_tools: Vec<ToolWithServer> = Vec::new();
     let mut removed_any = false;
 
-    let server_names: Vec<String> = {
+    let requested: Vec<String> = {
         let active_servers = state.mcp_active_servers.lock().await;
         match &server_filter {
-            None => active_servers.keys().cloned().collect(),
+            None => active_servers
+                .keys()
+                .filter(|n| !session_vars::is_instance(n))
+                .cloned()
+                .collect(),
             Some(filter) => {
                 for name in filter {
                     if !active_servers.contains_key(name) {
@@ -69,12 +81,29 @@ async fn collect_mcp_tools<R: Runtime>(
                 }
                 filter
                     .iter()
-                    .filter(|n| active_servers.contains_key(*n))
+                    .filter(|n| active_servers.contains_key(*n) && !session_vars::is_instance(n))
                     .cloned()
                     .collect()
             }
         }
     };
+    // A template is listed through this session's instance of it. While the
+    // session leaves one of its variables unset it is not started; it shows
+    // the tools an earlier instance listed (kept under the template's name),
+    // so an approval can ask for the missing values when one is called. The
+    // caller decides whether to offer them at all (Auto mode does not).
+    let mut server_names: Vec<String> = Vec::with_capacity(requested.len());
+    let mut unresolved: HashSet<String> = HashSet::new();
+    for name in requested {
+        match super::helpers::session_instance(state, &name, session_vars).await {
+            Ok(instance) => server_names.push(instance),
+            Err(e) => {
+                log::debug!("collect_mcp_tools: {e}");
+                unresolved.insert(name.clone());
+                server_names.push(name);
+            }
+        }
+    }
 
     // Listing waits on each server, and one that never answers used to hold the
     // `mcp_servers` lock and delay every server after it by the full tool-call
@@ -92,8 +121,11 @@ async fn collect_mcp_tools<R: Runtime>(
         let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
         let cached: HashSet<String> = state.mcp_last_known_tools.lock().await.keys().cloned().collect();
         let mut wait_for = Vec::new();
-        for name in server_names.iter().filter(|n| !running.contains(*n)) {
-            if cached.contains(name) {
+        for name in server_names
+            .iter()
+            .filter(|n| !running.contains(*n) && !unresolved.contains(*n))
+        {
+            if cached.contains(session_vars::base_name(name)) {
                 let (app, name) = (app.clone(), name.clone());
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = super::helpers::ensure_mcp_server_started(&app, &name).await {
@@ -143,13 +175,16 @@ async fn collect_mcp_tools<R: Runtime>(
                         name: tool.name.to_string(),
                         description: tool.description.as_ref().map(|d| d.to_string()),
                         input_schema: serde_json::Value::Object((*tool.input_schema).clone()),
-                        server: server_name.clone(),
+                        server: session_vars::base_name(&server_name).to_string(),
                     })
                     .collect();
+                // A session instance's tools are kept under its template's
+                // name: every instance of it serves the same tools.
+                let cache_key = session_vars::base_name(&server_name).to_string();
                 let changed = {
                     let mut last_known = state.mcp_last_known_tools.lock().await;
-                    let changed = last_known.get(&server_name) != Some(&mapped);
-                    last_known.insert(server_name.clone(), mapped.clone());
+                    let changed = last_known.get(&cache_key) != Some(&mapped);
+                    last_known.insert(cache_key, mapped.clone());
                     changed
                 };
                 if changed {
@@ -187,7 +222,10 @@ async fn collect_mcp_tools<R: Runtime>(
             Some(tools) => tools,
             None => {
                 let last_known = state.mcp_last_known_tools.lock().await;
-                last_known.get(&server_name).cloned().unwrap_or_default()
+                last_known
+                    .get(session_vars::base_name(&server_name))
+                    .cloned()
+                    .unwrap_or_default()
             }
         };
         all_tools.extend(tools);
@@ -260,6 +298,12 @@ pub async fn activate_mcp_server<R: Runtime>(
     }
     super::helpers::store_active_server_config(&state.mcp_active_servers, &name, &config).await;
     super::helpers::load_persisted_tool_cache(&app).await;
+    // A `{{var}}` template is only enabled: each session starts its own
+    // instance of it with its values.
+    if session_vars::is_templated(&config) {
+        let _ = app.emit("mcp-update", json!({ "server": name }));
+        return Ok(());
+    }
     if start == Some(false) && !super::lazy::starts_with_flint(&config) {
         let _ = app.emit("mcp-update", json!({ "server": name }));
         return Ok(());
@@ -282,6 +326,14 @@ pub async fn stop_mcp_server_now<R: Runtime>(
 ) -> Result<(), String> {
     let config = state.mcp_active_servers.lock().await.get(&name).cloned();
     super::helpers::stop_running_mcp_server(&app, &name, config.as_ref()).await?;
+    // A template runs only as session instances: Stop stops them all (each
+    // starts again when its session next needs it).
+    if !session_vars::is_instance(&name) {
+        for instance in super::helpers::instances_of(&state, &name).await {
+            let config = state.mcp_active_servers.lock().await.get(&instance).cloned();
+            super::helpers::stop_running_mcp_server(&app, &instance, config.as_ref()).await?;
+        }
+    }
     let _ = app.emit("mcp-update", json!({ "server": name }));
     Ok(())
 }
@@ -293,11 +345,24 @@ pub async fn get_mcp_server_statuses(
 ) -> Result<std::collections::HashMap<String, super::lazy::ServerStatus>, String> {
     let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
     let starting = state.mcp_starting.lock().await.clone();
-    let names: Vec<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+    let names: Vec<String> = state
+        .mcp_active_servers
+        .lock()
+        .await
+        .keys()
+        .filter(|n| !session_vars::is_instance(n))
+        .cloned()
+        .collect();
     Ok(names
         .into_iter()
         .map(|name| {
-            let mut status = state.mcp_lazy.status(&name, running.contains(&name));
+            // A template runs only as session instances: it shows as running
+            // while any of them does.
+            let instance_running = running
+                .iter()
+                .any(|r| session_vars::template_of(r) == Some(name.as_str()));
+            let mut status =
+                state.mcp_lazy.status(&name, running.contains(&name) || instance_running);
             if status == super::lazy::ServerStatus::Stopped && starting.contains(&name) {
                 status = super::lazy::ServerStatus::Starting;
             }
@@ -313,6 +378,17 @@ pub async fn deactivate_mcp_server<R: Runtime>(
     name: String,
 ) -> Result<(), String> {
     log::info!("Deactivating MCP server: {name}");
+
+    // Turning a template off turns off every session instance of it.
+    if !session_vars::is_instance(&name) {
+        for instance in super::helpers::instances_of(&state, &name).await {
+            if let Err(e) =
+                Box::pin(deactivate_mcp_server(app.clone(), state.clone(), instance.clone())).await
+            {
+                log::warn!("Failed to stop session instance {instance}: {e}");
+            }
+        }
+    }
 
     // Get port from config before removing (for lock file cleanup later)
     let bridge_port = if name == "Jan Browser MCP" {
@@ -449,7 +525,13 @@ pub async fn get_connected_servers(
 ) -> Result<Vec<String>, String> {
     let servers = state.mcp_servers.clone();
     let servers_map = servers.lock().await;
-    Ok(servers_map.keys().cloned().collect())
+    let mut names: Vec<String> = servers_map
+        .keys()
+        .map(|n| session_vars::base_name(n).to_string())
+        .collect();
+    names.sort();
+    names.dedup();
+    Ok(names)
 }
 
 /// Remove an MCP server entry and cancel its running service (used when list-tools fails).
@@ -489,8 +571,12 @@ pub async fn get_tools<R: Runtime>(
     state: State<'_, AppState>,
     // Lazy start: true when the caller is about to use the tools (a send).
     start: Option<bool>,
+    // The asking session's `{{var}}` values. Templates it leaves unresolved
+    // contribute no tools.
+    session_vars: Option<HashMap<String, String>>,
 ) -> Result<Vec<ToolWithServer>, String> {
-    collect_mcp_tools(&app, &state, None, start.unwrap_or(false)).await
+    let vars = session_vars.unwrap_or_default();
+    collect_mcp_tools(&app, &state, None, start.unwrap_or(false), &vars).await
 }
 
 /// Retrieves tools from a specific subset of MCP servers by name.
@@ -501,6 +587,7 @@ pub async fn get_tools_for_servers<R: Runtime>(
     state: State<'_, AppState>,
     server_names: Vec<String>,
     start: Option<bool>,
+    session_vars: Option<HashMap<String, String>>,
 ) -> Result<Vec<ToolWithServer>, String> {
     let mut seen = HashSet::new();
     let mut unique: Vec<String> = Vec::new();
@@ -513,7 +600,27 @@ pub async fn get_tools_for_servers<R: Runtime>(
     if filter.is_empty() {
         return Ok(Vec::new());
     }
-    collect_mcp_tools(&app, &state, Some(filter), start.unwrap_or(false)).await
+    let vars = session_vars.unwrap_or_default();
+    collect_mcp_tools(&app, &state, Some(filter), start.unwrap_or(false), &vars).await
+}
+
+/// The `{{var}}` placeholders of every enabled template, by server name.
+///
+/// A session's UI uses it to ask for the values its servers need, and to keep
+/// a template's tools away from the model until they are set.
+#[tauri::command]
+pub async fn get_mcp_session_placeholders(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, Vec<String>>, String> {
+    let active = state.mcp_active_servers.lock().await;
+    Ok(active
+        .iter()
+        .filter(|(name, _)| !session_vars::is_instance(name))
+        .filter_map(|(name, config)| {
+            let names = session_vars::placeholders(config);
+            (!names.is_empty()).then(|| (name.clone(), names))
+        })
+        .collect())
 }
 
 /// Returns name, capability tags, and description for all enabled MCP servers
@@ -525,7 +632,7 @@ pub async fn get_server_summaries(
     let active_servers = state.mcp_active_servers.lock().await;
     let mut summaries = Vec::new();
 
-    for name in active_servers.keys() {
+    for name in active_servers.keys().filter(|n| !session_vars::is_instance(n)) {
         let config = active_servers.get(name);
 
         let capabilities: Vec<String> = config
@@ -606,7 +713,7 @@ pub async fn list_mcp_prompts(
         let servers = state.mcp_servers.lock().await;
         servers
             .iter()
-            .filter(|(name, _)| enabled.contains(*name))
+            .filter(|(name, _)| enabled.contains(*name) && !session_vars::is_instance(name))
             .map(|(name, service)| (name.clone(), service.peer().clone()))
             .collect()
     };
@@ -799,6 +906,8 @@ pub async fn mcp_server_fingerprints(
     Ok(saved
         .keys()
         .chain(active.keys())
+        // Session instances answer to their template's fingerprint.
+        .filter(|name| !session_vars::is_instance(name))
         .filter_map(|name| {
             server_fingerprint_from(&active, &saved, name).map(|fp| (name.clone(), fp))
         })
@@ -927,9 +1036,14 @@ pub async fn call_tool<R: Runtime>(
     // `mcp_allow_once`, for a server the user has not trusted outright. `None`
     // is every call to a server they have.
     approval_ticket: Option<String>,
+    // The calling session's `{{var}}` values: a template is reached through
+    // this session's instance of it, and refused while a value is unset.
+    session_vars: Option<HashMap<String, String>>,
 ) -> Result<CallToolResult, String> {
     let (timeout_duration, tool_output_cap) = resolve_limits(&state, max_output_chars).await;
-    start_lazy_servers(&app, &state, &server_name, &tool_name).await?;
+    let vars = session_vars.unwrap_or_default();
+    let (server_name, usable) = session_scope(&state, server_name, &vars).await?;
+    start_lazy_servers(&app, &state, &server_name, &tool_name, &usable).await?;
 
     // Set up cancellation if token is provided. The guard removes the token on
     // every way out, including this future being dropped mid-call.
@@ -947,6 +1061,7 @@ pub async fn call_tool<R: Runtime>(
             approval_ticket: &approval_ticket,
             timeout_duration,
             tool_output_cap,
+            usable: &usable,
         },
         cancel_rx,
     )
@@ -964,6 +1079,53 @@ async fn resolve_limits(state: &AppState, max_output_chars: Option<u64>) -> (Dur
     )
 }
 
+/// Where a call from a session may go.
+///
+/// Returns the server to call -- a named template becomes this session's
+/// instance of it -- and every server a call that names none may search: the
+/// ordinary servers plus this session's instances. Another session's
+/// instance is never in it, so a tool name cannot reach a different project.
+/// A named template whose variables the session leaves unset is an error
+/// that names them.
+async fn session_scope(
+    state: &AppState,
+    server_name: Option<String>,
+    vars: &HashMap<String, String>,
+) -> Result<(Option<String>, HashSet<String>), String> {
+    let (plain, templates): (Vec<String>, Vec<String>) = {
+        let active = state.mcp_active_servers.lock().await;
+        let mut plain = Vec::new();
+        let mut templates = Vec::new();
+        for (name, config) in active.iter() {
+            if session_vars::is_instance(name) {
+                continue;
+            }
+            if session_vars::is_templated(config) {
+                templates.push(name.clone());
+            } else {
+                plain.push(name.clone());
+            }
+        }
+        (plain, templates)
+    };
+    let mut usable: HashSet<String> = plain.into_iter().collect();
+    for template in &templates {
+        if let Ok(instance) = super::helpers::session_instance(state, template, vars).await {
+            usable.insert(instance);
+        }
+    }
+    let server_name = match server_name {
+        Some(name) if templates.contains(&name) => {
+            Some(super::helpers::session_instance(state, &name, vars).await?)
+        }
+        Some(name) if session_vars::is_instance(&name) && !usable.contains(&name) => {
+            return Err(format!("Server '{name}' not found"));
+        }
+        other => other,
+    };
+    Ok((server_name, usable))
+}
+
 /// Lazy start: the server this call needs is started first (once, shared).
 /// A start failure is this call's error, so it shows in the chat like any
 /// other MCP failure.
@@ -972,17 +1134,34 @@ async fn start_lazy_servers<R: Runtime>(
     state: &AppState,
     server_name: &Option<String>,
     tool_name: &str,
+    usable: &HashSet<String>,
 ) -> Result<(), String> {
     let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
-    let enabled: HashSet<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+    let enabled: HashSet<String> = state
+        .mcp_active_servers
+        .lock()
+        .await
+        .keys()
+        .filter(|n| server_name.as_ref() == Some(*n) || usable.contains(*n))
+        .cloned()
+        .collect();
     let needed: Vec<String> = match server_name {
         Some(server) => vec![server.clone()],
         None => {
             let last_known = state.mcp_last_known_tools.lock().await;
+            // Tools of a template are cached under its name; the owner this
+            // call can reach is this session's instance of it.
             let owners: Vec<String> = last_known
                 .iter()
                 .filter(|(_, tools)| tools.iter().any(|t| t.name == tool_name))
-                .map(|(n, _)| n.clone())
+                .flat_map(|(n, _)| {
+                    let instances: Vec<String> = usable
+                        .iter()
+                        .filter(|u| session_vars::template_of(u) == Some(n.as_str()))
+                        .cloned()
+                        .collect();
+                    if instances.is_empty() { vec![n.clone()] } else { instances }
+                })
                 .collect();
             if owners.iter().any(|n| running.contains(n)) {
                 Vec::new()
@@ -1069,6 +1248,8 @@ struct CallRequest<'a> {
     approval_ticket: &'a Option<String>,
     timeout_duration: Duration,
     tool_output_cap: u64,
+    /// The servers a call that names none may search (see [`session_scope`]).
+    usable: &'a HashSet<String>,
 }
 
 /// How asking one server about a tool went.
@@ -1098,7 +1279,10 @@ async fn find_and_call<R: Runtime>(
         let servers = state.mcp_servers.lock().await;
         servers
             .iter()
-            .filter(|(name, _)| req.server_name.as_ref().is_none_or(|s| *name == s.as_str()))
+            .filter(|(name, _)| match req.server_name {
+                Some(s) => *name == s.as_str(),
+                None => req.usable.contains(*name),
+            })
             .map(|(name, s)| (name.clone(), s.peer().clone()))
             .collect()
     };
@@ -1173,6 +1357,9 @@ async fn try_server<R: Runtime>(
     cancel_rx: &mut Option<oneshot::Receiver<()>>,
 ) -> ServerAttempt {
     let tool_name = req.tool_name;
+    // A session instance answers to its template: the user approved, and set
+    // a budget for, the template, whatever values a session gives it.
+    let identity = session_vars::base_name(srv_name);
     // Idle shutdown never stops a server while this call is in flight,
     // including while its tools are being listed.
     let _in_flight = state.mcp_lazy.begin_call(srv_name);
@@ -1220,10 +1407,10 @@ async fn try_server<R: Runtime>(
     // The grant or ticket must also be for the definition this server is
     // running now: an approval given before its command or endpoint was
     // edited was an approval of a different program.
-    let current = server_fingerprint_from(active_configs, &saved_server_configs(data_folder), srv_name);
+    let current = server_fingerprint_from(active_configs, &saved_server_configs(data_folder), identity);
     if let Err(refusal) = tauri_plugin_agent_tools::mcp_trust::permits(
         data_folder,
-        srv_name,
+        identity,
         tool_name,
         current.as_deref(),
         req.approval_ticket.as_deref(),
@@ -1236,14 +1423,14 @@ async fn try_server<R: Runtime>(
     // AH-144: the server's own budget, before its arguments are sent.
     let budget = crate::core::mcp::budget::ServerBudget::for_server(
         &crate::core::app::commands::resolve_jan_data_folder(),
-        srv_name,
+        identity,
     );
-    if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
+    if let Err(refusal) = crate::core::mcp::budget::check(identity, &budget) {
         log::warn!("MCP call to tool {tool_name} on {srv_name} refused: {refusal}");
         return ServerAttempt::Answer(Err(refusal));
     }
     let server_cap = budget.result_cap(req.tool_output_cap);
-    let charged_server = srv_name.to_string();
+    let charged_server = identity.to_string();
 
     // Call the tool with timeout and cancellation support
     let mut params = CallToolRequestParams::new(tool_name.to_string());

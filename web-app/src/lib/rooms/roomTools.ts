@@ -35,6 +35,8 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { executeVisualizeTool, visualizeSchemas } from '@/lib/visualize/tools'
 import { READ_ME_TOOL } from '@/lib/visualize/constants'
 import { callMcpToolCancellable } from '@/lib/mcpCancellable'
+import { gateUnresolvedTools } from '@/lib/mcpSessionScope'
+import { normalizeVars } from '@/lib/mcpSessionVars'
 
 import {
   ROOM_READ_TOOLS,
@@ -281,7 +283,11 @@ export async function buildRoomTools(
   // MCP tools from the user's connected servers -- no folder required. Same set
   // the main chat exposes, minus the globally disabled ones. A built-in tool of
   // the same name wins (already added above), so MCP never shadows file tools.
-  const mcpTools = await buildMcpTools(onActivity, disabledMcpServers(ctx.disabledTools))
+  const mcpTools = await buildMcpTools(
+    onActivity,
+    disabledMcpServers(ctx.disabledTools),
+    ctx.mcpVariables
+  )
   for (const [name, tool] of Object.entries(mcpTools)) {
     if (!tools[name]) tools[name] = tool
   }
@@ -311,8 +317,11 @@ export async function buildRoomTools(
 export async function buildMcpTools(
   onActivity?: (a: RoomToolActivity) => void,
   /** Servers the participant switched off as a whole (see `mcpServerKey`). */
-  offServers?: ReadonlySet<string>
+  offServers?: ReadonlySet<string>,
+  /** The room's `{{var}}` values for template servers. */
+  mcpVariables?: Record<string, string>
 ): Promise<Record<string, Tool>> {
+  const sessionVars = normalizeVars(mcpVariables)
   const out: Record<string, Tool> = {}
   let mcp: ReturnType<ReturnType<typeof getServiceHub>['mcp']>
   let mcpTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown>; server: string }>
@@ -323,7 +332,7 @@ export async function buildMcpTools(
     // servers whose calls it will allow. Advertising by anything else risks
     // offering a tool that is then refused mid-turn (rooms never prompt).
     ;[mcpTools, report] = await Promise.all([
-      mcp.getTools({ start: true }),
+      mcp.getTools({ start: true, sessionVars }),
       mcp.trustReport().catch(() => ({ trusted: [], invalidated: [] })),
     ])
   } catch {
@@ -343,6 +352,9 @@ export async function buildMcpTools(
       .map((e) => e.name)
   )
   const serverTrusted = (server: string) => trustedSet.has(server)
+  // A room never prompts, so a template server whose variables the room
+  // leaves unset is withheld: there is no moment to ask for them.
+  mcpTools = gateUnresolvedTools(mcpTools, sessionVars, true).tools
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
     if (offServers?.has(t.server)) continue
@@ -358,7 +370,7 @@ export async function buildMcpTools(
           // the room cancels it at the server at once (M-011).
           const res = await callMcpToolCancellable(
             mcp,
-            { toolName: t.name, serverName: t.server, arguments: input as object },
+            { toolName: t.name, serverName: t.server, arguments: input as object, sessionVars },
             options?.abortSignal
           )
           const output = res.error

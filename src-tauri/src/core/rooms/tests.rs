@@ -928,6 +928,23 @@ fn change_decisions_round_trip_and_old_rooms_load_unchanged() {
 }
 
 #[test]
+fn mcp_variables_round_trip_and_old_rooms_load_unchanged() {
+    let (_dir, store) = new_store();
+    let old = room("r4");
+    assert!(old.mcp_variables.is_none());
+    assert!(serde_json::to_value(&old).unwrap().get("mcpVariables").is_none());
+    let mut value = room_json("r4");
+    value["mcpVariables"] = json!({ "project_path": "/work/app", "obsidian_port": "27124" });
+    store.save(parse_room(value).unwrap(), 5000).unwrap();
+    let loaded = store.get("r4").unwrap().room;
+    let vars = loaded.mcp_variables.clone().unwrap();
+    assert_eq!(vars.get("project_path").map(String::as_str), Some("/work/app"));
+    assert_eq!(vars.get("obsidian_port").map(String::as_str), Some("27124"));
+    store.save(loaded, 6000).unwrap();
+    assert_eq!(store.get("r4").unwrap().room.mcp_variables.unwrap().len(), 2);
+}
+
+#[test]
 fn clearing_the_journal_keeps_workspaces_and_delete_removes_them() {
     let (dir, store) = new_store();
     store.save(room("r1"), 10).unwrap();
