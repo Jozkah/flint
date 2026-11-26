@@ -302,7 +302,11 @@
     "actionDownload": "Hochskalieren ×{{scale}} (lädt zuerst {{size}})",
     "downloading": "Hochskalierer wird geladen: {{bytes}} von {{total}}",
     "done": "{{scale}}× vergrößert",
-    "jobLabel": "Hochskalieren ×{{scale}}: {{prompt}}"
+    "jobLabel": "Hochskalieren ×{{scale}}: {{prompt}}",
+    "selection": "Auswahl hochskalieren ×{{scale}}",
+    "selectionDownload": "Auswahl hochskalieren ×{{scale}} (lädt zuerst {{size}})",
+    "selectionLabel": "Auswahl",
+    "cropFailed": "Die Auswahl konnte nicht ausgeschnitten werden."
   },
   "select": {
     "start": "Bereich zum Bearbeiten auswählen",

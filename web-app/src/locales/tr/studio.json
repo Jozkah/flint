@@ -302,7 +302,11 @@
     "actionDownload": "×{{scale}} büyüt (önce {{size}} indirir)",
     "downloading": "Büyütücü indiriliyor: {{bytes}} / {{total}}",
     "done": "{{scale}}× büyütüldü",
-    "jobLabel": "×{{scale}} büyütülüyor: {{prompt}}"
+    "jobLabel": "×{{scale}} büyütülüyor: {{prompt}}",
+    "selection": "Seçimi ×{{scale}} büyüt",
+    "selectionDownload": "Seçimi ×{{scale}} büyüt (önce {{size}} indirir)",
+    "selectionLabel": "Seçim",
+    "cropFailed": "Seçim kesilemedi."
   },
   "select": {
     "start": "Düzenlenecek alanı seç",

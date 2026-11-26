@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 import {
   containRect,
   hasPaint,
+  paintedBounds,
+  toPictureRect,
   invertOverlay,
   maskSize,
   overlayToMask,
@@ -21,6 +23,8 @@ export type SelectionTool = 'brush' | 'eraser' | 'rect'
 export type SelectionEditorHandle = {
   /** The selection as a PNG data URL (white is repainted), or null when nothing is selected. */
   exportMask: () => string | null
+  /** The box around what is painted, in the picture's own pixels, or null when nothing is. */
+  selectionRect: () => Rect | null
 }
 
 /** What is painted, drawn opaque; the canvas itself is shown half see-through. */
@@ -229,6 +233,12 @@ export const SelectionEditor = forwardRef<
       out.height = canvas.height
       out.getContext('2d')?.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0)
       return out.toDataURL('image/png')
+    },
+    selectionRect: () => {
+      const data = read()
+      if (!data || !mask || !natural) return null
+      const bounds = paintedBounds(data.data, data.width, data.height)
+      return bounds ? toPictureRect(bounds, mask, natural) : null
     },
   }))
 

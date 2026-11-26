@@ -308,7 +308,11 @@
     "actionDownload": "Увеличить ×{{scale}} (сначала загрузит {{size}})",
     "downloading": "Загрузка модели увеличения: {{bytes}} из {{total}}",
     "done": "Увеличено в {{scale}} раза",
-    "jobLabel": "Увеличение ×{{scale}}: {{prompt}}"
+    "jobLabel": "Увеличение ×{{scale}}: {{prompt}}",
+    "selection": "Увеличить выделенное ×{{scale}}",
+    "selectionDownload": "Увеличить выделенное ×{{scale}} (сначала загрузит {{size}})",
+    "selectionLabel": "Выделение",
+    "cropFailed": "Не удалось вырезать выделенное."
   },
   "select": {
     "start": "Выделить область для правки",

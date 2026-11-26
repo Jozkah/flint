@@ -305,7 +305,11 @@
     "actionDownload": "Phóng to ×{{scale}} (tải {{size}} trước)",
     "downloading": "Đang tải bộ phóng to: {{bytes}} / {{total}}",
     "done": "Đã phóng to {{scale}}×",
-    "jobLabel": "Đang phóng to ×{{scale}}: {{prompt}}"
+    "jobLabel": "Đang phóng to ×{{scale}}: {{prompt}}",
+    "selection": "Phóng to vùng chọn ×{{scale}}",
+    "selectionDownload": "Phóng to vùng chọn ×{{scale}} (tải {{size}} trước)",
+    "selectionLabel": "Vùng chọn",
+    "cropFailed": "Không cắt được vùng chọn."
   },
   "select": {
     "start": "Chọn vùng để sửa",

@@ -305,7 +305,11 @@
     "actionDownload": "Ingrandisci ×{{scale}} (prima scarica {{size}})",
     "downloading": "Download dell’ingranditore: {{bytes}} di {{total}}",
     "done": "Ingrandita {{scale}}×",
-    "jobLabel": "Ingrandimento ×{{scale}}: {{prompt}}"
+    "jobLabel": "Ingrandimento ×{{scale}}: {{prompt}}",
+    "selection": "Ingrandisci selezione ×{{scale}}",
+    "selectionDownload": "Ingrandisci selezione ×{{scale}} (prima scarica {{size}})",
+    "selectionLabel": "Selezione",
+    "cropFailed": "Impossibile ritagliare la selezione."
   },
   "select": {
     "start": "Seleziona un’area da modificare",

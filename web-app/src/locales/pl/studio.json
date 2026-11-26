@@ -308,7 +308,11 @@
     "actionDownload": "Powiększ ×{{scale}} (najpierw pobiera {{size}})",
     "downloading": "Pobieranie modelu powiększania: {{bytes}} z {{total}}",
     "done": "Powiększono {{scale}}×",
-    "jobLabel": "Powiększanie ×{{scale}}: {{prompt}}"
+    "jobLabel": "Powiększanie ×{{scale}}: {{prompt}}",
+    "selection": "Powiększ zaznaczenie ×{{scale}}",
+    "selectionDownload": "Powiększ zaznaczenie ×{{scale}} (najpierw pobiera {{size}})",
+    "selectionLabel": "Zaznaczenie",
+    "cropFailed": "Nie udało się wyciąć zaznaczenia."
   },
   "select": {
     "start": "Zaznacz obszar do edycji",

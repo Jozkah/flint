@@ -299,7 +299,11 @@
     "actionDownload": "×{{scale}} に拡大(先に {{size}} をダウンロード)",
     "downloading": "拡大モデルをダウンロード中: {{bytes}} / {{total}}",
     "done": "{{scale}}倍に拡大しました",
-    "jobLabel": "×{{scale}} に拡大中: {{prompt}}"
+    "jobLabel": "×{{scale}} に拡大中: {{prompt}}",
+    "selection": "選択範囲を ×{{scale}} に拡大",
+    "selectionDownload": "選択範囲を ×{{scale}} に拡大(先に {{size}} をダウンロード)",
+    "selectionLabel": "選択範囲",
+    "cropFailed": "選択範囲を切り出せませんでした。"
   },
   "select": {
     "start": "編集する範囲を選択",

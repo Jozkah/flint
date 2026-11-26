@@ -299,7 +299,11 @@
     "actionDownload": "放大 ×{{scale}}(先下載 {{size}})",
     "downloading": "正在下載放大模型:{{bytes}} / {{total}}",
     "done": "已放大 {{scale}} 倍",
-    "jobLabel": "正在放大 ×{{scale}}:{{prompt}}"
+    "jobLabel": "正在放大 ×{{scale}}:{{prompt}}",
+    "selection": "放大選取 ×{{scale}}",
+    "selectionDownload": "放大選取 ×{{scale}}(先下載 {{size}})",
+    "selectionLabel": "選取範圍",
+    "cropFailed": "無法裁出選取範圍。"
   },
   "select": {
     "start": "選擇要編輯的區域",

@@ -305,7 +305,11 @@
     "actionDownload": "Ampliar ×{{scale}} (primero descarga {{size}})",
     "downloading": "Descargando el ampliador: {{bytes}} de {{total}}",
     "done": "Ampliada {{scale}}×",
-    "jobLabel": "Ampliando ×{{scale}}: {{prompt}}"
+    "jobLabel": "Ampliando ×{{scale}}: {{prompt}}",
+    "selection": "Ampliar selección ×{{scale}}",
+    "selectionDownload": "Ampliar selección ×{{scale}} (primero descarga {{size}})",
+    "selectionLabel": "Selección",
+    "cropFailed": "No se pudo recortar la selección."
   },
   "select": {
     "start": "Seleccionar una zona para editar",

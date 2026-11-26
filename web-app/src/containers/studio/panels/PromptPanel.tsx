@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useAssetUrl } from '@/lib/assetPath'
-import { CornerDownLeft, Download, Film, ImageIcon, Info, Maximize2, MoreHorizontal, Sparkles, Square, SquareDashedMousePointer } from 'lucide-react'
+import { CornerDownLeft, Download, Film, ImageIcon, Info, Maximize2, MoreHorizontal, Sparkles, Square, SquareDashedMousePointer, Expand } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,7 @@ import { Elapsed } from '@/containers/studio/panels/Elapsed'
 import { PanelButton } from '@/containers/studio/panels/PanelButton'
 import { SelectionEditor, type SelectionEditorHandle } from '@/containers/studio/panels/SelectionEditor'
 import { firstPicture, importPicture, PictureImportError } from '@/lib/studio/importPicture'
+import { cropToGallery } from '@/lib/studio/cropPicture'
 import { formatModelBytes } from '@/lib/huggingface'
 import { chosenSize, phaseText, rise } from '@/containers/studio/studioHelpers'
 import { Form } from '@/containers/studio/studioTypes'
@@ -162,6 +163,25 @@ export function PromptPanel({
     } finally {
       setImporting(false)
     }
+  }
+
+  const upscaleSelection = async (upscaler: (typeof upscalers)[number]) => {
+    if (!latest) return
+    const rect = editorRef.current?.selectionRect()
+    if (!rect) {
+      toast.error(t('studio:select.empty'))
+      return
+    }
+    let crop: GalleryItem
+    try {
+      crop = await cropToGallery(latest, rect, t('studio:upscale.selectionLabel'))
+    } catch {
+      toast.error(t('studio:upscale.cropFailed'))
+      return
+    }
+    setSelecting(false)
+    const ok = await upscaleItem(crop, upscaler)
+    if (ok) toast.success(t('studio:upscale.done', { scale: upscaler.scale }))
   }
 
   const editSelection = async () => {
@@ -604,6 +624,27 @@ export function PromptPanel({
               formatValue={(v) => `${Math.round(v * 100)}%`}
             />
             <span className="w-9 shrink-0 text-right tabular-nums">{Math.round(strength * 100)}%</span>
+          </div>
+        )}
+        {editing && upscalers.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {upscalers.map((u) => (
+              <Button
+                key={u.id}
+                variant="outline"
+                size="sm"
+                disabled={busy || !painted || !engineReady || !!upscalerDownload}
+                title={
+                  u.installed
+                    ? t('studio:upscale.selection', { scale: u.scale })
+                    : t('studio:upscale.selectionDownload', { scale: u.scale, size: formatModelBytes(u.totalBytes) })
+                }
+                onClick={() => void upscaleSelection(u)}
+              >
+                <Expand className="size-3.5" aria-hidden />
+                {t('studio:upscale.selection', { scale: u.scale })}
+              </Button>
+            ))}
           </div>
         )}
         {editing ? (
