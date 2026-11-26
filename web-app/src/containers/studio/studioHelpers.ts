@@ -13,7 +13,7 @@ export function formatDuration(t: T, ms: number): string {
 
 /** What a running job is doing, in words. */
 export function phaseText(t: T, phase: string): string {
-  const known = ['queued', 'encoding', 'sampling', 'decoding', 'saving']
+  const known = ['queued', 'encoding', 'sampling', 'decoding', 'saving', 'upscaling']
   return t(known.includes(phase) ? `studio:phase.${phase}` : 'studio:phase.working')
 }
 

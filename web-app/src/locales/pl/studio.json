@@ -163,7 +163,8 @@
     "sampling": "Rysowanie",
     "decoding": "Kończenie",
     "saving": "Zapisywanie",
-    "working": "Praca w toku"
+    "working": "Praca w toku",
+    "upscaling": "Powiększanie"
   },
   "settings": {
     "title": "Ustawienia generowania",
@@ -300,5 +301,35 @@
     "tooBig": "Ten obraz ma ponad 20 MB.",
     "importFailed": "Nie udało się dodać obrazu.",
     "count": "Obrazy referencyjne: {{count}}"
+  },
+  "upscale": {
+    "action": "Powiększ ×{{scale}}",
+    "actionDownload": "Powiększ ×{{scale}} (najpierw pobiera {{size}})",
+    "downloading": "Pobieranie modelu powiększania: {{bytes}} z {{total}}",
+    "done": "Powiększono {{scale}}×",
+    "jobLabel": "Powiększanie ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Zaznacz obszar do edycji",
+    "brush": "Pędzel (B)",
+    "eraser": "Gumka (E)",
+    "rect": "Prostokąt (R)",
+    "size": "Rozmiar pędzla",
+    "undo": "Cofnij ({{keys}})",
+    "invert": "Odwróć zaznaczenie",
+    "clear": "Wyczyść zaznaczenie",
+    "exit": "Zakończ zaznaczanie",
+    "area": "Zamaluj obszar do zmiany",
+    "tools": "Narzędzia zaznaczania",
+    "strength": "Siła zmiany",
+    "apply": "Edytuj zaznaczenie",
+    "paintFirst": "Zamaluj obszar do zmiany",
+    "empty": "Najpierw zamaluj obszar do zmiany.",
+    "edited": "Zaznaczenie edytowane"
+  },
+  "drop": {
+    "added": "Dodano obraz do galerii",
+    "adding": "Dodawanie obrazu…",
+    "hint": "Albo upuść tu obraz, aby go powiększyć lub edytować."
   }
 }

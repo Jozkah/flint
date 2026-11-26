@@ -7,42 +7,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useStudio } from '@/hooks/useStudio'
 import { cn } from '@/lib/utils'
-import { studioApi, type GalleryItem } from '@/lib/studio/studio'
+import { type GalleryItem } from '@/lib/studio/studio'
+import { importPicture, PictureImportError, PICTURE_TYPES } from '@/lib/studio/importPicture'
 import { Thumb } from '@/containers/studio/panels/Thumb'
 
 /** More than this and the engine's memory use outgrows most graphics cards. */
 export const MAX_REFERENCES = 4
-const MAX_FILE_BYTES = 20 * 1024 * 1024
-const PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
-
-function readBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error ?? new Error('read'))
-    reader.onload = () => {
-      const text = String(reader.result)
-      resolve(text.slice(text.indexOf(',') + 1))
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
-function measure(file: File): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve({ width: img.naturalWidth, height: img.naturalHeight })
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('decode'))
-    }
-    img.src = url
-  })
-}
-
 /**
  * The pictures an edit model follows: what is chosen, and where more come
  * from (a file on this computer, or a picture already in the gallery).
@@ -58,38 +28,27 @@ export function ReferencePictures({
 }) {
   const { t } = useTranslation()
   const gallery = useStudio((s) => s.gallery.image)
-  const refreshGallery = useStudio((s) => s.refreshGallery)
   const fileRef = useRef<HTMLInputElement>(null)
   const [picking, setPicking] = useState(false)
   const [importing, setImporting] = useState(false)
   const full = value.length >= MAX_REFERENCES
 
   const importFile = async (file: File) => {
-    if (!PICTURE_TYPES.includes(file.type)) {
-      toast.error(t('studio:reference.notPicture'))
-      return
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      toast.error(t('studio:reference.tooBig'))
-      return
-    }
     setImporting(true)
     try {
-      const [images, size] = await Promise.all([readBase64(file), measure(file)])
-      const saved = await studioApi.saveExternalImages({
-        prompt: file.name,
-        width: size.width,
-        height: size.height,
-        modelId: 'imported-picture',
-        modelName: t('studio:reference.imported'),
-        durationMs: 0,
-        images: [images],
-      })
-      await refreshGallery('image')
-      const added = useStudio.getState().gallery.image.find((g) => g.id === saved.ids[0])
-      if (added) onChange([...value, added])
-    } catch {
-      toast.error(t('studio:reference.importFailed'))
+      const added = await importPicture(file, t('studio:reference.imported'))
+      onChange([...value, added])
+    } catch (error) {
+      const problem = error instanceof PictureImportError ? error.problem : 'failed'
+      toast.error(
+        t(
+          problem === 'not-picture'
+            ? 'studio:reference.notPicture'
+            : problem === 'too-big'
+              ? 'studio:reference.tooBig'
+              : 'studio:reference.importFailed'
+        )
+      )
     } finally {
       setImporting(false)
     }

@@ -981,8 +981,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_add_local_model": [
@@ -997,8 +999,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_cancel": [
@@ -1013,8 +1017,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_delete": [
@@ -1029,8 +1035,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_download_model": [
@@ -1045,8 +1053,28 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_download_upscaler": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
+    "web-app/src/hooks/useScannedFamilies.ts (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chat/transport/toolRefresh.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/localModelScan.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_families": [
@@ -1061,8 +1089,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_gallery": [
@@ -1077,8 +1107,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_generate_image": [
@@ -1093,8 +1125,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_generate_video": [
@@ -1109,8 +1143,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_guess_family": [
@@ -1125,8 +1161,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_import_lora": [
@@ -1141,8 +1179,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_install_engine": [
@@ -1157,8 +1197,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_list_loras": [
@@ -1173,8 +1215,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_load": [
@@ -1189,8 +1233,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_media": [
@@ -1205,8 +1251,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_open_external": [
@@ -1221,8 +1269,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_remove_custom_model": [
@@ -1237,8 +1287,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_save_external_images": [
@@ -1253,8 +1305,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_status": [
@@ -1269,8 +1323,10 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts"
   ],
   "diffusion_unload": [
@@ -1285,11 +1341,31 @@
     "web-app/src/lib/localModelScan.ts (via studioApi)",
     "web-app/src/lib/remote/appStudio.ts (via studioApi)",
     "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
     "web-app/src/lib/studio/arbiter.ts",
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts",
     "web-app/src/services/models/default.ts (via releaseImageModelForChat)"
+  ],
+  "diffusion_upscale": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
+    "web-app/src/hooks/useScannedFamilies.ts (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chat/transport/toolRefresh.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/localModelScan.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/restoreMadePictures.ts (via studioApi)",
+    "web-app/src/lib/studio/agentStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/externalEditor.ts (via studioApi)",
+    "web-app/src/lib/studio/importPicture.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
   ],
   "export_diagnostic_bundle": [
     "web-app/src/services/app/tauri.ts"

@@ -160,7 +160,8 @@
     "sampling": "Đang vẽ",
     "decoding": "Đang hoàn thiện",
     "saving": "Đang lưu",
-    "working": "Đang xử lý"
+    "working": "Đang xử lý",
+    "upscaling": "Đang phóng to"
   },
   "settings": {
     "title": "Cài đặt tạo",
@@ -297,5 +298,35 @@
     "tooBig": "Ảnh này lớn hơn 20 MB.",
     "importFailed": "Không thể thêm ảnh này.",
     "count": "Ảnh tham chiếu: {{count}}"
+  },
+  "upscale": {
+    "action": "Phóng to ×{{scale}}",
+    "actionDownload": "Phóng to ×{{scale}} (tải {{size}} trước)",
+    "downloading": "Đang tải bộ phóng to: {{bytes}} / {{total}}",
+    "done": "Đã phóng to {{scale}}×",
+    "jobLabel": "Đang phóng to ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Chọn vùng để sửa",
+    "brush": "Cọ (B)",
+    "eraser": "Tẩy (E)",
+    "rect": "Hình chữ nhật (R)",
+    "size": "Cỡ cọ",
+    "undo": "Hoàn tác ({{keys}})",
+    "invert": "Đảo vùng chọn",
+    "clear": "Xóa vùng chọn",
+    "exit": "Thoát vùng chọn",
+    "area": "Tô vùng cần thay đổi",
+    "tools": "Công cụ chọn",
+    "strength": "Mức thay đổi",
+    "apply": "Sửa vùng chọn",
+    "paintFirst": "Tô vùng cần đổi",
+    "empty": "Hãy tô vùng cần đổi trước.",
+    "edited": "Đã sửa vùng chọn"
+  },
+  "drop": {
+    "added": "Đã thêm ảnh vào thư viện",
+    "adding": "Đang thêm ảnh…",
+    "hint": "Hoặc thả ảnh vào đây để phóng to hay sửa."
   }
 }

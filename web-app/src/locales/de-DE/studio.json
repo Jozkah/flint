@@ -157,7 +157,8 @@
     "sampling": "Wird gezeichnet",
     "decoding": "Wird abgeschlossen",
     "saving": "Wird gespeichert",
-    "working": "In Arbeit"
+    "working": "In Arbeit",
+    "upscaling": "Hochskalieren"
   },
   "settings": {
     "title": "Generierungseinstellungen",
@@ -294,5 +295,35 @@
     "tooBig": "Das Bild ist größer als 20 MB.",
     "importFailed": "Das Bild konnte nicht hinzugefügt werden.",
     "count": "Referenzbilder: {{count}}"
+  },
+  "upscale": {
+    "action": "Hochskalieren ×{{scale}}",
+    "actionDownload": "Hochskalieren ×{{scale}} (lädt zuerst {{size}})",
+    "downloading": "Hochskalierer wird geladen: {{bytes}} von {{total}}",
+    "done": "{{scale}}× vergrößert",
+    "jobLabel": "Hochskalieren ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Bereich zum Bearbeiten auswählen",
+    "brush": "Pinsel (B)",
+    "eraser": "Radierer (E)",
+    "rect": "Rechteck (R)",
+    "size": "Pinselgröße",
+    "undo": "Rückgängig ({{keys}})",
+    "invert": "Auswahl umkehren",
+    "clear": "Auswahl löschen",
+    "exit": "Auswahl beenden",
+    "area": "Male den Bereich, der sich ändern soll",
+    "tools": "Auswahlwerkzeuge",
+    "strength": "Stärke der Änderung",
+    "apply": "Auswahl bearbeiten",
+    "paintFirst": "Male den zu ändernden Bereich",
+    "empty": "Male zuerst den zu ändernden Bereich.",
+    "edited": "Auswahl bearbeitet"
+  },
+  "drop": {
+    "added": "Bild zur Galerie hinzugefügt",
+    "adding": "Bild wird hinzugefügt…",
+    "hint": "Oder zieh ein Bild hierher, um es hochzuskalieren oder zu bearbeiten."
   }
 }

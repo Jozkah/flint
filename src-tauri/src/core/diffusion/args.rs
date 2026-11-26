@@ -171,6 +171,8 @@ pub struct ImageRequest {
     pub lora: Vec<(String, f64)>,
     /// A picture to start from (image-to-image), as a data URL.
     pub init_image: Option<String>,
+    /// What of `init_image` to repaint (white) and keep (black), as a data URL.
+    pub mask_image: Option<String>,
     /// How far `init_image` may change, 0 (keep) to 1 (ignore).
     pub strength: Option<f64>,
     /// Pictures an edit model is told to follow, as data URLs.
@@ -208,6 +210,9 @@ pub fn build_img_gen_request(req: &ImageRequest) -> Value {
     }
     if let Some(init) = &req.init_image {
         body["init_image"] = json!(init);
+        if let Some(mask) = &req.mask_image {
+            body["mask_image"] = json!(mask);
+        }
         if let Some(strength) = req.strength {
             body["strength"] = json!(strength.clamp(0.0, 1.0));
         }
@@ -298,6 +303,29 @@ pub fn size_problem(width: u32, height: u32, min: u32, max: u32) -> Option<Strin
         }
     }
     None
+}
+
+/// Largest selection mask accepted, as encoded text: a 2048 x 2048 PNG of one
+/// colour per pixel is far smaller than this.
+const MAX_MASK_TEXT: usize = 16 * 1024 * 1024;
+
+/// A selection mask as the engine takes it: a PNG data URL, checked for its
+/// signature and size so nothing else reaches the engine.
+pub fn checked_mask(mask: &str) -> Result<String, String> {
+    use base64::Engine;
+    let data = mask
+        .strip_prefix("data:image/png;base64,")
+        .ok_or("The selection must be a PNG.")?;
+    if data.len() > MAX_MASK_TEXT {
+        return Err("The selection is too large.".to_string());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.trim())
+        .map_err(|_| "The selection could not be read.".to_string())?;
+    if png_dimensions(&bytes).is_none() {
+        return Err("The selection must be a PNG.".to_string());
+    }
+    Ok(mask.to_string())
 }
 
 #[cfg(test)]
@@ -427,6 +455,7 @@ mod tests {
             sampling: sampling(),
             lora: vec![],
             init_image: None,
+            mask_image: None,
             strength: None,
             ref_images: vec![],
         });
@@ -452,6 +481,7 @@ mod tests {
             sampling: Sampling { sample_method: Some("euler".into()), flow_shift: Some(3.0), ..sampling() },
             lora: vec![("style.safetensors".into(), 0.7)],
             init_image: None,
+            mask_image: None,
             strength: None,
             ref_images: vec![],
         });
@@ -512,6 +542,7 @@ mod tests {
             sampling: sampling(),
             lora: vec![],
             init_image: None,
+            mask_image: None,
             strength: None,
             ref_images: vec![],
         }
@@ -534,6 +565,35 @@ mod tests {
         });
         assert_eq!(body["init_image"], "data:image/png;base64,AAAA");
         assert_eq!(body["strength"], 1.0);
+    }
+
+    #[test]
+    fn a_selection_goes_with_its_picture_and_never_alone() {
+        let with = build_img_gen_request(&ImageRequest {
+            init_image: Some("data:image/png;base64,AAAA".into()),
+            mask_image: Some("data:image/png;base64,BBBB".into()),
+            ..plain_request()
+        });
+        assert_eq!(with["mask_image"], "data:image/png;base64,BBBB");
+        let alone = build_img_gen_request(&ImageRequest {
+            mask_image: Some("data:image/png;base64,BBBB".into()),
+            ..plain_request()
+        });
+        assert!(alone.get("mask_image").is_none());
+    }
+
+    #[test]
+    fn only_a_png_selection_is_accepted() {
+        use base64::Engine;
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+        png.extend_from_slice(&64u32.to_be_bytes());
+        png.extend_from_slice(&32u32.to_be_bytes());
+        png.extend_from_slice(&[8, 0, 0, 0, 0]);
+        let good = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&png));
+        assert_eq!(checked_mask(&good).unwrap(), good);
+        assert!(checked_mask("data:image/jpeg;base64,AAAA").is_err());
+        assert!(checked_mask("data:image/png;base64,AAAA").is_err());
+        assert!(checked_mask("not a url").is_err());
     }
 
     #[test]

@@ -154,7 +154,8 @@
     "sampling": "正在繪製",
     "decoding": "正在收尾",
     "saving": "正在儲存",
-    "working": "處理中"
+    "working": "處理中",
+    "upscaling": "正在放大"
   },
   "settings": {
     "title": "生成設定",
@@ -291,5 +292,35 @@
     "tooBig": "該圖片超過 20 MB。",
     "importFailed": "無法新增該圖片。",
     "count": "參考圖片：{{count}}"
+  },
+  "upscale": {
+    "action": "放大 ×{{scale}}",
+    "actionDownload": "放大 ×{{scale}}(先下載 {{size}})",
+    "downloading": "正在下載放大模型:{{bytes}} / {{total}}",
+    "done": "已放大 {{scale}} 倍",
+    "jobLabel": "正在放大 ×{{scale}}:{{prompt}}"
+  },
+  "select": {
+    "start": "選擇要編輯的區域",
+    "brush": "筆刷 (B)",
+    "eraser": "橡皮擦 (E)",
+    "rect": "矩形 (R)",
+    "size": "筆刷大小",
+    "undo": "復原 ({{keys}})",
+    "invert": "反轉選取",
+    "clear": "清除選取",
+    "exit": "結束選取",
+    "area": "塗出要修改的區域",
+    "tools": "選取工具",
+    "strength": "修改強度",
+    "apply": "編輯選取",
+    "paintFirst": "先塗出要修改的區域",
+    "empty": "請先塗出要修改的區域。",
+    "edited": "選取已編輯"
+  },
+  "drop": {
+    "added": "圖片已加入圖庫",
+    "adding": "正在加入圖片…",
+    "hint": "或將圖片拖到這裡進行放大或編輯。"
   }
 }

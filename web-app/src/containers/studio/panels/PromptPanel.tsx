@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAssetUrl } from '@/lib/assetPath'
-import { CornerDownLeft, Download, Film, ImageIcon, Info, Maximize2, MoreHorizontal, Sparkles, Square } from 'lucide-react'
+import { CornerDownLeft, Download, Film, ImageIcon, Info, Maximize2, MoreHorizontal, Sparkles, Square, SquareDashedMousePointer } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Progress } from '@/components/ui/progress'
+import { DropRim } from '@/components/ui/drop-rim'
+import { Slider } from '@/components/ui/slider'
 import { RefineFrame } from '@/components/ui/refine-frame'
 import { refineStatusFor } from '@/lib/refine-frame'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -25,6 +27,9 @@ import { studioApi, type GalleryItem, type StudioKind, type StudioModel } from '
 import { MAX_REFERENCES, ReferencePictures } from '@/containers/studio/panels/ReferencePictures'
 import { Elapsed } from '@/containers/studio/panels/Elapsed'
 import { PanelButton } from '@/containers/studio/panels/PanelButton'
+import { SelectionEditor, type SelectionEditorHandle } from '@/containers/studio/panels/SelectionEditor'
+import { firstPicture, importPicture, PictureImportError } from '@/lib/studio/importPicture'
+import { formatModelBytes } from '@/lib/huggingface'
 import { chosenSize, phaseText, rise } from '@/containers/studio/studioHelpers'
 import { Form } from '@/containers/studio/studioTypes'
 
@@ -109,6 +114,86 @@ export function PromptPanel({
       </span>
     </>
   ) : null
+  const upscalers = status?.upscalers ?? []
+  const upscaleItem = useStudio((s) => s.upscale)
+  const upscalerDownload = useStudio((s) => s.upscalerDownload)
+  const engineReady = !!status?.engineBackend
+  // Selecting part of the latest picture to repaint only that part.
+  const [selecting, setSelecting] = useState(false)
+  const [painted, setPainted] = useState(false)
+  const [strength, setStrength] = useState(0.9)
+  const editorRef = useRef<SelectionEditorHandle>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const canSelect = kind === 'image' && !hosted && !!latest
+  // The selection stays while its edit runs, so a failed edit can be tried again.
+  const editing = selecting && canSelect
+  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null)
+  if (selecting && !canSelect) setSelecting(false)
+
+  const upscale = async (item: GalleryItem, upscaler: (typeof upscalers)[number]) => {
+    const ok = await upscaleItem(item, upscaler)
+    if (ok) toast.success(t('studio:upscale.done', { scale: upscaler.scale }))
+  }
+
+  const importProblem = (error: unknown) => {
+    const problem = error instanceof PictureImportError ? error.problem : 'failed'
+    return problem === 'not-picture'
+      ? t('studio:reference.notPicture')
+      : problem === 'too-big'
+        ? t('studio:reference.tooBig')
+        : t('studio:reference.importFailed')
+  }
+
+  const dropPicture = async (files: FileList | null) => {
+    const file = firstPicture(files)
+    if (!file) {
+      toast.error(t('studio:reference.notPicture'))
+      return
+    }
+    setImporting(true)
+    try {
+      await importPicture(file, t('studio:reference.imported'))
+      setSelecting(false)
+      toast.success(t('studio:drop.added'))
+    } catch (error) {
+      toast.error(importProblem(error))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const editSelection = async () => {
+    const text = form.prompt.trim()
+    if (!text) {
+      toast.error(t('studio:prompt.writeFirst'))
+      return
+    }
+    if (!latest) return
+    const mask = editorRef.current?.exportMask()
+    if (!mask) {
+      toast.error(t('studio:select.empty'))
+      return
+    }
+    const ok = await generate(kind, text, () =>
+      studioApi.generateImage({
+        model: model.id,
+        prompt: text,
+        negative_prompt: form.negative.trim() || undefined,
+        seed: parseSeed(form.seed),
+        lora: form.loras,
+        count: 1,
+        init_image_id: latest.id,
+        mask,
+        strength,
+      })
+    )
+    if (ok) {
+      setSelecting(false)
+      toast.success(t('studio:select.edited'))
+    }
+  }
+
   const showReferences = kind === 'image' && !hosted && !!model.edit
   const showFrame = kind === 'image' && (running || !!latest)
 
@@ -198,7 +283,7 @@ export function PromptPanel({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !busy) {
                   e.preventDefault()
-                  void start()
+                  void (editing ? editSelection() : start())
                 }
               }}
               rows={3}
@@ -272,6 +357,22 @@ export function PromptPanel({
 
         <div
           className="relative mx-auto w-full overflow-hidden rounded-xl bg-muted"
+          data-testid="studio-stage"
+          onDragOver={(e) => {
+            if (kind !== 'image' || busy || editing || !e.dataTransfer.types.includes('Files')) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+            if (!dragOver) setDragOver(true)
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+          }}
+          onDrop={(e) => {
+            if (kind !== 'image' || busy || editing) return
+            e.preventDefault()
+            setDragOver(false)
+            void dropPicture(e.dataTransfer.files)
+          }}
           // Nothing made yet: a compact stage, not a tall empty square.
           style={
             latest
@@ -279,7 +380,19 @@ export function PromptPanel({
               : { height: 'min(40vh, 320px)' }
           }
         >
-          {showFrame ? (
+          {editing && latest && (
+            <SelectionEditor
+              key={latest.id}
+              ref={editorRef}
+              src={convertFileSrc(latest.path)}
+              alt={latest.recipe.prompt}
+              onPaintedChange={setPainted}
+              onDone={() => setSelecting(false)}
+              inert={running}
+              toolbarHost={toolbarHost}
+            />
+          )}
+          {editing && !running ? null : showFrame ? (
             <RefineFrame
               className="absolute inset-0"
               src={latest ? convertFileSrc(latest.path) : null}
@@ -324,11 +437,15 @@ export function PromptPanel({
                 className="absolute inset-0"
                 icon={kind === 'video' ? <Film /> : <ImageIcon />}
                 title={kind === 'video' ? t('studio:prompt.emptyVideo') : t('studio:prompt.emptyImage')}
-                description={t('studio:prompt.emptyDesc')}
+                description={
+                  kind === 'image'
+                    ? `${t('studio:prompt.emptyDesc')} ${t('studio:drop.hint')}`
+                    : t('studio:prompt.emptyDesc')
+                }
               />
             )
           )}
-          {latest && !running && (
+          {latest && !running && !editing && (
             <div className="absolute top-3 right-3 flex gap-1.5">
               <a
                 href={convertFileSrc(latest.path)}
@@ -358,6 +475,29 @@ export function PromptPanel({
                   <DropdownMenuItem onSelect={() => onRemix(latest)}>
                     {t('studio:prompt.remix')}
                   </DropdownMenuItem>
+                  {latest.kind === 'image' && (
+                    <DropdownMenuItem
+                      disabled={busy || !canSelect}
+                      onSelect={() => {
+                        setPainted(false)
+                        setSelecting(true)
+                      }}
+                    >
+                      {t('studio:select.start')}
+                    </DropdownMenuItem>
+                  )}
+                  {latest.kind === 'image' &&
+                    upscalers.map((u) => (
+                      <DropdownMenuItem
+                        key={u.id}
+                        disabled={busy || !engineReady || !!upscalerDownload}
+                        onSelect={() => void upscale(latest, u)}
+                      >
+                        {u.installed
+                          ? t('studio:upscale.action', { scale: u.scale })
+                          : t('studio:upscale.actionDownload', { scale: u.scale, size: formatModelBytes(u.totalBytes) })}
+                      </DropdownMenuItem>
+                    ))}
                   {showReferences && latest.kind === 'image' && (
                     <DropdownMenuItem
                       disabled={
@@ -392,7 +532,21 @@ export function PromptPanel({
               </DropdownMenu>
             </div>
           )}
-          {!showFrame && (
+          <DropRim active={dragOver} count={1} />
+          {(importing || upscalerDownload) && (
+            <p
+              role="status"
+              className="absolute inset-x-3 bottom-3 rounded-lg bg-black/65 px-3 py-2 text-xs text-white backdrop-blur"
+            >
+              {importing
+                ? t('studio:drop.adding')
+                : t('studio:upscale.downloading', {
+                    bytes: formatModelBytes(upscalerDownload?.bytes ?? 0),
+                    total: formatModelBytes(upscalerDownload?.total ?? 0),
+                  })}
+            </p>
+          )}
+          {!showFrame && !editing && (
             <div
               aria-hidden={!running}
               className={cn(
@@ -435,6 +589,33 @@ export function PromptPanel({
           )}
         </div>
 
+        {editing && <div ref={setToolbarHost} />}
+        {editing && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span id="studio-edit-strength" className="shrink-0">{t('studio:select.strength')}</span>
+            <Slider
+              aria-labelledby="studio-edit-strength"
+              min={0.3}
+              max={1}
+              step={0.05}
+              value={[strength]}
+              onValueChange={([v]) => setStrength(v)}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+            />
+            <span className="w-9 shrink-0 text-right tabular-nums">{Math.round(strength * 100)}%</span>
+          </div>
+        )}
+        {editing ? (
+          <button
+            type="button"
+            disabled={!ready || busy || !painted}
+            onClick={() => void editSelection()}
+            className="relative mt-auto flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgb(99_102_241/0.7)] transition-[filter,transform] duration-150 hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
+          >
+            <SquareDashedMousePointer className="size-4" aria-hidden />
+            {!ready ? t('studio:prompt.loadFirst') : painted ? t('studio:select.apply') : t('studio:select.paintFirst')}
+          </button>
+        ) : (
         <button
           type="button"
           disabled={!ready || busy || (!!warning && !form.accepted)}
@@ -447,6 +628,7 @@ export function PromptPanel({
             {mac ? '⌘' : 'Ctrl'} <CornerDownLeft className="size-3" aria-hidden />
           </span>
         </button>
+        )}
       </FrameBody>
 
       <Dialog open={guide} onOpenChange={setGuide}>

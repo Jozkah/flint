@@ -157,7 +157,8 @@
     "sampling": "Drawing",
     "decoding": "Finishing",
     "saving": "Saving",
-    "working": "Working"
+    "working": "Working",
+    "upscaling": "Upscaling"
   },
   "settings": {
     "title": "Generation Settings",
@@ -294,5 +295,35 @@
     "tooBig": "That picture is larger than 20 MB.",
     "importFailed": "Could not add that picture.",
     "count": "Reference pictures: {{count}}"
+  },
+  "upscale": {
+    "action": "Upscale ×{{scale}}",
+    "actionDownload": "Upscale ×{{scale}} (downloads {{size}} first)",
+    "downloading": "Downloading the upscaler: {{bytes}} of {{total}}",
+    "done": "Upscaled ×{{scale}}",
+    "jobLabel": "Upscaling ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Select an area to edit",
+    "brush": "Brush (B)",
+    "eraser": "Eraser (E)",
+    "rect": "Rectangle (R)",
+    "size": "Brush size",
+    "undo": "Undo ({{keys}})",
+    "invert": "Invert selection",
+    "clear": "Clear selection",
+    "exit": "Exit selection",
+    "area": "Paint the area to change",
+    "tools": "Selection tools",
+    "strength": "How much to change",
+    "apply": "Edit selection",
+    "paintFirst": "Paint the area to change",
+    "empty": "Paint the area to change first.",
+    "edited": "Selection edited"
+  },
+  "drop": {
+    "added": "Picture added to the gallery",
+    "adding": "Adding the picture…",
+    "hint": "Or drop a picture here to upscale or edit it."
   }
 }

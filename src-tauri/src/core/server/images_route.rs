@@ -156,6 +156,7 @@ pub async fn generate(body: &Value) -> Result<Value, ApiError> {
             init_image_id: None,
             strength: None,
             reference_ids: Vec::new(),
+            mask: None,
         },
     )
     .await

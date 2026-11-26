@@ -163,7 +163,8 @@
     "sampling": "Kreslení",
     "decoding": "Dokončování",
     "saving": "Ukládání",
-    "working": "Pracuje se"
+    "working": "Pracuje se",
+    "upscaling": "Zvětšování"
   },
   "settings": {
     "title": "Nastavení generování",
@@ -300,5 +301,35 @@
     "tooBig": "Obrázek je větší než 20 MB.",
     "importFailed": "Obrázek se nepodařilo přidat.",
     "count": "Referenční obrázky: {{count}}"
+  },
+  "upscale": {
+    "action": "Zvětšit ×{{scale}}",
+    "actionDownload": "Zvětšit ×{{scale}} (nejdřív stáhne {{size}})",
+    "downloading": "Stahuje se zvětšovač: {{bytes}} z {{total}}",
+    "done": "Zvětšeno {{scale}}×",
+    "jobLabel": "Zvětšování ×{{scale}}: {{prompt}}"
+  },
+  "select": {
+    "start": "Vybrat oblast k úpravě",
+    "brush": "Štětec (B)",
+    "eraser": "Guma (E)",
+    "rect": "Obdélník (R)",
+    "size": "Velikost štětce",
+    "undo": "Zpět ({{keys}})",
+    "invert": "Obrátit výběr",
+    "clear": "Vymazat výběr",
+    "exit": "Ukončit výběr",
+    "area": "Namaluj oblast, kterou chceš změnit",
+    "tools": "Nástroje výběru",
+    "strength": "Míra změny",
+    "apply": "Upravit výběr",
+    "paintFirst": "Namaluj oblast ke změně",
+    "empty": "Nejdřív namaluj oblast ke změně.",
+    "edited": "Výběr upraven"
+  },
+  "drop": {
+    "added": "Obrázek přidán do galerie",
+    "adding": "Přidává se obrázek…",
+    "hint": "Nebo sem přetáhni obrázek a zvětši ho nebo uprav."
   }
 }

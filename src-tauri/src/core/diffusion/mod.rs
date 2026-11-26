@@ -30,3 +30,4 @@ pub mod present;
 pub mod gallery;
 pub mod progress;
 pub mod runtime;
+pub mod upscale;
