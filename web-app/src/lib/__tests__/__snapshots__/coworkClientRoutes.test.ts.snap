@@ -9,6 +9,7 @@ exports[`CLIENT_ROUTES > names every tool the client answers itself 1`] = `
   "enable_tools",
   "enter_worktree",
   "exit_worktree",
+  "mcp_find_tools",
   "spawn_session",
   "task",
   "task_status",

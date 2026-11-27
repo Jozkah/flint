@@ -2,6 +2,8 @@ import {
   buildContinuationMessages,
   continuationStrategy,
 } from '@/lib/chat/transport/continuation'
+import { budgetMcpTools } from '@/lib/mcp-orchestrator/tool-budget'
+import { useMCPServers } from '@/hooks/useMCPServers'
 import { hasAgentToolImages } from '@/lib/toolOutputImages'
 import { pluginInventoryLine } from '@/lib/pluginInventory'
 import { skillCatalogBlock } from '@/lib/skillCatalog'
@@ -407,6 +409,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected recordsChatRun = true
   /** Which MCP server each advertised tool came from, for the context breakdown. */
   protected toolServers = new Map<string, string>()
+
+  /** The MCP server an advertised tool belongs to; undefined for any other tool. */
+  protected mcpServerOf(toolName: string): string | undefined {
+    return this.toolServers.get(toolName)
+  }
   /**
    * Whether this transport compacts a conversation at the threshold itself.
    * Cowork compacts in its run loop, where the summary is persisted, and turns
@@ -1957,6 +1964,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         leanWindows,
         this.smallContext
       )
+    }
+    // MCP tools beyond a share of the window are held behind
+    // `mcp_find_tools` instead of making the request impossible. Every
+    // surface: Cowork and Rooms used to send every connected tool.
+    if (useMCPServers.getState().settings.enableSmartToolRouting) {
+      this.tools = budgetMcpTools(
+        this.tools,
+        (name) => this.mcpServerOf(name),
+        this.threadId ?? '',
+        maxContextTokens,
+        messagesToConvert
+      ) as typeof this.tools
     }
     const effectiveSystem = appendSessionContext(
       this.buildSystemPrompt(messagesToConvert),

@@ -1,4 +1,5 @@
 import { workflowToTeamInput } from '@/lib/coworkWorkflow'
+import { MCP_FIND_TOOLS_NAME, runMcpFindTools } from '@/lib/mcp-orchestrator/tool-budget'
 import { runWorkflowControl } from '@/lib/workflowControl'
 import { describeSaved, resolveWorkflowInput } from '@/lib/savedWorkflows'
 import { pushNotice } from '@/lib/coworkRunNotices'
@@ -1071,6 +1072,7 @@ export const CLIENT_ROUTES: Readonly<Record<string, ClientRoute>> = {
   },
   [ENTER_WORKTREE_TOOL_NAME]: routeWorktreeTool,
   [EXIT_WORKTREE_TOOL_NAME]: routeWorktreeTool,
+  [MCP_FIND_TOOLS_NAME]: async (call, ctx) => runMcpFindTools(ctx.sessionId, call.input),
   [ENABLE_TOOLS_NAME]: async (call, ctx) => {
     if (!ctx.onEnableTools) {
       return { output: 'There is nothing to enable here.', isError: true }

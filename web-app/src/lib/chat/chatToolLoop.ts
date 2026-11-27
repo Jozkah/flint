@@ -1,4 +1,5 @@
 import { mcpFailureText } from '@/lib/mcpToolResult'
+import { MCP_FIND_TOOLS_NAME, runMcpFindTools } from '@/lib/mcp-orchestrator/tool-budget'
 import { setThreadMcpVars, threadMcpVars } from '@/lib/mcpSessionScope'
 import { ensureMcpVariables, variablesDeclinedError } from '@/lib/mcpVariablePrompt'
 import { missingVariables } from '@/lib/mcpSessionVars'
@@ -392,7 +393,10 @@ export function runChatToolLoop(
         const deadRefusal = deadToolRefusal(threadId, toolName)
         if (deadRefusal) return { error: deadRefusal }
 
-        if (isNativeWebToolInRun(toolName, threadId)) {
+        if (toolName === MCP_FIND_TOOLS_NAME) {
+          const found = runMcpFindTools(threadId, toolCall.input)
+          result = found.isError ? { error: found.output } : { content: found.output }
+        } else if (isNativeWebToolInRun(toolName, threadId)) {
           // Bound a fetched page to the window this model has, as for MCP
           // results below, so a small-context model is not flooded.
           const webSelection = getModelSelection()

@@ -33,7 +33,7 @@ describe('CLIENT_ROUTES', () => {
   it('a child dispatcher (no team) is refused the parent-only tools', async () => {
     const c = ctx()
     for (const name of Object.keys(CLIENT_ROUTES)) {
-      if (/todo|ask|enable|task|background|output|kill/i.test(name)) continue
+      if (/todo|ask|enable|task|background|output|kill|mcp_find/i.test(name)) continue
       const out = await CLIENT_ROUTES[name](call(name), c)
       expect(out.isError, name).toBe(true)
       expect(out.output, name).toMatch(/^You cannot/)

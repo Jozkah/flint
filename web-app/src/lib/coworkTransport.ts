@@ -274,6 +274,10 @@ export class CoworkChatTransport extends CustomChatTransport {
     return this.mcpToolServers.get(toolName)
   }
 
+  protected override mcpServerOf(toolName: string): string | undefined {
+    return this.mcpToolServers.get(toolName)
+  }
+
   /** Cowork gets its own llama.cpp slot: sharing chat's would evict the viewed
    * thread's prefix on every one of this turn's many prefills, and vice versa. */
   protected override slotParams(threadId?: string): Record<string, unknown> {
