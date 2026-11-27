@@ -1,4 +1,5 @@
 import { useAppState } from '@/hooks/useAppState'
+import { MCP_FIND_TOOLS_NAME } from '@/lib/mcp-orchestrator/tool-budget'
 import { useMessages } from '@/hooks/useMessages'
 import { OUT_OF_CONTEXT_SIZE } from '@/utils/error'
 import { CHAT_DELEGATION_TOOL_NAMES } from '@/lib/chatDelegation'
@@ -30,6 +31,8 @@ export function serverForTool(toolName: string): string | undefined {
 export function isAutoAllowedTool(toolName: string, threadId?: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
+    // Only changes which MCP tools the next request offers.
+    toolName === MCP_FIND_TOOLS_NAME ||
     isNativeWebToolInRun(toolName, threadId) ||
     isVisualizeTool(toolName) ||
     // Reads only conversations the user mentioned, from local stores.

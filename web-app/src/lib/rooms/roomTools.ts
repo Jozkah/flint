@@ -314,6 +314,13 @@ export async function buildRoomTools(
  * call routes through `mcp().callTool`; the text content is returned to the
  * model and an error surfaces as `ERROR: ...`, matching the built-in tools.
  */
+const roomMcpServers = new Map<string, string>()
+
+/** The server an advertised room MCP tool came from; undefined for built-ins. */
+export function roomMcpServerOf(toolName: string): string | undefined {
+  return roomMcpServers.get(toolName)
+}
+
 export async function buildMcpTools(
   onActivity?: (a: RoomToolActivity) => void,
   /** Servers the participant switched off as a whole (see `mcpServerKey`). */
@@ -360,6 +367,7 @@ export async function buildMcpTools(
     if (offServers?.has(t.server)) continue
     if (!serverTrusted(t.server)) continue // withhold untrusted servers, never refuse mid-call
     if (out[t.name]) continue // first server wins on a name clash, like the chat
+    roomMcpServers.set(t.name, t.server)
     out[t.name] = {
       description: t.description,
       inputSchema: jsonSchema(t.inputSchema),

@@ -21,7 +21,15 @@ import { isAbortLike } from '@/lib/coworkRunner'
 import { notifyToolBatch } from '@/lib/agentTools'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
-import { buildRoomTools } from './roomTools'
+import { buildRoomTools, roomMcpServerOf } from './roomTools'
+import { useMCPServers } from '@/hooks/useMCPServers'
+import {
+  MCP_FIND_TOOLS_NAME,
+  budgetMcpTools,
+  mcpUnlocked,
+  resetMcpDeck,
+  runMcpFindTools,
+} from '@/lib/mcp-orchestrator/tool-budget'
 import { applyToolBudget, dropDisabledTools, resolveToolBudget } from './toolBudget'
 import type { RoomBudgetHit } from './types'
 import { buildParticipantReasoningRequest } from './participantReasoning'
@@ -200,7 +208,35 @@ export async function streamParticipantReply(
     })
     if (Object.keys(tools).length === 0) tools = undefined
   }
-  const toolTokens = estimateToolTokens(tools)
+  // MCP tools past a share of the window wait behind `mcp_find_tools`; the
+  // SDK's `activeTools` decides what each step sends, so a found tool is
+  // offered from the next step without rebuilding the set.
+  let mcpDeckKey: string | undefined
+  let activeToolNames: (() => string[]) | undefined
+  if (tools && useMCPServers.getState().settings.enableSmartToolRouting) {
+    const key = `room:${input.model.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+    const sent = budgetMcpTools(tools, roomMcpServerOf, key, contextWindow, input.messages)
+    const finder = sent[MCP_FIND_TOOLS_NAME]
+    if (finder) {
+      mcpDeckKey = key
+      tools = {
+        ...tools,
+        [MCP_FIND_TOOLS_NAME]: {
+          ...finder,
+          execute: async (i: unknown) => runMcpFindTools(key, i).output,
+        } as Tool,
+      }
+      const base = Object.keys(sent)
+      activeToolNames = () => [...new Set([...base, ...mcpUnlocked(key)])]
+    } else {
+      resetMcpDeck(key)
+    }
+  }
+  const toolTokens = estimateToolTokens(
+    tools && activeToolNames
+      ? Object.fromEntries(activeToolNames().map((n) => [n, tools![n]]))
+      : tools
+  )
   try {
     const result = stream({
       model: languageModel,
@@ -250,8 +286,10 @@ export async function streamParticipantReply(
               if (outOfSteps) budgetHit ??= 'steps'
               const outOfRoom = guard?.finish === true
               const trimmed = guard && (guard.cleared > 0 || guard.clipped > 0)
-              if (!outOfSteps && !outOfRoom && !trimmed) return undefined
+              const activeTools = activeToolNames?.()
+              if (!outOfSteps && !outOfRoom && !trimmed && !activeTools) return undefined
               return {
+                ...(activeTools ? { activeTools } : {}),
                 ...(trimmed ? { messages: guard.messages } : {}),
                 // The last step is for writing. A turn that used every step on
                 // tool calls ended with no reply at all, so the moderator saw
@@ -371,5 +409,7 @@ ${outOfSteps ? OUT_OF_STEPS_NOTICE : NO_ROOM_NOTICE}`,
     }
   } catch (e) {
     throw toRoomCallError(e, input.signal)
+  } finally {
+    if (mcpDeckKey) resetMcpDeck(mcpDeckKey)
   }
 }
